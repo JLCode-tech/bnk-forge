@@ -35,7 +35,6 @@ from typing import Any, TypeVar
 from kubernetes.client.rest import ApiException
 from sqlalchemy.orm import Session
 
-from core.cache import cache
 from core.config import settings
 from models.kubernetes import KubernetesCluster
 from services.kubernetes_service import KubernetesService
@@ -55,10 +54,11 @@ _T = TypeVar("_T")
 
 # Fleet ("all clusters") requests query at most this many clusters at once, and
 # give up on stragglers after the deadline (reported per cluster in ``errors``).
-_FLEET_WORKERS = 10
-_FLEET_DEADLINE_SECONDS = 15.0
+_FLEET_WORKERS = 4
+_FLEET_DEADLINE_SECONDS = 20.0
 
-# Kept for backward compatibility with tests/callers that inspect it.
+# Set inside a fleet worker: that worker runs its Loki calls serially, so a fleet
+# request uses one bounded pool instead of a pool per cluster.
 _serial = threading.local()
 
 
@@ -79,7 +79,7 @@ def _run_parallel(thunks: list[Callable[[], _T]]) -> list[_T]:
     firing them together instead of sequentially cuts the worst case
     (``rankings`` = 10 instant queries) from N roundtrips to ~1.
     """
-    if len(thunks) <= 1:
+    if len(thunks) <= 1 or getattr(_serial, "active", False):
         return [t() for t in thunks]
     with ThreadPoolExecutor(max_workers=min(len(thunks), 12)) as ex:
         return list(ex.map(lambda t: t(), thunks))
@@ -170,13 +170,11 @@ class LlmObservabilityService:
         self._port = settings.LOKI_PORT
         self._scheme = settings.LOKI_SCHEME
 
-    def _active_clusters(self) -> list[KubernetesCluster]:
-        return (
-            self.db.query(KubernetesCluster)
-            .filter(KubernetesCluster.status == "active")
-            .order_by(KubernetesCluster.name.asc())
-            .all()
-        )
+    def _active_clusters(self, project_id: int | None = None) -> list[KubernetesCluster]:
+        q = self.db.query(KubernetesCluster).filter(KubernetesCluster.status == "active")
+        if project_id is not None:
+            q = q.filter(KubernetesCluster.project_id == project_id)
+        return q.order_by(KubernetesCluster.name.asc()).all()
 
     # -- endpoint / time helpers ------------------------------------------
 
@@ -218,35 +216,30 @@ class LlmObservabilityService:
             return self._k8s.load_kubeconfig(cluster)
         return self._k8s.load_kubeconfig(cluster_or_id)
 
-    def _resolve_active_clients(self, errors: dict[str, str]) -> list[tuple[KubernetesCluster, Any]]:
-        active = self._active_clusters()
-        candidates: list[KubernetesCluster] = []
-        for c in active:
+    def _resolve_active_clients(
+        self, errors: dict[str, str], project_id: int | None = None
+    ) -> list[tuple[KubernetesCluster, Any]]:
+        clients: list[tuple[KubernetesCluster, Any]] = []
+        for c in self._active_clusters(project_id=project_id):
+            if getattr(c, "connectivity_status", None) == "unreachable":
+                errors[str(c.name)] = "unreachable"
+                continue
             # Skip clusters the reachability probe already marks down.
             state = reachability_registry.get_state("cluster", c.id)
             if state and state.get("state") == ReachabilityState.UNREACHABLE:
                 errors[str(c.name)] = "unreachable"
                 continue
-            candidates.append(c)
-
-        if not candidates:
-            return []
-
-        def resolve_one(c: KubernetesCluster) -> tuple[KubernetesCluster, Any] | None:
             try:
-                return (c, self._client(c))
+                clients.append((c, self._client(c)))
             except Exception as e:
                 logger.warning("Failed to load kubeconfig for cluster %s: %s", c.name, e)
-                errors[str(c.name)] = f"kubeconfig: {e}"
-                return None
-
-        with ThreadPoolExecutor(max_workers=min(len(candidates), 8)) as ex:
-            results = list(ex.map(resolve_one, candidates))
-
-        return [pair for pair in results if pair is not None]
+                errors[str(c.name)] = "kubeconfig"
+        return clients
 
     def _fleet(
-        self, per_cluster: Callable[[KubernetesCluster, Any], dict[str, Any]]
+        self,
+        per_cluster: Callable[[KubernetesCluster, Any], dict[str, Any]],
+        project_id: int | None = None,
     ) -> tuple[list[tuple[KubernetesCluster, dict[str, Any]]], dict[str, str]]:
         """Run ``per_cluster`` on every active cluster in one bounded pool.
 
@@ -255,12 +248,16 @@ class LlmObservabilityService:
         unavailable, or missed the overall deadline.
         """
         errors: dict[str, str] = {}
-        cluster_clients = self._resolve_active_clients(errors)
+        cluster_clients = self._resolve_active_clients(errors, project_id=project_id)
         if not cluster_clients:
             return [], errors
 
         def run(c: KubernetesCluster, client: Any) -> dict[str, Any]:
-            return per_cluster(c, client)
+            _serial.active = True
+            try:
+                return per_cluster(c, client)
+            finally:
+                _serial.active = False
 
         ex = ThreadPoolExecutor(max_workers=min(len(cluster_clients), _FLEET_WORKERS))
         try:
@@ -275,7 +272,8 @@ class LlmObservabilityService:
                 try:
                     r = fut.result()
                 except Exception as e:
-                    errors[name] = str(e)
+                    logger.warning("Fleet worker failed for cluster %s: %s", name, e)
+                    errors[name] = "error"
                     continue
                 if r.get("available"):
                     pairs.append((c, r))
@@ -304,7 +302,7 @@ class LlmObservabilityService:
                 response_type="object",
                 auth_settings=["BearerToken"],
                 _return_http_data_only=True,
-                _request_timeout=8.0,
+                _request_timeout=(5, 15),
             )
         except ApiException as e:
             return None, f"{e.status} {e.reason}"
@@ -363,17 +361,13 @@ class LlmObservabilityService:
         model: str | None = None,
         status: str | None = None,
         _api_client: Any = None,
+        project_id: int | None = None,
     ) -> dict[str, Any]:
-        cache_key = (
-            f"llm_obs:stats:{cluster_id if cluster_id is not None else 'fleet'}:{range_}:{model or ''}:{status or ''}"
-        )
-        if _api_client is None:
-            cached = cache.get(cache_key)
-            if cached is not None:
-                return cached
-
         if cluster_id is None:
-            pairs, errors = self._fleet(lambda c, client: self.stats(c.id, range_, model, status, _api_client=client))
+            pairs, errors = self._fleet(
+                lambda c, client: self.stats(c.id, range_, model, status, _api_client=client),
+                project_id=project_id,
+            )
             if not pairs:
                 return self._fleet_unavailable(errors)
             valid = [r for _, r in pairs]
@@ -398,7 +392,7 @@ class LlmObservabilityService:
             else:
                 success_rate = 0.0
                 avg_latency_ms = 0.0
-            res = self._ok(
+            return self._ok(
                 total_requests=int(total_requests),
                 success_rate=success_rate,
                 avg_latency_ms=avg_latency_ms,
@@ -407,9 +401,6 @@ class LlmObservabilityService:
                 models=int(total_models),
                 errors=errors,
             )
-            if _api_client is None:
-                cache.set(cache_key, res, ttl_seconds=30)
-            return res
 
         api_client = _api_client if _api_client is not None else self._client(cluster_id)
         end_ns = time.time_ns()
@@ -443,7 +434,7 @@ class LlmObservabilityService:
 
         total = values.get("total_requests", 0.0)
         success = values.get("success", 0.0)
-        res = self._ok(
+        return self._ok(
             total_requests=int(total),
             success_rate=(success / total) if total else 0.0,
             avg_latency_ms=values.get("avg_latency_ms", 0.0),
@@ -452,9 +443,6 @@ class LlmObservabilityService:
             models=int(values.get("models", 0.0)),
             errors=errors,
         )
-        if _api_client is None:
-            cache.set(cache_key, res, ttl_seconds=30)
-        return res
 
     def histogram(
         self,
@@ -464,10 +452,12 @@ class LlmObservabilityService:
         model: str | None = None,
         status: str | None = None,
         _api_client: Any = None,
+        project_id: int | None = None,
     ) -> dict[str, Any]:
         if cluster_id is None:
             valid, errors = self._fleet(
-                lambda c, client: self.histogram(c.id, range_, metric, model, status, _api_client=client)
+                lambda c, client: self.histogram(c.id, range_, metric, model, status, _api_client=client),
+                project_id=project_id,
             )
             if not valid:
                 return self._fleet_unavailable(errors)
@@ -609,10 +599,12 @@ class LlmObservabilityService:
         model: str | None = None,
         status: str | None = None,
         _api_client: Any = None,
+        project_id: int | None = None,
     ) -> dict[str, Any]:
         if cluster_id is None:
             pairs, errors = self._fleet(
-                lambda c, client: self.provider_usage(c.id, range_, metric, model, status, _api_client=client)
+                lambda c, client: self.provider_usage(c.id, range_, metric, model, status, _api_client=client),
+                project_id=project_id,
             )
             if not pairs:
                 return self._fleet_unavailable(errors)
@@ -688,10 +680,12 @@ class LlmObservabilityService:
         model: str | None = None,
         status: str | None = None,
         _api_client: Any = None,
+        project_id: int | None = None,
     ) -> dict[str, Any]:
         if cluster_id is None:
             pairs, errors = self._fleet(
-                lambda c, client: self.rankings(c.id, range_, model, status, _api_client=client)
+                lambda c, client: self.rankings(c.id, range_, model, status, _api_client=client),
+                project_id=project_id,
             )
             if not pairs:
                 return self._fleet_unavailable(errors)
@@ -816,13 +810,24 @@ class LlmObservabilityService:
         end: int | None = None,
         _api_client: Any = None,
         _cluster: KubernetesCluster | None = None,
+        project_id: int | None = None,
     ) -> dict[str, Any]:
         limit = max(1, min(limit, 1000))
         if cluster_id is None:
             pairs, errors = self._fleet(
                 lambda c, client: self.logs(
-                    c.id, range_, model, status, limit, content_search, end, _api_client=client, _cluster=c
-                )
+                    c.id,
+                    range_,
+                    model,
+                    status,
+                    limit,
+                    content_search,
+                    end,
+                    _api_client=client,
+                    _cluster=c,
+                    project_id=project_id,
+                ),
+                project_id=project_id,
             )
             if not pairs:
                 return self._fleet_unavailable(errors)
@@ -832,6 +837,10 @@ class LlmObservabilityService:
                 all_rows.extend(r.get("rows", []))
             all_rows.sort(key=lambda x: x.get("ts_ns") or x.get("ts", ""), reverse=True)
             trimmed = all_rows[:limit]
+            if project_id is None:
+                for row in trimmed:
+                    row["req_body"] = "[REDACTED - project scope required]"
+                    row["resp_body"] = "[REDACTED - project scope required]"
             next_end = None
             if len(all_rows) >= limit and trimmed:
                 oldest_row = trimmed[-1]
@@ -922,9 +931,18 @@ class LlmObservabilityService:
         oldest_ns = entries[-1][0] if entries else None
         return rows, oldest_ns
 
-    def filterdata(self, cluster_id: int | None, range_: str, _api_client: Any = None) -> dict[str, Any]:
+    def filterdata(
+        self,
+        cluster_id: int | None,
+        range_: str,
+        _api_client: Any = None,
+        project_id: int | None = None,
+    ) -> dict[str, Any]:
         if cluster_id is None:
-            pairs, errors = self._fleet(lambda c, client: self.filterdata(c.id, range_, _api_client=client))
+            pairs, errors = self._fleet(
+                lambda c, client: self.filterdata(c.id, range_, _api_client=client),
+                project_id=project_id,
+            )
             if not pairs:
                 return self._fleet_unavailable(errors)
             valid = [r for _, r in pairs]
