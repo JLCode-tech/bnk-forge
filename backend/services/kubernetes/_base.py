@@ -3,7 +3,6 @@ Core KubernetesService: cluster loading, kubeconfig, connection testing.
 """
 
 import logging
-import os
 import time
 from datetime import datetime
 from typing import Any
@@ -114,12 +113,7 @@ class KubernetesServiceBase:
             # All other callers (tasks, tofu, drift, etc.) call with the
             # default strict=False and retain graceful-degradation behaviour.
             aws_env = get_cloud_credentials_env(project, self.db, strict=True)
-
-            for key, value in aws_env.items():
-                if key.startswith("AWS_"):
-                    os.environ[key] = value
-
-            logger.info(f"Set AWS credentials for EKS cluster {cluster.name}")
+            logger.info(f"Loaded AWS credentials for EKS cluster {cluster.name}")
 
             # Generate a bearer token via boto3 STS presigned URL (same mechanism
             # as `aws eks get-token`) and rewrite the kubeconfig to use it as a
@@ -241,10 +235,22 @@ class KubernetesServiceBase:
         """
         import base64
 
+        # Extract cluster name — must be the BARE EKS cluster name (not an ARN).
+        # Priority: meta_data.cluster_arn > context/name (with ARN-parse for both).
+        cluster_name = cluster.context or cluster.name
+        if cluster.meta_data and cluster.meta_data.get("cluster_arn"):
+            # ARN format: arn:aws:eks:region:account:cluster/name
+            arn_parts = cluster.meta_data["cluster_arn"].split("/")
+            if len(arn_parts) >= 2:
+                cluster_name = arn_parts[-1]
+        elif ":cluster/" in cluster_name:
+            # context or name is itself an ARN — extract bare name after ":cluster/"
+            cluster_name = cluster_name.split(":cluster/", 1)[-1]
+
         region = cluster.region or aws_env.get("AWS_REGION") or aws_env.get("AWS_DEFAULT_REGION") or "us-east-1"
         access_key = aws_env.get("AWS_ACCESS_KEY_ID") or "default"
         cluster_id = getattr(cluster, "id", getattr(cluster, "name", "default"))
-        cache_key = f"eks_token:{cluster_id}:{region}:{access_key}"
+        cache_key = f"eks_token:{cluster_id}:{cluster_name}:{region}:{access_key}"
         # The token is a bearer credential; it is stored encrypted in Redis.
         cached = cache.get(cache_key)
         cached_token = decrypt_value_or_none(cached) if isinstance(cached, str) else None
@@ -259,18 +265,6 @@ class KubernetesServiceBase:
         except ImportError:
             logger.warning("boto3/botocore not available — cannot generate EKS token natively")
             return None
-
-        # Extract cluster name — must be the BARE EKS cluster name (not an ARN).
-        # Priority: meta_data.cluster_arn > context/name (with ARN-parse for both).
-        cluster_name = cluster.context or cluster.name
-        if cluster.meta_data and cluster.meta_data.get("cluster_arn"):
-            # ARN format: arn:aws:eks:region:account:cluster/name
-            arn_parts = cluster.meta_data["cluster_arn"].split("/")
-            if len(arn_parts) >= 2:
-                cluster_name = arn_parts[-1]
-        elif ":cluster/" in cluster_name:
-            # context or name is itself an ARN — extract bare name after ":cluster/"
-            cluster_name = cluster_name.split(":cluster/", 1)[-1]
 
         # Build STS credentials from the env we already set.
         #
