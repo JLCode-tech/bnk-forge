@@ -198,7 +198,7 @@ class TestAgentAuthFlagOn:
         from models.benchmark import BenchmarkAgent
 
         self._client = client
-        db.add(BenchmarkAgent(id=12345, name="ext-agent", status="connected", managed=False, tags={"site": "lab"}))
+        db.add(BenchmarkAgent(id=12345, name="ext-agent", status="connected", managed=False))
         db.commit()
         tags = {"builtin": True, "_forge_builtin": True, "site": "lab"}
         resp = self._post(
