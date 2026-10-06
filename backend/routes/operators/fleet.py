@@ -149,6 +149,8 @@ def _resource_key_to_ref(resource_key: str) -> dict[str, str | None]:
 def _derive_status_from_health(health: dict) -> str:
     """Derive fleet status (healthy/warning/critical) from analyze_health() output."""
     overall = health.get("overall", "unknown")
+    if health.get("partial") and overall == "unknown":
+        return "warning"
     # analyze_health returns: healthy, warning, critical, unknown
     if overall in ("healthy", "warning", "critical", "unknown"):
         return overall
@@ -250,13 +252,22 @@ def _extract_health_metrics(health: dict, data: dict) -> dict:
     # above produces no health_issues. Surface an explicit reason so the UI
     # isn't a warning badge with nothing to say.
     if not health_issues and health.get("overall") == "unknown":
-        health_issues.append(
-            {
-                "component": "BNK",
-                "severity": "warning",
-                "message": "BNK not installed or no BNK resources detected",
-            }
-        )
+        if data.get("partial") or health.get("partial"):
+            health_issues.append(
+                {
+                    "component": "BNK",
+                    "severity": "warning",
+                    "message": "BNK data fetch timed out or was incomplete",
+                }
+            )
+        else:
+            health_issues.append(
+                {
+                    "component": "BNK",
+                    "severity": "warning",
+                    "message": "BNK not installed or no BNK resources detected",
+                }
+            )
 
     return {
         "bnk_version": bnk_version,
@@ -307,6 +318,7 @@ _BNK_API_GROUPS: frozenset[str] = frozenset(
         ApiGroups.F5_NET,
         ApiGroups.F5_K8S,
         ApiGroups.F5_GATEWAY_NET,
+        ApiGroups.F5_GATEWAY,
     }
 )
 
