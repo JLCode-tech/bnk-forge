@@ -700,7 +700,7 @@ class TestAgentWSLayer2MustChangeGate:
         from routes.benchmarks import _agent_ws_authorized
         from services.auth_service import create_access_token
 
-        token = create_access_token(data={"sub": "forge-agent", "role": "agent"})
+        token = create_access_token(data={"sub": "forge-agent", "role": "agent", "agent_id": 5})
 
         def _boom(*_a, **_k):  # token_user_state must not be consulted for agents
             raise AssertionError("token_user_state should not be called for an agent token")
@@ -708,6 +708,7 @@ class TestAgentWSLayer2MustChangeGate:
         with (
             patch("core.config.settings.BENCHMARK_AGENT_AUTH_REQUIRED", False),
             patch("core.config.settings.REQUIRE_AUTH", True),
+            patch("routes.benchmarks._agent_exists", return_value=True),
             patch("services.auth_service.token_user_state", _boom),
         ):
             assert _agent_ws_authorized(self._ws(token), 5) is None

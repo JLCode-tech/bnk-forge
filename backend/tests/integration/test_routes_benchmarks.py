@@ -996,9 +996,9 @@ class TestUpdateBenchmarkAgent:
 class TestDeleteBenchmarkAgent:
     """DELETE /api/benchmarks/agents/{agent_id} — no route-level auth dep."""
 
-    def test_happy_path(self, client, operator_headers, db):
+    def test_happy_path(self, client, admin_headers, sample_user, db):
         agent = _make_agent(db, name="agent-del")
-        resp = client.delete(f"/api/benchmarks/agents/{agent.id}", headers=operator_headers)
+        resp = client.delete(f"/api/benchmarks/agents/{agent.id}", headers=admin_headers)
         assert resp.status_code == 204
 
     def test_requires_valid_token(self, client, db):
@@ -3067,9 +3067,10 @@ class TestMintBenchmarkAgentToken:
     def _bearer(self, token):
         return {"Authorization": f"Bearer {token}"}
 
-    def _ws(self, token):
+    def _ws(self, token=None, headers=None):
         ws = MagicMock()
-        ws.query_params = {"token": token}
+        ws.query_params = {"token": token} if token is not None else {}
+        ws.headers = headers or {}
         return ws
 
     def test_admin_mints_agent_bound_token(self, client, admin_headers, sample_user, db):
@@ -3211,6 +3212,7 @@ class TestMintBenchmarkAgentToken:
     def test_delete_closes_the_agents_live_websocket(self, client, admin_headers, sample_user, db, monkeypatch):
         import asyncio
         import threading
+        import time
         from unittest.mock import AsyncMock
 
         import routes.benchmarks as bm
@@ -3226,6 +3228,10 @@ class TestMintBenchmarkAgentToken:
             monkeypatch.setitem(bm._agent_ws_connections, agent.id, ws)
             monkeypatch.setitem(bm._agent_ws_connections, keep.id, other_ws)
             assert client.delete(f"/api/benchmarks/agents/{agent.id}", headers=admin_headers).status_code == 204
+            for _ in range(50):
+                if ws.close.await_count > 0:
+                    break
+                time.sleep(0.01)
             ws.close.assert_awaited_once_with(code=4401)
             assert agent.id not in bm._agent_ws_connections
             other_ws.close.assert_not_awaited()
@@ -3234,6 +3240,148 @@ class TestMintBenchmarkAgentToken:
             loop.call_soon_threadsafe(loop.stop)
             thread.join(timeout=5)
             loop.close()
+
+    def test_mint_custom_expires_in_days(self, client, admin_headers, sample_user, db):
+        agent = _make_agent(db, name="custom-expiry-agent")
+        resp = client.post(
+            f"/api/benchmarks/agents/{agent.id}/token?expires_in_days=30",
+            headers=admin_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        expires_at = datetime.fromisoformat(data["expires_at"].replace("Z", "+00:00"))
+        remaining = expires_at - datetime.now(UTC)
+        assert timedelta(days=29) < remaining <= timedelta(days=30)
+
+        # Bounds checking
+        assert (
+            client.post(f"/api/benchmarks/agents/{agent.id}/token?expires_in_days=0", headers=admin_headers).status_code
+            == 422
+        )
+        assert (
+            client.post(
+                f"/api/benchmarks/agents/{agent.id}/token?expires_in_days=3651", headers=admin_headers
+            ).status_code
+            == 422
+        )
+
+    def test_rotate_agent_token_revokes_old_token(self, client, admin_headers, sample_user, db, monkeypatch):
+        from routes.benchmarks import _agent_ws_authorized
+
+        monkeypatch.setattr("routes.benchmarks.settings.BENCHMARK_AGENT_AUTH_REQUIRED", True)
+        agent = _make_agent(db, name="rotating-agent")
+        t1_resp = self._mint(client, admin_headers, agent.id)
+        assert t1_resp.status_code == 200
+        t1 = t1_resp.json()["token"]
+
+        assert _agent_ws_authorized(self._ws(t1), agent.id) is None
+
+        rotate_resp = client.post(f"/api/benchmarks/agents/{agent.id}/token/rotate", headers=admin_headers)
+        assert rotate_resp.status_code == 200
+        t2 = rotate_resp.json()["token"]
+        assert t1 != t2
+
+        # Old token is revoked on WS
+        assert _agent_ws_authorized(self._ws(t1), agent.id) == 4401
+        # New token is accepted on WS
+        assert _agent_ws_authorized(self._ws(t2), agent.id) is None
+
+        # Old token is revoked on REST ingest
+        res1 = client.post(
+            "/api/benchmarks/agents",
+            json={"name": "rotating-agent", "hostname": "h", "ip_address": "10.0.0.9"},
+            headers=self._bearer(t1),
+        )
+        assert res1.status_code == 400
+        assert res1.json()["error"]["code"] == "AGENT_AUTH_REVOKED"
+
+        # New token is accepted on REST ingest
+        res2 = client.post(
+            "/api/benchmarks/agents",
+            json={"name": "rotating-agent", "hostname": "h", "ip_address": "10.0.0.9"},
+            headers=self._bearer(t2),
+        )
+        assert res2.status_code == 201
+
+    def test_revoke_agent_token_endpoint(self, client, admin_headers, sample_user, db, monkeypatch):
+        from routes.benchmarks import _agent_ws_authorized
+
+        monkeypatch.setattr("routes.benchmarks.settings.BENCHMARK_AGENT_AUTH_REQUIRED", True)
+        agent = _make_agent(db, name="revoked-agent")
+        token = self._mint(client, admin_headers, agent.id).json()["token"]
+        assert _agent_ws_authorized(self._ws(token), agent.id) is None
+
+        del_resp = client.delete(f"/api/benchmarks/agents/{agent.id}/token", headers=admin_headers)
+        assert del_resp.status_code == 204
+
+        # Agent still exists
+        assert client.get(f"/api/benchmarks/agents/{agent.id}", headers=admin_headers).status_code == 200
+        # But token is rejected
+        assert _agent_ws_authorized(self._ws(token), agent.id) == 4401
+
+    def test_minter_offboarding_revokes_agent_token(self, client, make_user, db, monkeypatch):
+        from routes.benchmarks import _agent_ws_authorized
+        from services.auth_service import mint_agent_token
+
+        monkeypatch.setattr("routes.benchmarks.settings.BENCHMARK_AGENT_AUTH_REQUIRED", True)
+        minter = make_user(username="tempminter", role="admin")
+        agent = _make_agent(db, name="minter-offboard-agent")
+        token, _ = mint_agent_token(
+            agent.id,
+            created_by=minter.id,
+            token_version=agent.token_version,
+        )
+        assert _agent_ws_authorized(self._ws(token), agent.id) is None
+
+        # Offboard minter
+        minter.is_active = False
+        db.commit()
+
+        # Token is rejected on WS
+        assert _agent_ws_authorized(self._ws(token), agent.id) == 4401
+        # Token is rejected on REST
+        res = client.post(
+            "/api/benchmarks/agents",
+            json={"name": "minter-offboard-agent", "hostname": "h", "ip_address": "10.0.0.9"},
+            headers=self._bearer(token),
+        )
+        assert res.status_code == 400
+        assert res.json()["error"]["code"] == "AGENT_AUTH_REVOKED"
+
+    def test_unscoped_agent_deletion_requires_admin(self, client, operator_headers, admin_headers, all_test_users, db):
+        agent = _make_agent(db, name="unscoped-del-agent")
+        # Operator cannot delete unscoped agent (m2)
+        assert client.delete(f"/api/benchmarks/agents/{agent.id}", headers=operator_headers).status_code == 403
+        # Admin can delete unscoped agent
+        assert client.delete(f"/api/benchmarks/agents/{agent.id}", headers=admin_headers).status_code == 204
+
+    def test_websocket_auth_via_headers(self, client, admin_headers, sample_user, db, monkeypatch):
+        from routes.benchmarks import _agent_ws_authorized
+
+        monkeypatch.setattr("routes.benchmarks.settings.BENCHMARK_AGENT_AUTH_REQUIRED", True)
+        agent = _make_agent(db, name="header-auth-agent")
+        token = self._mint(client, admin_headers, agent.id).json()["token"]
+
+        # Via Sec-WebSocket-Protocol
+        ws_proto = self._ws(headers={"sec-websocket-protocol": f"bearer, {token}"})
+        assert _agent_ws_authorized(ws_proto, agent.id) is None
+
+        # Via Authorization header
+        ws_auth = self._ws(headers={"authorization": f"Bearer {token}"})
+        assert _agent_ws_authorized(ws_auth, agent.id) is None
+
+    def test_role_agent_missing_agent_id_rejected_on_layer2(self, client, admin_headers, db, monkeypatch):
+        from routes.benchmarks import _agent_ws_authorized
+        from services.auth_service import create_access_token
+
+        monkeypatch.setattr("routes.benchmarks.settings.BENCHMARK_AGENT_AUTH_REQUIRED", False)
+        monkeypatch.setattr("routes.benchmarks.settings.REQUIRE_AUTH", True)
+        agent = _make_agent(db, name="l2-claimless-agent")
+
+        # Mint token with role=agent but no agent_id claim
+        token = create_access_token({"role": "agent", "sub": "agent:anonymous"})
+        # Must close 4401 (m4 fail-closed)
+        assert _agent_ws_authorized(self._ws(token), agent.id) == 4401
 
 
 # ============================================================================

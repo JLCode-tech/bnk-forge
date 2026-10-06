@@ -289,6 +289,19 @@ class BenchmarkAgent(Base):
     # Runtime readiness snapshot (populated after successful provision)
     readiness = Column(JSON, nullable=True)
 
+    @property
+    def token_version(self) -> int:
+        """Monotonic version for per-agent token revocation (stored in readiness JSON)."""
+        if self.readiness and isinstance(self.readiness, dict):
+            return int(self.readiness.get("_token_version", 1))
+        return 1
+
+    @token_version.setter
+    def token_version(self, value: int) -> None:
+        current = dict(self.readiness) if isinstance(self.readiness, dict) else {}
+        current["_token_version"] = int(value)
+        self.readiness = current
+
     # True = Forge-managed remote host; False = self-registered built-in agent
     managed = Column(Boolean, nullable=False, default=False)
     # ── end Slice 1 columns ─────────────────────────────────────────────────
