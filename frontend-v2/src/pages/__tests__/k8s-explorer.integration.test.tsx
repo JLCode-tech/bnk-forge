@@ -4,19 +4,20 @@
  * Covers: page rendering with controls, empty states (no cluster / no resources),
  * loading skeleton display, and resource data display after load.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
-import { http, HttpResponse } from 'msw';
-import { server } from '@/test/mocks/server';
-import { render } from '@/test/test-utils';
-import userEvent from '@testing-library/user-event';
-import { useAuthStore } from '@/stores/authStore';
-import { mockUser } from '@/test/test-fixtures';
-import KubernetesV2 from '@/pages/KubernetesV2';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { server } from "@/test/mocks/server";
+import { render } from "@/test/test-utils";
+import userEvent from "@testing-library/user-event";
+import { useAuthStore } from "@/stores/authStore";
+import { mockUser } from "@/test/test-fixtures";
+import { STORAGE_KEYS } from "@/lib/storage-keys";
+import KubernetesV2 from "@/pages/KubernetesV2";
 
 const mockNavigate = vi.fn();
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
+vi.mock("react-router-dom", async () => {
+  const actual = await vi.importActual("react-router-dom");
   return { ...actual, useNavigate: () => mockNavigate };
 });
 
@@ -24,35 +25,35 @@ vi.mock('react-router-dom', async () => {
 const mockResourcesWithMetadata = {
   resources: [
     {
-      name: 'nginx-deployment',
-      namespace: 'default',
-      kind: 'Pod',
-      apiVersion: 'v1',
+      name: "nginx-deployment",
+      namespace: "default",
+      kind: "Pod",
+      apiVersion: "v1",
       metadata: {
-        name: 'nginx-deployment',
-        namespace: 'default',
-        labels: { app: 'nginx' },
-        creationTimestamp: '2026-02-10T00:00:00Z',
+        name: "nginx-deployment",
+        namespace: "default",
+        labels: { app: "nginx" },
+        creationTimestamp: "2026-02-10T00:00:00Z",
       },
-      status: { phase: 'Running' },
+      status: { phase: "Running" },
     },
     {
-      name: 'redis-pod',
-      namespace: 'default',
-      kind: 'Pod',
-      apiVersion: 'v1',
+      name: "redis-pod",
+      namespace: "default",
+      kind: "Pod",
+      apiVersion: "v1",
       metadata: {
-        name: 'redis-pod',
-        namespace: 'default',
-        labels: { app: 'redis' },
-        creationTimestamp: '2026-02-15T00:00:00Z',
+        name: "redis-pod",
+        namespace: "default",
+        labels: { app: "redis" },
+        creationTimestamp: "2026-02-15T00:00:00Z",
       },
-      status: { phase: 'Running' },
+      status: { phase: "Running" },
     },
   ],
   count: 2,
-  resource_type: 'pod',
-  namespace: 'default',
+  resource_type: "pod",
+  namespace: "default",
   cluster_id: 1,
 };
 
@@ -61,11 +62,11 @@ const mockResourcesWithMetadata = {
 /** Set up MSW handlers that return namespaces in the expected shape */
 function useNamespaceHandler() {
   server.use(
-    http.get('*/api/k8s/clusters/:clusterId/namespaces', () => {
+    http.get("*/api/k8s/clusters/:clusterId/namespaces", () => {
       return HttpResponse.json({
         namespaces: [
-          { name: 'default', status: 'Active' },
-          { name: 'kube-system', status: 'Active' },
+          { name: "default", status: "Active" },
+          { name: "kube-system", status: "Active" },
         ],
         count: 2,
         cluster_id: 1,
@@ -77,31 +78,32 @@ function useNamespaceHandler() {
 /** Set up MSW handler for node count endpoint (not in default handlers) */
 function useNodeCountHandler(nodeCount = 3) {
   server.use(
-    http.get('*/api/k8s/clusters/:clusterId/nodes/count', () => {
+    http.get("*/api/k8s/clusters/:clusterId/nodes/count", () => {
       return HttpResponse.json({ cluster_id: 1, node_count: nodeCount });
     }),
   );
 }
 
-describe('KubernetesV2 — Integration', () => {
+describe("KubernetesV2 — Integration", () => {
   beforeEach(() => {
     useAuthStore.getState().logout();
     localStorage.clear();
     mockNavigate.mockReset();
-    useAuthStore.getState().login('mock-jwt-token', mockUser);
+    useAuthStore.getState().login("mock-jwt-token", mockUser);
   });
 
   // ────────────────────────────────────────────────────────────────────────
   // 1. Page renders with cluster selection UI
   // ────────────────────────────────────────────────────────────────────────
-  it('renders page with cluster selection UI controls', async () => {
+  it("renders page with cluster selection UI controls", async () => {
     render(<KubernetesV2 />);
 
     await waitFor(
       () => {
         // The page should render dropdowns / selection controls for Project and Cluster
         const projectSelector =
-          screen.queryByText(/select project/i) || screen.queryByText(/project/i);
+          screen.queryByText(/select project/i) ||
+          screen.queryByText(/project/i);
         expect(projectSelector).toBeInTheDocument();
       },
       { timeout: 3000 },
@@ -109,26 +111,29 @@ describe('KubernetesV2 — Integration', () => {
 
     // Search input should be present
     const searchInput =
-      screen.queryByPlaceholderText(/search/i) || screen.queryByPlaceholderText(/filter/i);
+      screen.queryByPlaceholderText(/search/i) ||
+      screen.queryByPlaceholderText(/filter/i);
     expect(searchInput).toBeInTheDocument();
   });
 
   // ────────────────────────────────────────────────────────────────────────
   // 2. Shows empty state when no cluster selected
   // ────────────────────────────────────────────────────────────────────────
-  it('shows empty state when no cluster is selected', async () => {
+  it("shows empty state when no cluster is selected", async () => {
     // localStorage is already cleared in beforeEach — no persisted cluster
     render(<KubernetesV2 />);
 
     await waitFor(
       () => {
-        expect(screen.getByText('No cluster selected')).toBeInTheDocument();
+        expect(
+          screen.getByText(/Select a cluster to browse workloads/i),
+        ).toBeInTheDocument();
       },
       { timeout: 3000 },
     );
 
     // The auto-detect action should be present
-    expect(screen.getByText('Auto-detect Kubernetes Clusters')).toBeInTheDocument();
+    expect(screen.getByText("Auto-detect Clusters")).toBeInTheDocument();
   });
 
   // ────────────────────────────────────────────────────────────────────────
@@ -136,14 +141,14 @@ describe('KubernetesV2 — Integration', () => {
   // ────────────────────────────────────────────────────────────────────────
   // TODO: re-anchor against current UI — skeleton markup changed and this no longer
   // finds elements with class animate-pulse / skeleton.
-  it.skip('displays loading skeleton while resources are fetching', async () => {
+  it.skip("displays loading skeleton while resources are fetching", async () => {
     // Persist a cluster selection so the page attempts to fetch resources
-    localStorage.setItem('bnk-forge-k8s-project', '1');
-    localStorage.setItem('bnk-forge-k8s-cluster', '1');
+    localStorage.setItem("bnk-forge-k8s-project", "1");
+    localStorage.setItem(STORAGE_KEYS.K8S_CLUSTER, "1");
 
     // Delay the resource response so we can observe the skeleton state
     server.use(
-      http.get('*/api/k8s/clusters/:id/resources/:type', async () => {
+      http.get("*/api/k8s/clusters/:id/resources/:type", async () => {
         await new Promise((r) => setTimeout(r, 5000));
         return HttpResponse.json(mockResourcesWithMetadata);
       }),
@@ -168,14 +173,14 @@ describe('KubernetesV2 — Integration', () => {
   // ────────────────────────────────────────────────────────────────────────
   // 4. Shows resources after cluster data loads
   // ────────────────────────────────────────────────────────────────────────
-  it('shows resource count after cluster data loads', async () => {
+  it("shows resource count after cluster data loads", async () => {
     // Pre-select project and cluster
-    localStorage.setItem('bnk-forge-k8s-project', '1');
-    localStorage.setItem('bnk-forge-k8s-cluster', '1');
+    localStorage.setItem("bnk-forge-k8s-project", "1");
+    localStorage.setItem(STORAGE_KEYS.K8S_CLUSTER, "1");
 
     // Override resource endpoint with well-shaped data
     server.use(
-      http.get('*/api/k8s/clusters/:id/resources/:type', () => {
+      http.get("*/api/k8s/clusters/:id/resources/:type", () => {
         return HttpResponse.json(mockResourcesWithMetadata);
       }),
     );
@@ -200,19 +205,19 @@ describe('KubernetesV2 — Integration', () => {
   // 5. Empty state when no resources found
   // ────────────────────────────────────────────────────────────────────────
   // TODO: re-anchor — "No resources found" empty-state copy/structure changed.
-  it.skip('shows empty state when no resources are returned', async () => {
+  it.skip("shows empty state when no resources are returned", async () => {
     // Pre-select project and cluster
-    localStorage.setItem('bnk-forge-k8s-project', '1');
-    localStorage.setItem('bnk-forge-k8s-cluster', '1');
+    localStorage.setItem("bnk-forge-k8s-project", "1");
+    localStorage.setItem(STORAGE_KEYS.K8S_CLUSTER, "1");
 
     // Return empty resources
     server.use(
-      http.get('*/api/k8s/clusters/:id/resources/:type', () => {
+      http.get("*/api/k8s/clusters/:id/resources/:type", () => {
         return HttpResponse.json({
           resources: [],
           count: 0,
-          resource_type: 'pod',
-          namespace: 'default',
+          resource_type: "pod",
+          namespace: "default",
           cluster_id: 1,
         });
       }),
@@ -224,7 +229,7 @@ describe('KubernetesV2 — Integration', () => {
 
     await waitFor(
       () => {
-        expect(screen.getByText('No resources found')).toBeInTheDocument();
+        expect(screen.getByText("No resources found")).toBeInTheDocument();
       },
       { timeout: 3000 },
     );
@@ -232,24 +237,24 @@ describe('KubernetesV2 — Integration', () => {
 
   // TODO: re-anchor — sidebar doesn't surface "Ingresses" under current default
   // expanded state / rendering path for this test's cluster fixture.
-  it.skip('disables generic ingress creation on detected OpenShift context with reason', async () => {
+  it.skip("disables generic ingress creation on detected OpenShift context with reason", async () => {
     const user = userEvent.setup();
-    localStorage.setItem('bnk-forge-k8s-project', '1');
-    localStorage.setItem('bnk-forge-k8s-cluster', '1');
+    localStorage.setItem("bnk-forge-k8s-project", "1");
+    localStorage.setItem(STORAGE_KEYS.K8S_CLUSTER, "1");
 
     server.use(
-      http.get('*/api/projects/:projectId/k8s/clusters', () => {
+      http.get("*/api/projects/:projectId/k8s/clusters", () => {
         return HttpResponse.json({
           clusters: [
             {
               id: 1,
-              name: 'ocp-cluster',
-              context: 'ocp-context',
-              api_server: 'https://api.ocp.local',
-              default_namespace: 'default',
-              status: 'connected',
+              name: "ocp-cluster",
+              context: "ocp-context",
+              api_server: "https://api.ocp.local",
+              default_namespace: "default",
+              status: "connected",
               project_id: 1,
-              detected_platform_profile: 'ocp',
+              detected_platform_profile: "ocp",
               platform_capabilities: { openshift_routes: true },
               platform_constraints: { operator_required_for_networking: true },
             },
@@ -257,13 +262,13 @@ describe('KubernetesV2 — Integration', () => {
           count: 1,
         });
       }),
-      http.get('*/api/k8s/clusters/:id/resources/:type', ({ params }) => {
+      http.get("*/api/k8s/clusters/:id/resources/:type", ({ params }) => {
         const resourceType = String(params.type);
         return HttpResponse.json({
           resources: [],
           count: 0,
           resource_type: resourceType,
-          namespace: 'default',
+          namespace: "default",
           cluster_id: 1,
         });
       }),
@@ -274,39 +279,41 @@ describe('KubernetesV2 — Integration', () => {
     render(<KubernetesV2 />);
 
     await waitFor(() => {
-      expect(screen.getByText('Ingresses')).toBeInTheDocument();
+      expect(screen.getByText("Ingresses")).toBeInTheDocument();
     });
 
-    const ingressButton = screen.getByRole('button', { name: 'Ingresses' });
+    const ingressButton = screen.getByRole("button", { name: "Ingresses" });
     await user.click(ingressButton);
 
     await waitFor(() => {
-      expect(screen.getByText(/generic Ingress create is disabled/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/generic Ingress create is disabled/i),
+      ).toBeInTheDocument();
     });
 
-    const createButton = screen.getByRole('button', { name: 'Create' });
+    const createButton = screen.getByRole("button", { name: "Create" });
     expect(createButton).toBeDisabled();
   });
 
   // TODO: re-anchor — category expand-button aria-label didn't match current render.
-  it.skip('does not show ingress mutation-boundary notice for unrelated gateway resources', async () => {
+  it.skip("does not show ingress mutation-boundary notice for unrelated gateway resources", async () => {
     const user = userEvent.setup();
-    localStorage.setItem('bnk-forge-k8s-project', '1');
-    localStorage.setItem('bnk-forge-k8s-cluster', '1');
+    localStorage.setItem("bnk-forge-k8s-project", "1");
+    localStorage.setItem(STORAGE_KEYS.K8S_CLUSTER, "1");
 
     server.use(
-      http.get('*/api/projects/:projectId/k8s/clusters', () => {
+      http.get("*/api/projects/:projectId/k8s/clusters", () => {
         return HttpResponse.json({
           clusters: [
             {
               id: 1,
-              name: 'ocp-cluster',
-              context: 'ocp-context',
-              api_server: 'https://api.ocp.local',
-              default_namespace: 'default',
-              status: 'connected',
+              name: "ocp-cluster",
+              context: "ocp-context",
+              api_server: "https://api.ocp.local",
+              default_namespace: "default",
+              status: "connected",
               project_id: 1,
-              detected_platform_profile: 'ocp',
+              detected_platform_profile: "ocp",
               platform_capabilities: { openshift_routes: true },
               platform_constraints: { operator_required_for_networking: true },
             },
@@ -314,13 +321,13 @@ describe('KubernetesV2 — Integration', () => {
           count: 1,
         });
       }),
-      http.get('*/api/k8s/clusters/:id/resources/:type', ({ params }) => {
+      http.get("*/api/k8s/clusters/:id/resources/:type", ({ params }) => {
         const resourceType = String(params.type);
         return HttpResponse.json({
           resources: [],
           count: 0,
           resource_type: resourceType,
-          namespace: 'default',
+          namespace: "default",
           cluster_id: 1,
         });
       }),
@@ -331,17 +338,25 @@ describe('KubernetesV2 — Integration', () => {
     render(<KubernetesV2 />);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /expand gateway api category/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /expand gateway api category/i }),
+      ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('button', { name: /expand gateway api category/i }));
+    await user.click(
+      screen.getByRole("button", { name: /expand gateway api category/i }),
+    );
 
-    await user.click(screen.getByRole('button', { name: 'Gateways' }));
+    await user.click(screen.getByRole("button", { name: "Gateways" }));
 
     await waitFor(() => {
-      expect(screen.getByText('No resources found')).toBeInTheDocument();
+      expect(screen.getByText("No resources found")).toBeInTheDocument();
     });
 
-    expect(screen.queryByText(/north-south exposure is commonly Route\/operator-managed/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        /north-south exposure is commonly Route\/operator-managed/i,
+      ),
+    ).not.toBeInTheDocument();
   });
 });

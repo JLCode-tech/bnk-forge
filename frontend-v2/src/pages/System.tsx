@@ -6,25 +6,25 @@
  * two state pills (Light / Dark).
  */
 
-import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import PerformanceMonitor from '@/components/settings/PerformanceMonitor';
-import DatabaseManagement from '@/components/settings/DatabaseManagement';
-import ContainerManagement from '@/components/settings/ContainerManagement';
-import SystemDefaults from '@/components/settings/SystemDefaults';
-import SystemUpgrade from '@/components/settings/SystemUpgrade';
-import AuditLog from '@/components/settings/AuditLog';
-import { AlertChannels } from '@/components/settings/AlertChannels';
-import { BackupPanel } from '@/components/settings/BackupPanel';
-import { McpPanel } from '@/components/system/McpPanel';
-import { Tabs, TabsContent } from '@/components/ui/tabs';
-import { ResourceViewTabs } from '@/components/layout/ResourceViewTabs';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { Switch } from '@/components/ui/switch';
-import { SectionCard } from '@/components/ui/section-card';
-import { cn } from '@/lib/utils';
+import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
+import PerformanceMonitor from "@/components/settings/PerformanceMonitor";
+import DatabaseManagement from "@/components/settings/DatabaseManagement";
+import ContainerManagement from "@/components/settings/ContainerManagement";
+import SystemDefaults from "@/components/settings/SystemDefaults";
+import SystemUpgrade from "@/components/settings/SystemUpgrade";
+import AuditLog from "@/components/settings/AuditLog";
+import { AlertChannels } from "@/components/settings/AlertChannels";
+import { BackupPanel } from "@/components/settings/BackupPanel";
+import { McpPanel } from "@/components/system/McpPanel";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { ResourceViewTabs } from "@/components/layout/ResourceViewTabs";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
+import { SectionCard } from "@/components/ui/section-card";
+import { cn } from "@/lib/utils";
 import {
   Palette,
   Moon,
@@ -35,27 +35,38 @@ import {
   Bell,
   HardDrive,
   Bot,
-} from 'lucide-react';
-import { useUIStore } from '@/stores/uiStore';
-import { PageHeader } from '@/components/layout/PageHeader';
-import { usePageRefresh } from '@/hooks/usePageRefresh';
+} from "lucide-react";
+import { useUIStore } from "@/stores/uiStore";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { usePageRefresh } from "@/hooks/usePageRefresh";
 
 // Old /system?tab=... URLs that now live under /catalog.
 const URL_TAB_REDIRECTS: Record<string, string> = {
-  'bluefield-images': '/catalog?tab=bfb-images',
-  'bf-conf-templates': '/catalog?tab=bf-conf-templates',
-  'module-library': '/catalog?tab=module-library',
-  'helm-repos': '/catalog?tab=helm-repos',
+  "bluefield-images": "/catalog?tab=bfb-images",
+  "bf-conf-templates": "/catalog?tab=bf-conf-templates",
+  "module-library": "/catalog?tab=module-library",
+  "helm-repos": "/catalog?tab=helm-repos",
 };
 
-const VALID_TABS = ['monitor', 'mcp', 'audit', 'alerts', 'defaults', 'appearance', 'backup'] as const;
+const VALID_TABS = [
+  "monitor",
+  "mcp",
+  "audit",
+  "alerts",
+  "defaults",
+  "appearance",
+  "backup",
+] as const;
 
 export default function System() {
   const { theme, setTheme } = useUIStore();
   const { refresh, isRefreshing } = usePageRefresh();
   const [searchParams, setSearchParams] = useSearchParams();
-  const urlTab = searchParams.get('tab');
-  const initialTab = urlTab && (VALID_TABS as readonly string[]).includes(urlTab) ? urlTab : 'monitor';
+  const urlTab = searchParams.get("tab");
+  const initialTab =
+    urlTab && (VALID_TABS as readonly string[]).includes(urlTab)
+      ? urlTab
+      : "monitor";
   const [activeTab, setActiveTab] = useState(initialTab);
 
   useEffect(() => {
@@ -66,10 +77,10 @@ export default function System() {
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
-    if (tab === 'monitor') {
-      searchParams.delete('tab');
+    if (tab === "monitor") {
+      searchParams.delete("tab");
     } else {
-      searchParams.set('tab', tab);
+      searchParams.set("tab", tab);
     }
     setSearchParams(searchParams);
   };
@@ -78,7 +89,7 @@ export default function System() {
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Header */}
       <PageHeader
-        title="System Administration"
+        title="System"
         subtitle="Monitor system health, audit activity, and configure application settings."
         onRefresh={refresh}
         isRefreshing={isRefreshing}
@@ -91,13 +102,13 @@ export default function System() {
           active={activeTab}
           onChange={handleTabChange}
           tabs={[
-            { key: 'monitor', label: 'System Monitor', icon: Monitor },
-            { key: 'mcp', label: 'MCP Server', icon: Bot },
-            { key: 'audit', label: 'Audit Log', icon: ScrollText },
-            { key: 'alerts', label: 'Alerts', icon: Bell },
-            { key: 'defaults', label: 'Defaults', icon: Settings2 },
-            { key: 'appearance', label: 'Appearance', icon: Palette },
-            { key: 'backup', label: 'Backup & Restore', icon: HardDrive },
+            { key: "monitor", label: "System Monitor", icon: Monitor },
+            { key: "mcp", label: "MCP Server", icon: Bot },
+            { key: "audit", label: "Audit Log", icon: ScrollText },
+            { key: "alerts", label: "Alerts", icon: Bell },
+            { key: "defaults", label: "Defaults", icon: Settings2 },
+            { key: "appearance", label: "Appearance", icon: Palette },
+            { key: "backup", label: "Backup & Restore", icon: HardDrive },
           ]}
         />
 
@@ -140,18 +151,24 @@ export default function System() {
               <div className="flex items-center gap-3">
                 <Sun
                   className={cn(
-                    'h-4 w-4',
-                    theme === 'light' ? 'text-foreground' : 'text-muted-foreground',
+                    "h-4 w-4",
+                    theme === "light"
+                      ? "text-foreground"
+                      : "text-muted-foreground",
                   )}
                 />
                 <Switch
-                  checked={theme === 'dark'}
-                  onCheckedChange={(checked) => setTheme(checked ? 'dark' : 'light')}
+                  checked={theme === "dark"}
+                  onCheckedChange={(checked) =>
+                    setTheme(checked ? "dark" : "light")
+                  }
                 />
                 <Moon
                   className={cn(
-                    'h-4 w-4',
-                    theme === 'dark' ? 'text-foreground' : 'text-muted-foreground',
+                    "h-4 w-4",
+                    theme === "dark"
+                      ? "text-foreground"
+                      : "text-muted-foreground",
                   )}
                 />
               </div>
@@ -163,14 +180,14 @@ export default function System() {
               <Label className="text-foreground/80">Current theme</Label>
               <div className="flex items-center gap-2">
                 <Badge
-                  variant={theme === 'light' ? 'default' : 'outline'}
+                  variant={theme === "light" ? "default" : "outline"}
                   className="flex items-center gap-1"
                 >
                   <Sun className="h-3 w-3" />
                   Light
                 </Badge>
                 <Badge
-                  variant={theme === 'dark' ? 'default' : 'outline'}
+                  variant={theme === "dark" ? "default" : "outline"}
                   className="flex items-center gap-1"
                 >
                   <Moon className="h-3 w-3" />

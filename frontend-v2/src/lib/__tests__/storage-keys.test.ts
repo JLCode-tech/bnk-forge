@@ -1,34 +1,46 @@
 /**
  * FU-011: lib/storage-keys — localStorage key constants
  */
-import { describe, it, expect } from 'vitest';
-import { STORAGE_KEYS } from '../storage-keys';
+import { describe, it, expect } from "vitest";
+import { STORAGE_KEYS } from "../storage-keys";
 
-describe('STORAGE_KEYS', () => {
-  it('has expected keys', () => {
+describe("STORAGE_KEYS", () => {
+  it("has expected keys", () => {
     const expectedKeys = [
-      'K8S_PROJECT', 'K8S_CLUSTER', 'HELM_CLUSTER',
-      'BNK_PROJECT', 'BNK_CLUSTER', 'AUTH_TOKEN',
-      'ONBOARDING_COMPLETE', 'MOCKUP_THEME',
+      "K8S_PROJECT",
+      "K8S_CLUSTER",
+      "BNK_PROJECT",
+      "BNK_CLUSTER",
+      "AUTH_TOKEN",
+      "ONBOARDING_COMPLETE",
+      "MOCKUP_THEME",
     ];
     for (const key of expectedKeys) {
       expect(STORAGE_KEYS).toHaveProperty(key);
     }
   });
 
-  it('values are all strings', () => {
+  it("values are all strings", () => {
     for (const value of Object.values(STORAGE_KEYS)) {
-      expect(typeof value).toBe('string');
+      expect(typeof value).toBe("string");
     }
   });
 
-  it('values are unique (no duplicate keys)', () => {
-    const values = Object.values(STORAGE_KEYS);
+  it("values are unique apart from the shared cluster scope", () => {
+    const values = Object.values(STORAGE_KEYS).filter(
+      (v) => v !== STORAGE_KEYS.CLUSTER_SCOPE,
+    );
     const uniqueValues = new Set(values);
     expect(uniqueValues.size).toBe(values.length);
   });
 
-  it('has auth token key', () => {
-    expect(STORAGE_KEYS.AUTH_TOKEN).toBe('auth_token');
+  it("has auth token key", () => {
+    expect(STORAGE_KEYS.AUTH_TOKEN).toBe("auth_token");
+  });
+
+  it("shares one cluster scope across cluster-scoped pages", () => {
+    expect(STORAGE_KEYS.K8S_CLUSTER).toBe(STORAGE_KEYS.CLUSTER_SCOPE);
+    expect(STORAGE_KEYS.BNK_CLUSTER).toBe(STORAGE_KEYS.CLUSTER_SCOPE);
+    expect(STORAGE_KEYS.CNF_CLUSTER).toBe(STORAGE_KEYS.CLUSTER_SCOPE);
   });
 });

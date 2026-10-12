@@ -6,7 +6,7 @@
  * a sortable request table with time-cursor "load older" + a detail drawer
  * that reconstructs the chat transcript from req_body/resp_body.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart,
   Bar,
@@ -16,7 +16,7 @@ import {
   Tooltip as RechartsTooltip,
   ResponsiveContainer,
   ReferenceArea,
-} from 'recharts';
+} from "recharts";
 import {
   Activity,
   CheckCircle2,
@@ -31,26 +31,26 @@ import {
   ArrowDown,
   ChevronLeft,
   ChevronRight,
-} from 'lucide-react';
-import { SectionCard } from '@/components/ui/section-card';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+} from "lucide-react";
+import { SectionCard } from "@/components/ui/section-card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
-} from '@/components/ui/sheet';
+} from "@/components/ui/sheet";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuLabel,
   DropdownMenuCheckboxItem,
-} from '@/components/ui/dropdown-menu';
+} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -58,9 +58,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
-import { cn } from '@/lib/utils';
-import { useDebounce } from '@/hooks/useDebounce';
+} from "@/components/ui/table";
+import { cn } from "@/lib/utils";
+import { useDebounce } from "@/hooks/useDebounce";
 import {
   StatTile,
   TimeRangePicker,
@@ -75,46 +75,65 @@ import {
   fmtCost,
   fmtLatencyMs,
   fmtPct,
-} from '@/components/observability';
-import { useLlmStats, useLlmHistogram, useLlmLogs, useLlmFilterData } from '@/hooks/useLlmObservability';
-import { llmObservabilityApi } from '@/lib/api/llmObservability';
-import { useObservabilityFilters } from './use-observability-filters';
-import { parseTranscript } from './transcript';
-import type { LlmLogRow } from '@/types/llm-observability';
+} from "@/components/observability";
+import {
+  useLlmStats,
+  useLlmHistogram,
+  useLlmLogs,
+  useLlmFilterData,
+} from "@/hooks/useLlmObservability";
+import { llmObservabilityApi } from "@/lib/api/llmObservability";
+import { useObservabilityFilters } from "./use-observability-filters";
+import { parseTranscript } from "./transcript";
+import type { LlmLogRow } from "@/types/llm-observability";
 
 const PAGE_LIMIT = 50;
 
-type SortKey = 'ts' | 'latency_ms' | 'total_tk' | 'cost';
-type SortDir = 'asc' | 'desc';
+type SortKey = "ts" | "latency_ms" | "total_tk" | "cost";
+type SortDir = "asc" | "desc";
 
-const OPTIONAL_COLUMNS = ['model', 'tokens', 'cost', 'status'] as const;
+const OPTIONAL_COLUMNS = ["model", "tokens", "cost", "status"] as const;
 type OptionalColumn = (typeof OPTIONAL_COLUMNS)[number];
 
 export default function LlmLogs() {
-  const f = useObservabilityFilters('logs');
+  useEffect(() => {
+    document.title = "Request Audit Logs | BNK-Forge";
+  }, []);
+
+  const f = useObservabilityFilters("logs");
   const { data: filterData } = useLlmFilterData(f.clusterId, f.range);
 
   const [live, setLive] = useState(false);
-  const [searchInput, setSearchInput] = useState('');
+  const [searchInput, setSearchInput] = useState("");
   const search = useDebounce(searchInput, 300);
-  const [visibleCols, setVisibleCols] = useState<Record<OptionalColumn, boolean>>({
+  const [visibleCols, setVisibleCols] = useState<
+    Record<OptionalColumn, boolean>
+  >({
     model: true,
     tokens: true,
     cost: true,
     status: true,
   });
 
-  const [sortKey, setSortKey] = useState<SortKey>('ts');
-  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [sortKey, setSortKey] = useState<SortKey>("ts");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [selected, setSelected] = useState<number | null>(null);
 
   const logParams = useMemo(
-    () => ({ ...f.queryParams, limit: PAGE_LIMIT, ...(search ? { content_search: search } : {}) }),
+    () => ({
+      ...f.queryParams,
+      limit: PAGE_LIMIT,
+      ...(search ? { content_search: search } : {}),
+    }),
     [f.queryParams, search],
   );
 
   const stats = useLlmStats(f.clusterId, f.queryParams);
-  const histogram = useLlmHistogram(f.clusterId, { ...f.queryParams, metric: 'requests' }, true);
+  const histogram = useLlmHistogram(
+    f.clusterId,
+    { ...f.queryParams, metric: "requests" },
+    true,
+  );
   const logs = useLlmLogs(f.clusterId, logParams, { live });
 
   // Accumulated "load older" pages, reset whenever the base query changes.
@@ -135,7 +154,7 @@ export default function LlmLogs() {
     const seen = new Set<string>();
     const merged: LlmLogRow[] = [];
     for (const r of [...(logs.data?.rows ?? []), ...olderRows]) {
-      const id = `${r.cluster_id ?? ''}-${r.ts}-${r.model}-${r.total_tk}`;
+      const id = `${r.cluster_id ?? ""}-${r.ts}-${r.model}-${r.total_tk}`;
       if (seen.has(id)) continue;
       seen.add(id);
       merged.push(r);
@@ -146,9 +165,9 @@ export default function LlmLogs() {
   const sortedRows = useMemo(() => {
     const rows = [...allRows];
     rows.sort((a, b) => {
-      const av = sortKey === 'ts' ? Date.parse(a.ts) : a[sortKey];
-      const bv = sortKey === 'ts' ? Date.parse(b.ts) : b[sortKey];
-      return sortDir === 'asc' ? av - bv : bv - av;
+      const av = sortKey === "ts" ? Date.parse(a.ts) : a[sortKey];
+      const bv = sortKey === "ts" ? Date.parse(b.ts) : b[sortKey];
+      return sortDir === "asc" ? av - bv : bv - av;
     });
     return rows;
   }, [allRows, sortKey, sortDir]);
@@ -159,7 +178,10 @@ export default function LlmLogs() {
     if (f.clusterId === undefined || !nextEnd) return;
     setLoadingOlder(true);
     try {
-      const res = await llmObservabilityApi.getLogs(f.clusterId ?? undefined, { ...logParams, end: nextEnd });
+      const res = await llmObservabilityApi.getLogs(f.clusterId ?? undefined, {
+        ...logParams,
+        end: nextEnd,
+      });
       setOlderRows((prev) => [...prev, ...res.rows]);
       setCursor(res.next_end);
     } finally {
@@ -168,10 +190,10 @@ export default function LlmLogs() {
   }, [f.clusterId, nextEnd, logParams]);
 
   const toggleSort = (k: SortKey) => {
-    if (sortKey === k) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    if (sortKey === k) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else {
       setSortKey(k);
-      setSortDir('desc');
+      setSortDir("desc");
     }
   };
 
@@ -187,8 +209,12 @@ export default function LlmLogs() {
     <div className="space-y-5 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-foreground">LLM Logs</h1>
-          <p className="text-sm text-muted-foreground">Per-request logs from the LLM gateway.</p>
+          <h1 className="text-xl font-bold text-foreground">
+            Request Audit Logs
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Per-request logs from the LLM gateway.
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <ClusterPicker value={f.clusterId} onChange={f.setClusterId} />
@@ -215,14 +241,23 @@ export default function LlmLogs() {
 
       {/* Controls row */}
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" size="sm" onClick={refresh} className="h-8 gap-1.5">
-          <RefreshCw className={cn('h-3.5 w-3.5', logs.isFetching && 'animate-spin')} />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={refresh}
+          className="h-8 gap-1.5"
+        >
+          <RefreshCw
+            className={cn("h-3.5 w-3.5", logs.isFetching && "animate-spin")}
+          />
           Refresh
         </Button>
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
           <Switch checked={live} onCheckedChange={setLive} aria-label="Live" />
           Live
-          {live && <span className="h-2 w-2 rounded-full bg-success animate-pulse" />}
+          {live && (
+            <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
+          )}
         </label>
         <div className="relative flex-1 min-w-[180px] max-w-sm">
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -246,7 +281,9 @@ export default function LlmLogs() {
               <DropdownMenuCheckboxItem
                 key={col}
                 checked={visibleCols[col]}
-                onCheckedChange={(v) => setVisibleCols((prev) => ({ ...prev, [col]: !!v }))}
+                onCheckedChange={(v) =>
+                  setVisibleCols((prev) => ({ ...prev, [col]: !!v }))
+                }
                 className="capitalize"
               >
                 {col}
@@ -258,12 +295,48 @@ export default function LlmLogs() {
 
       {/* Stat strip */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <StatTile icon={Activity} label="Total Requests" tone="primary" loading={stats.isLoading} value={fmtInt(stats.data?.total_requests)} />
-        <StatTile icon={CheckCircle2} label="Success Rate" tone="success" loading={stats.isLoading} value={fmtPct(stats.data?.success_rate)} />
-        <StatTile icon={Clock} label="Avg Latency" tone="info" loading={stats.isLoading} value={fmtLatencyMs(stats.data?.avg_latency_ms)} />
-        <StatTile icon={Hash} label="Total Tokens" tone="warning" loading={stats.isLoading} value={fmtCompact(stats.data?.total_tokens)} />
-        <StatTile icon={DollarSign} label="Total Cost" tone="success" loading={stats.isLoading} value={fmtCost(stats.data?.total_cost)} />
-        <StatTile icon={Boxes} label="Models" tone="muted" loading={stats.isLoading} value={fmtInt(stats.data?.models)} />
+        <StatTile
+          icon={Activity}
+          label="Total Requests"
+          tone="primary"
+          loading={stats.isLoading}
+          value={fmtInt(stats.data?.total_requests)}
+        />
+        <StatTile
+          icon={CheckCircle2}
+          label="Success Rate"
+          tone="success"
+          loading={stats.isLoading}
+          value={fmtPct(stats.data?.success_rate)}
+        />
+        <StatTile
+          icon={Clock}
+          label="Avg Latency"
+          tone="info"
+          loading={stats.isLoading}
+          value={fmtLatencyMs(stats.data?.avg_latency_ms)}
+        />
+        <StatTile
+          icon={Hash}
+          label="Total Tokens"
+          tone="warning"
+          loading={stats.isLoading}
+          value={fmtCompact(stats.data?.total_tokens)}
+        />
+        <StatTile
+          icon={DollarSign}
+          label="Total Cost"
+          tone="success"
+          loading={stats.isLoading}
+          value={fmtCost(stats.data?.total_cost)}
+        />
+        <StatTile
+          icon={Boxes}
+          label="Models"
+          tone="muted"
+          loading={stats.isLoading}
+          value={fmtInt(stats.data?.models)}
+        />
       </div>
 
       <ZoomableHistogram
@@ -278,17 +351,46 @@ export default function LlmLogs() {
           <Table>
             <TableHeader>
               <TableRow>
-                <SortHead label="Time" k="ts" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortHead
+                  label="Time"
+                  k="ts"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={toggleSort}
+                />
                 <TableHead>Request</TableHead>
                 {visibleCols.model && <TableHead>Model</TableHead>}
-                <SortHead label="Latency" k="latency_ms" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="right" />
+                <SortHead
+                  label="Latency"
+                  k="latency_ms"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={toggleSort}
+                  align="right"
+                />
                 {visibleCols.tokens && (
-                  <SortHead label="Tokens" k="total_tk" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="right" />
+                  <SortHead
+                    label="Tokens"
+                    k="total_tk"
+                    sortKey={sortKey}
+                    sortDir={sortDir}
+                    onSort={toggleSort}
+                    align="right"
+                  />
                 )}
                 {visibleCols.cost && (
-                  <SortHead label="Cost" k="cost" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="right" />
+                  <SortHead
+                    label="Cost"
+                    k="cost"
+                    sortKey={sortKey}
+                    sortDir={sortDir}
+                    onSort={toggleSort}
+                    align="right"
+                  />
                 )}
-                {visibleCols.status && <TableHead className="text-right">Status</TableHead>}
+                {visibleCols.status && (
+                  <TableHead className="text-right">Status</TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -300,10 +402,13 @@ export default function LlmLogs() {
                 </TableRow>
               ) : sortedRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-8">
+                  <TableCell
+                    colSpan={7}
+                    className="text-center text-sm text-muted-foreground py-8"
+                  >
                     {logs.data?.available === false
-                      ? logs.data?.errors?.logs || 'Log source unavailable.'
-                      : 'No requests in this window.'}
+                      ? logs.data?.errors?.logs || "Log source unavailable."
+                      : "No requests in this window."}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -318,19 +423,32 @@ export default function LlmLogs() {
                     </TableCell>
                     <TableCell className="max-w-[280px] truncate text-foreground/90">
                       {row.cluster_name && (
-                        <Badge variant="outline" className="mr-1.5 text-[10px] font-mono py-0 px-1 text-muted-foreground">
+                        <Badge
+                          variant="outline"
+                          className="mr-1.5 text-[10px] font-mono py-0 px-1 text-muted-foreground"
+                        >
                           {row.cluster_name}
                         </Badge>
                       )}
-                      {row.message || '—'}
+                      {row.message || "—"}
                     </TableCell>
-                    {visibleCols.model && <TableCell className="text-xs text-foreground/80">{row.model}</TableCell>}
-                    <TableCell className="text-right tabular-nums text-foreground/80">{fmtLatencyMs(row.latency_ms)}</TableCell>
+                    {visibleCols.model && (
+                      <TableCell className="text-xs text-foreground/80">
+                        {row.model}
+                      </TableCell>
+                    )}
+                    <TableCell className="text-right tabular-nums text-foreground/80">
+                      {fmtLatencyMs(row.latency_ms)}
+                    </TableCell>
                     {visibleCols.tokens && (
-                      <TableCell className="text-right tabular-nums text-foreground/80">{fmtInt(row.total_tk)}</TableCell>
+                      <TableCell className="text-right tabular-nums text-foreground/80">
+                        {fmtInt(row.total_tk)}
+                      </TableCell>
                     )}
                     {visibleCols.cost && (
-                      <TableCell className="text-right tabular-nums text-foreground/80">{fmtCost(row.cost)}</TableCell>
+                      <TableCell className="text-right tabular-nums text-foreground/80">
+                        {fmtCost(row.cost)}
+                      </TableCell>
                     )}
                     {visibleCols.status && (
                       <TableCell className="text-right">
@@ -346,8 +464,14 @@ export default function LlmLogs() {
 
         {nextEnd && sortedRows.length > 0 && (
           <div className="mt-3 flex justify-center">
-            <Button variant="outline" size="sm" onClick={loadOlder} disabled={loadingOlder} className="h-8">
-              {loadingOlder ? 'Loading…' : 'Load older'}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={loadOlder}
+              disabled={loadingOlder}
+              className="h-8"
+            >
+              {loadingOlder ? "Loading…" : "Load older"}
             </Button>
           </div>
         )}
@@ -404,7 +528,8 @@ function ZoomableHistogram({
   }, [data, zoom]);
 
   const applyZoom = () => {
-    if (refLeft && refRight && refLeft !== refRight) setZoom([refLeft, refRight]);
+    if (refLeft && refRight && refLeft !== refRight)
+      setZoom([refLeft, refRight]);
     setRefLeft(null);
     setRefRight(null);
   };
@@ -421,30 +546,62 @@ function ZoomableHistogram({
   return (
     <SectionCard compact>
       <div className="mb-2 flex items-center justify-between">
-        <h4 className="text-sm font-semibold text-foreground">Request Volume</h4>
+        <h4 className="text-sm font-semibold text-foreground">
+          Request Volume
+        </h4>
         {zoom && (
-          <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setZoom(null)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 text-xs"
+            onClick={() => setZoom(null)}
+          >
             Reset zoom
           </Button>
         )}
       </div>
-      <ResponsiveContainer width="100%" height={200}>
+      <ResponsiveContainer
+        width="100%"
+        height={200}
+        minWidth={0}
+        minHeight={200}
+      >
         <BarChart
           data={shown}
-          onMouseDown={(e) => e?.activeLabel && setRefLeft(String(e.activeLabel))}
-          onMouseMove={(e) => refLeft && e?.activeLabel && setRefRight(String(e.activeLabel))}
+          onMouseDown={(e) =>
+            e?.activeLabel && setRefLeft(String(e.activeLabel))
+          }
+          onMouseMove={(e) =>
+            refLeft && e?.activeLabel && setRefRight(String(e.activeLabel))
+          }
           onMouseUp={applyZoom}
         >
           <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
-          <XAxis dataKey="ts" tickFormatter={fmtTime} tick={{ fill: CHART_TEXT, fontSize: 10 }} minTickGap={24} />
-          <YAxis tickFormatter={(v) => fmtCompact(Number(v))} tick={{ fill: CHART_TEXT, fontSize: 10 }} width={44} />
+          <XAxis
+            dataKey="ts"
+            tickFormatter={fmtTime}
+            tick={{ fill: CHART_TEXT, fontSize: 10 }}
+            minTickGap={24}
+          />
+          <YAxis
+            tickFormatter={(v) => fmtCompact(Number(v))}
+            tick={{ fill: CHART_TEXT, fontSize: 10 }}
+            width={44}
+          />
           <RechartsTooltip
             contentStyle={CHART_TOOLTIP}
             labelFormatter={(l) => fmtTime(String(l))}
-            formatter={(v) => [fmtInt(Number(v)), 'requests']}
+            formatter={(v) => [fmtInt(Number(v)), "requests"]}
           />
-          <Bar dataKey="value" fill={SUCCESS_COLOR} radius={[2, 2, 0, 0]} isAnimationActive={false} />
-          {refLeft && refRight && <ReferenceArea x1={refLeft} x2={refRight} strokeOpacity={0.3} />}
+          <Bar
+            dataKey="value"
+            fill={SUCCESS_COLOR}
+            radius={[2, 2, 0, 0]}
+            isAnimationActive={false}
+          />
+          {refLeft && refRight && (
+            <ReferenceArea x1={refLeft} x2={refRight} strokeOpacity={0.3} />
+          )}
         </BarChart>
       </ResponsiveContainer>
     </SectionCard>
@@ -467,7 +624,10 @@ function LogDetailDrawer({
   onClose: () => void;
 }) {
   const row = index != null ? rows[index] : undefined;
-  const turns = useMemo(() => (row ? parseTranscript(row.req_body, row.resp_body) : []), [row]);
+  const turns = useMemo(
+    () => (row ? parseTranscript(row.req_body, row.resp_body) : []),
+    [row],
+  );
 
   return (
     <Sheet open={index != null} onOpenChange={(open) => !open && onClose()}>
@@ -479,7 +639,10 @@ function LogDetailDrawer({
                 <span className="truncate">{row.model}</span>
                 <StatusBadge status={row.status} />
                 {row.cluster_name && (
-                  <Badge variant="outline" className="font-mono text-[10px] font-normal text-muted-foreground">
+                  <Badge
+                    variant="outline"
+                    className="font-mono text-[10px] font-normal text-muted-foreground"
+                  >
                     {row.cluster_name}
                   </Badge>
                 )}
@@ -487,7 +650,9 @@ function LogDetailDrawer({
             </SheetHeader>
 
             <div className="mt-3 flex items-center justify-between">
-              <span className="text-xs text-muted-foreground tabular-nums">{fmtTime(row.ts)}</span>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {fmtTime(row.ts)}
+              </span>
               <div className="flex items-center gap-1">
                 <Button
                   variant="outline"
@@ -522,12 +687,21 @@ function LogDetailDrawer({
 
             {/* Transcript */}
             <div className="mt-5">
-              <h5 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">Transcript</h5>
+              <h5 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
+                Transcript
+              </h5>
               <div className="space-y-2">
                 {turns.map((t, i) => (
-                  <div key={i} className="rounded-lg border border-border p-2.5">
-                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{t.role}</div>
-                    <div className="whitespace-pre-wrap break-words text-sm text-foreground/90">{t.content || '—'}</div>
+                  <div
+                    key={i}
+                    className="rounded-lg border border-border p-2.5"
+                  >
+                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {t.role}
+                    </div>
+                    <div className="whitespace-pre-wrap break-words text-sm text-foreground/90">
+                      {t.content || "—"}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -539,7 +713,11 @@ function LogDetailDrawer({
                 Raw JSON
               </summary>
               <pre className="mt-2 max-h-72 overflow-auto rounded-lg border border-border bg-muted/40 p-2 text-[11px] leading-relaxed">
-                {JSON.stringify({ request: row.req_body, response: row.resp_body }, null, 2)}
+                {JSON.stringify(
+                  { request: row.req_body, response: row.resp_body },
+                  null,
+                  2,
+                )}
               </pre>
             </details>
           </>
@@ -552,8 +730,12 @@ function LogDetailDrawer({
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className="font-mono text-sm font-medium text-foreground tabular-nums">{value}</div>
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      <div className="font-mono text-sm font-medium text-foreground tabular-nums">
+        {value}
+      </div>
     </div>
   );
 }
@@ -568,25 +750,25 @@ function SortHead({
   sortKey,
   sortDir,
   onSort,
-  align = 'left',
+  align = "left",
 }: {
   label: string;
   k: SortKey;
   sortKey: SortKey;
   sortDir: SortDir;
   onSort: (k: SortKey) => void;
-  align?: 'left' | 'right';
+  align?: "left" | "right";
 }) {
   const active = sortKey === k;
-  const Icon = sortDir === 'asc' ? ArrowUp : ArrowDown;
+  const Icon = sortDir === "asc" ? ArrowUp : ArrowDown;
   return (
-    <TableHead className={align === 'right' ? 'text-right' : undefined}>
+    <TableHead className={align === "right" ? "text-right" : undefined}>
       <button
         type="button"
         onClick={() => onSort(k)}
         className={cn(
-          'inline-flex items-center gap-1 transition-colors hover:text-foreground',
-          active ? 'text-foreground' : 'text-muted-foreground',
+          "inline-flex items-center gap-1 transition-colors hover:text-foreground",
+          active ? "text-foreground" : "text-muted-foreground",
         )}
       >
         {label}
@@ -597,9 +779,12 @@ function SortHead({
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const ok = status.startsWith('2');
+  const ok = status.startsWith("2");
   return (
-    <Badge variant={ok ? 'success' : 'destructive'} className="font-mono text-[10px]">
+    <Badge
+      variant={ok ? "success" : "destructive"}
+      className="font-mono text-[10px]"
+    >
       {status}
     </Badge>
   );
@@ -608,5 +793,9 @@ function StatusBadge({ status }: { status: string }) {
 function fmtTime(ts: string): string {
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return ts;
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return d.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }

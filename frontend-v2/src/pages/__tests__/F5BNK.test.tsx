@@ -4,13 +4,13 @@
  * Covers: page rendering, project/cluster empty states, sidebar categories,
  * search input, resource badge display.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { http, HttpResponse } from 'msw';
-import { server } from '@/test/mocks/server';
-import { render, screen } from '@/test/test-utils';
-import { waitFor } from '@testing-library/react';
-import { STORAGE_KEYS } from '@/lib/storage-keys';
-import F5BNK from '@/pages/F5BNK';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "@/test/mocks/server";
+import { render, screen } from "@/test/test-utils";
+import { waitFor } from "@testing-library/react";
+import { STORAGE_KEYS } from "@/lib/storage-keys";
+import F5BNK from "@/pages/F5BNK";
 
 const storageState = new Map<string, string>();
 const localStorageMock: Storage = {
@@ -30,7 +30,7 @@ const localStorageMock: Storage = {
   },
 };
 
-Object.defineProperty(window, 'localStorage', {
+Object.defineProperty(window, "localStorage", {
   value: localStorageMock,
   configurable: true,
 });
@@ -38,62 +38,64 @@ Object.defineProperty(window, 'localStorage', {
 function resetBnkSelectionStorage() {
   window.localStorage.removeItem(STORAGE_KEYS.BNK_PROJECT);
   window.localStorage.removeItem(STORAGE_KEYS.BNK_CLUSTER);
-  window.localStorage.removeItem('bnk-forge-bnk-initial-view');
+  window.localStorage.removeItem("bnk-forge-bnk-initial-view");
 }
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
 
-vi.mock('@/hooks/useDebounce', () => ({
+vi.mock("@/hooks/useDebounce", () => ({
   useDebounce: vi.fn((value: string) => value),
 }));
 
-vi.mock('@/hooks/useKeyboardShortcuts', () => ({
+vi.mock("@/hooks/useKeyboardShortcuts", () => ({
   useKeyboardShortcuts: vi.fn(),
 }));
 
-vi.mock('@/components/k8s/ResourceDescribeViewer', () => ({
+vi.mock("@/components/k8s/ResourceDescribeViewer", () => ({
   ResourceDescribeViewer: () => null,
 }));
 
-vi.mock('@/components/k8s/ResourceDeleteDialog', () => ({
+vi.mock("@/components/k8s/ResourceDeleteDialog", () => ({
   ResourceDeleteDialog: () => null,
 }));
 
-vi.mock('@/components/k8s/ResourceEditDialog', () => ({
+vi.mock("@/components/k8s/ResourceEditDialog", () => ({
   ResourceEditDialog: () => null,
 }));
 
-vi.mock('@/components/k8s/ResourceCreateDialog', () => ({
+vi.mock("@/components/k8s/ResourceCreateDialog", () => ({
   ResourceCreateDialog: () => null,
 }));
 
-vi.mock('@/components/k8s/F5BNKPolicyViewer', () => ({
+vi.mock("@/components/k8s/F5BNKPolicyViewer", () => ({
   F5BNKPolicyViewer: () => null,
 }));
 
-vi.mock('@/components/k8s/F5AIAnalyzerViewer', () => ({
+vi.mock("@/components/k8s/F5AIAnalyzerViewer", () => ({
   F5AIAnalyzerViewer: () => null,
 }));
 
-vi.mock('@/components/k8s/F5iRuleViewer', () => ({
+vi.mock("@/components/k8s/F5iRuleViewer", () => ({
   F5iRuleViewer: () => null,
 }));
 
-vi.mock('@/components/k8s/F5BNKTopologyViewer', () => ({
+vi.mock("@/components/k8s/F5BNKTopologyViewer", () => ({
   F5BNKTopologyViewer: () => null,
 }));
 
-vi.mock('@/components/k8s/BNKHealthDashboard', () => ({
-  BNKHealthDashboard: () => <div data-testid="health-dashboard">Health Dashboard</div>,
+vi.mock("@/components/k8s/BNKHealthDashboard", () => ({
+  BNKHealthDashboard: () => (
+    <div data-testid="health-dashboard">Health Dashboard</div>
+  ),
 }));
 
-vi.mock('@/components/k8s/BNKUpgradePanel', () => ({
+vi.mock("@/components/k8s/BNKUpgradePanel", () => ({
   BNKUpgradePanel: () => null,
 }));
 
-vi.mock('@/components/runbooks/RunbookWizard', () => ({
+vi.mock("@/components/runbooks/RunbookWizard", () => ({
   RunbookWizard: () => null,
 }));
 
@@ -130,21 +132,25 @@ interface TestCluster {
   created_at: string | null;
 }
 
-function buildCluster(id: number, projectId: number, name: string): TestCluster {
+function buildCluster(
+  id: number,
+  projectId: number,
+  name: string,
+): TestCluster {
   return {
     id,
     name,
     context: `${name}-ctx`,
     api_server: `https://${name}.example.local`,
     cloud_provider: null,
-    detected_platform_profile: 'unknown',
+    detected_platform_profile: "unknown",
     detected_platform_provider: null,
     platform_capabilities: {},
     platform_constraints: {},
     region: null,
-    default_namespace: 'default',
-    status: 'active',
-    version: '1.29',
+    default_namespace: "default",
+    status: "active",
+    version: "1.29",
     project_id: projectId,
     ssh_tunnel_enabled: false,
     ssh_remote_k8s_host: null,
@@ -162,66 +168,92 @@ function mockF5PageApis(params: {
   clustersByProject: Record<number, TestCluster[]>;
 }) {
   server.use(
-    http.get('*/api/projects', ({ request }) => {
-      return HttpResponse.json({ projects: params.projects, total: params.projects.length });
-    }),
-    http.get('*/api/k8s/clusters', ({ request }) => {
-      return HttpResponse.json({ clusters: params.allClusters, count: params.allClusters.length });
-    }),
-    http.get('*/api/projects/:projectId/k8s/clusters', ({ params: pathParams }) => {
-      const projectId = Number(pathParams.projectId);
-      const clusters = params.clustersByProject[projectId] || [];
-      return HttpResponse.json({ clusters, count: clusters.length });
-    }),
-    http.get('*/api/k8s/clusters/:clusterId/namespaces', ({ params: pathParams }) => {
+    http.get("*/api/projects", () => {
       return HttpResponse.json({
-        namespaces: [{ name: 'default', status: 'Active', labels: null, created_at: null }],
-        count: 1,
-        cluster_id: Number(pathParams.clusterId),
+        projects: params.projects,
+        total: params.projects.length,
       });
     }),
+    http.get("*/api/k8s/clusters", () => {
+      return HttpResponse.json({
+        clusters: params.allClusters,
+        count: params.allClusters.length,
+      });
+    }),
+    http.get(
+      "*/api/projects/:projectId/k8s/clusters",
+      ({ params: pathParams }) => {
+        const projectId = Number(pathParams.projectId);
+        const clusters = params.clustersByProject[projectId] || [];
+        return HttpResponse.json({ clusters, count: clusters.length });
+      },
+    ),
+    http.get(
+      "*/api/k8s/clusters/:clusterId/namespaces",
+      ({ params: pathParams }) => {
+        return HttpResponse.json({
+          namespaces: [
+            {
+              name: "default",
+              status: "Active",
+              labels: null,
+              created_at: null,
+            },
+          ],
+          count: 1,
+          cluster_id: Number(pathParams.clusterId),
+        });
+      },
+    ),
   );
 }
 
-describe('F5BNK', () => {
+describe("F5BNK", () => {
   beforeEach(() => {
     resetBnkSelectionStorage();
   });
 
-  it('renders the F5 BNK page without crashing', () => {
+  it("renders the F5 BNK page without crashing", () => {
     render(<F5BNK />);
-    // The page should render sidebar categories
-    const pageContent = screen.queryByText(/health/i) || screen.queryByText(/gateway/i);
-    expect(pageContent).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "F5 BNK" }),
+    ).toBeInTheDocument();
   });
 
-  it('shows "No project selected" empty state when no project is chosen', () => {
+  it("shows BNK by Cluster overview when no cluster is selected", () => {
     render(<F5BNK />);
-    expect(screen.getByText('No project selected')).toBeInTheDocument();
+    expect(screen.getByText("BNK by Cluster")).toBeInTheDocument();
   });
 
-  it('shows "No cluster selected" when project is set but no cluster', () => {
-    window.localStorage.setItem('bnk-forge-bnk-project', '1');
+  it("shows BNK by Cluster table when project is set without a cluster", () => {
+    window.localStorage.setItem(STORAGE_KEYS.BNK_PROJECT, "1");
     render(<F5BNK />);
-    expect(screen.getByText('No cluster selected')).toBeInTheDocument();
+    expect(screen.getByText("BNK by Cluster")).toBeInTheDocument();
   });
 
-  it('renders search input', () => {
+  it("renders search input", () => {
     render(<F5BNK />);
-    const searchInput = screen.queryByPlaceholderText(/search/i) || screen.queryByPlaceholderText(/filter/i);
+    const searchInput =
+      screen.queryByPlaceholderText(/search/i) ||
+      screen.queryByPlaceholderText(/filter/i);
     expect(searchInput).toBeInTheDocument();
   });
 
-  it('renders the active category\'s items in the sidebar', () => {
+  it("renders the active category's items in the sidebar when a cluster is selected", () => {
+    window.localStorage.setItem(STORAGE_KEYS.BNK_CLUSTER, "101");
     render(<F5BNK />);
-    // D-020: top-level categories are now header tabs; the sidebar shows the
-    const sidebarItem = screen.queryByText(/object topology graph/i) || screen.queryByText(/traffic flow pipeline/i) || screen.queryByText(/health dashboard/i);
-    expect(sidebarItem).toBeInTheDocument();
+    const matchingItems = screen
+      .queryAllByText(/object topology graph/i)
+      .concat(
+        screen.queryAllByText(/traffic flow pipeline/i),
+        screen.queryAllByText(/health dashboard/i),
+      );
+    expect(matchingItems.length).toBeGreaterThan(0);
   });
 
-  it('auto-selects project when exactly one project exists and none is selected', async () => {
-    const singleProject = [{ id: 1, name: 'project-one' }];
-    const singleCluster = [buildCluster(101, 1, 'cluster-one')];
+  it("auto-selects project when exactly one project exists and none is selected", async () => {
+    const singleProject = [{ id: 1, name: "project-one" }];
+    const singleCluster = [buildCluster(101, 1, "cluster-one")];
     mockF5PageApis({
       projects: singleProject,
       allClusters: singleCluster,
@@ -231,13 +263,13 @@ describe('F5BNK', () => {
     render(<F5BNK />);
 
     await waitFor(() => {
-      expect(window.localStorage.getItem(STORAGE_KEYS.BNK_PROJECT)).toBe('1');
+      expect(window.localStorage.getItem(STORAGE_KEYS.BNK_PROJECT)).toBe("1");
     });
   });
 
-  it('auto-selects cluster when exactly one cluster exists for the selected project', async () => {
-    const singleProject = [{ id: 1, name: 'project-one' }];
-    const singleCluster = [buildCluster(101, 1, 'cluster-one')];
+  it("auto-selects cluster when exactly one cluster exists for the selected project", async () => {
+    const singleProject = [{ id: 1, name: "project-one" }];
+    const singleCluster = [buildCluster(101, 1, "cluster-one")];
     mockF5PageApis({
       projects: singleProject,
       allClusters: singleCluster,
@@ -247,16 +279,16 @@ describe('F5BNK', () => {
     render(<F5BNK />);
 
     await waitFor(() => {
-      expect(window.localStorage.getItem(STORAGE_KEYS.BNK_CLUSTER)).toBe('101');
+      expect(window.localStorage.getItem(STORAGE_KEYS.BNK_CLUSTER)).toBe("101");
     });
   });
 
-  it('does NOT auto-select when multiple projects exist', async () => {
+  it("does NOT auto-select when multiple projects exist", async () => {
     const projects = [
-      { id: 1, name: 'project-one' },
-      { id: 2, name: 'project-two' },
+      { id: 1, name: "project-one" },
+      { id: 2, name: "project-two" },
     ];
-    const singleCluster = [buildCluster(101, 1, 'cluster-one')];
+    const singleCluster = [buildCluster(101, 1, "cluster-one")];
     mockF5PageApis({
       projects,
       allClusters: singleCluster,
@@ -266,16 +298,16 @@ describe('F5BNK', () => {
     render(<F5BNK />);
 
     await waitFor(() => {
-      expect(screen.getByText('No project selected')).toBeInTheDocument();
+      expect(screen.getByText("BNK by Cluster")).toBeInTheDocument();
     });
     expect(window.localStorage.getItem(STORAGE_KEYS.BNK_PROJECT)).toBeFalsy();
   });
 
-  it('does NOT auto-select when multiple clusters exist', async () => {
-    const singleProject = [{ id: 1, name: 'project-one' }];
+  it("does NOT auto-select when multiple clusters exist", async () => {
+    const singleProject = [{ id: 1, name: "project-one" }];
     const clusters = [
-      buildCluster(101, 1, 'cluster-one'),
-      buildCluster(102, 1, 'cluster-two'),
+      buildCluster(101, 1, "cluster-one"),
+      buildCluster(102, 1, "cluster-two"),
     ];
     mockF5PageApis({
       projects: singleProject,
@@ -286,7 +318,7 @@ describe('F5BNK', () => {
     render(<F5BNK />);
 
     await waitFor(() => {
-      expect(screen.getByText('No project selected')).toBeInTheDocument();
+      expect(screen.getByText("BNK by Cluster")).toBeInTheDocument();
     });
     expect(window.localStorage.getItem(STORAGE_KEYS.BNK_PROJECT)).toBeFalsy();
     expect(window.localStorage.getItem(STORAGE_KEYS.BNK_CLUSTER)).toBeFalsy();
