@@ -35,6 +35,7 @@ VERDICT_SSH_UNREACHABLE = "ssh_unreachable"
 # Scan logic (pure functions operating on SSHSession)
 # ---------------------------------------------------------------------------
 
+
 def _probe_os(ssh: SSHSession) -> dict:
     """Probe OS type, version, and architecture."""
     os_info: dict = {}
@@ -97,88 +98,85 @@ def _probe_tools(ssh: SSHSession) -> dict:
 
 
 def _probe_target_reachability(ssh: SSHSession, targets: list[BenchmarkTarget]) -> list[dict]:
-     """Check whether each BenchmarkTarget's LLM endpoint is reachable FROM the host.
+    """Check whether each BenchmarkTarget's LLM endpoint is reachable FROM the host.
 
-     Uses curl if available, otherwise falls back to a TCP /dev/tcp test.
-     Each target is probed independently — one failure doesn't abort the rest.
-     """
-     import shlex
-     import urllib.parse
+    Uses curl if available, otherwise falls back to a TCP /dev/tcp test.
+    Each target is probed independently — one failure doesn't abort the rest.
+    """
+    import shlex
+    import urllib.parse
 
-     results = []
-     if not targets:
-         return results
+    results = []
+    if not targets:
+        return results
 
-     # Check if curl is available on the remote host
-     has_curl_r = ssh.execute("command -v curl > /dev/null 2>&1 && echo ok || echo missing", timeout=5)
-     has_curl = has_curl_r.exit_code == 0 and has_curl_r.stdout.strip() == "ok"
+    # Check if curl is available on the remote host
+    has_curl_r = ssh.execute("command -v curl > /dev/null 2>&1 && echo ok || echo missing", timeout=5)
+    has_curl = has_curl_r.exit_code == 0 and has_curl_r.stdout.strip() == "ok"
 
-     for target in targets:
-         base_url = target.llm_base_url.rstrip("/")
-         item: dict = {
-             "target_id": target.id,
-             "name": target.name,
-             "llm_base_url": base_url,
-             "ok": False,
-             "http_code": None,
-             "error": None,
-         }
+    for target in targets:
+        base_url = target.llm_base_url.rstrip("/")
+        item: dict = {
+            "target_id": target.id,
+            "name": target.name,
+            "llm_base_url": base_url,
+            "ok": False,
+            "http_code": None,
+            "error": None,
+        }
 
-         try:
-             # Validate URL scheme (http/https only) and parse before any probe
-             parsed = urllib.parse.urlparse(base_url)
-             if parsed.scheme not in ("http", "https"):
-                 item["error"] = f"Invalid URL scheme: {parsed.scheme}"
-                 results.append(item)
-                 continue
+        try:
+            # Validate URL scheme (http/https only) and parse before any probe
+            parsed = urllib.parse.urlparse(base_url)
+            if parsed.scheme not in ("http", "https"):
+                item["error"] = f"Invalid URL scheme: {parsed.scheme}"
+                results.append(item)
+                continue
 
-             if has_curl:
-                 # Use curl with properly quoted URL
-                 probe_path = "/"
-                 cmd = (
-                     f"curl -sS -o /dev/null -m 8 -w '%{{http_code}}' "
-                     f"{shlex.quote(base_url + probe_path)} 2>&1"
-                 )
-                 r = ssh.execute(cmd, timeout=15)
-                 code_str = r.stdout.strip().split()[-1] if r.stdout.strip() else ""
-                 try:
-                     http_code = int(code_str)
-                     item["http_code"] = http_code
-                     # Any non-connection-refused response means we reached the host
-                     item["ok"] = http_code > 0
-                 except ValueError:
-                     item["error"] = f"curl output: {r.stdout.strip()[:200]}"
-             else:
-                 # TCP connect via bash /dev/tcp as fallback with strict validation
-                 host = parsed.hostname or ""
-                 port = parsed.port or (443 if parsed.scheme == "https" else 80)
+            if has_curl:
+                # Use curl with properly quoted URL
+                probe_path = "/"
+                cmd = f"curl -sS -o /dev/null -m 8 -w '%{{http_code}}' {shlex.quote(base_url + probe_path)} 2>&1"
+                r = ssh.execute(cmd, timeout=15)
+                code_str = r.stdout.strip().split()[-1] if r.stdout.strip() else ""
+                try:
+                    http_code = int(code_str)
+                    item["http_code"] = http_code
+                    # Any non-connection-refused response means we reached the host
+                    item["ok"] = http_code > 0
+                except ValueError:
+                    item["error"] = f"curl output: {r.stdout.strip()[:200]}"
+            else:
+                # TCP connect via bash /dev/tcp as fallback with strict validation
+                host = parsed.hostname or ""
+                port = parsed.port or (443 if parsed.scheme == "https" else 80)
 
-                 # Validate port is in valid range
-                 if not isinstance(port, int) or port < 1 or port > 65535:
-                     item["error"] = f"Invalid port: {port}"
-                     results.append(item)
-                     continue
+                # Validate port is in valid range
+                if not isinstance(port, int) or port < 1 or port > 65535:
+                    item["error"] = f"Invalid port: {port}"
+                    results.append(item)
+                    continue
 
-                 # Validate hostname is not empty (prevent /dev/tcp//N injection)
-                 if not host:
-                     item["error"] = "No host in URL"
-                     results.append(item)
-                     continue
+                # Validate hostname is not empty (prevent /dev/tcp//N injection)
+                if not host:
+                    item["error"] = "No host in URL"
+                    results.append(item)
+                    continue
 
-                 # Use shlex.quote for both host and port in the /dev/tcp path
-                 # Note: /dev/tcp/<host>/<port> is a bash special form, so we construct
-                 # a safe bash command that does not allow injection
-                 cmd = f"timeout 8 bash -c 'exec </dev/tcp/{shlex.quote(host)}/{port} 2>&1' && echo ok || echo fail"
-                 r = ssh.execute(cmd, timeout=15)
-                 item["ok"] = r.stdout.strip() == "ok"
-                 if not item["ok"]:
-                     item["error"] = "TCP connect failed"
-         except Exception as exc:
-             item["error"] = str(exc)[:200]
+                # Use shlex.quote for both host and port in the /dev/tcp path
+                # Note: /dev/tcp/<host>/<port> is a bash special form, so we construct
+                # a safe bash command that does not allow injection
+                cmd = f"timeout 8 bash -c 'exec </dev/tcp/{shlex.quote(host)}/{port} 2>&1' && echo ok || echo fail"
+                r = ssh.execute(cmd, timeout=15)
+                item["ok"] = r.stdout.strip() == "ok"
+                if not item["ok"]:
+                    item["error"] = "TCP connect failed"
+        except Exception as exc:
+            item["error"] = str(exc)[:200]
 
-         results.append(item)
+        results.append(item)
 
-     return results
+    return results
 
 
 def build_readiness(
@@ -244,6 +242,7 @@ def build_readiness(
 # Service class
 # ---------------------------------------------------------------------------
 
+
 class BenchmarkAgentScanService:
     """Orchestrate a readiness scan of a Forge-managed benchmark agent host."""
 
@@ -262,15 +261,31 @@ class BenchmarkAgentScanService:
         Returns:
             The readiness dict written to agent.readiness.
         """
-        from core.errors import NotFoundError
+        from core.errors import BadRequestError, NotFoundError
         from services.bare_metal.ssh_provision import build_ssh_session_from_credential
 
-        agent = self.db.query(BenchmarkAgent).filter(
-            BenchmarkAgent.id == host_id,
-            BenchmarkAgent.managed.is_(True),
-        ).first()
+        agent = (
+            self.db.query(BenchmarkAgent)
+            .filter(
+                BenchmarkAgent.id == host_id,
+            )
+            .first()
+        )
         if not agent:
             raise NotFoundError("agent host", host_id)
+
+        tags = agent.tags if isinstance(agent.tags, dict) else {}
+        if (
+            not agent.managed
+            or agent.provision_status == "self_managed"
+            or not agent.ssh_credential_id
+            or tags.get("agent_mode") == "outbound"
+            or tags.get("managed_by") in ("awsbnkctl", "azrbnkctl", "gkebnkctl")
+        ):
+            raise BadRequestError(
+                f"Agent host '{agent.name}' is an outbound self-managed agent and cannot be scanned via SSH",
+                code="AGENT_NOT_SSH_MANAGED",
+            )
 
         if not agent.host_ip:
             raise ValueError(f"Agent host {host_id} has no host_ip configured")
@@ -327,23 +342,15 @@ class BenchmarkAgentScanService:
             agent.provision_message = f"Scan complete — {verdict}"
 
         self.db.commit()
-        logger.info(
-            "Scan complete for agent host %d: verdict=%s", host_id, verdict
-        )
+        logger.info("Scan complete for agent host %d: verdict=%s", host_id, verdict)
         return readiness
 
-    def _resolve_targets(
-        self, agent: BenchmarkAgent, target_ids: list[int] | None
-    ) -> list[BenchmarkTarget]:
+    def _resolve_targets(self, agent: BenchmarkAgent, target_ids: list[int] | None) -> list[BenchmarkTarget]:
         """Return the BenchmarkTarget rows to probe for reachability."""
         if target_ids is not None:
             if not target_ids:
                 return []
-            return (
-                self.db.query(BenchmarkTarget)
-                .filter(BenchmarkTarget.id.in_(target_ids))
-                .all()
-            )
+            return self.db.query(BenchmarkTarget).filter(BenchmarkTarget.id.in_(target_ids)).all()
 
         if agent.project_id:
             # Default: active targets whose cluster belongs to the agent's project.
@@ -363,3 +370,9 @@ class BenchmarkAgentScanService:
             )
 
         return []
+
+    # Alias for compatibility with external references
+    scan_host = scan
+
+
+AgentScanService = BenchmarkAgentScanService

@@ -48,6 +48,7 @@ logger = logging.getLogger(__name__)
 
 # ── Cluster YAML rendering ───────────────────────────────────────────────────
 
+
 def _render_awsbnkctl_cluster_yaml(
     variables: dict,
     *,
@@ -84,7 +85,7 @@ def _render_awsbnkctl_cluster_yaml(
     vpc_cidr_str = str(variables.get("vpc_cidr", "10.0.0.0/16") or "10.0.0.0/16")
     instance_type = str(variables.get("instance_type", "m5.2xlarge") or "m5.2xlarge")
     pattern = str(variables.get("pattern", "external-only") or "external-only")
-    kubernetes_version = str(variables.get("kubernetes_version", "1.30") or "1.30")
+    kubernetes_version = str(variables.get("kubernetes_version", "1.34") or "1.34")
     node_desired_size = int(variables.get("node_desired_size", 3) or 3)
     node_min_size = int(variables.get("node_min_size", 3) or 3)
     node_max_size = int(variables.get("node_max_size", 4) or 4)
@@ -247,9 +248,8 @@ def _render_awsbnkctl_cluster_yaml(
 
 # ── Context builder ──────────────────────────────────────────────────────────
 
-def _build_cli_context(
-    db, module: ProjectModule, *, for_destroy: bool = False
-) -> ModuleContext:
+
+def _build_cli_context(db, module: ProjectModule, *, for_destroy: bool = False) -> ModuleContext:
     """Build ModuleContext with cloud credentials for BnkctlEngine.
 
     `for_destroy` suppresses the cluster.yaml render. Destroy must run against
@@ -290,9 +290,7 @@ def _build_cli_context(
         variables.update(module.variable_overrides)
 
     # Render cluster.yaml from form variables if this is a cli-bnkctl module
-    module_path = (
-        module.library_module.path if module.library_module else (module.path_in_project or "cli-bnkctl")
-    )
+    module_path = module.library_module.path if module.library_module else (module.path_in_project or "cli-bnkctl")
     # Render cluster.yaml only for the cluster module, not for the use-cases module.
     # The use-cases module (bnkctl_action=="demo-usecases") uses the existing cluster.yaml
     # written by the cluster module — we must not overwrite or re-render it.
@@ -322,7 +320,8 @@ def _build_cli_context(
         except Exception as exc:
             logger.warning(
                 "SecretsService.prepare_secrets_for_execution failed for module %s: %s — continuing without bnk: block",
-                module.id, exc,
+                module.id,
+                exc,
             )
             value_secrets = {}
 
@@ -333,11 +332,14 @@ def _build_cli_context(
                 return None
             try:
                 from pathlib import Path
+
                 rel = Path(abs_path).relative_to(workspace_dir)
                 return f"./{rel}"
             except ValueError:
                 # abs_path not under workspace — shouldn't happen, but fail soft
-                logger.warning("Secret path %s is not under workspace %s — skipping bnk: block", abs_path, workspace_dir)
+                logger.warning(
+                    "Secret path %s is not under workspace %s — skipping bnk: block", abs_path, workspace_dir
+                )
                 return None
 
         far_archive_path = _to_rel(value_secrets.get("bnk_far_archive"))
@@ -363,13 +365,13 @@ def _build_cli_context(
     except Exception as e:
         logger.warning(
             "Could not resolve cloud credentials for project %s (module %s): %s — continuing",
-            module.project_id, module.id, e,
+            module.project_id,
+            module.id,
+            e,
         )
         creds_env = {}
 
-    category = (
-        module.library_module.category if module.library_module else "infra"
-    )
+    category = module.library_module.category if module.library_module else "infra"
 
     return ModuleContext(
         module_id=module.id,
@@ -383,11 +385,13 @@ def _build_cli_context(
 
 # ── Engine factory ───────────────────────────────────────────────────────────
 
+
 def _engine() -> BnkctlEngine:
     return BnkctlEngine(SessionLocal)
 
 
 # ── Log helpers ──────────────────────────────────────────────────────────────
+
 
 def _ts() -> str:
     """Compact UTC timestamp for log prefixing."""
@@ -410,6 +414,7 @@ def _format_logs(
 
 
 # ── Celery tasks ─────────────────────────────────────────────────────────────
+
 
 @celery_app.task(bind=True, base=CallbackTask, name="tasks.cli_tasks.run_cli_init")
 def run_cli_init(self, task_db_id: int, module_id: int, auto_apply: bool = False, **kwargs):
@@ -438,6 +443,7 @@ def run_cli_init(self, task_db_id: int, module_id: int, auto_apply: bool = False
                     output_lines.append(stamped)
                     try:
                         from services.websocket_service import publish_module_log
+
                         publish_module_log(module_id=module.id, line=stamped)
                     except Exception:
                         pass
@@ -486,12 +492,15 @@ def run_cli_init(self, task_db_id: int, module_id: int, auto_apply: bool = False
                         db.refresh(apply_task)
 
                         from services.execution.task_dispatch import dispatch_apply
+
                         celery_result = dispatch_apply(apply_task.id, module)
                         apply_task.celery_task_id = celery_result.id
                         set_locked_module_fields(db, module, lock, status="applying")
                     else:
                         logger.info(
-                            "CLI auto-apply skipped for module %s: %s", module.id, missing,
+                            "CLI auto-apply skipped for module %s: %s",
+                            module.id,
+                            missing,
                         )
 
             return {"success": result.success, "exit_code": task.exit_code}
@@ -569,6 +578,7 @@ def run_cli_apply(self, task_db_id: int, module_id: int, **kwargs):
                     output_lines.append(stamped)
                     try:
                         from services.websocket_service import publish_module_log
+
                         publish_module_log(module_id=module.id, line=stamped)
                     except Exception:
                         pass
@@ -614,6 +624,7 @@ def run_cli_apply(self, task_db_id: int, module_id: int, **kwargs):
                         register_eks_cluster,
                     )
                     from tasks.cluster_scan_task import enqueue_cluster_scan
+
                     if matches_eks_output_contract(module.outputs or {}):
                         try:
                             cluster = register_eks_cluster(db, module)
@@ -706,6 +717,7 @@ def run_cli_plan(self, task_db_id: int, module_id: int, **kwargs):
                     output_lines.append(stamped)
                     try:
                         from services.websocket_service import publish_module_log
+
                         publish_module_log(module_id=module.id, line=stamped)
                     except Exception:
                         pass
@@ -738,14 +750,25 @@ def run_cli_plan(self, task_db_id: int, module_id: int, **kwargs):
 
                 task.completed_at = datetime.now(UTC)
                 task.duration_seconds = (task.completed_at - task.started_at).total_seconds()
-                # Store plan output for reference
+                # Store plan output for reference and transition module status
+                plan_fields = {
+                    "status": "planned" if success else "plan_failed",
+                    "plan_output": plan_result.details[:4000],
+                    "deployment_error": task.error if not success else None,
+                }
                 set_locked_module_fields(
-                    db, module, lock,
-                    plan_output=plan_result.details[:4000],
+                    db,
+                    module,
+                    lock,
+                    **plan_fields,
                 )
 
+                update_project_counts(db, module.project_id)
                 db.commit()
                 create_deployment_record(db, task, module, "plan", task.logs)
+
+                if module.stack_instance_id:
+                    _update_stack_status_if_needed(module, db)
 
             return {"success": success, "has_changes": plan_result.has_changes}
 
@@ -756,7 +779,7 @@ def run_cli_plan(self, task_db_id: int, module_id: int, **kwargs):
 
         except Exception as exc:
             logger.exception("CLI plan task failed: %s", exc)
-            _mark_task_failed(task, str(exc), db)
+            _mark_task_failed(task, str(exc), db, module=module, failed_status="plan_failed")
             raise
 
 
@@ -794,6 +817,7 @@ def run_cli_destroy(self, task_db_id: int, module_id: int, **kwargs):
                     output_lines.append(stamped)
                     try:
                         from services.websocket_service import publish_module_log
+
                         publish_module_log(module_id=module.id, line=stamped)
                     except Exception:
                         pass
@@ -839,10 +863,12 @@ def run_cli_destroy(self, task_db_id: int, module_id: int, **kwargs):
                 if result.success:
                     try:
                         from services.eks_service import unregister_eks_cluster
+
                         unregistered = unregister_eks_cluster(db, module)
                         if unregistered:
                             logger.info(
-                                "Auto-unregistered EKS cluster for module %s", module.id,
+                                "Auto-unregistered EKS cluster for module %s",
+                                module.id,
                             )
                     except Exception as _unreg_exc:
                         logger.warning(
@@ -872,7 +898,8 @@ def run_cli_destroy(self, task_db_id: int, module_id: int, **kwargs):
                     _trigger_next_destroy_module(_exc_module, db, task.id)
             except Exception as trigger_err:
                 logger.warning(
-                    "_trigger_next_destroy_module failed after CLI ModuleLockError: %s", trigger_err,
+                    "_trigger_next_destroy_module failed after CLI ModuleLockError: %s",
+                    trigger_err,
                 )
             raise
 
@@ -892,7 +919,8 @@ def run_cli_destroy(self, task_db_id: int, module_id: int, **kwargs):
                     _trigger_next_destroy_module(_exc_module, db, task.id)
             except Exception as trigger_err:
                 logger.warning(
-                    "_trigger_next_destroy_module failed after CLI ModuleLockLostError: %s", trigger_err,
+                    "_trigger_next_destroy_module failed after CLI ModuleLockLostError: %s",
+                    trigger_err,
                 )
             raise
 
@@ -906,6 +934,7 @@ def run_cli_destroy(self, task_db_id: int, module_id: int, **kwargs):
                     _trigger_next_destroy_module(_exc_module, db, task.id)
             except Exception as trigger_err:
                 logger.warning(
-                    "_trigger_next_destroy_module failed after CLI generic exception: %s", trigger_err,
+                    "_trigger_next_destroy_module failed after CLI generic exception: %s",
+                    trigger_err,
                 )
             raise

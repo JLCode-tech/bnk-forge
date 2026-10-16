@@ -119,6 +119,14 @@ services:
       - provider_cache:/app/provider-cache
       - ./secrets:/app/secrets:ro
       - ./VERSION:/app/VERSION:ro
+      - ./bin/awsbnkctl:/usr/local/bin/awsbnkctl:ro
+      - ./backend/services:/app/services:ro
+      - ./backend/routes:/app/routes:ro
+      - ./backend/schemas:/app/schemas:ro
+      - ./backend/models:/app/models:ro
+      - ../awsbnkctl/.awsbnkctl:/app/.awsbnkctl:ro
+      - ../azrbnkctl/.azrbnkctl:/app/.azrbnkctl:ro
+      - ../gkebnkctl/.gkebnkctl:/app/.gkebnkctl:ro
 
   celery-worker:
     network_mode: !reset null
@@ -204,3 +212,13 @@ services:
       # On macOS host IP is typically 192.168.65.1 (Docker Desktop gateway) or
       # leave blank to let the agent resolve its hostname via container DNS.
       AGENT_ADVERTISE_IP: ${FORGE_AGENT_ADVERTISE_IP:-}
+    volumes:
+      - ./bin/awsbnkctl:/usr/local/bin/awsbnkctl:ro
+      - ./bin/azrbnkctl:/usr/local/bin/azrbnkctl:ro
+      - ./bin/gkebnkctl:/usr/local/bin/gkebnkctl:ro
+      - ~/.aws:/home/forgeagent/.aws:ro
+      - ./scripts/forge_agent_runner.py:/app/forge_agent_runner.py:ro
+      - ./scripts/forge_agent.py:/app/forge_agent.py:ro
+      - ../awsbnkctl/.awsbnkctl:/home/forgeagent/.awsbnkctl:ro
+      - ../azrbnkctl/.azrbnkctl:/home/forgeagent/.azrbnkctl:ro
+      - ../gkebnkctl/.gkebnkctl:/home/forgeagent/.gkebnkctl:ro

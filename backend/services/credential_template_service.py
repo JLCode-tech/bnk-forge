@@ -58,10 +58,7 @@ def validate_provider(provider: Any) -> str:
     """
     if provider not in SUPPORTED_PROVIDERS:
         supported = ", ".join(sorted(SUPPORTED_PROVIDERS))
-        raise BadRequestError(
-            f"Unsupported credential-template provider '{provider}'. "
-            f"Must be one of: {supported}."
-        )
+        raise BadRequestError(f"Unsupported credential-template provider '{provider}'. Must be one of: {supported}.")
     return provider
 
 
@@ -100,25 +97,35 @@ def _test_aws_template_via_boto3(template: Any) -> dict[str, Any]:
 
     from core.aws_config import adaptive_retry_config
 
-    if template.aws_auth_method == 'access_keys':
+    if template.aws_auth_method == "access_keys":
         if not template.aws_access_key_id:
-            return {"success": False, "error": "No access key ID configured",
-                    "message": "Please configure AWS credentials in this template"}
+            return {
+                "success": False,
+                "error": "No access key ID configured",
+                "message": "Please configure AWS credentials in this template",
+            }
         access_key = template.aws_access_key_id
-        secret_key = decrypt_value(template.aws_secret_access_key_encrypted) \
-            if template.aws_secret_access_key_encrypted else None
-        session_token = decrypt_value(template.aws_session_token_encrypted) \
-            if template.aws_session_token_encrypted else None
+        secret_key = (
+            decrypt_value(template.aws_secret_access_key_encrypted)
+            if template.aws_secret_access_key_encrypted
+            else None
+        )
+        session_token = (
+            decrypt_value(template.aws_session_token_encrypted) if template.aws_session_token_encrypted else None
+        )
         session = boto3.Session(
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
             aws_session_token=session_token,
             region_name=template.region or None,
         )
-    elif template.aws_auth_method == 'profile':
+    elif template.aws_auth_method == "profile":
         if not template.aws_profile:
-            return {"success": False, "error": "No AWS profile configured",
-                    "message": "Please configure AWS profile name in this template"}
+            return {
+                "success": False,
+                "error": "No AWS profile configured",
+                "message": "Please configure AWS profile name in this template",
+            }
         session = boto3.Session(profile_name=template.aws_profile, region_name=template.region or None)
     else:
         # SSO / other — fall back to default session, which will pick up
@@ -126,7 +133,7 @@ def _test_aws_template_via_boto3(template: Any) -> dict[str, Any]:
         session = boto3.Session(region_name=template.region or None)
 
     try:
-        sts = session.client('sts', config=adaptive_retry_config())
+        sts = session.client("sts", config=adaptive_retry_config())
         identity = sts.get_caller_identity()
         return {
             "success": True,
@@ -139,24 +146,25 @@ def _test_aws_template_via_boto3(template: Any) -> dict[str, Any]:
         code = e.response.get("Error", {}).get("Code", "ClientError")
         msg = e.response.get("Error", {}).get("Message", str(e))
         friendly = {
-            "ExpiredToken": ("Credentials have expired",
-                             "Your AWS session token has expired. Please refresh your credentials."),
-            "InvalidClientTokenId": ("Invalid credentials",
-                                     "The AWS access key ID you provided does not exist."),
-            "SignatureDoesNotMatch": ("Invalid secret key",
-                                      "The AWS secret access key you provided is incorrect."),
+            "ExpiredToken": (
+                "Credentials have expired",
+                "Your AWS session token has expired. Please refresh your credentials.",
+            ),
+            "InvalidClientTokenId": ("Invalid credentials", "The AWS access key ID you provided does not exist."),
+            "SignatureDoesNotMatch": ("Invalid secret key", "The AWS secret access key you provided is incorrect."),
         }.get(code, (code, msg))
         return {"success": False, "error": friendly[0], "message": friendly[1], "details": msg}
     except (ConnectTimeoutError, ReadTimeoutError) as e:
-        return {"success": False, "error": "AWS request timed out",
-                "message": "AWS API request timed out. Check network connectivity.",
-                "details": str(e)}
+        return {
+            "success": False,
+            "error": "AWS request timed out",
+            "message": "AWS API request timed out. Check network connectivity.",
+            "details": str(e),
+        }
     except BotoCoreError as e:
-        return {"success": False, "error": "AWS request failed",
-                "message": str(e), "details": str(e)}
+        return {"success": False, "error": "AWS request failed", "message": str(e), "details": str(e)}
     except Exception as e:
-        return {"success": False, "error": str(e),
-                "message": f"Failed to test credentials: {str(e)}"}
+        return {"success": False, "error": str(e), "message": f"Failed to test credentials: {str(e)}"}
 
 
 def _test_azure_template(template: Any, db: Session | None = None) -> dict[str, Any]:
@@ -164,7 +172,9 @@ def _test_azure_template(template: Any, db: Session | None = None) -> dict[str, 
     auth_service = AzureAuthService()
 
     # Check if SSO authentication was used or present
-    if template.azure_auth_method == 'sso' or (template.azure_sso_access_token_encrypted and not template.azure_client_secret_encrypted):
+    if template.azure_auth_method == "sso" or (
+        template.azure_sso_access_token_encrypted and not template.azure_client_secret_encrypted
+    ):
         if not template.azure_sso_access_token_encrypted:
             return {
                 "success": False,
@@ -192,7 +202,9 @@ def _test_azure_template(template: Any, db: Session | None = None) -> dict[str, 
                     template.azure_sso_access_token_encrypted = encrypt_value(access_token)
                     if refreshed.get("refresh_token"):
                         template.azure_sso_refresh_token_encrypted = encrypt_value(refreshed["refresh_token"])
-                    template.azure_sso_token_expiry = datetime.now(UTC) + timedelta(seconds=refreshed.get("expires_in", 3600))
+                    template.azure_sso_token_expiry = datetime.now(UTC) + timedelta(
+                        seconds=refreshed.get("expires_in", 3600)
+                    )
                     if db:
                         try:
                             db.commit()
@@ -296,6 +308,59 @@ def _test_azure_template(template: Any, db: Session | None = None) -> dict[str, 
         }
 
 
+def _test_gcp_template(template: Any) -> dict[str, Any]:
+    """Validate a GCP credential template by minting an OAuth2 token."""
+    if not template.gcp_credentials_encrypted:
+        return {
+            "success": False,
+            "error": "No GCP credentials configured",
+            "message": "Please configure a GCP service account JSON key in this template",
+        }
+    sa_json = decrypt_value(template.gcp_credentials_encrypted)
+    if not sa_json:
+        raise InternalError("Failed to decrypt GCP credentials")
+    try:
+        import json
+
+        sa_info = json.loads(sa_json)
+    except Exception as e:
+        return {
+            "success": False,
+            "error": "Invalid GCP credentials JSON",
+            "message": f"GCP service account credentials are not valid JSON: {e}",
+        }
+    try:
+        from google.auth.transport.requests import Request
+        from google.oauth2 import service_account
+
+        credentials = service_account.Credentials.from_service_account_info(
+            sa_info,
+            scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        )
+        session = requests.Session()
+        credentials.refresh(Request(session=session))
+        if credentials.token:
+            client_email = sa_info.get("client_email")
+            project_id = sa_info.get("project_id") or template.gcp_project_id
+            return {
+                "success": True,
+                "message": f"GCP service account '{client_email}' is valid and working",
+                "account_id": client_email,
+                "details": f"Project: {project_id}",
+            }
+        return {
+            "success": False,
+            "error": "Failed to obtain GCP token",
+            "message": "Service account credentials could not generate an access token",
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": "GCP credential test failed",
+            "message": f"Failed to test GCP credentials: {str(e)}",
+        }
+
+
 class CredentialTemplateService:
     """Service layer for cloud credential template operations."""
 
@@ -307,22 +372,27 @@ class CredentialTemplateService:
     # ================================================================
 
     def _get_template(self, template_id: int) -> CloudCredentialTemplate:
-        template = self.db.query(CloudCredentialTemplate).filter(
-            CloudCredentialTemplate.id == template_id
-        ).first()
+        template = self.db.query(CloudCredentialTemplate).filter(CloudCredentialTemplate.id == template_id).first()
         if not template:
             raise NotFoundError("template", template_id)
         return template
 
-    def _create_audit_log(self, action: str, template: CloudCredentialTemplate,
-                          status: str, details: dict = None, request=None):
+    def _create_audit_log(
+        self, action: str, template: CloudCredentialTemplate, status: str, details: dict = None, request=None
+    ):
         """Helper to create audit log for SSO actions."""
         try:
             from services.audit_service import log_from_request
+
             log_from_request(
-                self.db, action=action, resource_type="credential_template",
-                request=request, resource_id=str(template.id),
-                resource_name=template.name, status=status, details=details,
+                self.db,
+                action=action,
+                resource_type="credential_template",
+                request=request,
+                resource_id=str(template.id),
+                resource_name=template.name,
+                status=status,
+                details=details,
             )
         except Exception as e:
             logger.error(f"Failed to create audit log: {e}")
@@ -391,9 +461,7 @@ class CredentialTemplateService:
         query = self.db.query(CloudCredentialTemplate)
         if provider:
             query = query.filter(CloudCredentialTemplate.provider == provider)
-        templates = query.order_by(
-            CloudCredentialTemplate.is_default.desc(), CloudCredentialTemplate.name
-        ).all()
+        templates = query.order_by(CloudCredentialTemplate.is_default.desc(), CloudCredentialTemplate.name).all()
         return [self.serialize_template(t) for t in templates]
 
     def get_template(self, template_id: int) -> dict:
@@ -408,21 +476,23 @@ class CredentialTemplateService:
         validate_provider(template_data.provider)
 
         # Duplicate name check
-        existing = self.db.query(CloudCredentialTemplate).filter(
-            CloudCredentialTemplate.name == template_data.name
-        ).first()
+        existing = (
+            self.db.query(CloudCredentialTemplate).filter(CloudCredentialTemplate.name == template_data.name).first()
+        )
         if existing:
             raise BadRequestError(f"Credential template '{template_data.name}' already exists")
 
-        if (template_data.provider == 'azure' and getattr(template_data, "azure_auth_method", None) == 'sso'
-                and template_data.is_default):
+        if (
+            template_data.provider == "azure"
+            and getattr(template_data, "azure_auth_method", None) == "sso"
+            and template_data.is_default
+        ):
             raise BadRequestError(_SSO_DEFAULT_ERROR)
 
         # Default management
         if template_data.is_default:
             self.db.query(CloudCredentialTemplate).filter(
-                CloudCredentialTemplate.provider == template_data.provider,
-                CloudCredentialTemplate.is_default
+                CloudCredentialTemplate.provider == template_data.provider, CloudCredentialTemplate.is_default
             ).update({"is_default": False})
 
         region = template_data.region
@@ -449,14 +519,13 @@ class CredentialTemplateService:
             azure_client_id=getattr(template_data, "azure_client_id", None),
             ibmcloud_resource_group=getattr(template_data, "ibmcloud_resource_group", None) or "default",
             ibm_cos_instance_name=getattr(template_data, "ibm_cos_instance_name", None),
-            tfc_hostname=getattr(template_data, "tfc_hostname", None) or (
-                "app.terraform.io" if getattr(template_data, "tfc_api_token", None) else None
-            ),
+            tfc_hostname=getattr(template_data, "tfc_hostname", None)
+            or ("app.terraform.io" if getattr(template_data, "tfc_api_token", None) else None),
             ssh_host=template_data.ssh_host,
             ssh_port=template_data.ssh_port or 22,
             ssh_username=template_data.ssh_username,
             ssh_auth_type=template_data.ssh_auth_type,
-            is_default=template_data.is_default
+            is_default=template_data.is_default,
         )
 
         # Encrypt sensitive fields
@@ -466,9 +535,9 @@ class CredentialTemplateService:
             template.aws_session_token_encrypted = encrypt_value(template_data.aws_session_token)
         if template_data.gcp_credentials:
             template.gcp_credentials_encrypted = encrypt_value(template_data.gcp_credentials)
-        if getattr(template_data, "azure_client_secret", None) and template.azure_auth_method != 'sso':
+        if getattr(template_data, "azure_client_secret", None) and template.azure_auth_method != "sso":
             template.azure_client_secret_encrypted = encrypt_value(template_data.azure_client_secret)
-        if template_data.azure_credentials and template.azure_auth_method != 'sso':
+        if template_data.azure_credentials and template.azure_auth_method != "sso":
             template.azure_credentials_encrypted = encrypt_value(template_data.azure_credentials)
         if template_data.ibmcloud_api_key:
             template.ibmcloud_api_key_encrypted = encrypt_value(template_data.ibmcloud_api_key)
@@ -491,16 +560,17 @@ class CredentialTemplateService:
         template = self._get_template(template_id)
 
         if template_data.name and template_data.name != template.name:
-            existing = self.db.query(CloudCredentialTemplate).filter(
-                CloudCredentialTemplate.name == template_data.name
-            ).first()
+            existing = (
+                self.db.query(CloudCredentialTemplate)
+                .filter(CloudCredentialTemplate.name == template_data.name)
+                .first()
+            )
             if existing:
                 raise BadRequestError(f"Credential template '{template_data.name}' already exists")
 
         if template_data.is_default and not template.is_default:
             self.db.query(CloudCredentialTemplate).filter(
-                CloudCredentialTemplate.provider == template.provider,
-                CloudCredentialTemplate.is_default
+                CloudCredentialTemplate.provider == template.provider, CloudCredentialTemplate.is_default
             ).update({"is_default": False})
 
         old_azure = (template.azure_auth_method, template.azure_tenant_id, template.azure_client_id)
@@ -540,7 +610,7 @@ class CredentialTemplateService:
             if hasattr(template, key):
                 setattr(template, key, value)
 
-        if template.provider == 'azure':
+        if template.provider == "azure":
             self._apply_azure_auth_change(template, *old_azure)
 
         template.updated_at = datetime.now(UTC)
@@ -549,11 +619,12 @@ class CredentialTemplateService:
         return self.serialize_template(template)
 
     @staticmethod
-    def _apply_azure_auth_change(template: CloudCredentialTemplate, old_method: str | None,
-                                 old_tenant_id: str | None, old_client_id: str | None) -> None:
+    def _apply_azure_auth_change(
+        template: CloudCredentialTemplate, old_method: str | None, old_tenant_id: str | None, old_client_id: str | None
+    ) -> None:
         """Drop credentials that no longer match the template's Azure identity."""
         method_changed = template.azure_auth_method != old_method
-        if template.azure_auth_method == 'sso':
+        if template.azure_auth_method == "sso":
             if method_changed and template.projects:
                 raise BadRequestError(
                     f"Cannot switch to Entra ID SSO. {len(template.projects)} project(s) use this template, "
@@ -563,9 +634,10 @@ class CredentialTemplateService:
                 raise BadRequestError(_SSO_DEFAULT_ERROR)
             template.azure_client_secret_encrypted = None
             template.azure_credentials_encrypted = None
-        identity_changed = ((template.azure_tenant_id or None) != (old_tenant_id or None)
-                            or (template.azure_client_id or None) != (old_client_id or None))
-        if (method_changed and old_method == 'sso') or identity_changed:
+        identity_changed = (template.azure_tenant_id or None) != (old_tenant_id or None) or (
+            template.azure_client_id or None
+        ) != (old_client_id or None)
+        if (method_changed and old_method == "sso") or identity_changed:
             clear_azure_sso_session(template)
 
     def delete_template(self, template_id: int) -> None:
@@ -594,8 +666,9 @@ class CredentialTemplateService:
         template = self._get_template(template_id)
         result = self._test_template_inner(template)
         # Observation: stamp observation for AWS and Azure templates
-        if template.provider == 'aws':
+        if template.provider == "aws":
             from services.cloud_observation import record_aws_observation
+
             if result.get("success"):
                 record_aws_observation(template_id, success=True)
             else:
@@ -604,8 +677,9 @@ class CredentialTemplateService:
                     message=(result.get("message") or result.get("details") or "")[:1000],
                 )
                 record_aws_observation(template_id, success=False, error=err)
-        elif template.provider == 'azure':
+        elif template.provider == "azure":
             from services.cloud_observation import record_azure_observation
+
             if result.get("success"):
                 record_azure_observation(template_id, success=True)
             else:
@@ -621,8 +695,9 @@ class CredentialTemplateService:
         """Execute the credential test and return the raw result dict."""
 
         # SSH provider
-        if template.provider == 'ssh':
+        if template.provider == "ssh":
             from services.ssh_tunnel_manager import get_tunnel_manager
+
             tunnel_mgr = get_tunnel_manager()
             return tunnel_mgr.test_ssh_connection(
                 ssh_host=template.ssh_host,
@@ -634,10 +709,10 @@ class CredentialTemplateService:
                 ssh_key_passphrase_encrypted=template.ssh_key_passphrase_encrypted,
             )
 
-        if template.provider == 'azure':
+        if template.provider == "azure":
             return _test_azure_template(template, db=self.db)
 
-        if template.provider == 'ibm':
+        if template.provider == "ibm":
             if not template.ibmcloud_api_key_encrypted:
                 return {
                     "success": False,
@@ -713,9 +788,13 @@ class CredentialTemplateService:
                     "message": f"Failed to test IBM Cloud credentials: {str(e)}",
                 }
 
-        if template.provider != 'aws':
+        if template.provider == "gcp":
+            return _test_gcp_template(template)
+
+        if template.provider != "aws":
             raise BadRequestError(
-                f"Credential testing only supported for AWS, Azure, IBM, and SSH. This template is {template.provider}")
+                f"Credential testing only supported for AWS, Azure, GCP, IBM, and SSH. This template is {template.provider}"
+            )
 
         return _test_aws_template_via_boto3(template)
 
@@ -726,8 +805,8 @@ class CredentialTemplateService:
     @staticmethod
     def _has_complete_sso_config(template: Any) -> bool:
         """Return True when the template has all fields required to run SSO device auth."""
-        if template.provider == 'azure':
-            return template.azure_auth_method == 'sso'
+        if template.provider == "azure":
+            return template.azure_auth_method == "sso"
         return bool(
             template.aws_sso_start_url
             and template.aws_sso_region
@@ -739,67 +818,81 @@ class CredentialTemplateService:
         """Initiate SSO device code flow for AWS or Azure."""
         template = self._get_template(template_id)
 
-        if template.provider == 'azure':
+        if template.provider == "azure":
             if not self._has_complete_sso_config(template):
-                raise BadRequestError("Azure SSO is not enabled for this template. Set the authentication method to Entra ID SSO.")
+                raise BadRequestError(
+                    "Azure SSO is not enabled for this template. Set the authentication method to Entra ID SSO."
+                )
             auth_service = AzureAuthService()
             result = auth_service.initiate_device_authorization(
                 tenant_id=template.azure_tenant_id or "common",
                 client_id=template.azure_client_id,
             )
-            self._create_audit_log("azure_sso_auth_initiated", template, "success", {
-                "tenant_id": template.azure_tenant_id or "common",
-                "client_id": result['client_id'],
-            })
+            self._create_audit_log(
+                "azure_sso_auth_initiated",
+                template,
+                "success",
+                {
+                    "tenant_id": template.azure_tenant_id or "common",
+                    "client_id": result["client_id"],
+                },
+            )
             return {
                 "success": True,
                 "message": "Azure device authorization initiated",
                 "data": {
-                    "user_code": result['user_code'],
-                    "verification_uri": result['verification_uri'],
-                    "verification_uri_complete": result['verification_uri_complete'],
-                    "expires_in": result['expires_in'],
-                    "interval": result['interval'],
-                    "device_code": result['device_code'],
+                    "user_code": result["user_code"],
+                    "verification_uri": result["verification_uri"],
+                    "verification_uri_complete": result["verification_uri_complete"],
+                    "expires_in": result["expires_in"],
+                    "interval": result["interval"],
+                    "device_code": result["device_code"],
                     "message": result.get("message"),
-                }
+                },
             }
 
         if not self._has_complete_sso_config(template):
-            raise BadRequestError("SSO configuration incomplete. Please provide SSO start URL, region, account ID, and role name.")
+            raise BadRequestError(
+                "SSO configuration incomplete. Please provide SSO start URL, region, account ID, and role name."
+            )
 
         auth_service = AWSAuthService()
         result = auth_service.initiate_device_authorization(
             start_url=template.aws_sso_start_url, region=template.aws_sso_region
         )
 
-        template.aws_sso_client_id = result['client_id']
-        template.aws_sso_client_secret_encrypted = encrypt_value(result['client_secret'])
+        template.aws_sso_client_id = result["client_id"]
+        template.aws_sso_client_secret_encrypted = encrypt_value(result["client_secret"])
 
-        self._create_audit_log("sso_auth_initiated", template, "success",
-                               {"sso_region": template.aws_sso_region,
-                                "account_id": template.aws_sso_account_id})
+        self._create_audit_log(
+            "sso_auth_initiated",
+            template,
+            "success",
+            {"sso_region": template.aws_sso_region, "account_id": template.aws_sso_account_id},
+        )
 
         return {
             "success": True,
             "message": "SSO device authorization initiated",
             "data": {
-                "user_code": result['user_code'],
-                "verification_uri": result['verification_uri'],
-                "verification_uri_complete": result['verification_uri_complete'],
-                "expires_in": result['expires_in'],
-                "interval": result['interval'],
-                "device_code": result['device_code']
-            }
+                "user_code": result["user_code"],
+                "verification_uri": result["verification_uri"],
+                "verification_uri_complete": result["verification_uri_complete"],
+                "expires_in": result["expires_in"],
+                "interval": result["interval"],
+                "device_code": result["device_code"],
+            },
         }
 
     def poll_sso(self, template_id: int, device_code: str) -> dict[str, Any]:
         """Poll for SSO authentication completion. Returns dict or raises."""
         template = self._get_template(template_id)
 
-        if template.provider == 'azure':
+        if template.provider == "azure":
             if not self._has_complete_sso_config(template):
-                raise BadRequestError("Azure SSO is not enabled for this template. Set the authentication method to Entra ID SSO.")
+                raise BadRequestError(
+                    "Azure SSO is not enabled for this template. Set the authentication method to Entra ID SSO."
+                )
             auth_service = AzureAuthService()
             try:
                 token_data = auth_service.poll_for_token(
@@ -817,11 +910,11 @@ class CredentialTemplateService:
             if token_data.get("pending"):
                 return {"success": False, "message": "Authorization pending", "pending": True}
 
-            template.azure_sso_access_token_encrypted = encrypt_value(token_data['access_token'])
-            if token_data.get('refresh_token'):
-                template.azure_sso_refresh_token_encrypted = encrypt_value(token_data['refresh_token'])
+            template.azure_sso_access_token_encrypted = encrypt_value(token_data["access_token"])
+            if token_data.get("refresh_token"):
+                template.azure_sso_refresh_token_encrypted = encrypt_value(token_data["refresh_token"])
 
-            expires_in = token_data.get('expires_in', 3600)
+            expires_in = token_data.get("expires_in", 3600)
             template.azure_sso_token_expiry = datetime.now(UTC) + timedelta(seconds=expires_in)
             template.azure_sso_authenticated_at = datetime.now(UTC)
             template.last_successful_call_at = datetime.now(UTC)
@@ -831,10 +924,15 @@ class CredentialTemplateService:
 
             resolve_azure_refresh_failure(self.db, template.id)
 
-            self._create_audit_log("azure_sso_auth_completed", template, "success", {
-                "tenant_id": template.azure_tenant_id,
-                "token_expiry": template.azure_sso_token_expiry.isoformat(),
-            })
+            self._create_audit_log(
+                "azure_sso_auth_completed",
+                template,
+                "success",
+                {
+                    "tenant_id": template.azure_tenant_id,
+                    "token_expiry": template.azure_sso_token_expiry.isoformat(),
+                },
+            )
 
             return {
                 "success": True,
@@ -843,7 +941,7 @@ class CredentialTemplateService:
                     "authenticated_at": template.azure_sso_authenticated_at.isoformat(),
                     "token_expiry": template.azure_sso_token_expiry.isoformat(),
                     "has_credentials": True,
-                }
+                },
             }
 
         if not template.aws_sso_client_id or not template.aws_sso_client_secret_encrypted:
@@ -857,10 +955,14 @@ class CredentialTemplateService:
                     "message": "SSO authentication already complete",
                     "data": {
                         "authenticated_at": template.aws_sso_authenticated_at.isoformat(),
-                        "token_expiry": template.aws_sso_token_expiry.isoformat() if template.aws_sso_token_expiry else None,
-                        "credentials_expiry": template.aws_credentials_expiry.isoformat() if template.aws_credentials_expiry else None,
-                        "has_credentials": template.aws_access_key_id is not None
-                    }
+                        "token_expiry": template.aws_sso_token_expiry.isoformat()
+                        if template.aws_sso_token_expiry
+                        else None,
+                        "credentials_expiry": template.aws_credentials_expiry.isoformat()
+                        if template.aws_credentials_expiry
+                        else None,
+                        "has_credentials": template.aws_access_key_id is not None,
+                    },
                 }
 
         client_secret = decrypt_value(template.aws_sso_client_secret_encrypted)
@@ -875,7 +977,7 @@ class CredentialTemplateService:
                 client_secret=client_secret,
                 device_code=device_code,
                 region=template.aws_sso_region,
-                max_attempts=1
+                max_attempts=1,
             )
         except Exception as e:
             error_msg = str(e)
@@ -886,11 +988,11 @@ class CredentialTemplateService:
             raise InternalError(error_msg)
 
         # Store SSO tokens
-        template.aws_sso_access_token_encrypted = encrypt_value(token_data['access_token'])
-        if token_data.get('refresh_token'):
-            template.aws_sso_refresh_token_encrypted = encrypt_value(token_data['refresh_token'])
+        template.aws_sso_access_token_encrypted = encrypt_value(token_data["access_token"])
+        if token_data.get("refresh_token"):
+            template.aws_sso_refresh_token_encrypted = encrypt_value(token_data["refresh_token"])
 
-        expires_in = token_data.get('expires_in', 28800)
+        expires_in = token_data.get("expires_in", 28800)
         template.aws_sso_token_expiry = datetime.now(UTC) + timedelta(seconds=expires_in)
         template.aws_sso_authenticated_at = datetime.now(UTC)
 
@@ -906,24 +1008,31 @@ class CredentialTemplateService:
         if template.aws_sso_account_id and template.aws_sso_role_name:
             try:
                 credentials = auth_service.get_account_credentials(
-                    access_token=token_data['access_token'],
+                    access_token=token_data["access_token"],
                     account_id=template.aws_sso_account_id,
                     role_name=template.aws_sso_role_name,
-                    region=template.aws_sso_region
+                    region=template.aws_sso_region,
                 )
-                template.aws_access_key_id = credentials['access_key_id']
-                template.aws_secret_access_key_encrypted = encrypt_value(credentials['secret_access_key'])
-                template.aws_session_token_encrypted = encrypt_value(credentials['session_token'])
-                template.aws_credentials_expiry = datetime.fromisoformat(credentials['expiration'])
+                template.aws_access_key_id = credentials["access_key_id"]
+                template.aws_secret_access_key_encrypted = encrypt_value(credentials["secret_access_key"])
+                template.aws_session_token_encrypted = encrypt_value(credentials["session_token"])
+                template.aws_credentials_expiry = datetime.fromisoformat(credentials["expiration"])
             except Exception as e:
                 logger.warning(f"SSO token obtained but credential exchange failed: {e}")
 
-        self._create_audit_log("sso_auth_completed", template, "success", {
-            "account_id": template.aws_sso_account_id,
-            "role_name": template.aws_sso_role_name,
-            "token_expiry": template.aws_sso_token_expiry.isoformat() if template.aws_sso_token_expiry else None,
-            "credentials_expiry": template.aws_credentials_expiry.isoformat() if template.aws_credentials_expiry else None
-        })
+        self._create_audit_log(
+            "sso_auth_completed",
+            template,
+            "success",
+            {
+                "account_id": template.aws_sso_account_id,
+                "role_name": template.aws_sso_role_name,
+                "token_expiry": template.aws_sso_token_expiry.isoformat() if template.aws_sso_token_expiry else None,
+                "credentials_expiry": template.aws_credentials_expiry.isoformat()
+                if template.aws_credentials_expiry
+                else None,
+            },
+        )
 
         return {
             "success": True,
@@ -931,16 +1040,18 @@ class CredentialTemplateService:
             "data": {
                 "authenticated_at": template.aws_sso_authenticated_at.isoformat(),
                 "token_expiry": template.aws_sso_token_expiry.isoformat() if template.aws_sso_token_expiry else None,
-                "credentials_expiry": template.aws_credentials_expiry.isoformat() if template.aws_credentials_expiry else None,
-                "has_credentials": template.aws_access_key_id is not None
-            }
+                "credentials_expiry": template.aws_credentials_expiry.isoformat()
+                if template.aws_credentials_expiry
+                else None,
+                "has_credentials": template.aws_access_key_id is not None,
+            },
         }
 
     def refresh_sso(self, template_id: int) -> dict[str, Any]:
         """Refresh SSO credentials using stored refresh token."""
         template = self._get_template(template_id)
 
-        if template.provider == 'azure':
+        if template.provider == "azure":
             if not template.azure_sso_refresh_token_encrypted:
                 raise BadRequestError("No refresh token available. Please re-authenticate.")
             refresh_token = decrypt_value(template.azure_sso_refresh_token_encrypted)
@@ -959,11 +1070,11 @@ class CredentialTemplateService:
                     raise
                 raise InternalError(f"Failed to refresh Azure SSO credentials: {str(e)}")
 
-            template.azure_sso_access_token_encrypted = encrypt_value(token_data['access_token'])
-            if token_data.get('refresh_token'):
-                template.azure_sso_refresh_token_encrypted = encrypt_value(token_data['refresh_token'])
+            template.azure_sso_access_token_encrypted = encrypt_value(token_data["access_token"])
+            if token_data.get("refresh_token"):
+                template.azure_sso_refresh_token_encrypted = encrypt_value(token_data["refresh_token"])
 
-            expires_in = token_data.get('expires_in', 3600)
+            expires_in = token_data.get("expires_in", 3600)
             template.azure_sso_token_expiry = datetime.now(UTC) + timedelta(seconds=expires_in)
             template.last_successful_call_at = datetime.now(UTC)
             template.last_error_at = None
@@ -972,16 +1083,21 @@ class CredentialTemplateService:
 
             resolve_azure_refresh_failure(self.db, template.id)
 
-            self._create_audit_log("azure_sso_refreshed", template, "success", {
-                "token_expiry": template.azure_sso_token_expiry.isoformat(),
-            })
+            self._create_audit_log(
+                "azure_sso_refreshed",
+                template,
+                "success",
+                {
+                    "token_expiry": template.azure_sso_token_expiry.isoformat(),
+                },
+            )
 
             return {
                 "success": True,
                 "message": "Azure SSO credentials refreshed successfully",
                 "data": {
                     "token_expiry": template.azure_sso_token_expiry.isoformat(),
-                }
+                },
             }
 
         if not template.aws_sso_refresh_token_encrypted:
@@ -998,33 +1114,32 @@ class CredentialTemplateService:
                 refresh_token=refresh_token,
                 client_id=template.aws_sso_client_id,
                 client_secret=client_secret,
-                region=template.aws_sso_region
+                region=template.aws_sso_region,
             )
         except AppError:
             raise
         except Exception as e:
-            self._create_audit_log("sso_credentials_refresh_failed", template, "failed",
-                                   {"error": str(e)})
+            self._create_audit_log("sso_credentials_refresh_failed", template, "failed", {"error": str(e)})
             raise InternalError(f"Failed to refresh SSO credentials: {str(e)}")
 
-        template.aws_sso_access_token_encrypted = encrypt_value(token_data['access_token'])
-        if token_data.get('refresh_token'):
-            template.aws_sso_refresh_token_encrypted = encrypt_value(token_data['refresh_token'])
+        template.aws_sso_access_token_encrypted = encrypt_value(token_data["access_token"])
+        if token_data.get("refresh_token"):
+            template.aws_sso_refresh_token_encrypted = encrypt_value(token_data["refresh_token"])
 
-        expires_in = token_data.get('expires_in', 28800)
+        expires_in = token_data.get("expires_in", 28800)
         template.aws_sso_token_expiry = datetime.now(UTC) + timedelta(seconds=expires_in)
 
         if template.aws_sso_account_id and template.aws_sso_role_name:
             credentials = auth_service.get_account_credentials(
-                access_token=token_data['access_token'],
+                access_token=token_data["access_token"],
                 account_id=template.aws_sso_account_id,
                 role_name=template.aws_sso_role_name,
-                region=template.aws_sso_region
+                region=template.aws_sso_region,
             )
-            template.aws_access_key_id = credentials['access_key_id']
-            template.aws_secret_access_key_encrypted = encrypt_value(credentials['secret_access_key'])
-            template.aws_session_token_encrypted = encrypt_value(credentials['session_token'])
-            template.aws_credentials_expiry = datetime.fromisoformat(credentials['expiration'])
+            template.aws_access_key_id = credentials["access_key_id"]
+            template.aws_secret_access_key_encrypted = encrypt_value(credentials["secret_access_key"])
+            template.aws_session_token_encrypted = encrypt_value(credentials["session_token"])
+            template.aws_credentials_expiry = datetime.fromisoformat(credentials["expiration"])
 
         # Credential refresh succeeded — clear any stale failed-observation badge.
         _now = datetime.now(UTC)
@@ -1033,25 +1148,34 @@ class CredentialTemplateService:
         template.last_error_code = None
         template.last_error_message = None
 
-        self._create_audit_log("sso_credentials_refreshed", template, "success", {
-            "token_expiry": template.aws_sso_token_expiry.isoformat() if template.aws_sso_token_expiry else None,
-            "credentials_expiry": template.aws_credentials_expiry.isoformat() if template.aws_credentials_expiry else None
-        })
+        self._create_audit_log(
+            "sso_credentials_refreshed",
+            template,
+            "success",
+            {
+                "token_expiry": template.aws_sso_token_expiry.isoformat() if template.aws_sso_token_expiry else None,
+                "credentials_expiry": template.aws_credentials_expiry.isoformat()
+                if template.aws_credentials_expiry
+                else None,
+            },
+        )
 
         return {
             "success": True,
             "message": "SSO credentials refreshed successfully",
             "data": {
                 "token_expiry": template.aws_sso_token_expiry.isoformat() if template.aws_sso_token_expiry else None,
-                "credentials_expiry": template.aws_credentials_expiry.isoformat() if template.aws_credentials_expiry else None
-            }
+                "credentials_expiry": template.aws_credentials_expiry.isoformat()
+                if template.aws_credentials_expiry
+                else None,
+            },
         }
 
     def get_sso_status(self, template_id: int) -> dict[str, Any]:
         """Get SSO authentication status for a credential template."""
         template = self._get_template(template_id)
 
-        if template.provider == 'azure':
+        if template.provider == "azure":
             now = datetime.now(UTC)
             if now.tzinfo is None:
                 now = now.replace(tzinfo=UTC)
@@ -1063,21 +1187,26 @@ class CredentialTemplateService:
             can_refresh = template.azure_sso_refresh_token_encrypted is not None
             return {
                 "success": True,
-                "sso_enabled": template.azure_auth_method == 'sso' or is_authenticated,
+                "sso_enabled": template.azure_auth_method == "sso" or is_authenticated,
                 "is_authenticated": is_authenticated,
-                "authenticated_at": template.azure_sso_authenticated_at.isoformat() if template.azure_sso_authenticated_at else None,
+                "authenticated_at": template.azure_sso_authenticated_at.isoformat()
+                if template.azure_sso_authenticated_at
+                else None,
                 "token_expired": token_expired,
-                "token_expiry": template.azure_sso_token_expiry.isoformat() if template.azure_sso_token_expiry else None,
+                "token_expiry": template.azure_sso_token_expiry.isoformat()
+                if template.azure_sso_token_expiry
+                else None,
                 "credentials_expired": token_expired,
-                "credentials_expiry": template.azure_sso_token_expiry.isoformat() if template.azure_sso_token_expiry else None,
+                "credentials_expiry": template.azure_sso_token_expiry.isoformat()
+                if template.azure_sso_token_expiry
+                else None,
                 "has_credentials": is_authenticated and not token_expired,
                 "can_refresh": can_refresh,
                 "needs_reauth": token_expired and not can_refresh,
             }
 
         if not template.aws_sso_enabled:
-            return {"success": True, "sso_enabled": False,
-                    "message": "SSO is not enabled for this template"}
+            return {"success": True, "sso_enabled": False, "message": "SSO is not enabled for this template"}
 
         now = datetime.now(UTC)
         if now.tzinfo is None:
@@ -1098,12 +1227,16 @@ class CredentialTemplateService:
             "success": True,
             "sso_enabled": True,
             "is_authenticated": is_authenticated,
-            "authenticated_at": template.aws_sso_authenticated_at.isoformat() if template.aws_sso_authenticated_at else None,
+            "authenticated_at": template.aws_sso_authenticated_at.isoformat()
+            if template.aws_sso_authenticated_at
+            else None,
             "token_expired": token_expired,
             "token_expiry": template.aws_sso_token_expiry.isoformat() if template.aws_sso_token_expiry else None,
             "credentials_expired": credentials_expired,
-            "credentials_expiry": template.aws_credentials_expiry.isoformat() if template.aws_credentials_expiry else None,
+            "credentials_expiry": template.aws_credentials_expiry.isoformat()
+            if template.aws_credentials_expiry
+            else None,
             "has_credentials": template.aws_access_key_id is not None,
             "can_refresh": can_refresh,
-            "needs_reauth": (token_expired and not can_refresh) or (credentials_expired and token_expired)
+            "needs_reauth": (token_expired and not can_refresh) or (credentials_expired and token_expired),
         }

@@ -188,6 +188,7 @@ services:
       # Custom TLS CA certificates (corporate SSL inspection proxies). Read-only;
       # backend/entrypoint.sh installs them into the system trust store on startup.
       - ./certs:/app/certs:ro
+      - ./bin/awsbnkctl:/usr/local/bin/awsbnkctl:ro
       # Backend-specific volumes (not needed by workers)
       - ./VERSION:/app/VERSION:ro
       # SEC-004: Docker socket moved to docker-compose.override.yml (opt-in).
@@ -576,6 +577,7 @@ services:
       # token is deliberately narrow (role=agent, no agent_id): it can register
       # and open a claimless WS, nothing more.
       - bnk-forge-agent-token:/run/forge:ro
+      - ./bin/awsbnkctl:/usr/local/bin/awsbnkctl:ro
     depends_on:
       backend:
         condition: service_healthy

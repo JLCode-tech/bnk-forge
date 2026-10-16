@@ -5,6 +5,7 @@ Mocks SSHSession so no real SSH is required.  Asserts:
 - scan route dispatches task and returns 202
 - scan route rejects non-managed / nonexistent hosts
 """
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -27,6 +28,7 @@ from tests.factories import (
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_session(
     *,
@@ -102,6 +104,7 @@ def _make_target(target_id: int = 1, name: str = "target-1", base_url: str = "ht
 # ---------------------------------------------------------------------------
 # Unit tests — build_readiness verdict logic (no DB)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.unit
 class TestBuildReadinessVerdicts:
@@ -187,8 +190,10 @@ class TestBuildReadinessVerdicts:
 # Component tests — scan route (HTTP level)
 # ---------------------------------------------------------------------------
 
+
 def _ssh_cred(db):
     from models.ssh_credential import SSHCredential
+
     n = _next_seq("ssh_cred_scan")
     c = SSHCredential(name=f"scan-cred-{n}", host=f"10.0.{n}.1", port=22, username="root", auth_type="key")
     db.add(c)
@@ -292,13 +297,42 @@ class TestAgentHostScanRoute:
         # Verify target_ids were passed through to the task
         mock_delay.assert_called_once_with(host_id, [1, 2, 3])
 
+    def test_scan_outbound_agent_rejected_with_code(self, client, admin_headers, sample_user, db):
+        project = ProjectFactory(db, user_id=sample_user.id)
+        db.commit()
+
+        create_resp = client.post(
+            "/api/benchmarks/agent-hosts",
+            json={
+                "name": "scan-outbound-agent",
+                "project_id": project.id,
+                "agent_mode": "outbound",
+            },
+            headers=admin_headers,
+        )
+        assert create_resp.status_code == 201, create_resp.text
+        host_id = create_resp.json()["id"]
+
+        resp = client.post(
+            f"/api/benchmarks/agent-hosts/{host_id}/scan",
+            json={},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 400
+        data = resp.json()
+        assert (
+            data.get("error", {}).get("code") == "AGENT_NOT_SSH_MANAGED" or data.get("code") == "AGENT_NOT_SSH_MANAGED"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Component tests — _resolve_targets project scoping (regression: cross-project leak)
 # ---------------------------------------------------------------------------
 
+
 def _managed_agent(db, *, project_id: int, host_ip: str = "10.0.9.1"):
     from models.benchmark import BenchmarkAgent
+
     n = _next_seq("scan_agent")
     agent = BenchmarkAgent(
         name=f"managed-scan-agent-{n}",
