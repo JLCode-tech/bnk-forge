@@ -94,11 +94,7 @@ _VIRTUAL_SERVER_COLUMNS = [
     "serverside.tot_conns",
 ]
 
-_FW_RULE_COLUMNS = [
-    "name",
-    "hit_count",
-    "action",
-]
+_FW_RULE_COLUMNS: list[str] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -668,30 +664,52 @@ def _analyze_firewall_rule_stats(
     resources = data.get("resources", {}) or {}
     policies = resources.get("f5bigfwpolicy", []) or []
 
-    # Build a lookup from plausible TMM rule name → policy + rule
+    # Build a lookup from plausible TMM rule name → policy + rule,
+    # and pre-populate all declared rules with hitCount = 0 so that when
+    # traffic stats are available, the UI displays 0 hits instead of '-'
+    policy_rules: dict[tuple[str, str, str], dict[str, Any]] = {}
     rule_index: dict[str, tuple[str, str, dict]] = {}
+
     for policy in policies:
         policy_name = resource_name(policy)
         policy_ns = resource_ns(policy)
-        for rule in (policy.get("spec", {}).get("rule", []) or []):
+        rules = policy.get("spec", {}).get("rule") or policy.get("spec", {}).get("rules") or []
+        for rule in rules:
             rule_name = rule.get("name", "")
             if not rule_name:
                 continue
+            key = (policy_ns, policy_name, rule_name)
+            policy_rules[key] = {
+                "policyName": policy_name,
+                "namespace": policy_ns,
+                "ruleName": rule_name,
+                "action": rule.get("action", ""),
+                "ipProtocol": rule.get("ipProtocol", ""),
+                "hitCount": 0,
+            }
             tmm_name = _normalize_name(f"{policy_name}_{rule_name}")
             rule_index[tmm_name] = (policy_name, policy_ns, rule)
-            # Some TMM builds use just the rule name
+            # Some TMM builds use just the rule name, or append -firewallpolicyrule suffix
             rule_index[_normalize_name(rule_name)] = (policy_name, policy_ns, rule)
+            rule_index[_normalize_name(f"{rule_name}-firewallpolicyrule")] = (policy_name, policy_ns, rule)
+            rule_index[_normalize_name(f"{policy_name}_{rule_name}-firewallpolicyrule")] = (policy_name, policy_ns, rule)
 
-    results: list[dict[str, Any]] = []
-    seen: set[tuple[str, str, str]] = set()
+    unmatched: list[dict[str, Any]] = []
+    seen_unmatched: set[str] = set()
+
     for row in fw_rows:
-        raw_name = (row.get("name") or "").strip()
+        raw_name = (row.get("rule_name") or row.get("name") or "").strip()
         if not raw_name:
             continue
         normalized = _normalize_name(raw_name)
-        hit_count = _find_counter(row, "hit_count", "hits", "hitcount")
+        hit_count = _find_counter(row, "counter", "hw_counter", "hit_count", "hits", "hitcount")
 
         matched = rule_index.get(normalized)
+        if not matched:
+            # Try stripping AFM rule suffixes (e.g. -firewallpolicyrule, -policyrule, -rule)
+            stripped = re.sub(r"[-_]?(firewallpolicyrule|policyrule|rule)$", "", raw_name, flags=re.IGNORECASE)
+            matched = rule_index.get(_normalize_name(stripped))
+
         if not matched:
             # Try splitting on common separators: policy_rule
             for sep in ("_", "-", "."):
@@ -708,34 +726,34 @@ def _analyze_firewall_rule_stats(
         if matched:
             policy_name, policy_ns, rule = matched
             key = (policy_ns, policy_name, rule.get("name", ""))
-            if key in seen:
-                # Sum hits if the same rule appears in multiple TMM rows
-                existing = next(r for r in results if r["policyName"] == policy_name
-                                and r["namespace"] == policy_ns
-                                and r["ruleName"] == rule["name"])
-                existing["hitCount"] += hit_count
+            if key in policy_rules:
+                policy_rules[key]["hitCount"] += hit_count
             else:
-                seen.add(key)
-                results.append({
+                policy_rules[key] = {
                     "policyName": policy_name,
                     "namespace": policy_ns,
                     "ruleName": rule.get("name", ""),
                     "action": rule.get("action", ""),
                     "ipProtocol": rule.get("ipProtocol", ""),
                     "hitCount": hit_count,
-                })
+                }
         else:
             # Unmatched rule — still surface the raw hit count for observability
-            results.append({
-                "policyName": "",
-                "namespace": "",
-                "ruleName": raw_name,
-                "action": row.get("action", ""),
-                "ipProtocol": "",
-                "hitCount": hit_count,
-            })
+            if raw_name not in seen_unmatched:
+                seen_unmatched.add(raw_name)
+                unmatched.append({
+                    "policyName": "",
+                    "namespace": "",
+                    "ruleName": raw_name,
+                    "action": row.get("action", ""),
+                    "ipProtocol": "",
+                    "hitCount": hit_count,
+                })
+            else:
+                existing = next(r for r in unmatched if r["ruleName"] == raw_name)
+                existing["hitCount"] += hit_count
 
-    return results
+    return list(policy_rules.values()) + unmatched
 
 
 # ---------------------------------------------------------------------------

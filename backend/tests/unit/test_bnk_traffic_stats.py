@@ -169,15 +169,66 @@ class TestAnalyzeTrafficStats:
         assert rule["ruleName"] == "deny-ssh"
         assert rule["hitCount"] == 7
 
+    def test_maps_firewall_rule_hits_with_afm_firewallpolicyrule_suffix(self):
+        raw = {
+            "source": "tmctl",
+            "podName": "f5-tmm-9z7l6",
+            "namespace": "f5-cne-system",
+            "virtualServerStat": {"columns": [], "rows": [], "exit_code": 0},
+            "fwRuleStat": {
+                "columns": ["context_type", "context_name", "rule_name", "micro_rules", "counter", "hw_counter", "action"],
+                "rows": [
+                    ["virtual", "default-vs", "deny-ssh-firewallpolicyrule", "1", "68", "0", "2"],
+                ],
+                "exit_code": 0,
+            },
+        }
+        result = analyze_traffic_stats(_data(), raw)
+        rule = next(r for r in result["firewallRules"] if r["ruleName"] == "deny-ssh")
+        assert rule["hitCount"] == 68
+        assert not any(r["ruleName"] == "deny-ssh-firewallpolicyrule" for r in result["firewallRules"])
+
     def test_keeps_unmatched_firewall_rule_for_observability(self):
         raw = _raw_stats(fw_rows=[
             ["some-unknown-rule", "3", "accept"],
         ])
         result = analyze_traffic_stats(_data(), raw)
 
+        unmatched = [r for r in result["firewallRules"] if r["ruleName"] == "some-unknown-rule"]
+        assert len(unmatched) == 1
+        assert unmatched[0]["hitCount"] == 3
+
+        configured = [r for r in result["firewallRules"] if r["ruleName"] == "deny-ssh"]
+        assert len(configured) == 1
+        assert configured[0]["hitCount"] == 0
+
+    def test_seeds_declared_firewall_rules_with_zero_hits_when_tmm_rows_empty(self):
+        raw = _raw_stats(fw_rows=[])
+        result = analyze_traffic_stats(_data(), raw)
+
         assert len(result["firewallRules"]) == 1
-        assert result["firewallRules"][0]["ruleName"] == "some-unknown-rule"
-        assert result["firewallRules"][0]["hitCount"] == 3
+        rule = result["firewallRules"][0]
+        assert rule["policyName"] == "fw-deny"
+        assert rule["ruleName"] == "deny-ssh"
+        assert rule["hitCount"] == 0
+
+    def test_supports_tmctl_rule_name_and_counter_columns(self):
+        raw = {
+            "source": "tmctl",
+            "podName": "f5-tmm-abc123",
+            "namespace": "f5-bnk",
+            "virtualServerStat": {"columns": [], "rows": [], "exit_code": 0},
+            "fwRuleStat": {
+                "columns": ["context_type", "context_name", "rule_name", "micro_rules", "counter", "hw_counter", "action"],
+                "rows": [
+                    ["global", "blade", "fw-deny_deny-ssh", "0", "15", "0", "drop"],
+                ],
+                "exit_code": 0,
+            },
+        }
+        result = analyze_traffic_stats(_data(), raw)
+        rule = next(r for r in result["firewallRules"] if r["ruleName"] == "deny-ssh")
+        assert rule["hitCount"] == 15
 
     def test_configview_hints_override_name_matching(self):
         raw = _raw_stats(

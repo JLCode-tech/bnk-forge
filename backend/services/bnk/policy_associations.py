@@ -160,7 +160,8 @@ def _extract_fw_rules(
     values plus members of any referenced address/port lists), alongside
     the raw list names for provenance.
     """
-    rules = (policy.get("spec") or {}).get("rule") or []
+    spec = policy.get("spec") or {}
+    rules = spec.get("rule") or spec.get("rules") or []
     extracted = [
         {
             "name": rule.get("name", "") if rule else "",

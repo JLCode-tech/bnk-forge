@@ -493,7 +493,8 @@ def _build_firewall_refs(
         referenced_port_lists: set[str] = set()
 
         if fw_obj:
-            for rule in fw_obj.get("spec", {}).get("rule", []):
+            fw_rules = fw_obj.get("spec", {}).get("rule") or fw_obj.get("spec", {}).get("rules") or []
+            for rule in fw_rules:
                 rules.append({
                     "name": rule.get("name", ""),
                     "action": rule.get("action", ""),

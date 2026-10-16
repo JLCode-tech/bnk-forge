@@ -23,6 +23,7 @@ GPU fields (gpu_util_pct / vram / temp) stay null — the bedrock shims have no
 GPU. Wiring these requires a DCGM exporter on cluster nodes; surface that as a
 separate follow-up, not silent fake values.
 """
+
 from __future__ import annotations
 
 import logging
@@ -40,9 +41,9 @@ logger = logging.getLogger(__name__)
 #   metric_name{label1="v1",label2="v2"} 12.5
 # Or unlabeled:  metric_name 12.5
 _SAMPLE_RE = re.compile(
-    r'^(?P<name>[a-zA-Z_:][a-zA-Z0-9_:]*)'
-    r'(?:\{(?P<labels>[^}]*)\})?\s+'
-    r'(?P<value>-?[0-9eE.+\-]+|NaN|\+?Inf|-Inf)\s*$'
+    r"^(?P<name>[a-zA-Z_:][a-zA-Z0-9_:]*)"
+    r"(?:\{(?P<labels>[^}]*)\})?\s+"
+    r"(?P<value>-?[0-9eE.+\-]+|NaN|\+?Inf|-Inf)\s*$"
 )
 _LABEL_RE = re.compile(r'(?P<key>[a-zA-Z_][a-zA-Z0-9_]*)="(?P<val>[^"]*)"')
 
@@ -77,9 +78,7 @@ def _last_value(samples: list[tuple[str, dict[str, str], float]], name: str) -> 
     return None
 
 
-def _histogram_p95_seconds(
-    samples: list[tuple[str, dict[str, str], float]], histogram_name: str
-) -> float | None:
+def _histogram_p95_seconds(samples: list[tuple[str, dict[str, str], float]], histogram_name: str) -> float | None:
     """
     Compute p95 from a Prometheus histogram's ``_bucket`` series — same shape as
     PromQL ``histogram_quantile(0.95, ...)`` on a single snapshot.
@@ -158,6 +157,7 @@ def fetch_backend_health(
         cluster = get_cluster(db, cluster_id)
         api_client = KubernetesService(db).load_kubeconfig(cluster)
 
+        is_epp = False
         try:
             analyzer = api_client.call_api(
                 resource_path=f"/apis/k8s.f5net.com/v1alpha1/namespaces/{namespace}/f5-big-analyzers/{name}",
@@ -166,8 +166,74 @@ def fetch_backend_health(
                 auth_settings=["BearerToken"],
                 _return_http_data_only=True,
             )
-        except ApiException as e:
-            return _unavailable(f"analyzer CR not found: {e.reason}")
+        except ApiException:
+            try:
+                analyzer = api_client.call_api(
+                    resource_path=f"/apis/inference.k8s.f5.com/v1alpha1/namespaces/{namespace}/f5-epps/{name}",
+                    method="GET",
+                    response_type="object",
+                    auth_settings=["BearerToken"],
+                    _return_http_data_only=True,
+                )
+                is_epp = True
+            except ApiException as e2:
+                return _unavailable(f"analyzer/EPP CR not found: {e2.reason}")
+
+        if is_epp:
+            pool_ref = (analyzer.get("spec") or {}).get("poolRef") or {}
+            pool_name = pool_ref.get("name", "") if isinstance(pool_ref, dict) else str(pool_ref)
+            selector = {}
+            target_port = 8000
+            if pool_name:
+                try:
+                    pool = api_client.call_api(
+                        resource_path=f"/apis/inference.networking.k8s.io/v1/namespaces/{namespace}/inferencepools/{pool_name}",
+                        method="GET",
+                        response_type="object",
+                        auth_settings=["BearerToken"],
+                        _return_http_data_only=True,
+                    )
+                    pool_spec = pool.get("spec") or {}
+                    selector = (pool_spec.get("selector") or {}).get("matchLabels") or {}
+                    ports = pool_spec.get("targetPorts") or []
+                    if ports and isinstance(ports[0], dict) and ports[0].get("number"):
+                        target_port = int(ports[0]["number"])
+                except Exception as e:
+                    logger.debug("Failed to query pool %s: %s", pool_name, e)
+
+            label_selector = ",".join(f"{k}={v}" for k, v in selector.items()) if selector else "app=vllm"
+            try:
+                pod_list = api_client.call_api(
+                    resource_path=f"/api/v1/namespaces/{namespace}/pods",
+                    method="GET",
+                    query_params=[("labelSelector", label_selector)],
+                    response_type="object",
+                    auth_settings=["BearerToken"],
+                    _return_http_data_only=True,
+                )
+                pods = pod_list.get("items") or []
+            except Exception as e:
+                return _unavailable(f"failed to list backend pods: {e}")
+
+            model_name = ((analyzer.get("spec") or {}).get("tokenizer") or {}).get("name") or "vllm-backend"
+            backends: list[dict[str, Any]] = []
+            errors: dict[str, str] = {}
+            for pod in pods:
+                p_meta = pod.get("metadata") or {}
+                p_name = p_meta.get("name", "unknown")
+                row, err = _scrape_and_parse(api_client, namespace, p_name, target_port, model_name)
+                if err:
+                    errors[f"{namespace}/{p_name}"] = err
+                    continue
+                backends.append(row)
+
+            return {
+                "available": bool(backends),
+                "reason": None if backends else "no scrapeable inference backend pods",
+                "backends": backends,
+                "errors": errors,
+                "updated_at": datetime.now(UTC).isoformat(),
+            }
 
         backend_refs = _collect_backend_refs(api_client, analyzer, namespace)
         if not backend_refs:
@@ -209,7 +275,7 @@ def fetch_backend_health(
                 errors[f"{ns}/{svc_name}"] = f"pod list failed: {e.reason}"
                 continue
 
-            for pod in (pod_list.get("items") or []):
+            for pod in pod_list.get("items") or []:
                 pod_name = (pod.get("metadata") or {}).get("name", "")
                 if not pod_name:
                     continue
@@ -218,9 +284,7 @@ def fetch_backend_health(
                     backends.append(_unhealthy_row(pod_name, ns, svc_name, f"pod phase {phase}"))
                     continue
 
-                row, scrape_err = _scrape_and_parse(
-                    api_client, ns, pod_name, metrics_port, svc_name
-                )
+                row, scrape_err = _scrape_and_parse(api_client, ns, pod_name, metrics_port, svc_name)
                 if scrape_err:
                     errors[f"{ns}/{pod_name}"] = scrape_err
                     backends.append(_unhealthy_row(pod_name, ns, svc_name, scrape_err))
@@ -235,9 +299,7 @@ def fetch_backend_health(
     }
 
 
-def _collect_backend_refs(
-    api_client: Any, analyzer: dict[str, Any], default_ns: str
-) -> list[tuple[str, str]]:
+def _collect_backend_refs(api_client: Any, analyzer: dict[str, Any], default_ns: str) -> list[tuple[str, str]]:
     """Walk analyzer.spec.applications[] → HTTPRoute → (namespace, service_name) tuples."""
     from kubernetes.client.rest import ApiException
 
@@ -347,7 +409,9 @@ def _scrape_and_parse(
         "backend_kind": backend_kind,
         "model": model,
         "status": "healthy",
-        "kv_cache_used_pct": int(round((kv_perc or 0.0) * 100)) if kv_perc is not None and kv_perc <= 1.0 else int(round(kv_perc or 0.0)),
+        "kv_cache_used_pct": int(round((kv_perc or 0.0) * 100))
+        if kv_perc is not None and kv_perc <= 1.0
+        else int(round(kv_perc or 0.0)),
         "running": int(running or 0),
         "waiting": int(waiting or 0),
         "ttft_p95_ms": round(e2e_p95_s * 1000, 1) if e2e_p95_s is not None else None,
