@@ -29,6 +29,7 @@ import json
 import logging
 import os
 import platform
+import re
 import signal
 import socket
 import ssl
@@ -42,13 +43,19 @@ try:
     import websockets
     import websockets.exceptions
 except ImportError:
-    print("ERROR: 'websockets' package required. Install: pip install websockets", file=sys.stderr)
+    print(
+        "ERROR: 'websockets' package required. Install: pip install websockets",
+        file=sys.stderr,
+    )
     sys.exit(1)
 
 try:
     import requests
 except ImportError:
-    print("ERROR: 'requests' package required. Install: pip install requests", file=sys.stderr)
+    print(
+        "ERROR: 'requests' package required. Install: pip install requests",
+        file=sys.stderr,
+    )
     sys.exit(1)
 
 logging.basicConfig(
@@ -59,6 +66,18 @@ logging.basicConfig(
 log = logging.getLogger("forge-agent")
 
 HEARTBEAT_INTERVAL = 15  # seconds (shorter to keep WS alive)
+
+# Config keys that are Forge/run metadata, never aiperf flags (not passed through).
+NON_FLAG_KEYS = {
+    "tool",
+    "description",
+    "tags",
+    "scenario_key",
+    "scenario_name",
+    "trace_url",
+    "ui",
+    "extra_inputs",
+}
 RECONNECT_DELAY = 5
 MAX_RECONNECT_DELAY = 60
 
@@ -94,6 +113,7 @@ def _raise_fd_limit(target: int = 65536) -> None:
     """
     try:
         import resource
+
         soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
         want = target if hard == resource.RLIM_INFINITY else min(target, hard)
         if soft < want:
@@ -135,6 +155,8 @@ class ForgeAgent:
         self.agent_id: int | None = None
         self.running = True
         self.current_process: asyncio.subprocess.Process | None = None
+        self._supported_flags: set[str] | None = None
+        self.ignored_settings: list[str] = []
         # Serialize runs: one aiperf at a time. A run-group dispatches all of its
         # child runs at once, but running multiple aiperf processes concurrently
         # collides on shared state AND invalidates the load numbers (the clients
@@ -189,12 +211,18 @@ class ForgeAgent:
         url = f"{self.forge_url}/api/benchmarks/agents"
         log.info("Registering agent '%s' at %s ...", self.agent_name, url)
         resp = requests.post(
-            url, json=payload, headers=self.headers, verify=not self.insecure, timeout=10
+            url,
+            json=payload,
+            headers=self.headers,
+            verify=not self.insecure,
+            timeout=10,
         )
         resp.raise_for_status()
         data = resp.json()
         self.agent_id = data["id"]
-        log.info("Registered as agent #%d (status=%s)", self.agent_id, data.get("status"))
+        log.info(
+            "Registered as agent #%d (status=%s)", self.agent_id, data.get("status")
+        )
         return self.agent_id
 
     def _refresh_token_from_file(self) -> None:
@@ -271,7 +299,10 @@ class ForgeAgent:
                     for t in (*pending, *done):
                         try:
                             await t
-                        except (asyncio.CancelledError, websockets.exceptions.ConnectionClosed):
+                        except (
+                            asyncio.CancelledError,
+                            websockets.exceptions.ConnectionClosed,
+                        ):
                             pass
                         except Exception as e:
                             log.warning("Connection task ended: %s", e)
@@ -287,11 +318,37 @@ class ForgeAgent:
                         )
                         while self.running:
                             await asyncio.sleep(1)
+                    elif ws.close_code == 4401:
+                        log.warning(
+                            "WebSocket closed with code 4401 (token expired or rejected)"
+                        )
+                        old_token = self.token
+                        self._refresh_token_from_file()
+                        if self.token == old_token:
+                            log.error(
+                                "Token unchanged on disk after 4401; exiting with code 41 for runner re-mint"
+                            )
+                            sys.exit(41)
+                        log.info(
+                            "Token refreshed from file after 4401; reconnecting with new token"
+                        )
                     else:
                         log.info("Connection ended — reconnecting")
 
             except Exception as e:
                 log.error("Connection error: %s", e)
+                close_code = getattr(e, "code", None) or getattr(
+                    getattr(e, "rcvd", None), "code", None
+                )
+                if close_code == 4401:
+                    log.warning("Connection error had close code 4401")
+                    old_token = self.token
+                    self._refresh_token_from_file()
+                    if self.token == old_token:
+                        log.error(
+                            "Token unchanged on disk after 4401; exiting with code 41 for runner re-mint"
+                        )
+                        sys.exit(41)
 
             if self.running:
                 log.info("Reconnecting in %ds...", delay)
@@ -327,11 +384,20 @@ class ForgeAgent:
         socket the OS hasn't torn down yet."""
         while True:
             try:
-                await asyncio.wait_for(ws.send(json.dumps({
-                    "type": "heartbeat",
-                    "status": "running" if self.current_process else "connected",
-                    "timestamp": time.time(),
-                })), timeout=10)
+                await asyncio.wait_for(
+                    ws.send(
+                        json.dumps(
+                            {
+                                "type": "heartbeat",
+                                "status": "running"
+                                if self.current_process
+                                else "connected",
+                                "timestamp": time.time(),
+                            }
+                        )
+                    ),
+                    timeout=10,
+                )
             except Exception as e:
                 log.warning("Heartbeat send failed/timed out (%s) — reconnecting", e)
                 return
@@ -342,7 +408,10 @@ class ForgeAgent:
         at a time. If a run-group dispatches N children at once, they queue here
         and run sequentially instead of colliding."""
         if self._run_lock.locked():
-            log.info("Run #%s queued — waiting for the in-flight run to finish", msg.get("run_id"))
+            log.info(
+                "Run #%s queued — waiting for the in-flight run to finish",
+                msg.get("run_id"),
+            )
         async with self._run_lock:
             await self._handle_run(ws, msg)
 
@@ -354,12 +423,16 @@ class ForgeAgent:
         log.info("Config: %s", json.dumps(config, indent=2)[:500])
 
         try:
-            await ws.send(json.dumps({
-                "type": "progress",
-                "run_id": run_id,
-                "status": "running",
-                "message": "aiperf profile starting...",
-            }))
+            await ws.send(
+                json.dumps(
+                    {
+                        "type": "progress",
+                        "run_id": run_id,
+                        "status": "running",
+                        "message": "aiperf profile starting...",
+                    }
+                )
+            )
         except Exception:
             pass
 
@@ -374,6 +447,24 @@ class ForgeAgent:
 
             cmd = self._build_aiperf_command(config)
             log.info("Command: %s", " ".join(cmd))
+            if self.ignored_settings:
+                note = "Ignored settings this aiperf does not support: " + ", ".join(
+                    self.ignored_settings
+                )
+                log.warning(note)
+                try:
+                    await ws.send(
+                        json.dumps(
+                            {
+                                "type": "progress",
+                                "run_id": run_id,
+                                "status": "running",
+                                "message": note,
+                            }
+                        )
+                    )
+                except Exception:
+                    pass
 
             env = os.environ.copy()
             env["AIPERF_OUTPUT_DIR"] = str(work_dir)
@@ -387,6 +478,12 @@ class ForgeAgent:
             if workers_max:
                 _raise_fd_limit()
                 env.setdefault("AIPERF_HTTP_CONNECTION_LIMIT", str(workers_max))
+
+            # Ensure long trace tokenization and service profile setup don't time out
+            env.setdefault("AIPERF_DATASET_CONFIGURATION_TIMEOUT", "1800")
+            env.setdefault("AIPERF_SERVICE_PROFILE_CONFIGURE_TIMEOUT", "1800")
+            # Default session affinity routing header for subagent tree consistency
+            env.setdefault("AIPERF_HTTP_X_SESSION_ID_FROM_CORRELATION_ID", "1")
 
             # Use asyncio subprocess so we don't block the event loop.
             # start_new_session puts aiperf in its own session/process group, so a
@@ -417,13 +514,17 @@ class ForgeAgent:
                 # Send progress every 10 lines
                 if line_count % 10 == 0:
                     try:
-                        await ws.send(json.dumps({
-                            "type": "progress",
-                            "run_id": run_id,
-                            "status": "running",
-                            "message": line[:200],
-                            "lines": line_count,
-                        }))
+                        await ws.send(
+                            json.dumps(
+                                {
+                                    "type": "progress",
+                                    "run_id": run_id,
+                                    "status": "running",
+                                    "message": line[:200],
+                                    "lines": line_count,
+                                }
+                            )
+                        )
                     except Exception:
                         pass
 
@@ -446,11 +547,13 @@ class ForgeAgent:
                 result_data = json.load(f)
 
             # Send the result back to Forge
-            msg_payload = json.dumps({
-                "type": "run_completed",
-                "run_id": run_id,
-                "result": result_data,
-            })
+            msg_payload = json.dumps(
+                {
+                    "type": "run_completed",
+                    "run_id": run_id,
+                    "result": result_data,
+                }
+            )
             log.info("Sending run_completed (%d bytes)...", len(msg_payload))
             await ws.send(msg_payload)
             log.info("run_completed sent successfully for Run #%d", run_id)
@@ -459,11 +562,15 @@ class ForgeAgent:
             log.error("=== Run #%d FAILED: %s ===", run_id, e)
             self.current_process = None
             try:
-                await ws.send(json.dumps({
-                    "type": "run_failed",
-                    "run_id": run_id,
-                    "error": str(e)[:2000],
-                }))
+                await ws.send(
+                    json.dumps(
+                        {
+                            "type": "run_failed",
+                            "run_id": run_id,
+                            "error": str(e)[:2000],
+                        }
+                    )
+                )
             except Exception as send_err:
                 log.error("Failed to send run_failed: %s", send_err)
 
@@ -489,6 +596,7 @@ class ForgeAgent:
         "seq_dist": "--seq-dist",
         "tokenizer": "--tokenizer",
         "random_seed": "--random-seed",
+        "num_dataset_entries": "--num-dataset-entries",
         "workers_max": "--workers-max",
         "profile_export_level": "--profile-export-level",
         "record_processors": "--record-processors",
@@ -497,12 +605,17 @@ class ForgeAgent:
         "input_file": "--input-file",
         "artifact_dir": "--artifact-dir",
         "output_artifact_dir": "--output-artifact-dir",
+        "scenario": "--scenario",
+        "public_dataset": "--public-dataset",
+        "max_context_length": "--max-context-length",
     }
 
     # Boolean flags: present without a value when truthy.
     BOOL_FLAG_MAP = {
         "streaming": "--streaming",
         "fixed_schedule": "--fixed-schedule",
+        "use_server_token_count": "--use-server-token-count",
+        "unsafe_override": "--unsafe-override",
     }
 
     def _build_aiperf_command(self, config: dict) -> list[str]:
@@ -516,7 +629,9 @@ class ForgeAgent:
 
         for key, flag in self.SCALAR_FLAG_MAP.items():
             val = config.get(key)
-            if val is not None:
+            if isinstance(val, list):
+                cmd.extend([flag, ",".join(str(v) for v in val)])
+            elif val is not None:
                 cmd.extend([flag, str(val)])
 
         for key, flag in self.BOOL_FLAG_MAP.items():
@@ -531,10 +646,62 @@ class ForgeAgent:
             for item in extra_inputs:
                 cmd.extend(["--extra-inputs", str(item)])
 
+        # Any other setting passes through when the installed aiperf has a flag
+        # for it (snake_case key → --kebab-case flag), so every aiperf option can
+        # be set from a config without a code change here. A list passes as
+        # separate values (e.g. server_metrics → --server-metrics a:9090 b:9090).
+        supported = self._aiperf_flags()
+        self.ignored_settings = []
+        for key, val in config.items():
+            if (
+                key in self.SCALAR_FLAG_MAP
+                or key in self.BOOL_FLAG_MAP
+                or key in NON_FLAG_KEYS
+            ):
+                continue
+            if key.startswith("_") or val is None or val is False:
+                continue
+            flag = "--" + key.replace("_", "-")
+            if flag not in supported or isinstance(val, dict):
+                self.ignored_settings.append(key)
+                continue
+            if val is True:
+                cmd.append(flag)
+            elif isinstance(val, list):
+                cmd.extend([flag, *(str(v) for v in val)])
+            else:
+                cmd.extend([flag, str(val)])
+
         # UI mode — config may force "none"; otherwise default to non-TUI.
         cmd.extend(["--ui", str(config.get("ui", "none"))])
 
         return cmd
+
+    def _aiperf_flags(self) -> set[str]:
+        """Flags the installed aiperf accepts (read once from its --help; empty if unknown)."""
+        if self._supported_flags is None:
+            try:
+                env = {
+                    **os.environ,
+                    "COLUMNS": "300",
+                }  # unwrapped help: long flags stay whole
+                out = subprocess.run(
+                    ["aiperf", "profile", "--help"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    env=env,
+                )
+                self._supported_flags = set(
+                    re.findall(r"--[a-z][a-z0-9-]+", out.stdout + out.stderr)
+                )
+            except Exception as e:
+                log.warning(
+                    "Could not read aiperf flags (%s); only mapped settings pass through",
+                    e,
+                )
+                self._supported_flags = set()
+        return self._supported_flags
 
     def _prepare_trace_input(self, config: dict, work_dir: Path, run_id) -> dict:
         """Download the trace, apply time-scaling, and return a config with --input-file set.
@@ -565,7 +732,10 @@ class ForgeAgent:
         count = self._dilate_trace(raw_path, dilated_path, dilation)
         log.info(
             "Time-scaled %d trace records by %.2fx (timestamps / %.2f -> slower arrivals) -> %s",
-            count, dilation, dilation, dilated_path,
+            count,
+            dilation,
+            dilation,
+            dilated_path,
         )
 
         new_config = {k: v for k, v in config.items() if k != "trace_url"}
@@ -605,7 +775,11 @@ class ForgeAgent:
             resp.raise_for_status()
             # Fast-path reject when the server advertises an oversize body.
             declared = resp.headers.get("Content-Length")
-            if declared is not None and declared.isdigit() and int(declared) > max_bytes:
+            if (
+                declared is not None
+                and declared.isdigit()
+                and int(declared) > max_bytes
+            ):
                 raise ValueError(
                     f"trace exceeds max size: Content-Length {declared} > {max_bytes} bytes"
                 )
@@ -686,7 +860,9 @@ class ForgeAgent:
         try:
             await asyncio.wait_for(proc.wait(), timeout=10)
         except TimeoutError:
-            log.warning("Run #%s ignored SIGTERM; sending SIGKILL to group %d", run_id, pgid)
+            log.warning(
+                "Run #%s ignored SIGTERM; sending SIGKILL to group %d", run_id, pgid
+            )
             self._signal_group(pgid, signal.SIGKILL)
             try:
                 await asyncio.wait_for(proc.wait(), timeout=5)
@@ -795,7 +971,10 @@ def main():
             except OSError:
                 pass
             if time.monotonic() >= deadline:
-                log.warning("Token file %s not readable after 60s — continuing without a token", args.token_file)
+                log.warning(
+                    "Token file %s not readable after 60s — continuing without a token",
+                    args.token_file,
+                )
                 break
             time.sleep(2)
     if not args.token:
@@ -816,6 +995,7 @@ def main():
 
     def sighandler(sig, frame):
         agent.shutdown()
+
     signal.signal(signal.SIGINT, sighandler)
     signal.signal(signal.SIGTERM, sighandler)
 
@@ -827,7 +1007,9 @@ def main():
             agent.register()
             break
         except Exception as e:
-            log.warning("Registration failed (%s), retrying in %ds...", e, register_delay)
+            log.warning(
+                "Registration failed (%s), retrying in %ds...", e, register_delay
+            )
             time.sleep(register_delay)
             register_delay = min(register_delay * 2, MAX_RECONNECT_DELAY)
 

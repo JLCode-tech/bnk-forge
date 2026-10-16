@@ -50,12 +50,18 @@ _MAX_CONFIGMAP_PARSE_BYTES = 256 * 1024
 # Discovery result types
 # ---------------------------------------------------------------------------
 
+
 class ProxyDiscoveryResult:
     """Result of scanning for a single proxy type on a cluster."""
 
     __slots__ = (
-        "proxy_type", "found", "proxy_url", "external_url",
-        "namespace", "details", "error",
+        "proxy_type",
+        "found",
+        "proxy_url",
+        "external_url",
+        "namespace",
+        "details",
+        "error",
     )
 
     def __init__(
@@ -92,6 +98,7 @@ class ProxyDiscoveryResult:
 # ---------------------------------------------------------------------------
 # Service
 # ---------------------------------------------------------------------------
+
 
 class ProxyDiscoveryService:
     """Scan a K8s cluster for existing proxy deployments."""
@@ -149,10 +156,7 @@ class ProxyDiscoveryService:
         results: list[ProxyDiscoveryResult] = []
 
         with ThreadPoolExecutor(max_workers=len(scanners)) as executor:
-            futures = {
-                executor.submit(fn, api_client, target): proxy_type
-                for proxy_type, fn in scanners.items()
-            }
+            futures = {executor.submit(fn, api_client, target): proxy_type for proxy_type, fn in scanners.items()}
             for future in as_completed(futures):
                 proxy_type = futures[future]
                 try:
@@ -160,7 +164,8 @@ class ProxyDiscoveryService:
                 except Exception as exc:
                     logger.warning("Discovery failed for %s: %s", proxy_type, exc)
                     result = ProxyDiscoveryResult(
-                        proxy_type, error=str(exc),
+                        proxy_type,
+                        error=str(exc),
                     )
                 results.append(result)
 
@@ -242,27 +247,27 @@ class ProxyDiscoveryService:
             # Pass kind="IngressClass" so CIS is not misclassified as BNK.
             # Also propagate the class name so the legacy bare "f5" IngressClass
             # (no controller field, name == "f5") is treated as CIS.
-            proxy_type, display_name = _classify_controller(
-                controller, kind="IngressClass", class_name=ic_name
-            )
+            proxy_type, display_name = _classify_controller(controller, kind="IngressClass", class_name=ic_name)
             is_bnk = proxy_type == "f5-bnk"
 
             backends = _map_ingress_backends(all_ingresses, ic_name)
 
-            items.append({
-                "proxy_type": proxy_type,
-                "display_name": display_name,
-                "controller": controller,
-                "kind": "IngressClass",
-                "found": True,
-                "namespace": None,
-                "proxy_url": None,
-                "external_url": None,
-                "backends": backends,
-                "is_bnk": is_bnk,
-                "details": {"ingress_class_name": ic_name},
-                "error": None,
-            })
+            items.append(
+                {
+                    "proxy_type": proxy_type,
+                    "display_name": display_name,
+                    "controller": controller,
+                    "kind": "IngressClass",
+                    "found": True,
+                    "namespace": None,
+                    "proxy_url": None,
+                    "external_url": None,
+                    "backends": backends,
+                    "is_bnk": is_bnk,
+                    "details": {"ingress_class_name": ic_name},
+                    "error": None,
+                }
+            )
 
         # Process GatewayClasses
         for gc in gateway_classes:
@@ -272,35 +277,36 @@ class ProxyDiscoveryService:
             is_bnk = proxy_type == "f5-bnk"
 
             # Find gateways that belong to this GatewayClass
-            gc_gateways = [
-                gw for gw in gateways
-                if gw.get("spec", {}).get("gatewayClassName") == gc_name
-            ]
+            gc_gateways = [gw for gw in gateways if gw.get("spec", {}).get("gatewayClassName") == gc_name]
 
             # Namespace: from first gateway, else None
             gw_namespace = None
             if gc_gateways:
                 gw_namespace = gc_gateways[0].get("metadata", {}).get("namespace")
 
-            backends = _map_httproute_backends(httproutes, {g.get("metadata", {}).get("name") for g in gc_gateways}, gateways)
+            backends = _map_httproute_backends(
+                httproutes, {g.get("metadata", {}).get("name") for g in gc_gateways}, gateways
+            )
 
-            items.append({
-                "proxy_type": proxy_type,
-                "display_name": display_name,
-                "controller": controller,
-                "kind": "GatewayClass",
-                "found": True,
-                "namespace": gw_namespace,
-                "proxy_url": None,
-                "external_url": None,
-                "backends": backends,
-                "is_bnk": is_bnk,
-                "details": {
-                    "gateway_class_name": gc_name,
-                    "gateway_count": len(gc_gateways),
-                },
-                "error": None,
-            })
+            items.append(
+                {
+                    "proxy_type": proxy_type,
+                    "display_name": display_name,
+                    "controller": controller,
+                    "kind": "GatewayClass",
+                    "found": True,
+                    "namespace": gw_namespace,
+                    "proxy_url": None,
+                    "external_url": None,
+                    "backends": backends,
+                    "is_bnk": is_bnk,
+                    "details": {
+                        "gateway_class_name": gc_name,
+                        "gateway_count": len(gc_gateways),
+                    },
+                    "error": None,
+                }
+            )
 
         # --- Enumerate Workload Proxy Deployments (standalone/Helm workloads) ---
         apps = k8s_client.AppsV1Api(api_client)
@@ -332,10 +338,12 @@ class ProxyDiscoveryService:
                     .join(BenchmarkTarget, ProxyDeployment.target_id == BenchmarkTarget.id)
                     .filter(
                         BenchmarkTarget.cluster_id == cluster_id,
-                        ProxyDeployment.status.in_([
-                            ProxyDeploymentStatus.READY,
-                            ProxyDeploymentStatus.DISCOVERED,
-                        ])
+                        ProxyDeployment.status.in_(
+                            [
+                                ProxyDeploymentStatus.READY,
+                                ProxyDeploymentStatus.DISCOVERED,
+                            ]
+                        ),
                     )
                     .all()
                 )
@@ -351,9 +359,7 @@ class ProxyDiscoveryService:
             dep_ns = dep.metadata.namespace or "default"
             labels = dep.metadata.labels or {}
             containers = (
-                dep.spec.template.spec.containers
-                if dep.spec and dep.spec.template and dep.spec.template.spec
-                else []
+                dep.spec.template.spec.containers if dep.spec and dep.spec.template and dep.spec.template.spec else []
             )
             images = [c.image or "" for c in containers]
 
@@ -377,24 +383,28 @@ class ProxyDiscoveryService:
 
             # Extract backends from ConfigMaps in this namespace
             backends = _extract_backends_from_configmaps(
-                core, dep_ns, proxy_type, _deployment_configmap_names(dep),
+                core,
+                dep_ns,
+                proxy_type,
+                _deployment_configmap_names(dep),
             )
 
             # Check matching DB proxy deployment for backend enrichment
-            matched_db_deploy = (
-                db_deploy_map.get((dep_ns, dep_name.lower()))
-                or db_deploy_map.get((dep_ns, labels.get("app.kubernetes.io/instance", "").lower()))
+            matched_db_deploy = db_deploy_map.get((dep_ns, dep_name.lower())) or db_deploy_map.get(
+                (dep_ns, labels.get("app.kubernetes.io/instance", "").lower())
             )
             if matched_db_deploy and matched_db_deploy.target:
                 tgt = matched_db_deploy.target
                 tgt_svc = _extract_svc_name(tgt.llm_base_url)
                 tgt_ns = tgt.llm_namespace or "default"
                 if not any(b["service"] == tgt_svc for b in backends):
-                    backends.append({
-                        "service": tgt_svc,
-                        "namespace": tgt_ns,
-                        "via": f"Benchmark Target ({tgt.name})",
-                    })
+                    backends.append(
+                        {
+                            "service": tgt_svc,
+                            "namespace": tgt_ns,
+                            "via": f"Benchmark Target ({tgt.name})",
+                        }
+                    )
 
             # Resolve service for this deployment
             proxy_url, external_url = self._find_proxy_service_for_deployment(core, dep)
@@ -406,33 +416,48 @@ class ProxyDiscoveryService:
             helm_release = labels.get("app.kubernetes.io/instance") or labels.get("helm.sh/chart")
 
             # Format clean display name
-            formatted_display = f"{display_name} ({dep_name})" if dep_ns == "default" else f"{display_name} ({dep_ns}/{dep_name})"
+            formatted_display = (
+                f"{display_name} ({dep_name})" if dep_ns == "default" else f"{display_name} ({dep_ns}/{dep_name})"
+            )
 
-            items.append({
-                "proxy_type": proxy_type,
-                "display_name": formatted_display,
-                "controller": images[0] if images else dep_name,
-                "kind": "Deployment",
-                "found": True,
-                "namespace": dep_ns,
-                "proxy_url": proxy_url,
-                "external_url": external_url,
-                "backends": backends,
-                "is_bnk": False,
-                "details": {
-                    "deployment_name": dep_name,
+            items.append(
+                {
+                    "proxy_type": proxy_type,
+                    "display_name": formatted_display,
+                    "controller": images[0] if images else dep_name,
+                    "kind": "Deployment",
+                    "found": True,
                     "namespace": dep_ns,
-                    "image": images[0] if images else None,
-                    "helm_release": helm_release,
-                },
-                "error": None,
-            })
+                    "proxy_url": proxy_url,
+                    "external_url": external_url,
+                    "backends": backends,
+                    "is_bnk": False,
+                    "details": {
+                        "deployment_name": dep_name,
+                        "namespace": dep_ns,
+                        "image": images[0] if images else None,
+                        "helm_release": helm_release,
+                    },
+                    "error": None,
+                }
+            )
 
         # Sort for stable ordering: BNK last (it's the migration target), others alpha
-        items.sort(key=lambda x: (x["is_bnk"], x["proxy_type"], x.get("details", {}).get("ingress_class_name") or x.get("details", {}).get("gateway_class_name") or x.get("details", {}).get("deployment_name") or ""))
+        items.sort(
+            key=lambda x: (
+                x["is_bnk"],
+                x["proxy_type"],
+                x.get("details", {}).get("ingress_class_name")
+                or x.get("details", {}).get("gateway_class_name")
+                or x.get("details", {}).get("deployment_name")
+                or "",
+            )
+        )
         logger.info(
             "Proxy inventory: %d IngressClass(es) + %d GatewayClass(es) + %d total items",
-            len(ingress_classes), len(gateway_classes), len(items),
+            len(ingress_classes),
+            len(gateway_classes),
+            len(items),
         )
         return items
 
@@ -460,14 +485,12 @@ class ProxyDiscoveryService:
             version="v1",
             plural="gatewayclasses",
         )
-        envoy_gc = [
-            gc for gc in gateway_classes
-            if "envoy" in (gc.get("spec", {}).get("controllerName", "")).lower()
-        ]
+        envoy_gc = [gc for gc in gateway_classes if "envoy" in (gc.get("spec", {}).get("controllerName", "")).lower()]
 
         # 2. Look for envoy-gateway-system namespace deployments
         envoy_deploys = _safe_list_namespaced_deployments(
-            apps, "envoy-gateway-system",
+            apps,
+            "envoy-gateway-system",
         )
 
         if not envoy_gc and not envoy_deploys:
@@ -485,10 +508,7 @@ class ProxyDiscoveryService:
             version="v1",
             plural="gateways",
         )
-        envoy_gateways = [
-            gw for gw in gateways
-            if gw.get("spec", {}).get("gatewayClassName") in envoy_gc_names
-        ]
+        envoy_gateways = [gw for gw in gateways if gw.get("spec", {}).get("gatewayClassName") in envoy_gc_names]
 
         httproutes = _safe_list_all_custom(
             custom,
@@ -503,7 +523,11 @@ class ProxyDiscoveryService:
             gw_name = gw.get("metadata", {}).get("name", "")
             gw_ns = gw.get("metadata", {}).get("namespace", "")
             routes = _find_routes_to_backend(
-                httproutes, gw_name, gw_ns, target_svc_name, target_svc_ns,
+                httproutes,
+                gw_name,
+                gw_ns,
+                target_svc_name,
+                target_svc_ns,
             )
             if routes:
                 has_route = True
@@ -513,13 +537,17 @@ class ProxyDiscoveryService:
         # Also check Ingress objects with envoy/nginx class that route to this LLM
         if not has_route:
             has_route = _has_ingress_to_backend(
-                api_client, target_svc_name, target_svc_ns, ingress_class_filter="envoy",
+                api_client,
+                target_svc_name,
+                target_svc_ns,
+                ingress_class_filter="envoy",
             )
 
         if not has_route:
             logger.info(
                 "Envoy discovery: infra found but no route to '%s.%s' — not marking as discovered",
-                target_svc_name, target_svc_ns,
+                target_svc_name,
+                target_svc_ns,
             )
             return ProxyDiscoveryResult(
                 "envoy",
@@ -534,24 +562,29 @@ class ProxyDiscoveryService:
         # 4. Find the envoy proxy service to get the URL
         core = k8s_client.CoreV1Api(api_client)
         proxy_url, external_url = self._find_proxy_service(
-            core, "envoy-gateway-system",
+            core,
+            "envoy-gateway-system",
             label_selector="app.kubernetes.io/component=proxy",
         )
 
         if not proxy_url:
             proxy_url, external_url = self._find_proxy_service(
-                core, target.proxy_namespace or "perf-proxies",
+                core,
+                target.proxy_namespace or "perf-proxies",
                 label_selector="app.kubernetes.io/component=proxy",
             )
 
         if not proxy_url:
             proxy_url, external_url = self._find_service_by_name_pattern(
-                core, "envoy",
+                core,
+                "envoy",
             )
 
         logger.info(
             "Envoy discovery: found route to '%s.%s' via gateway '%s'",
-            target_svc_name, target_svc_ns, matched_gw_name or "ingress",
+            target_svc_name,
+            target_svc_ns,
+            matched_gw_name or "ingress",
         )
 
         return ProxyDiscoveryResult(
@@ -588,22 +621,21 @@ class ProxyDiscoveryService:
             version="v1",
             plural="ingressclasses",
         )
-        nginx_ic = [
-            ic for ic in ingress_classes
-            if "nginx" in (ic.get("spec", {}).get("controller", "")).lower()
-        ]
+        nginx_ic = [ic for ic in ingress_classes if "nginx" in (ic.get("spec", {}).get("controller", "")).lower()]
 
         # 2. Look for nginx-ingress deployments
         nginx_ns = "ingress-nginx"
         nginx_deploys = _safe_list_namespaced_deployments(
-            apps, nginx_ns,
+            apps,
+            nginx_ns,
             label_selector="app.kubernetes.io/name=ingress-nginx",
         )
 
         # Also check kube-system for some installations
         if not nginx_deploys:
             nginx_deploys = _safe_list_namespaced_deployments(
-                apps, "kube-system",
+                apps,
+                "kube-system",
                 label_selector="app.kubernetes.io/name=ingress-nginx",
             )
             if nginx_deploys:
@@ -617,21 +649,23 @@ class ProxyDiscoveryService:
         target_svc_ns = target.llm_namespace or "default"
 
         has_route = _has_ingress_to_backend(
-            api_client, target_svc_name, target_svc_ns, ingress_class_filter="nginx",
+            api_client,
+            target_svc_name,
+            target_svc_ns,
+            ingress_class_filter="nginx",
         )
         if not has_route:
             has_route = _has_configmap_to_backend(
                 core, nginx_deploys, target_svc_name, target_svc_ns, proxy_type="nginx"
             )
         if not has_route and self.db:
-            has_route = _has_target_deployment_match(
-                self.db, target, nginx_deploys, proxy_type="nginx"
-            )
+            has_route = _has_target_deployment_match(self.db, target, nginx_deploys, proxy_type="nginx")
 
         if not has_route:
             logger.info(
                 "NGINX discovery: infra found but no Ingress/route routes to '%s.%s' — not marking as discovered",
-                target_svc_name, target_svc_ns,
+                target_svc_name,
+                target_svc_ns,
             )
             return ProxyDiscoveryResult(
                 "nginx",
@@ -645,17 +679,21 @@ class ProxyDiscoveryService:
 
         # 4. Find the nginx controller service
         proxy_url, external_url = self._find_proxy_service(
-            core, nginx_ns,
+            core,
+            nginx_ns,
             label_selector="app.kubernetes.io/name=ingress-nginx",
         )
         if not proxy_url:
             proxy_url, external_url = self._find_service_by_name_pattern(
-                core, "nginx", namespace=nginx_ns,
+                core,
+                "nginx",
+                namespace=nginx_ns,
             )
 
         logger.info(
             "NGINX discovery: found routing to '%s.%s'",
-            target_svc_name, target_svc_ns,
+            target_svc_name,
+            target_svc_ns,
         )
 
         return ProxyDiscoveryResult(
@@ -690,7 +728,8 @@ class ProxyDiscoveryService:
         for ns in ("haproxy-controller", "haproxy", "default", target.proxy_namespace or "perf-proxies"):
             deploys = _safe_list_namespaced_deployments(apps, ns)
             ha_deploys = [
-                d for d in deploys
+                d
+                for d in deploys
                 if "haproxy" in (d.metadata.name or "").lower()
                 or "haproxy" in (d.metadata.labels or {}).get("app", "").lower()
                 or "haproxy" in (d.metadata.labels or {}).get("app.kubernetes.io/name", "").lower()
@@ -708,10 +747,7 @@ class ProxyDiscoveryService:
             version="v1",
             plural="ingressclasses",
         )
-        haproxy_ic = [
-            ic for ic in ingress_classes
-            if "haproxy" in (ic.get("spec", {}).get("controller", "")).lower()
-        ]
+        haproxy_ic = [ic for ic in ingress_classes if "haproxy" in (ic.get("spec", {}).get("controller", "")).lower()]
 
         if not haproxy_deploys and not haproxy_ic:
             return ProxyDiscoveryResult("haproxy")
@@ -721,21 +757,29 @@ class ProxyDiscoveryService:
         target_svc_ns = target.llm_namespace or "default"
 
         has_route = _has_ingress_to_backend(
-            api_client, target_svc_name, target_svc_ns, ingress_class_filter="haproxy",
+            api_client,
+            target_svc_name,
+            target_svc_ns,
+            ingress_class_filter="haproxy",
         )
         # The Deployment that routes to this target (its own config or its Forge
         # identity) — its Service, not any "haproxy" Service, is the proxy URL.
-        route_dep = next((
-            d for d in haproxy_deploys
-            if _has_configmap_to_backend(core, [d], target_svc_name, target_svc_ns, proxy_type="haproxy")
-            or (self.db and _has_target_deployment_match(self.db, target, [d], proxy_type="haproxy"))
-        ), None)
+        route_dep = next(
+            (
+                d
+                for d in haproxy_deploys
+                if _has_configmap_to_backend(core, [d], target_svc_name, target_svc_ns, proxy_type="haproxy")
+                or (self.db and _has_target_deployment_match(self.db, target, [d], proxy_type="haproxy"))
+            ),
+            None,
+        )
         has_route = has_route or route_dep is not None
 
         if not has_route:
             logger.info(
                 "HAProxy discovery: infra found but no Ingress/route routes to '%s.%s' — not marking as discovered",
-                target_svc_name, target_svc_ns,
+                target_svc_name,
+                target_svc_ns,
             )
             return ProxyDiscoveryResult(
                 "haproxy",
@@ -757,7 +801,8 @@ class ProxyDiscoveryService:
 
         logger.info(
             "HAProxy discovery: found routing to '%s.%s'",
-            target_svc_name, target_svc_ns,
+            target_svc_name,
+            target_svc_ns,
         )
 
         return ProxyDiscoveryResult(
@@ -794,7 +839,8 @@ class ProxyDiscoveryService:
             plural="gatewayclasses",
         )
         f5_gc = [
-            gc for gc in gateway_classes
+            gc
+            for gc in gateway_classes
             if any(
                 marker in (gc.get("spec", {}).get("controllerName", "")).lower()
                 for marker in ("f5", "bigip", "bnk", "cne")
@@ -803,6 +849,7 @@ class ProxyDiscoveryService:
 
         # 2. Look for F5 BNK pods in known namespaces
         from services.bnk_pod_discovery import BNK_NAMESPACES, _fetch_pods_in_namespace
+
         bnk_pods = []
         for ns in BNK_NAMESPACES:
             bnk_pods.extend(_fetch_pods_in_namespace(api_client, ns))
@@ -815,10 +862,7 @@ class ProxyDiscoveryService:
             plural="gateways",
         )
         f5_gc_names = {gc.get("metadata", {}).get("name") for gc in f5_gc}
-        f5_gateways = [
-            gw for gw in gateways
-            if gw.get("spec", {}).get("gatewayClassName") in f5_gc_names
-        ]
+        f5_gateways = [gw for gw in gateways if gw.get("spec", {}).get("gatewayClassName") in f5_gc_names]
 
         if not f5_gc and not bnk_pods:
             return ProxyDiscoveryResult("f5-bnk")
@@ -835,6 +879,8 @@ class ProxyDiscoveryService:
         # Find the best gateway: prefer one whose HTTPRoute backends match the target LLM
         target_svc_name = _extract_svc_name(target.llm_base_url)
         target_svc_ns = target.llm_namespace or "default"
+        # BNK 2.4 routes through an InferencePool fronted by the F5 Endpoint Picker.
+        target_pools = _pools_selecting_service(api_client, custom, target_svc_name, target_svc_ns)
         # Full target host (before port strip, after scheme strip) — used for VIP-match below.
         # _extract_svc_name truncates at the first "." which destroys IP addresses; preserve
         # the full host so "10.0.10.101" is not silently truncated to "10".
@@ -864,25 +910,60 @@ class ProxyDiscoveryService:
             # Build listener details
             listener_details = []
             for listener in listeners:
-                listener_details.append({
-                    "name": listener.get("name"),
-                    "port": listener.get("port"),
-                    "protocol": listener.get("protocol"),
-                })
+                listener_details.append(
+                    {
+                        "name": listener.get("name"),
+                        "port": listener.get("port"),
+                        "protocol": listener.get("protocol"),
+                    }
+                )
 
             # Check if any HTTPRoute on this gateway has a backendRef to our target LLM
             routes_to_target = _find_routes_to_backend(
-                httproutes, gw_name, gw_ns, target_svc_name, target_svc_ns,
+                httproutes,
+                gw_name,
+                gw_ns,
+                target_svc_name,
+                target_svc_ns,
+                frozenset(target_pools),
             )
+            route_pools = sorted(
+                {
+                    br.get("name", "")
+                    for r in routes_to_target
+                    for rule in r.get("spec", {}).get("rules", [])
+                    for br in rule.get("backendRefs", [])
+                    if br.get("kind") == "InferencePool"
+                }
+            )
+            route_paths = [
+                {
+                    "hostnames": r.get("spec", {}).get("hostnames") or [],
+                    "pool": next(
+                        (
+                            br.get("name")
+                            for rule in r.get("spec", {}).get("rules", [])
+                            for br in rule.get("backendRefs", [])
+                            if br.get("kind") == "InferencePool"
+                        ),
+                        None,
+                    ),
+                }
+                for r in routes_to_target
+            ]
 
-            gateway_details.append({
-                "name": gw_name,
-                "namespace": gw_ns,
-                "vip": vip,
-                "listeners": listener_details,
-                "routes_to_target": len(routes_to_target),
-                "route_names": [r.get("metadata", {}).get("name", "") for r in routes_to_target],
-            })
+            gateway_details.append(
+                {
+                    "name": gw_name,
+                    "namespace": gw_ns,
+                    "vip": vip,
+                    "listeners": listener_details,
+                    "routes_to_target": len(routes_to_target),
+                    "route_names": [r.get("metadata", {}).get("name", "") for r in routes_to_target],
+                    "pools": route_pools,
+                    "route_paths": route_paths,
+                }
+            )
 
             # Build the proxy URL from VIP + first HTTP listener port
             if vip and listeners:
@@ -918,9 +999,12 @@ class ProxyDiscoveryService:
                     best_gw_ns = gw_ns
                     best_has_routes = True
                     logger.info(
-                        "F5 BNK discovery: selected gateway '%s/%s' (VIP %s) — "
-                        "has route to target LLM '%s.%s'",
-                        gw_ns, gw_name, vip, target_svc_name, target_svc_ns,
+                        "F5 BNK discovery: selected gateway '%s/%s' (VIP %s) — has route to target LLM '%s.%s'",
+                        gw_ns,
+                        gw_name,
+                        vip,
+                        target_svc_name,
+                        target_svc_ns,
                     )
                 elif not routes_to_target:
                     # VIP-match fallback: when the target's llm_base_url is an IP
@@ -947,13 +1031,18 @@ class ProxyDiscoveryService:
                         logger.info(
                             "F5 BNK discovery: selected gateway '%s/%s' via VIP-match "
                             "(target host %s == gateway VIP) — no HTTPRoute backendRef expected",
-                            gw_ns, gw_name, vip,
+                            gw_ns,
+                            gw_name,
+                            vip,
                         )
                     else:
                         logger.debug(
-                            "F5 BNK discovery: skipping gateway '%s/%s' (VIP %s) — "
-                            "no HTTPRoute to target LLM '%s.%s'",
-                            gw_ns, gw_name, vip, target_svc_name, target_svc_ns,
+                            "F5 BNK discovery: skipping gateway '%s/%s' (VIP %s) — no HTTPRoute to target LLM '%s.%s'",
+                            gw_ns,
+                            gw_name,
+                            vip,
+                            target_svc_name,
+                            target_svc_ns,
                         )
 
         # Only mark as found if a gateway actually routes to this target's LLM.
@@ -964,8 +1053,11 @@ class ProxyDiscoveryService:
             logger.info(
                 "F5 BNK discovery: infra found (%d GatewayClasses, %d gateways, %d pods) "
                 "but no gateway routes to '%s.%s' — not marking as discovered",
-                len(f5_gc), len(f5_gateways), len(bnk_pods),
-                target_svc_name, target_svc_ns,
+                len(f5_gc),
+                len(f5_gateways),
+                len(bnk_pods),
+                target_svc_name,
+                target_svc_ns,
             )
             return ProxyDiscoveryResult(
                 "f5-bnk",
@@ -989,6 +1081,7 @@ class ProxyDiscoveryService:
                 "gateways": gateway_details,
                 "pod_count": len(bnk_pods),
                 "matched_gateway": best_gw_name,
+                "routing_info": _f5_bnk_routing_info(gateway_details, best_gw_name, best_gw_ns, target_pools),
             },
         )
 
@@ -1026,7 +1119,9 @@ class ProxyDiscoveryService:
         if svc_type != "NodePort":
             logger.info(
                 "NodePort discovery: service '%s.%s' is type=%s, not NodePort — skipping",
-                svc_name, svc_ns, svc_type,
+                svc_name,
+                svc_ns,
+                svc_type,
             )
             return ProxyDiscoveryResult(
                 "nodeport",
@@ -1062,7 +1157,10 @@ class ProxyDiscoveryService:
 
         logger.info(
             "NodePort discovery: found '%s.%s' NodePort=%d node_ip=%s",
-            svc_name, svc_ns, node_port, node_ip or "unknown",
+            svc_name,
+            svc_ns,
+            node_port,
+            node_ip or "unknown",
         )
 
         return ProxyDiscoveryResult(
@@ -1129,7 +1227,8 @@ class ProxyDiscoveryService:
         try:
             if namespace:
                 svcs = core.list_namespaced_service(
-                    namespace=namespace, _request_timeout=10,
+                    namespace=namespace,
+                    _request_timeout=10,
                 )
             else:
                 svcs = core.list_service_for_all_namespaces(_request_timeout=10)
@@ -1211,9 +1310,11 @@ class ProxyDiscoveryService:
         """
         existing = {
             d.proxy_type: d
-            for d in self.db.query(ProxyDeployment).filter(
+            for d in self.db.query(ProxyDeployment)
+            .filter(
                 ProxyDeployment.target_id == target.id,
-            ).all()
+            )
+            .all()
         }
 
         now = datetime.now(UTC)
@@ -1229,13 +1330,16 @@ class ProxyDiscoveryService:
                         proxy_type=result.proxy_type,
                         proxy_url=result.proxy_url,
                         external_url=result.external_url,
+                        routing_info=(result.details or {}).get("routing_info"),
                         status=ProxyDeploymentStatus.DISCOVERED,
                         status_message=f"Discovered on cluster in namespace '{result.namespace}'",
                     )
                     self.db.add(deploy)
                     logger.info(
                         "Discovered proxy: type=%s target=%s ns=%s",
-                        result.proxy_type, target.name, result.namespace,
+                        result.proxy_type,
+                        target.name,
+                        result.namespace,
                     )
                 elif deploy.status in (
                     ProxyDeploymentStatus.PENDING,
@@ -1245,6 +1349,7 @@ class ProxyDiscoveryService:
                     # Update existing record with fresh discovery data
                     deploy.proxy_url = result.proxy_url or deploy.proxy_url
                     deploy.external_url = result.external_url or deploy.external_url
+                    deploy.routing_info = (result.details or {}).get("routing_info") or deploy.routing_info
                     deploy.status = ProxyDeploymentStatus.DISCOVERED
                     deploy.status_message = f"Re-discovered on cluster in namespace '{result.namespace}'"
                     deploy.updated_at = now
@@ -1255,7 +1360,9 @@ class ProxyDiscoveryService:
                     reason = (result.details or {}).get("reason", "no longer routes to this target")
                     logger.info(
                         "Removing stale proxy: type=%s target=%s — %s",
-                        result.proxy_type, target.name, reason,
+                        result.proxy_type,
+                        target.name,
+                        reason,
                     )
                     self.db.delete(deploy)
 
@@ -1371,10 +1478,7 @@ def _map_ingress_backends(
         # Match by class name
         class_name = spec.ingress_class_name or ""
         ann_class = annotations.get("kubernetes.io/ingress.class", "")
-        if (
-            class_name.lower() != ingress_class_name.lower()
-            and ann_class.lower() != ingress_class_name.lower()
-        ):
+        if class_name.lower() != ingress_class_name.lower() and ann_class.lower() != ingress_class_name.lower():
             continue
 
         ns = meta.namespace or "default"
@@ -1445,6 +1549,7 @@ def _map_httproute_backends(
 # Module-level helpers (no I/O, pure logic)
 # ---------------------------------------------------------------------------
 
+
 def _safe_list_cluster_custom(
     custom: k8s_client.CustomObjectsApi,
     *,
@@ -1455,7 +1560,9 @@ def _safe_list_cluster_custom(
     """List cluster-scoped custom resources. Returns [] on error."""
     try:
         resp = custom.list_cluster_custom_object(
-            group=group, version=version, plural=plural,
+            group=group,
+            version=version,
+            plural=plural,
             _request_timeout=10,
         )
         return resp.get("items", [])
@@ -1479,7 +1586,9 @@ def _safe_list_all_custom(
     """List namespaced custom resources across all namespaces. Returns [] on error."""
     try:
         resp = custom.list_cluster_custom_object(
-            group=group, version=version, plural=plural,
+            group=group,
+            version=version,
+            plural=plural,
             _request_timeout=10,
         )
         return resp.get("items", [])
@@ -1526,11 +1635,14 @@ def _find_routes_to_backend(
     gw_ns: str,
     target_svc_name: str,
     target_svc_ns: str,
+    target_pools: frozenset[str] = frozenset(),
 ) -> list[dict]:
     """Find HTTPRoutes that reference a gateway AND have a backendRef to the target service.
 
     Same matching logic as topology.py _match_routes_to_listener, but also
-    checks backendRefs to find routes that actually route to our LLM service.
+    checks backendRefs to find routes that actually route to our LLM service:
+    the Service itself, or an InferencePool in ``target_pools`` (pools in the
+    Service's namespace that select its pods, see ``_pools_selecting_service``).
     """
     matched = []
     for route in httproutes:
@@ -1553,7 +1665,8 @@ def _find_routes_to_backend(
             for br in rule.get("backendRefs", []):
                 br_name = br.get("name", "")
                 br_ns = br.get("namespace", route_ns)
-                if br_name == target_svc_name and br_ns == target_svc_ns:
+                wanted = target_pools if br.get("kind") == "InferencePool" else {target_svc_name}
+                if br_name in wanted and br_ns == target_svc_ns:
                     matched.append(route)
                     break
             else:
@@ -1640,7 +1753,8 @@ def _has_ingress_to_backend(
 
     try:
         ingresses = networking.list_namespaced_ingress(
-            namespace=target_svc_ns, _request_timeout=10,
+            namespace=target_svc_ns,
+            _request_timeout=10,
         )
     except ApiException:
         return False
@@ -1651,16 +1765,18 @@ def _has_ingress_to_backend(
             class_name = ing.spec.ingress_class_name or ""
             annotations = ing.metadata.annotations or {}
             ann_class = annotations.get("kubernetes.io/ingress.class", "")
-            if (ingress_class_filter.lower() not in class_name.lower()
-                    and ingress_class_filter.lower() not in ann_class.lower()):
+            if (
+                ingress_class_filter.lower() not in class_name.lower()
+                and ingress_class_filter.lower() not in ann_class.lower()
+            ):
                 continue
 
         # Check each rule's backend paths
-        for rule in (ing.spec.rules or []):
+        for rule in ing.spec.rules or []:
             http = rule.http
             if not http:
                 continue
-            for path in (http.paths or []):
+            for path in http.paths or []:
                 backend = path.backend
                 if not backend or not backend.service:
                     continue
@@ -1746,11 +1862,7 @@ def _classify_deployment(
 def _deployment_configmap_names(dep: Any) -> set[str]:
     """Names of the ConfigMaps a Deployment mounts as volumes (its own config)."""
     spec = dep.spec.template.spec if dep.spec and dep.spec.template else None
-    return {
-        v.config_map.name
-        for v in ((spec.volumes if spec else None) or [])
-        if v.config_map and v.config_map.name
-    }
+    return {v.config_map.name for v in ((spec.volumes if spec else None) or []) if v.config_map and v.config_map.name}
 
 
 # Server lines only (anchored): `default-server inter 2s` and friends are not backends.
@@ -1781,21 +1893,21 @@ def _service_backend(host: str, port_digits: str | None, namespace: str, via: st
 
 
 def _parse_config_backends(
-    content: str, fname: str, proxy_type: str, namespace: str, cm_name: str,
+    content: str,
+    fname: str,
+    proxy_type: str,
+    namespace: str,
+    cm_name: str,
 ) -> list[dict[str, Any]]:
     """Parse one ConfigMap data value for Service backends."""
     found: list[dict[str, Any] | None] = []
     if proxy_type == "haproxy" or "haproxy" in fname.lower():
         via = f"HAProxy Config ({cm_name})"
-        found = [
-            _service_backend(m.group(1), m.group(2), namespace, via)
-            for m in _HAPROXY_SERVER_RE.finditer(content)
-        ]
+        found = [_service_backend(m.group(1), m.group(2), namespace, via) for m in _HAPROXY_SERVER_RE.finditer(content)]
     elif proxy_type == "nginx" or "nginx" in fname.lower() or "default.conf" in fname.lower():
         via = f"NGINX Config ({cm_name})"
         found = [
-            _service_backend(m.group(1), m.group(2), namespace, via)
-            for m in _NGINX_PROXY_PASS_RE.finditer(content)
+            _service_backend(m.group(1), m.group(2), namespace, via) for m in _NGINX_PROXY_PASS_RE.finditer(content)
         ]
     elif proxy_type == "envoy" or "envoy" in fname.lower():
         # address: <host> then port_value: <port>, line by line (linear time);
@@ -1806,7 +1918,7 @@ def _parse_config_backends(
             addr_match = _ENVOY_ADDRESS_RE.search(line)
             if addr_match:
                 current_host = addr_match.group(1)
-                line = line[addr_match.end():]
+                line = line[addr_match.end() :]
             port_match = _ENVOY_PORT_RE.search(line) if current_host else None
             if current_host and port_match:
                 found.append(_service_backend(current_host, port_match.group(1), namespace, via))
@@ -1884,7 +1996,10 @@ def _has_configmap_to_backend(
     """True if a proxy Deployment's own ConfigMap routes to the target Service."""
     for dep in deployments:
         backends = _extract_backends_from_configmaps(
-            core, dep.metadata.namespace or "default", proxy_type, _deployment_configmap_names(dep),
+            core,
+            dep.metadata.namespace or "default",
+            proxy_type,
+            _deployment_configmap_names(dep),
         )
         if any(b["service"] == target_svc_name and b["namespace"] == target_svc_ns for b in backends):
             return True
@@ -1908,11 +2023,14 @@ def _has_target_deployment_match(
         return False
     try:
         releases = {
-            r for (r,) in db.query(ProxyDeployment.helm_release).filter(
+            r
+            for (r,) in db.query(ProxyDeployment.helm_release)
+            .filter(
                 ProxyDeployment.target_id == target.id,
                 ProxyDeployment.proxy_type == proxy_type,
                 ProxyDeployment.helm_release.isnot(None),
-            ).all()
+            )
+            .all()
         }
     except Exception as e:
         logger.debug("Failed to query ProxyDeployment for target %s: %s", target.id, e)
@@ -1925,3 +2043,62 @@ def _has_target_deployment_match(
         if d.metadata.name in releases or labels.get("app.kubernetes.io/instance") in releases:
             return True
     return False
+
+
+def _pools_selecting_service(
+    api_client: k8s_client.ApiClient,
+    custom: k8s_client.CustomObjectsApi,
+    svc_name: str,
+    namespace: str,
+) -> dict[str, str | None]:
+    """InferencePools in ``namespace`` that select the pods of Service ``svc_name``.
+
+    Maps each pool name to the F5EPP serving it (BNK 2.4's F5 Endpoint Picker),
+    or None. A pool selects the Service's pods when its matchLabels are a subset
+    of the Service selector.
+    """
+    try:
+        svc = k8s_client.CoreV1Api(api_client).read_namespaced_service(svc_name, namespace, _request_timeout=10)
+    except Exception:
+        return {}
+    selector = (svc.spec.selector or {}) if svc.spec else {}
+    pools = {}
+    for pool in _safe_list_all_custom(
+        custom, group="inference.networking.k8s.io", version="v1", plural="inferencepools"
+    ):
+        meta = pool.get("metadata", {})
+        labels = ((pool.get("spec") or {}).get("selector") or {}).get("matchLabels") or {}
+        if meta.get("namespace") == namespace and labels and labels.items() <= selector.items():
+            pools[meta.get("name", "")] = None
+    for epp in _safe_list_all_custom(custom, group="inference.k8s.f5.com", version="v1alpha1", plural="f5-epps"):
+        pool = ((epp.get("spec") or {}).get("poolRef") or {}).get("name")
+        if epp.get("metadata", {}).get("namespace") == namespace and pool in pools:
+            pools[pool] = epp["metadata"].get("name")
+    return pools
+
+
+def _f5_bnk_routing_info(
+    gateway_details: list[dict],
+    gw_name: str | None,
+    gw_ns: str | None,
+    target_pools: dict[str, str | None],
+) -> dict[str, str]:
+    """What the f5-bnk proxy routes through, for the proxy card (ProxyDeployment.routing_info).
+
+    Prefers a route to an InferencePool (the F5 EPP path), else the first route.
+    ``host_header`` is the chosen route's hostname, sent on every benchmark request.
+    """
+    gw = next((g for g in gateway_details if g.get("name") == gw_name and g.get("namespace") == gw_ns), None)
+    paths = (gw or {}).get("route_paths") or []
+    path = next((p for p in paths if isinstance(p, dict) and p.get("pool")), None) or (paths or [None])[0]
+    pool = path.get("pool") if isinstance(path, dict) else None
+    if path is None or not pool:
+        info = {"epp": "none (TMM load-balances the Service)"}
+    elif target_pools.get(pool):
+        info = {"epp": f"F5 Endpoint Picker (F5EPP {target_pools[pool]}, InferencePool {pool})"}
+    else:
+        info = {"epp": f"InferencePool {pool} without an F5EPP"}
+    hostnames = path.get("hostnames") if isinstance(path, dict) else None
+    if hostnames:
+        info["host_header"] = hostnames[0]
+    return info

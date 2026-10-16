@@ -82,9 +82,11 @@ def _operator_user_exists(request, db):
         )
         db.commit()
 
+
 # ---------------------------------------------------------------------------
 # Helper factories — create DB rows directly for test setup
 # ---------------------------------------------------------------------------
+
 
 def _make_config(db, **overrides):
     config = BenchmarkConfig(
@@ -105,6 +107,7 @@ def _make_run(db, **overrides):
         proxy=overrides.get("proxy", "nodeport"),
         model=overrides.get("model", "tinyllama"),
         base_url=overrides.get("base_url", "http://vllm:8000"),
+        run_label=overrides.get("run_label"),
         status=overrides.get("status", "completed"),
         config_id=overrides.get("config_id", None),
         agent_id=overrides.get("agent_id", None),
@@ -178,6 +181,7 @@ def _make_proxy(db, target_id, **overrides):
 # Minimal valid BenchmarkResultPush payload
 # ---------------------------------------------------------------------------
 
+
 def _result_push_payload(**overrides):
     """Return a minimal valid payload for POST /api/benchmarks/results."""
     base = {
@@ -211,7 +215,17 @@ def _aiperf_raw_payload():
     return {
         "benchmark_id": "aiperf-raw-001",
         "schema_version": "1.0",
-        "request_latency": {"avg": 50.0, "min": 10.0, "p25": 30.0, "p50": 45.0, "p75": 60.0, "p90": 70.0, "p95": 80.0, "p99": 150.0, "max": 200.0},
+        "request_latency": {
+            "avg": 50.0,
+            "min": 10.0,
+            "p25": 30.0,
+            "p50": 45.0,
+            "p75": 60.0,
+            "p90": 70.0,
+            "p95": 80.0,
+            "p99": 150.0,
+            "max": 200.0,
+        },
         "request_throughput": {"avg": 20.0},
         "output_token_throughput": {"avg": 300.0},
         "request_count": {"avg": 50},
@@ -227,6 +241,7 @@ def _aiperf_raw_payload():
 # ============================================================================
 # 1. Result Ingestion
 # ============================================================================
+
 
 class TestIngestBenchmarkResult:
     """POST /api/benchmarks/results — ingest canonical result push.
@@ -349,14 +364,17 @@ class TestIngestAiperfResultRealExport:
             headers=operator_headers,
         )
         assert resp.status_code == 201
-        run = db.query(BenchmarkRun).filter(
-            BenchmarkRun.id == resp.json()["run_id"]
-        ).first()
+        run = db.query(BenchmarkRun).filter(BenchmarkRun.id == resp.json()["run_id"]).first()
         rj = run.result_json or {}
         assert "http_timing" in rj
         ht = rj["http_timing"]
-        for key in ("http_req_blocked", "http_req_dns_lookup", "http_req_connecting",
-                    "http_req_waiting", "http_req_sending"):
+        for key in (
+            "http_req_blocked",
+            "http_req_dns_lookup",
+            "http_req_connecting",
+            "http_req_waiting",
+            "http_req_sending",
+        ):
             assert key in ht
 
     def test_real_export_telemetry_block_present(self, client, operator_headers, db):
@@ -367,9 +385,7 @@ class TestIngestAiperfResultRealExport:
             headers=operator_headers,
         )
         assert resp.status_code == 201
-        run = db.query(BenchmarkRun).filter(
-            BenchmarkRun.id == resp.json()["run_id"]
-        ).first()
+        run = db.query(BenchmarkRun).filter(BenchmarkRun.id == resp.json()["run_id"]).first()
         rj = run.result_json or {}
         assert "telemetry" in rj
         assert "summary" in rj["telemetry"]
@@ -382,17 +398,13 @@ class TestIngestAiperfResultRealExport:
             headers=operator_headers,
         )
         assert resp.status_code == 201
-        run = db.query(BenchmarkRun).filter(
-            BenchmarkRun.id == resp.json()["run_id"]
-        ).first()
+        run = db.query(BenchmarkRun).filter(BenchmarkRun.id == resp.json()["run_id"]).first()
         rj = run.result_json or {}
         assert "usage" in rj
         assert "prompt_tokens" in rj["usage"]
         assert "completion_tokens" in rj["usage"]
 
-    def test_linkage_params_set_fk_columns_when_rows_exist(
-        self, client, operator_headers, make_k8s_cluster, db
-    ):
+    def test_linkage_params_set_fk_columns_when_rows_exist(self, client, operator_headers, make_k8s_cluster, db):
         """target_id / config_id / proxy_deployment_id are written to the run row
         when the referenced rows exist, and dataset_name lands in result_json.
         """
@@ -423,9 +435,7 @@ class TestIngestAiperfResultRealExport:
         rj = run.result_json or {}
         assert rj.get("dataset_name") == "synthetic-512-128"
 
-    def test_linkage_params_gracefully_null_when_rows_missing(
-        self, client, operator_headers, db
-    ):
+    def test_linkage_params_gracefully_null_when_rows_missing(self, client, operator_headers, db):
         """Non-existent FK IDs are silently dropped — ingestion must succeed."""
         url = (
             "/api/benchmarks/results/aiperf"
@@ -465,6 +475,7 @@ class TestIngestAiperfResultRealExport:
 # ============================================================================
 # 2. Config CRUD
 # ============================================================================
+
 
 class TestListBenchmarkConfigs:
     """GET /api/benchmarks/configs — list saved configs (require_viewer)."""
@@ -519,7 +530,7 @@ class TestGetBenchmarkConfig:
 
 
 class TestCreateBenchmarkConfig:
-    """POST /api/benchmarks/configs — no route-level auth dep."""
+    """POST /api/benchmarks/configs (require_operator)."""
 
     def test_happy_path(self, client, operator_headers, db):
         payload = {
@@ -554,7 +565,7 @@ class TestCreateBenchmarkConfig:
 
 
 class TestUpdateBenchmarkConfig:
-    """PUT /api/benchmarks/configs/{config_id} — no route-level auth dep."""
+    """PUT /api/benchmarks/configs/{config_id} (require_operator)."""
 
     def test_happy_path(self, client, operator_headers, db):
         cfg = _make_config(db, name="cfg-update")
@@ -577,7 +588,7 @@ class TestUpdateBenchmarkConfig:
 
 
 class TestDeleteBenchmarkConfig:
-    """DELETE /api/benchmarks/configs/{config_id} — no route-level auth dep."""
+    """DELETE /api/benchmarks/configs/{config_id} (require_operator)."""
 
     def test_happy_path(self, client, operator_headers, db):
         cfg = _make_config(db, name="cfg-del")
@@ -597,6 +608,7 @@ class TestDeleteBenchmarkConfig:
 # ============================================================================
 # 3. Run Endpoints
 # ============================================================================
+
 
 class TestListBenchmarkRuns:
     """GET /api/benchmarks/runs (require_viewer)."""
@@ -630,8 +642,18 @@ class TestListBenchmarkRuns:
         assert set(data.keys()) == {"runs", "total", "limit", "offset"}
         if data["runs"]:
             run = data["runs"][0]
-            for key in ("id", "tool", "proxy", "model", "base_url", "status",
-                        "latency_p50", "latency_p99", "overall_rps", "created_at"):
+            for key in (
+                "id",
+                "tool",
+                "proxy",
+                "model",
+                "base_url",
+                "status",
+                "latency_p50",
+                "latency_p99",
+                "overall_rps",
+                "created_at",
+            ):
                 assert key in run
 
 
@@ -856,6 +878,7 @@ class TestUnsetBenchmarkRunBaseline:
 # 4. Agent Endpoints
 # ============================================================================
 
+
 class TestRegisterBenchmarkAgent:
     """POST /api/benchmarks/agents — no route-level auth dep."""
 
@@ -865,7 +888,7 @@ class TestRegisterBenchmarkAgent:
         assert resp.status_code == 201
         data = resp.json()
         assert data["name"] == "new-agent"
-        assert data["status"] == "connected"
+        assert data["status"] == "disconnected"  # connected only once its WebSocket opens
 
     def test_requires_valid_token(self, client, db, monkeypatch):
         monkeypatch.setattr("routes.benchmarks.settings.BENCHMARK_AGENT_AUTH_REQUIRED", True)
@@ -879,7 +902,7 @@ class TestRegisterBenchmarkAgent:
         assert resp.status_code == 201
         data = resp.json()
         assert data["hostname"] == "new-host"
-        assert data["status"] == "connected"
+        assert data["status"] == "disconnected"  # registering does not claim a live connection
 
     def test_response_contract(self, client, operator_headers, db):
         resp = client.post("/api/benchmarks/agents", json={"name": "contract-agent"}, headers=operator_headers)
@@ -931,6 +954,45 @@ class TestGetBenchmarkAgent:
         assert resp.status_code == 404
 
 
+class TestUpdateBenchmarkAgent:
+    """PATCH /api/benchmarks/agents/{agent_id} (require_operator)."""
+
+    def test_update_name_and_connected_projects(self, client, operator_headers, db):
+        agent = _make_agent(db, name="agent-edit-orig")
+        resp = client.patch(
+            f"/api/benchmarks/agents/{agent.id}",
+            json={
+                "name": "agent-edit-renamed",
+                "connected_projects": ["proj-a", "proj-b"],
+                "tags": {"custom_tag": "active"},
+            },
+            headers=operator_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["name"] == "agent-edit-renamed"
+        assert data["connected_projects"] == ["proj-a", "proj-b"]
+        assert data["tags"]["custom_tag"] == "active"
+
+    def test_duplicate_name_conflict(self, client, operator_headers, db):
+        _make_agent(db, name="agent-taken")
+        agent2 = _make_agent(db, name="agent-to-rename")
+        resp = client.patch(
+            f"/api/benchmarks/agents/{agent2.id}",
+            json={"name": "agent-taken"},
+            headers=operator_headers,
+        )
+        assert resp.status_code == 409
+
+    def test_not_found(self, client, operator_headers, db):
+        resp = client.patch(
+            "/api/benchmarks/agents/99999",
+            json={"name": "agent-nonexistent"},
+            headers=operator_headers,
+        )
+        assert resp.status_code == 404
+
+
 class TestDeleteBenchmarkAgent:
     """DELETE /api/benchmarks/agents/{agent_id} — no route-level auth dep."""
 
@@ -952,6 +1014,7 @@ class TestDeleteBenchmarkAgent:
 # ============================================================================
 # 5. Comparison & Summary
 # ============================================================================
+
 
 class TestCompareBenchmarkRuns:
     """POST /api/benchmarks/compare (require_viewer)."""
@@ -998,8 +1061,7 @@ class TestCompareBenchmarkRuns:
         )
         data = resp.json()
         run_entry = data["runs"][0]
-        for key in ("run_id", "proxy", "model", "tool", "status",
-                     "latency_p50", "latency_p99", "overall_rps"):
+        for key in ("run_id", "proxy", "model", "tool", "status", "latency_p50", "latency_p99", "overall_rps"):
             assert key in run_entry
 
 
@@ -1039,7 +1101,9 @@ class TestBenchmarkTrends:
         data = resp.json()
         assert [p["id"] for p in data["points"]] == [matching.id]
 
-    def test_includes_baseline_flag(self, client, viewer_headers, operator_headers, all_test_users, db, make_k8s_cluster):
+    def test_includes_baseline_flag(
+        self, client, viewer_headers, operator_headers, all_test_users, db, make_k8s_cluster
+    ):
         target = _make_target(db, cluster_id=make_k8s_cluster(name="trends-baseline-cluster").id)
         run = _make_run(db, target_id=target.id, status="completed")
         client.post(f"/api/benchmarks/runs/{run.id}/baseline", headers=operator_headers)
@@ -1093,15 +1157,26 @@ class TestBenchmarkSummary:
     def test_response_contract(self, client, viewer_headers, all_test_users, db):
         resp = client.get("/api/benchmarks/summary", headers=viewer_headers)
         data = resp.json()
-        for key in ("total_runs", "completed_runs", "failed_runs", "running_count",
-                     "avg_latency_p50", "avg_rps", "avg_success_rate", "last_run_at",
-                     "runs_last_7d", "runs_by_proxy", "runs_by_tool"):
+        for key in (
+            "total_runs",
+            "completed_runs",
+            "failed_runs",
+            "running_count",
+            "avg_latency_p50",
+            "avg_rps",
+            "avg_success_rate",
+            "last_run_at",
+            "runs_last_7d",
+            "runs_by_proxy",
+            "runs_by_tool",
+        ):
             assert key in data
 
 
 # ============================================================================
 # 6. Benchmark Target Endpoints
 # ============================================================================
+
 
 class TestListBenchmarkTargets:
     """GET /api/benchmarks/targets (require_viewer)."""
@@ -1157,8 +1232,7 @@ class TestListBenchmarkTargets:
         _make_target(db, cluster.id, name="tgt-contract")
         resp = client.get("/api/benchmarks/targets", headers=viewer_headers)
         item = resp.json()["targets"][0]
-        for key in ("id", "name", "cluster_id", "llm_base_url", "llm_model",
-                     "status", "created_at", "updated_at"):
+        for key in ("id", "name", "cluster_id", "llm_base_url", "llm_model", "status", "created_at", "updated_at"):
             assert key in item
 
 
@@ -1277,9 +1351,19 @@ class TestCreateBenchmarkTarget:
         }
         resp = client.post("/api/benchmarks/targets", json=payload, headers=operator_headers)
         data = resp.json()
-        for key in ("id", "name", "cluster_id", "llm_base_url", "llm_model",
-                     "llm_namespace", "llm_endpoint", "proxy_namespace", "status",
-                     "created_at", "updated_at"):
+        for key in (
+            "id",
+            "name",
+            "cluster_id",
+            "llm_base_url",
+            "llm_model",
+            "llm_namespace",
+            "llm_endpoint",
+            "proxy_namespace",
+            "status",
+            "created_at",
+            "updated_at",
+        ):
             assert key in data
 
 
@@ -1334,7 +1418,7 @@ class TestDeleteBenchmarkTarget:
 
 
 class TestValidateBenchmarkTarget:
-    """POST /api/benchmarks/targets/{target_id}/validate — no route-level auth dep."""
+    """POST /api/benchmarks/targets/{target_id}/validate (require_operator)."""
 
     def test_happy_path(self, client, operator_headers, make_k8s_cluster, db):
         cluster = make_k8s_cluster(name="tgt-validate-cluster")
@@ -1364,8 +1448,9 @@ class TestValidateBenchmarkTarget:
 # 7. Target Discovery
 # ============================================================================
 
+
 class TestDiscoverTargets:
-    """POST /api/benchmarks/discover-targets — no route-level auth dep.
+    """POST /api/benchmarks/discover-targets (require_operator).
 
     Uses lazy import of TargetDiscoveryService inside the route function,
     so we patch at the module where it's imported from.
@@ -1423,10 +1508,18 @@ class TestDiscoverTargets:
             "proxy_results": [],
             "created_configs": [],
         }
-        resp = client.post("/api/benchmarks/discover-targets", json={"cluster_id": cluster.id}, headers=operator_headers)
+        resp = client.post(
+            "/api/benchmarks/discover-targets", json={"cluster_id": cluster.id}, headers=operator_headers
+        )
         data = resp.json()
-        for key in ("cluster_id", "cluster_name", "discovered_services",
-                     "discovered_count", "created_targets", "proxy_results"):
+        for key in (
+            "cluster_id",
+            "cluster_name",
+            "discovered_services",
+            "discovered_count",
+            "created_targets",
+            "proxy_results",
+        ):
             assert key in data
 
 
@@ -1434,8 +1527,9 @@ class TestDiscoverTargets:
 # 8. Proxy Discovery
 # ============================================================================
 
+
 class TestDiscoverProxies:
-    """POST /api/benchmarks/targets/{target_id}/discover-proxies — no route-level auth dep.
+    """POST /api/benchmarks/targets/{target_id}/discover-proxies (require_operator).
 
     Uses lazy import of ProxyDiscoveryService, and also instantiates
     BenchmarkTargetService at module level. We need to patch both.
@@ -1473,7 +1567,9 @@ class TestDiscoverProxies:
 
     @patch("services.proxy_discovery_service.ProxyDiscoveryService")
     @patch("routes.benchmarks.BenchmarkTargetService")
-    def test_response_contract(self, mock_target_svc_cls, mock_disc_cls, client, operator_headers, make_k8s_cluster, db):
+    def test_response_contract(
+        self, mock_target_svc_cls, mock_disc_cls, client, operator_headers, make_k8s_cluster, db
+    ):
         cluster = make_k8s_cluster(name="proxy-disc-contract-cluster")
         target = _make_target(db, cluster.id, name="proxy-disc-contract-target")
 
@@ -1485,14 +1581,14 @@ class TestDiscoverProxies:
 
         resp = client.post(f"/api/benchmarks/targets/{target.id}/discover-proxies", headers=operator_headers)
         data = resp.json()
-        for key in ("target_id", "target_name", "cluster_id", "results",
-                     "discovered_count", "total_scanned"):
+        for key in ("target_id", "target_name", "cluster_id", "results", "discovered_count", "total_scanned"):
             assert key in data
 
 
 # ============================================================================
 # 9. Proxy Deployment Endpoints
 # ============================================================================
+
 
 class TestListProxyDeployments:
     """GET /api/benchmarks/targets/{target_id}/proxies (require_viewer)."""
@@ -1526,8 +1622,7 @@ class TestListProxyDeployments:
             headers=viewer_headers,
         )
         item = resp.json()[0]
-        for key in ("id", "target_id", "proxy_type", "status", "proxy_url",
-                     "created_at", "updated_at"):
+        for key in ("id", "target_id", "proxy_type", "status", "proxy_url", "created_at", "updated_at"):
             assert key in item
 
 
@@ -1620,13 +1715,22 @@ class TestDeployProxy:
             headers=operator_headers,
         )
         data = resp.json()
-        for key in ("id", "target_id", "proxy_type", "status", "helm_release",
-                     "helm_chart", "created_at", "updated_at"):
+        for key in (
+            "id",
+            "target_id",
+            "proxy_type",
+            "status",
+            "helm_release",
+            "helm_chart",
+            "created_at",
+            "updated_at",
+        ):
             assert key in data
 
     @patch("tasks.proxy_deploy_tasks.deploy_proxy_task")
     def test_envoy_ai_gateway_uses_default_chart(self, mock_task, client, operator_headers, make_k8s_cluster, db):
         from services.benchmark_target_service import DEFAULT_HELM_CHARTS
+
         mock_task.delay.return_value = MagicMock(id="celery-aigw")
         cluster = make_k8s_cluster(name="proxy-aigw-cluster")
         target = _make_target(db, cluster.id, name="proxy-aigw-target")
@@ -1647,6 +1751,7 @@ class TestDeployProxy:
     @patch("tasks.proxy_deploy_tasks.deploy_proxy_task")
     def test_llm_d_router_uses_default_chart(self, mock_task, client, operator_headers, make_k8s_cluster, db):
         from services.benchmark_target_service import DEFAULT_HELM_CHARTS
+
         mock_task.delay.return_value = MagicMock(id="celery-llmd")
         cluster = make_k8s_cluster(name="proxy-llmd-cluster")
         target = _make_target(db, cluster.id, name="proxy-llmd-target")
@@ -1666,7 +1771,7 @@ class TestDeployProxy:
 
 
 class TestUpdateProxyDeployment:
-    """PUT /api/benchmarks/targets/{target_id}/proxies/{proxy_id} — no route-level auth dep."""
+    """PUT /api/benchmarks/targets/{target_id}/proxies/{proxy_id} (require_operator)."""
 
     def test_happy_path(self, client, operator_headers, make_k8s_cluster, db):
         cluster = make_k8s_cluster(name="proxy-update-cluster")
@@ -1760,7 +1865,7 @@ class TestDeleteProxyDeployment:
 
 
 class TestRedeployProxy:
-    """POST /api/benchmarks/targets/{target_id}/proxies/{proxy_id}/redeploy — no route-level auth dep."""
+    """POST /api/benchmarks/targets/{target_id}/proxies/{proxy_id}/redeploy (require_operator)."""
 
     @patch("tasks.proxy_deploy_tasks.deploy_proxy_task")
     def test_happy_path(self, mock_task, client, operator_headers, make_k8s_cluster, db):
@@ -1802,6 +1907,7 @@ class TestRedeployProxy:
 # 10. Proxy Task Status
 # ============================================================================
 
+
 class TestBenchmarkProxyTaskStatus:
     """GET /api/benchmarks/targets/{target_id}/proxies/{proxy_id}/task-status (require_viewer)."""
 
@@ -1820,7 +1926,9 @@ class TestBenchmarkProxyTaskStatus:
         cluster = make_k8s_cluster(name="task-status-cluster-a")
         target = _make_target(db, cluster.id, name="task-status-target-a")
         proxy = _make_proxy(
-            db, target.id, status="deploying",
+            db,
+            target.id,
+            status="deploying",
             status_message="Deploying chart",
             proxy_url=None,
             celery_task_id="celery-task-123",
@@ -1839,8 +1947,12 @@ class TestBenchmarkProxyTaskStatus:
         data = resp.json()
 
         assert set(data.keys()) == {
-            "proxy_id", "status", "status_message",
-            "proxy_url", "celery_task_id", "celery_state",
+            "proxy_id",
+            "status",
+            "status_message",
+            "proxy_url",
+            "celery_task_id",
+            "celery_state",
         }
         assert data["proxy_id"] == proxy.id
         assert data["status"] == "deploying"
@@ -1859,7 +1971,8 @@ class TestBenchmarkProxyTaskStatus:
         cluster = make_k8s_cluster(name="task-status-cluster-b")
         target = _make_target(db, cluster.id, name="task-status-target-b")
         proxy = _make_proxy(
-            db, target.id,
+            db,
+            target.id,
             status="ready",
             status_message="Proxy ready",
             proxy_url="http://envoy.perf-proxies:10080",
@@ -1887,6 +2000,7 @@ class TestBenchmarkProxyTaskStatus:
 # ============================================================================
 # 11. Trigger Benchmark Run
 # ============================================================================
+
 
 class TestTriggerBenchmarkRun:
     """POST /api/benchmarks/targets/{target_id}/proxies/{proxy_id}/run — no route-level auth dep."""
@@ -2043,6 +2157,7 @@ class TestTriggerBenchmarkRun:
 # 12. Scenario Catalog
 # ============================================================================
 
+
 class TestListBenchmarkScenarios:
     """GET /api/benchmarks/scenarios (require_viewer)."""
 
@@ -2077,6 +2192,7 @@ class TestListBenchmarkScenarios:
 # ============================================================================
 # 13. Run Scenario — creates a run-group + N child runs
 # ============================================================================
+
 
 class TestRunBenchmarkScenario:
     """POST /api/benchmarks/targets/{target_id}/proxies/{proxy_id}/run-scenario."""
@@ -2212,8 +2328,17 @@ class TestRunBenchmarkScenario:
             headers=operator_headers,
         )
         data = resp.json()
-        for key in ("run_group_id", "scenario_key", "agent_id", "proxy_id",
-                     "target_id", "status", "total_runs", "dispatched_runs", "message"):
+        for key in (
+            "run_group_id",
+            "scenario_key",
+            "agent_id",
+            "proxy_id",
+            "target_id",
+            "status",
+            "total_runs",
+            "dispatched_runs",
+            "message",
+        ):
             assert key in data
         assert data["total_runs"] == 4  # prefix-cache: 4 (concurrency, ISL) pairs
 
@@ -2221,6 +2346,7 @@ class TestRunBenchmarkScenario:
 # ============================================================================
 # 14. Get Run-Group
 # ============================================================================
+
 
 def _make_run_group(db, **overrides):
     group = BenchmarkRunGroup(
@@ -2271,15 +2397,28 @@ class TestGetBenchmarkRunGroup:
         group = _make_run_group(db)
         resp = client.get(f"/api/benchmarks/run-groups/{group.id}", headers=viewer_headers)
         data = resp.json()
-        for key in ("id", "scenario_key", "scenario_name", "run_label", "status",
-                     "total_runs", "completed_runs", "failed_runs", "aggregate_json",
-                     "avg_latency_p50", "peak_rps", "runs", "created_at"):
+        for key in (
+            "id",
+            "scenario_key",
+            "scenario_name",
+            "run_label",
+            "status",
+            "total_runs",
+            "completed_runs",
+            "failed_runs",
+            "aggregate_json",
+            "avg_latency_p50",
+            "peak_rps",
+            "runs",
+            "created_at",
+        ):
             assert key in data
 
 
 # ============================================================================
 # 15. Authorization — mutating routes require operator (M1)
 # ============================================================================
+
 
 class TestMutatingRoutesForbidViewer:
     """A viewer token must get 403 on mutating benchmark routes (M1).
@@ -2288,96 +2427,140 @@ class TestMutatingRoutesForbidViewer:
     validity only) let a viewer trigger sweeps, deploy proxies, and delete data.
     """
 
-    def test_create_run_forbidsViewer(self, client, viewer_headers, all_test_users, db):
-        payload = {"model": "tinyllama", "base_url": "http://vllm:8000"}
-        resp = client.post("/api/benchmarks/runs", json=payload, headers=viewer_headers)
-        assert resp.status_code == 403
-
-    def test_delete_run_forbidsViewer(self, client, viewer_headers, all_test_users, db):
-        run = _make_run(db, status="completed")
-        resp = client.delete(f"/api/benchmarks/runs/{run.id}", headers=viewer_headers)
-        assert resp.status_code == 403
-
-    def test_cancel_run_forbidsViewer(self, client, viewer_headers, all_test_users, db):
-        run = _make_run(db, status="pending")
-        resp = client.post(f"/api/benchmarks/runs/{run.id}/cancel", headers=viewer_headers)
-        assert resp.status_code == 403
-
-    def test_create_target_forbidsViewer(self, client, viewer_headers, all_test_users, make_k8s_cluster, db):
+    @pytest.mark.parametrize(
+        ("method", "endpoint_builder", "body_builder"),
+        [
+            (
+                "post",
+                lambda c: "/api/benchmarks/runs",
+                lambda c: {"model": "tinyllama", "base_url": "http://vllm:8000"},
+            ),
+            ("delete", lambda c: f"/api/benchmarks/runs/{c['run'].id}", None),
+            ("post", lambda c: f"/api/benchmarks/runs/{c['run'].id}/cancel", None),
+            ("post", lambda c: f"/api/benchmarks/runs/{c['run'].id}/baseline", None),
+            ("delete", lambda c: f"/api/benchmarks/runs/{c['run'].id}/baseline", None),
+            (
+                "post",
+                lambda c: "/api/benchmarks/targets",
+                lambda c: {
+                    "name": "viewer-forbid-target",
+                    "cluster_id": c["cluster"].id,
+                    "llm_base_url": "http://x",
+                    "llm_model": "m",
+                },
+            ),
+            ("delete", lambda c: f"/api/benchmarks/targets/{c['target'].id}", None),
+            ("post", lambda c: f"/api/benchmarks/targets/{c['target'].id}/validate", None),
+            (
+                "post",
+                lambda c: "/api/benchmarks/discover-targets",
+                lambda c: {"cluster_id": c["cluster"].id, "auto_create": True},
+            ),
+            ("post", lambda c: f"/api/benchmarks/targets/{c['target'].id}/discover-proxies", None),
+            ("post", lambda c: f"/api/benchmarks/targets/{c['target'].id}/proxies", lambda c: {"proxy_type": "envoy"}),
+            ("delete", lambda c: f"/api/benchmarks/targets/{c['target'].id}/proxies/{c['proxy'].id}", None),
+            (
+                "post",
+                lambda c: f"/api/benchmarks/targets/{c['target'].id}/proxies/{c['proxy'].id}/run",
+                lambda c: {"agent_id": c["agent"].id},
+            ),
+            (
+                "post",
+                lambda c: f"/api/benchmarks/targets/{c['target'].id}/proxies/{c['proxy'].id}/run-scenario",
+                lambda c: {"scenario_key": "baseline", "agent_id": c["agent"].id},
+            ),
+            (
+                "post",
+                lambda c: "/api/benchmarks/configs",
+                lambda c: {"name": "viewer-forbid-cfg", "config_json": {"url": "http://x"}},
+            ),
+            ("put", lambda c: f"/api/benchmarks/configs/{c['cfg'].id}", lambda c: {"name": "x"}),
+            ("delete", lambda c: f"/api/benchmarks/configs/{c['cfg'].id}", None),
+            (
+                "put",
+                lambda c: f"/api/benchmarks/targets/{c['target'].id}/proxies/{c['proxy'].id}",
+                lambda c: {"status": "ready"},
+            ),
+            ("post", lambda c: f"/api/benchmarks/targets/{c['target'].id}/proxies/{c['proxy'].id}/redeploy", None),
+        ],
+    )
+    def test_mutating_routes_forbid_viewer(
+        self, client, viewer_headers, all_test_users, make_k8s_cluster, db, method, endpoint_builder, body_builder
+    ):
         cluster = make_k8s_cluster(name="viewer-forbid-cluster")
-        payload = {
-            "name": "viewer-forbid-target",
-            "cluster_id": cluster.id,
-            "llm_base_url": "http://x",
-            "llm_model": "m",
+        target = _make_target(db, cluster.id, name="viewer-forbid-target")
+        ctx = {
+            "cluster": cluster,
+            "target": target,
+            "proxy": _make_proxy(db, target.id, status="failed"),
+            "agent": _make_agent(db, name="viewer-forbid-agent", status="connected"),
+            "run": _make_run(db, status="pending"),
+            "cfg": _make_config(db, name="viewer-forbid-cfg"),
         }
-        resp = client.post("/api/benchmarks/targets", json=payload, headers=viewer_headers)
+        url = endpoint_builder(ctx)
+        kwargs = {"headers": viewer_headers}
+        if body_builder is not None:
+            kwargs["json"] = body_builder(ctx)
+        resp = getattr(client, method)(url, **kwargs)
         assert resp.status_code == 403
+        if "proxies" in url and method == "put":
+            db.refresh(ctx["proxy"])
+            assert ctx["proxy"].status == "failed"
 
-    def test_delete_target_forbidsViewer(self, client, viewer_headers, all_test_users, make_k8s_cluster, db):
-        cluster = make_k8s_cluster(name="viewer-forbid-del-cluster")
-        target = _make_target(db, cluster.id, name="viewer-forbid-del-target")
-        resp = client.delete(f"/api/benchmarks/targets/{target.id}", headers=viewer_headers)
-        assert resp.status_code == 403
 
-    def test_deploy_proxy_forbidsViewer(self, client, viewer_headers, all_test_users, make_k8s_cluster, db):
-        cluster = make_k8s_cluster(name="viewer-forbid-deploy-cluster")
-        target = _make_target(db, cluster.id, name="viewer-forbid-deploy-target")
-        resp = client.post(
-            f"/api/benchmarks/targets/{target.id}/proxies",
-            json={"proxy_type": "envoy"},
-            headers=viewer_headers,
-        )
-        assert resp.status_code == 403
+class TestRunProgressWebSocketAuth:
+    """The dashboard run-progress WS needs a user token, and only the run's agent
+    may publish progress for it."""
 
-    def test_delete_proxy_forbidsViewer(self, client, viewer_headers, all_test_users, make_k8s_cluster, db):
-        cluster = make_k8s_cluster(name="viewer-forbid-undeploy-cluster")
-        target = _make_target(db, cluster.id, name="viewer-forbid-undeploy-target")
-        proxy = _make_proxy(db, target.id, status="ready")
-        resp = client.delete(
-            f"/api/benchmarks/targets/{target.id}/proxies/{proxy.id}",
-            headers=viewer_headers,
-        )
-        assert resp.status_code == 403
+    @pytest.fixture(autouse=True)
+    def _auth_on(self, monkeypatch):
+        monkeypatch.setattr("core.config.settings.REQUIRE_AUTH", True)
 
-    def test_trigger_run_forbidsViewer(self, client, viewer_headers, all_test_users, make_k8s_cluster, db):
-        cluster = make_k8s_cluster(name="viewer-forbid-trigger-cluster")
-        target = _make_target(db, cluster.id, name="viewer-forbid-trigger-target")
-        proxy = _make_proxy(db, target.id, status="ready")
-        agent = _make_agent(db, name="viewer-forbid-trigger-agent", status="connected")
-        resp = client.post(
-            f"/api/benchmarks/targets/{target.id}/proxies/{proxy.id}/run",
-            json={"agent_id": agent.id},
-            headers=viewer_headers,
-        )
-        assert resp.status_code == 403
+    def test_missing_token_rejected(self, client, all_test_users, db):
+        run = _make_run(db, status="running")
+        with pytest.raises(Exception):
+            with client.websocket_connect(f"/ws/benchmarks/runs/{run.id}"):
+                pass
 
-    def test_run_scenario_forbidsViewer(self, client, viewer_headers, all_test_users, make_k8s_cluster, db):
-        cluster = make_k8s_cluster(name="viewer-forbid-scenario-cluster")
-        target = _make_target(db, cluster.id, name="viewer-forbid-scenario-target")
-        proxy = _make_proxy(db, target.id, status="ready")
-        agent = _make_agent(db, name="viewer-forbid-scenario-agent", status="connected")
-        resp = client.post(
-            f"/api/benchmarks/targets/{target.id}/proxies/{proxy.id}/run-scenario",
-            json={"scenario_key": "baseline", "agent_id": agent.id},
-            headers=viewer_headers,
-        )
-        assert resp.status_code == 403
+    def test_invalid_token_rejected(self, client, all_test_users, db):
+        run = _make_run(db, status="running")
+        with pytest.raises(Exception):
+            with client.websocket_connect(f"/ws/benchmarks/runs/{run.id}?token=garbage"):
+                pass
 
-    def test_set_baseline_forbidsViewer(self, client, viewer_headers, all_test_users, db):
-        run = _make_run(db, status="completed")
-        resp = client.post(f"/api/benchmarks/runs/{run.id}/baseline", headers=viewer_headers)
-        assert resp.status_code == 403
+    def test_viewer_token_accepted(self, client, viewer_headers, all_test_users, db):
+        run = _make_run(db, status="running")
+        token = viewer_headers["Authorization"].split(" ", 1)[1]
+        with client.websocket_connect(f"/ws/benchmarks/runs/{run.id}?token={token}") as ws:
+            ws.send_text("ping")
+            assert ws.receive_text() == "pong"
 
-    def test_unset_baseline_forbidsViewer(self, client, viewer_headers, all_test_users, db):
-        run = _make_run(db, status="completed")
-        resp = client.delete(f"/api/benchmarks/runs/{run.id}/baseline", headers=viewer_headers)
-        assert resp.status_code == 403
+    def test_progress_from_wrong_agent_isNotBroadcast(self, client, all_test_users, db):
+        from unittest.mock import AsyncMock
+
+        from services.auth_service import create_access_token
+
+        owner = _make_agent(db, name="progress-owner-agent", status="connected")
+        attacker = _make_agent(db, name="progress-attacker-agent", status="connected")
+        run = _make_run(db, status="running", agent_id=owner.id)
+
+        def _send_progress(agent):
+            token = create_access_token(data={"sub": agent.name, "role": "agent", "agent_id": agent.id})
+            with client.websocket_connect(f"/ws/benchmarks/agents/{agent.id}?token={token}") as ws:
+                ws.send_json({"type": "progress", "run_id": run.id, "line": "spoofed"})
+                ws.send_json({"type": "heartbeat", "status": "connected"})
+
+        with patch("routes.benchmarks.broadcast_run_update", new_callable=AsyncMock) as mock_broadcast:
+            _send_progress(attacker)
+            mock_broadcast.assert_not_awaited()
+            _send_progress(owner)
+            mock_broadcast.assert_awaited_once()
 
 
 # ============================================================================
 # 16. Cancel propagation across a run-group (C1)
 # ============================================================================
+
 
 class TestCancelRunGroupPropagation:
     """Cancelling a group child must tear down the WHOLE group (C1).
@@ -2412,10 +2595,8 @@ class TestCancelRunGroupPropagation:
         # running the live child (different run_id), so the in-flight aiperf stops.
         agent = _make_agent(db, name="cancel-group-agent", status="connected")
         group = _make_run_group(db, status="running", total_runs=2)
-        running = _make_run(db, run_group_id=group.id, variant_label="r1",
-                            status="running", agent_id=agent.id)
-        pending = _make_run(db, run_group_id=group.id, variant_label="p1",
-                            status="pending", agent_id=agent.id)
+        running = _make_run(db, run_group_id=group.id, variant_label="r1", status="running", agent_id=agent.id)
+        pending = _make_run(db, run_group_id=group.id, variant_label="p1", status="pending", agent_id=agent.id)
         with patch("routes.benchmarks.dispatch_to_agent", return_value=True) as mock_dispatch:
             resp = client.post(f"/api/benchmarks/runs/{pending.id}/cancel", headers=operator_headers)
         assert resp.status_code == 200
@@ -2437,6 +2618,7 @@ class TestCancelRunGroupPropagation:
 # ============================================================================
 # 17. Agent WebSocket — auth + result-spoof ownership guard (M2)
 # ============================================================================
+
 
 class TestAgentWebSocketAuth:
     """The agent WS validates a JWT (M2) and rejects cross-agent result spoofing."""
@@ -2491,19 +2673,21 @@ class TestAgentWebSocketAuth:
         token = create_access_token(data={"sub": "ws-attacker-agent", "role": "agent", "agent_id": attacker.id})
 
         with client.websocket_connect(f"/ws/benchmarks/agents/{attacker.id}?token={token}") as ws:
-            ws.send_json({
-                "type": "run_completed",
-                "run_id": run.id,
-                "result": {
-                    "request_count": {"avg": 10},
-                    "request_latency": {"p50": 1.0, "p99": 2.0, "avg": 1.5},
-                    "request_throughput": {"avg": 5.0},
-                    "output_token_throughput": {"avg": 50.0},
-                    "output_sequence_length": {"avg": 100},
-                    "input_sequence_length": {"avg": 50},
-                    "benchmark_duration": {"avg": 5.0},
-                },
-            })
+            ws.send_json(
+                {
+                    "type": "run_completed",
+                    "run_id": run.id,
+                    "result": {
+                        "request_count": {"avg": 10},
+                        "request_latency": {"p50": 1.0, "p99": 2.0, "avg": 1.5},
+                        "request_throughput": {"avg": 5.0},
+                        "output_token_throughput": {"avg": 50.0},
+                        "output_sequence_length": {"avg": 100},
+                        "input_sequence_length": {"avg": 50},
+                        "benchmark_duration": {"avg": 5.0},
+                    },
+                }
+            )
             # Send a heartbeat afterward and wait for it to round-trip-ish by closing.
             ws.send_json({"type": "heartbeat", "status": "connected"})
 
@@ -2607,10 +2791,18 @@ class TestAgentRunOwnership:
         run = _make_run(db, status="failed", agent_id=agent.id, total_requests=0)
 
         with self._connect(client, agent) as ws:
-            ws.send_json({"type": "run_completed", "run_id": run.id, "result": {
-                "request_count": {"avg": 10}, "request_latency": {"p50": 1.0, "p99": 2.0, "avg": 1.5},
-                "request_throughput": {"avg": 5.0}, "benchmark_duration": {"avg": 5.0},
-            }})
+            ws.send_json(
+                {
+                    "type": "run_completed",
+                    "run_id": run.id,
+                    "result": {
+                        "request_count": {"avg": 10},
+                        "request_latency": {"p50": 1.0, "p99": 2.0, "avg": 1.5},
+                        "request_throughput": {"avg": 5.0},
+                        "benchmark_duration": {"avg": 5.0},
+                    },
+                }
+            )
             ws.send_json({"type": "heartbeat", "status": "connected"})
 
         db.expire_all()
@@ -2654,7 +2846,11 @@ class TestAgentRunOwnership:
         assert (first_server_ws, bench_routes._WS_CLOSE_SUPERSEDED) in closes
 
     def test_connect_spares_run_sent_on_this_connection_while_closing_previous(
-        self, client, all_test_users, db, monkeypatch,
+        self,
+        client,
+        all_test_users,
+        db,
+        monkeypatch,
     ):
         from starlette.websockets import WebSocket
 
@@ -2745,6 +2941,7 @@ class TestDispatchToAgentTimeout:
 # 18. Gated dispatch — atomic claim-before-dispatch (H1)
 # ============================================================================
 
+
 class TestGatedDispatchClaim:
     """`_dispatch_next_group_child` claims the next child atomically before
     dispatch, so concurrent terminal events can't double-dispatch the same run."""
@@ -2755,8 +2952,7 @@ class TestGatedDispatchClaim:
 
         group = _make_run_group(db, status="running", total_runs=2)
         agent = _make_agent(db, name="gated-agent", status="connected")
-        nxt = _make_run(db, run_group_id=group.id, variant_label="c2",
-                        status="pending", agent_id=agent.id)
+        nxt = _make_run(db, run_group_id=group.id, variant_label="c2", status="pending", agent_id=agent.id)
         svc = BenchmarkService(db)
 
         sent = []
@@ -2783,8 +2979,7 @@ class TestGatedDispatchClaim:
 
         group = _make_run_group(db, status="running", total_runs=2)
         agent = _make_agent(db, name="gated-race-agent", status="connected")
-        nxt = _make_run(db, run_group_id=group.id, variant_label="only-pending",
-                        status="pending", agent_id=agent.id)
+        nxt = _make_run(db, run_group_id=group.id, variant_label="only-pending", status="pending", agent_id=agent.id)
         svc = BenchmarkService(db)
 
         sends = []
@@ -2810,8 +3005,7 @@ class TestGatedDispatchClaim:
 
         group = _make_run_group(db, status="running", total_runs=2)
         agent = _make_agent(db, name="gated-fail-agent", status="connected")
-        nxt = _make_run(db, run_group_id=group.id, variant_label="c2",
-                        status="pending", agent_id=agent.id)
+        nxt = _make_run(db, run_group_id=group.id, variant_label="c2", status="pending", agent_id=agent.id)
         svc = BenchmarkService(db)
 
         async def _fake_send(agent_id, command):
@@ -2832,13 +3026,14 @@ def test_complete_run_counts_aiperf_error_records_as_failures(db):
     masking real upstream errors (e.g. truncated streams)."""
     from services.benchmark_service import BenchmarkService
 
-    run = _make_run(db, status="running", total_requests=0,
-                    successful_requests=0, failed_requests=0, success_rate_pct=0.0)
+    run = _make_run(
+        db, status="running", total_requests=0, successful_requests=0, failed_requests=0, success_rate_pct=0.0
+    )
     db.commit()
 
     raw = {
-        "request_count": {"avg": 886.0},          # successful records
-        "error_request_count": {"avg": 114.0},    # error records (truncated/4xx/5xx)
+        "request_count": {"avg": 886.0},  # successful records
+        "error_request_count": {"avg": 114.0},  # error records (truncated/4xx/5xx)
         "request_latency": {"p50": 2000.0, "p99": 5000.0, "avg": 2500.0},
         "request_throughput": {"avg": 24.0},
         "output_token_throughput": {"avg": 3000.0},
@@ -2855,6 +3050,7 @@ def test_complete_run_counts_aiperf_error_records_as_failures(db):
     assert run.success_rate_pct == 88.6
     assert run.result_json["failed"] == 114
     assert run.result_json["success_rate_pct"] == 88.6
+
 
 class TestMintBenchmarkAgentToken:
     """POST /api/benchmarks/agents/{id}/token (require_operator).
@@ -2908,9 +3104,7 @@ class TestMintBenchmarkAgentToken:
         # Bound to this agent only: connecting as another id is rejected.
         assert _agent_ws_authorized(self._ws(token), other.id) == 4401
 
-    def test_agent_token_bound_on_global_jwt_ws_path(
-        self, client, admin_headers, sample_user, db, monkeypatch
-    ):
+    def test_agent_token_bound_on_global_jwt_ws_path(self, client, admin_headers, sample_user, db, monkeypatch):
         from routes.benchmarks import _agent_ws_authorized
 
         monkeypatch.setattr("routes.benchmarks.settings.BENCHMARK_AGENT_AUTH_REQUIRED", False)
@@ -3040,3 +3234,259 @@ class TestMintBenchmarkAgentToken:
             loop.call_soon_threadsafe(loop.stop)
             thread.join(timeout=5)
             loop.close()
+
+
+# ============================================================================
+# Run correctness — saved-config merge, zero-request results, peak rps,
+# run-group counters, run-list search/sort/paging
+# ============================================================================
+
+
+class TestTriggerRunSavedConfigMerge:
+    """A saved config's load shape must reach aiperf; the target/proxy still owns what is tested."""
+
+    def _trigger(self, client, operator_headers, make_k8s_cluster, db, name, body):
+        cluster = make_k8s_cluster(name=f"{name}-cluster")
+        target = _make_target(db, cluster.id, name=f"{name}-target")
+        proxy = _make_proxy(db, target.id, status="ready", proxy_url="http://envoy.perf:10080")
+        agent = _make_agent(db, name=f"{name}-agent", status="connected")
+        with patch("routes.benchmarks.dispatch_to_agent", return_value=True):
+            resp = client.post(
+                f"/api/benchmarks/targets/{target.id}/proxies/{proxy.id}/run",
+                json={"agent_id": agent.id, **body},
+                headers=operator_headers,
+            )
+        assert resp.status_code == 201
+        db.expire_all()
+        return db.query(BenchmarkRun).get(resp.json()["run_id"]).config_snapshot
+
+    def test_saved_load_shape_beats_defaults(self, client, operator_headers, make_k8s_cluster, db):
+        cfg = _make_config(
+            db,
+            name="merge-cfg",
+            config_json={
+                "concurrency": 7,
+                "request_count": 42,
+                "output_tokens_mean": 1024,
+                "url": "http://somewhere-else:8000",
+                "model": "other-model",
+            },
+        )
+        snap = self._trigger(client, operator_headers, make_k8s_cluster, db, "merge", {"config_id": cfg.id})
+        assert snap["concurrency"] == 7
+        assert snap["request_count"] == 42
+        assert snap["output_tokens_mean"] == 1024
+        # Identity is the proxy's, never the saved config's.
+        assert snap["url"] == "http://envoy.perf:10080"
+        assert snap["model"] == "tinyllama"
+
+    def test_explicit_fields_beat_saved(self, client, operator_headers, make_k8s_cluster, db):
+        cfg = _make_config(db, name="explicit-cfg", config_json={"request_count": 42, "output_tokens_mean": 1024})
+        snap = self._trigger(
+            client,
+            operator_headers,
+            make_k8s_cluster,
+            db,
+            "explicit",
+            {"config_id": cfg.id, "total_requests": 9, "max_tokens": 16},
+        )
+        assert snap["request_count"] == 9
+        assert snap["output_tokens_mean"] == 16
+
+    def test_defaults_without_saved_config(self, client, operator_headers, make_k8s_cluster, db):
+        snap = self._trigger(client, operator_headers, make_k8s_cluster, db, "defaults", {})
+        assert snap["concurrency"] == 50
+        assert snap["request_count"] == 250
+
+
+class TestZeroRequestResults:
+    """A result with no requests measured nothing: stored as failed, success empty."""
+
+    def test_raw_aiperf_zero_requests_is_failed(self, client, operator_headers, db):
+        payload = {**_aiperf_raw_payload(), "request_count": {"avg": 0}}
+        resp = client.post("/api/benchmarks/results/aiperf", json=payload, headers=operator_headers)
+        assert resp.status_code in (200, 201)
+        run = db.query(BenchmarkRun).order_by(BenchmarkRun.id.desc()).first()
+        assert run.status == "failed"
+        assert run.success_rate_pct is None
+        assert "No requests" in run.error_message
+
+    def test_push_zero_requests_is_failed(self, client, operator_headers, db):
+        payload = _result_push_payload(total_requests=0, successful=0, failed=0, success_rate_pct=100.0)
+        resp = client.post("/api/benchmarks/results", json=payload, headers=operator_headers)
+        assert resp.status_code in (200, 201)
+        run = db.query(BenchmarkRun).order_by(BenchmarkRun.id.desc()).first()
+        assert run.status == "failed"
+        assert run.success_rate_pct is None
+
+    def test_raw_aiperf_peak_rps_is_not_the_average(self, client, operator_headers, db):
+        resp = client.post("/api/benchmarks/results/aiperf", json=_aiperf_raw_payload(), headers=operator_headers)
+        assert resp.status_code in (200, 201)
+        run = db.query(BenchmarkRun).order_by(BenchmarkRun.id.desc()).first()
+        assert run.status == "completed"
+        assert run.overall_rps == 20.0
+        assert run.peak_rps is None
+
+
+class TestDeleteRunRecountsGroup:
+    def test_delete_child_recounts_group(self, client, operator_headers, db):
+        group = _make_run_group(db, status="completed", total_runs=3, completed_runs=2, failed_runs=1)
+        keep = _make_run(db, run_group_id=group.id, status="completed", overall_rps=80.0)
+        _make_run(db, run_group_id=group.id, status="completed", overall_rps=120.0)
+        failed = _make_run(db, run_group_id=group.id, status="failed")
+        assert client.delete(f"/api/benchmarks/runs/{failed.id}", headers=operator_headers).status_code == 204
+        db.expire_all()
+        group = db.query(BenchmarkRunGroup).get(group.id)
+        assert (group.total_runs, group.completed_runs, group.failed_runs) == (2, 2, 0)
+        assert group.status == "completed"
+        assert group.peak_rps == 120.0
+        assert keep.id in {v["run_id"] for v in group.aggregate_json["variants"]}
+
+    def test_delete_last_child_removes_group(self, client, operator_headers, db):
+        group = _make_run_group(db, status="completed", total_runs=1, completed_runs=1)
+        only = _make_run(db, run_group_id=group.id, status="completed")
+        assert client.delete(f"/api/benchmarks/runs/{only.id}", headers=operator_headers).status_code == 204
+        db.expire_all()
+        assert db.query(BenchmarkRunGroup).get(group.id) is None
+
+
+class TestListRunsSearchSortPaging:
+    def _seed(self, db):
+        return [
+            _make_run(db, run_label="alpha-envoy", proxy="envoy", latency_p99=0.3),
+            _make_run(db, run_label="beta-bnk", proxy="f5-bnk", latency_p99=0.1),
+            _make_run(db, run_label="gamma-bnk", proxy="f5-bnk", latency_p99=None),
+        ]
+
+    def test_search_covers_all_runs(self, client, viewer_headers, all_test_users, db):
+        self._seed(db)
+        resp = client.get("/api/benchmarks/runs?q=bnk", headers=viewer_headers)
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 2
+        assert {r["run_label"] for r in resp.json()["runs"]} == {"beta-bnk", "gamma-bnk"}
+
+    def test_sort_puts_nulls_last_both_ways(self, client, viewer_headers, all_test_users, db):
+        self._seed(db)
+        asc = client.get("/api/benchmarks/runs?sort=latency_p99&order=asc", headers=viewer_headers).json()["runs"]
+        desc = client.get("/api/benchmarks/runs?sort=latency_p99&order=desc", headers=viewer_headers).json()["runs"]
+        assert [r["run_label"] for r in asc] == ["beta-bnk", "alpha-envoy", "gamma-bnk"]
+        assert [r["run_label"] for r in desc] == ["alpha-envoy", "beta-bnk", "gamma-bnk"]
+
+    def test_paging_reports_total(self, client, viewer_headers, all_test_users, db):
+        self._seed(db)
+        data = client.get("/api/benchmarks/runs?limit=2&offset=2", headers=viewer_headers).json()
+        assert data["total"] == 3
+        assert len(data["runs"]) == 1
+
+    def test_unknown_sort_falls_back_to_created_at(self, client, viewer_headers, all_test_users, db):
+        self._seed(db)
+        assert client.get("/api/benchmarks/runs?sort=drop_table", headers=viewer_headers).status_code == 200
+
+    def test_bad_order_rejected(self, client, viewer_headers, all_test_users, db):
+        assert client.get("/api/benchmarks/runs?order=sideways", headers=viewer_headers).status_code == 422
+
+
+class TestBenchmarkReaper:
+    """Status must not outlive the connection that backs it."""
+
+    def test_dead_agent_disconnected_and_its_running_run_failed(self, db):
+        from services.benchmark_service import BenchmarkService
+
+        old = datetime.now(UTC) - timedelta(minutes=10)
+        dead = _make_agent(db, name="reaper-dead", status="connected")
+        live = _make_agent(db, name="reaper-live", status="connected")
+        dead.last_heartbeat = live.last_heartbeat = old
+        stuck = _make_run(db, status="running", agent_id=dead.id)
+        ok = _make_run(db, status="running", agent_id=live.id)
+        stuck.started_at = ok.started_at = old
+        db.commit()
+
+        result = BenchmarkService(db).reap_stale_state(live_agent_ids={live.id})
+        db.commit()
+        assert result["agents_disconnected"] == [dead.id]
+        assert result["runs_failed"] == [stuck.id]
+        db.refresh(live)
+        db.refresh(ok)
+        assert live.status == "connected" and ok.status == "running"
+
+    def test_old_pending_run_fails_but_queued_sweep_child_waits(self, db):
+        from services.benchmark_service import BenchmarkService
+
+        agent = _make_agent(db, name="reaper-sweep", status="connected")
+        old = datetime.now(UTC) - timedelta(hours=7)
+        orphan = _make_run(db, status="pending")
+        group = _make_run_group(db, status="running", total_runs=2)
+        _make_run(db, status="running", agent_id=agent.id, run_group_id=group.id)
+        queued = _make_run(db, status="pending", agent_id=agent.id, run_group_id=group.id)
+        orphan.created_at = queued.created_at = old
+        db.commit()
+
+        result = BenchmarkService(db).reap_stale_state(live_agent_ids={agent.id})
+        assert result["runs_failed"] == [orphan.id]
+        assert queued.id not in result["runs_failed"]
+
+
+class TestTriggerRunOverrides:
+    def test_overrides_beat_saved_config_and_null_unsets(self, client, operator_headers, make_k8s_cluster, db):
+        cluster = make_k8s_cluster(name="ovr-cluster")
+        target = _make_target(db, cluster.id, name="ovr-target")
+        proxy = _make_proxy(db, target.id, status="ready", proxy_url="http://envoy.perf:10080")
+        agent = _make_agent(db, name="ovr-agent", status="connected")
+        cfg = _make_config(db, name="ovr-cfg", config_json={"concurrency": 7, "request_count": 42})
+        body = {
+            "agent_id": agent.id,
+            "config_id": cfg.id,
+            "overrides": {
+                "request_rate": 20,
+                "arrival_pattern": "poisson",
+                "request_count": None,
+                "url": "http://evil",
+            },
+        }
+        with patch("routes.benchmarks.dispatch_to_agent", return_value=True):
+            resp = client.post(
+                f"/api/benchmarks/targets/{target.id}/proxies/{proxy.id}/run", json=body, headers=operator_headers
+            )
+        assert resp.status_code == 201
+        db.expire_all()
+        snap = db.query(BenchmarkRun).get(resp.json()["run_id"]).config_snapshot
+        assert snap["request_rate"] == 20 and snap["arrival_pattern"] == "poisson" and snap["concurrency"] == 7
+        # Cleared: the saved 42 is dropped, and an open-loop run gets no
+        # closed-loop request-count default that would end it early.
+        assert "request_count" not in snap
+        assert snap["url"] == "http://envoy.perf:10080"
+
+    def test_internal_override_keys_rejected(self, client, operator_headers, make_k8s_cluster, db):
+        cluster = make_k8s_cluster(name="ovr-bad-cluster")
+        target = _make_target(db, cluster.id, name="ovr-bad-target")
+        proxy = _make_proxy(db, target.id, status="ready")
+        resp = client.post(
+            f"/api/benchmarks/targets/{target.id}/proxies/{proxy.id}/run",
+            json={"overrides": {"trace_url": "http://x", "_proxy_type": "y"}},
+            headers=operator_headers,
+        )
+        assert resp.status_code == 422
+
+
+class TestRunGroupCurves:
+    def test_curves_align_points_and_flag_mismatch(self, client, viewer_headers, all_test_users, db):
+        a = _make_run_group(db, scenario_key="mixed-workload", proxy="f5-bnk", status="completed")
+        b = _make_run_group(db, scenario_key="mixed-workload", proxy="haproxy", status="completed", model="other")
+        for g, p99 in ((a, 120.0), (b, 300.0)):
+            _make_run(
+                db,
+                run_group_id=g.id,
+                variant_label="short-c50",
+                status="completed",
+                result_json={"aiperf_metrics": {"ttft": {"p50": 50.0, "p99": p99}}},
+            )
+            _make_run(db, run_group_id=g.id, variant_label="short-c100", status="failed")
+        assert client.get("/api/benchmarks/run-groups", headers=viewer_headers).json()["total"] == 2
+        resp = client.post(
+            "/api/benchmarks/run-groups/curves", json={"group_ids": [a.id, b.id]}, headers=viewer_headers
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert [len(g["points"]) for g in data["groups"]] == [1, 1]  # failed children are not points
+        assert [g["points"][0]["ttft_p99"] for g in data["groups"]] == [120.0, 300.0]
+        assert data["mismatch_reasons"] == ["different models"]

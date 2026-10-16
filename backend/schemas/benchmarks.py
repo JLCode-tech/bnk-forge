@@ -17,11 +17,12 @@ Covers:
 from datetime import datetime
 from typing import ClassVar
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # =============================================================================
 # Result Ingestion — what aiperf CLI pushes via ForgeCollector.push_result()
 # =============================================================================
+
 
 class BenchmarkResultPush(BaseModel):
     """Schema for POST /api/benchmarks/results.
@@ -30,6 +31,7 @@ class BenchmarkResultPush(BaseModel):
     We accept any valid JSON and extract key fields for denormalization.
     The full result is stored as-is in result_json.
     """
+
     # Identity
     result_id: str
     result_version: str = "1.0"
@@ -83,6 +85,7 @@ class BenchmarkResultPush(BaseModel):
 
 class BenchmarkResultPushResponse(BaseModel):
     """Response from POST /api/benchmarks/results."""
+
     id: int
     run_id: int  # alias for id — what ForgeCollector expects
     proxy: str
@@ -97,8 +100,10 @@ class BenchmarkResultPushResponse(BaseModel):
 # Config Schemas — saved RunConfig presets
 # =============================================================================
 
+
 class BenchmarkConfigCreate(BaseModel):
     """Create a saved RunConfig preset."""
+
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
     tool: str = Field(default="aiperf", description="Benchmark tool: aiperf | llm-bench")
@@ -107,6 +112,7 @@ class BenchmarkConfigCreate(BaseModel):
 
 class BenchmarkConfigUpdate(BaseModel):
     """Update a saved RunConfig preset."""
+
     name: str | None = None
     description: str | None = None
     tool: str | None = None
@@ -115,6 +121,7 @@ class BenchmarkConfigUpdate(BaseModel):
 
 class BenchmarkConfigResponse(BaseModel):
     """Response for a saved RunConfig preset."""
+
     id: int
     name: str
     description: str | None
@@ -132,8 +139,10 @@ class BenchmarkConfigResponse(BaseModel):
 # Run Schemas
 # =============================================================================
 
+
 class BenchmarkRunCreate(BaseModel):
     """Create a benchmark run (typically triggered from UI to send to an agent)."""
+
     config_id: int | None = None  # FK to saved config
     agent_id: int | None = None  # FK to agent to run on
     tool: str = Field(default="aiperf")
@@ -147,6 +156,7 @@ class BenchmarkRunCreate(BaseModel):
 
 class BenchmarkRunResponse(BaseModel):
     """Response for a benchmark run (list view)."""
+
     id: int
     tool: str
     proxy: str
@@ -160,6 +170,7 @@ class BenchmarkRunResponse(BaseModel):
     cluster_name: str | None = None
     proxy_deployment_id: int | None
     scenario_key: str | None = None
+    variant_label: str | None = None
     status: str
     error_message: str | None
     is_baseline: bool = False
@@ -193,6 +204,7 @@ class BenchmarkRunResponse(BaseModel):
 
 class BenchmarkRunDetailResponse(BenchmarkRunResponse):
     """Detailed run response including full result JSON and config."""
+
     result_json: dict | None = None
     config_snapshot: dict | None = None
     config: BenchmarkConfigResponse | None = None
@@ -201,6 +213,7 @@ class BenchmarkRunDetailResponse(BenchmarkRunResponse):
 
 class BenchmarkRunListResponse(BaseModel):
     """Paginated list of benchmark runs."""
+
     runs: list[BenchmarkRunResponse]
     total: int
     limit: int
@@ -211,21 +224,55 @@ class BenchmarkRunListResponse(BaseModel):
 # Agent Schemas — test client machines
 # =============================================================================
 
+
 class BenchmarkAgentRegister(BaseModel):
     """Schema for POST /api/benchmarks/agents — agent self-registration."""
+
+    model_config = ConfigDict(extra="ignore")
+
     name: str = Field(..., min_length=1, max_length=255)
     hostname: str | None = None
     ip_address: str | None = None
+    host_ip: str | None = None
+    project_id: int | None = None
+    infra: str | None = None
     tags: dict | None = None
     capabilities: dict | None = None  # {"engines": ["burst"], "platform": "Linux", "python": "3.11"}
 
 
+class BenchmarkAgentUpdate(BaseModel):
+    """Schema for PATCH /api/benchmarks/agents/{agent_id} — agent update."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    name: str | None = Field(None, min_length=1, max_length=255)
+    hostname: str | None = None
+    ip_address: str | None = None
+    host_ip: str | None = None
+    project_id: int | None = None
+    connected_projects: list[str] | None = None
+    infra: str | None = None
+    tags: dict | None = None
+    capabilities: dict | None = None
+
+
 class BenchmarkAgentResponse(BaseModel):
     """Response for a registered test client agent."""
+
     id: int
     name: str
     hostname: str | None
     ip_address: str | None
+    host_ip: str | None = None
+    project_id: int | None = None
+    project_name: str | None = None
+    connected_projects: list[str] | None = None
+    infra: str | None = None
+    managed: bool | None = False
+    ssh_credential_id: int | None = None
+    provision_status: str | None = None
+    provision_message: str | None = None
+    readiness: dict | None = None
     tags: dict | None
     capabilities: dict | None
     status: str
@@ -239,23 +286,53 @@ class BenchmarkAgentResponse(BaseModel):
 
 class BenchmarkAgentTokenResponse(BaseModel):
     """Response for POST /api/benchmarks/agents/{agent_id}/token."""
+
     agent_id: int
     agent_name: str
     token: str
     expires_at: datetime
+    cloud_credentials: dict[str, str] | None = None
+
+
+class BenchmarkAgentCheckResponse(BaseModel):
+    """Response for POST /api/benchmarks/agents/{agent_id}/check."""
+
+    agent_id: int
+    name: str
+    status: str
+    ws_connected: bool
+    ip_address: str | None = None
+    host_reachable: bool | None = None
+    last_heartbeat: datetime | None = None
+    message: str
+
+
+class BenchmarkAgentConnectResponse(BaseModel):
+    """Response for POST /api/benchmarks/agents/{agent_id}/connect."""
+
+    agent_id: int
+    name: str
+    status: str
+    success: bool
+    method: str  # "websocket" | "ssh" | "builtin" | "none"
+    message: str
+    error: str | None = None
 
 
 # =============================================================================
 # Comparison Schemas — proxy-vs-proxy side-by-side
 # =============================================================================
 
+
 class BenchmarkCompareRequest(BaseModel):
     """Request to compare multiple runs side-by-side."""
+
     run_ids: list[int] = Field(..., min_length=2, max_length=10)
 
 
 class BenchmarkCompareRunMetrics(BaseModel):
     """Per-run metrics in a comparison."""
+
     run_id: int
     proxy: str
     model: str
@@ -273,31 +350,60 @@ class BenchmarkCompareRunMetrics(BaseModel):
     peak_rps: float | None
     tokens_per_sec: float | None
     duration_seconds: float | None
-    # aiperf-specific metrics (avg values for comparison)
+    total_output_tokens: int | None = None
+    total_input_tokens: int | None = None
+    # aiperf tail-latency + service-level metrics (latencies in ms) — run_point_metrics()
     ttft_avg: float | None = None
+    ttft_p50: float | None = None
+    ttft_p90: float | None = None
+    ttft_p99: float | None = None
     itl_avg: float | None = None
+    itl_p50: float | None = None
+    itl_p99: float | None = None
     tst_avg: float | None = None
     osl_avg: float | None = None
     isl_avg: float | None = None
     per_user_throughput_avg: float | None = None
+    per_user_throughput_p50: float | None = None
+    goodput: float | None = None
+    good_request_pct: float | None = None
+    error_rate_pct: float | None = None
+    requested_osl: float | None = None
+    effective_concurrency: float | None = None
+    # What the router did, from the model-server pods (result_json.model_server).
+    cache_hit_pct: float | None = None
+    load_spread: float | None = None
+    max_share_pct: float | None = None
+    preemptions: float | None = None
+    ttft_p10: float | None = None
+    ttft_p25: float | None = None
+    pods: list[dict] | None = None
+    # Model server, router and workload, for the comparison header.
+    tags: dict | None = None
+    config_snapshot: dict | None = None
 
 
 class BenchmarkCompareResponse(BaseModel):
     """Response for proxy-vs-proxy comparison."""
+
     runs: list[BenchmarkCompareRunMetrics]
     winners: dict  # {"latency_p50": run_id, "overall_rps": run_id, ...}
     # True when the compared runs don't share the same config_id/scenario_key —
     # frontend shows a "comparing mismatched configs" warning instead of silently
     # implying an apples-to-apples comparison.
     context_mismatch: bool = False
+    # True when the runs were served differently (simulator vs real model, replica count).
+    server_mismatch: bool = False
 
 
 # =============================================================================
 # Trends Schemas — time-series + baseline for a (target, proxy, scenario/config)
 # =============================================================================
 
+
 class BenchmarkTrendPoint(BaseModel):
     """One time-series point for the Trends view."""
+
     id: int
     run_label: str | None
     created_at: datetime
@@ -317,6 +423,7 @@ class BenchmarkTrendPoint(BaseModel):
 class BenchmarkTrendsResponse(BaseModel):
     """Time-ordered (oldest-first) completed-run metrics for a target/proxy/scenario/config
     context, plus the current baseline run id (included in points even if outside limit)."""
+
     points: list[BenchmarkTrendPoint]
     baseline_run_id: int | None
 
@@ -325,8 +432,10 @@ class BenchmarkTrendsResponse(BaseModel):
 # Summary Schema — dashboard overview
 # =============================================================================
 
+
 class BenchmarkSummaryResponse(BaseModel):
     """Dashboard summary of benchmark activity."""
+
     total_runs: int
     completed_runs: int
     failed_runs: int
@@ -344,8 +453,10 @@ class BenchmarkSummaryResponse(BaseModel):
 # Benchmark Target Schemas (Phase 4b) — K8s cluster + LLM endpoint
 # =============================================================================
 
+
 class BenchmarkTargetCreate(BaseModel):
     """Create a benchmark target."""
+
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
     cluster_id: int = Field(..., description="FK to kubernetes_clusters.id")
@@ -359,6 +470,7 @@ class BenchmarkTargetCreate(BaseModel):
 
 class BenchmarkTargetUpdate(BaseModel):
     """Update a benchmark target."""
+
     name: str | None = None
     description: str | None = None
     cluster_id: int | None = None
@@ -372,6 +484,7 @@ class BenchmarkTargetUpdate(BaseModel):
 
 class ProxyDeploymentResponse(BaseModel):
     """Response for a proxy deployment."""
+
     id: int
     target_id: int
     proxy_type: str
@@ -381,6 +494,7 @@ class ProxyDeploymentResponse(BaseModel):
     helm_values: dict | None
     proxy_url: str | None
     external_url: str | None
+    routing_info: dict | None = None
     status: str
     status_message: str | None
     celery_task_id: str | None = None
@@ -394,6 +508,7 @@ class ProxyDeploymentResponse(BaseModel):
 
 class BenchmarkTargetResponse(BaseModel):
     """Response for a benchmark target."""
+
     id: int
     name: str
     description: str | None
@@ -418,11 +533,13 @@ class BenchmarkTargetResponse(BaseModel):
 
 class BenchmarkTargetDetailResponse(BenchmarkTargetResponse):
     """Detailed target response including proxy deployments."""
+
     proxy_deployments: list[ProxyDeploymentResponse] = []
 
 
 class BenchmarkTargetListResponse(BaseModel):
     """List of benchmark targets."""
+
     targets: list[BenchmarkTargetResponse]
     total: int
 
@@ -431,8 +548,10 @@ class BenchmarkTargetListResponse(BaseModel):
 # Proxy Deployment Schemas (Phase 4b)
 # =============================================================================
 
+
 class ProxyDeployRequest(BaseModel):
     """Request to deploy a proxy to a target cluster."""
+
     proxy_type: str = Field(
         ...,
         description="Proxy type: envoy|nginx|haproxy|f5-bnk|nodeport|envoy-ai-gateway|llm-d-router",
@@ -444,6 +563,7 @@ class ProxyDeployRequest(BaseModel):
 
 class ProxyDeploymentUpdate(BaseModel):
     """Update a proxy deployment (e.g. change Helm values, URLs)."""
+
     helm_values: dict | None = None
     proxy_url: str | None = None
     external_url: str | None = None
@@ -455,12 +575,29 @@ class ProxyDeploymentUpdate(BaseModel):
 # Run Orchestration (Phase 4d)
 # =============================================================================
 
+
+def reject_internal_override_keys(v: dict | None, forbidden: frozenset[str] = frozenset({"trace_url"})) -> dict | None:
+    """Overrides may tune aiperf, not pick what the agent fetches: ``trace_url``
+    and any ``_``-prefixed (Forge-internal) key are server-side only (SSRF defence)."""
+    if v is None:
+        return v
+    bad = (forbidden & v.keys()) | {k for k in v if k.startswith("_")}
+    if bad:
+        raise ValueError(
+            f"Override key(s) not permitted: {sorted(bad)}. "
+            "Keys 'trace_url' and any key starting with '_' are reserved for "
+            "server-side use and cannot be supplied by callers."
+        )
+    return v
+
+
 class TriggerRunRequest(BaseModel):
     """Request to trigger a benchmark run against a deployed proxy.
 
     The backend builds the full RunConfig from the proxy's target info
     (base_url, model, endpoint) combined with the config preset.
     """
+
     config_id: int | None = Field(default=None, description="Saved BenchmarkConfig ID to use as base")
     agent_id: int | None = Field(default=None, description="Agent to run on. None = first connected agent.")
     run_label: str | None = None
@@ -469,10 +606,21 @@ class TriggerRunRequest(BaseModel):
     total_requests: int | None = Field(default=None, description="Override total requests count")
     max_tokens: int | None = Field(default=None, description="Override max output tokens per request")
     timeout: int | None = Field(default=None, description="Override HTTP request timeout (seconds)")
+    overrides: dict | None = Field(
+        default=None,
+        description="aiperf settings applied over the saved config (e.g. {'concurrency': 64}). "
+        "url/model/endpoint always come from the target/proxy.",
+    )
+
+    @field_validator("overrides")
+    @classmethod
+    def no_internal_keys(cls, v: dict | None) -> dict | None:
+        return reject_internal_override_keys(v)
 
 
 class TriggerRunResponse(BaseModel):
     """Response from triggering a benchmark run."""
+
     run_id: int
     agent_id: int
     proxy_id: int
@@ -485,18 +633,27 @@ class TriggerRunResponse(BaseModel):
 # Scenario Run Orchestration (Phase 6) — scenario → run-group + child runs
 # =============================================================================
 
+
 class ScenarioCatalogItem(BaseModel):
     """Catalog metadata for one benchmark scenario preset."""
+
     key: str
     name: str
     description: str
     trace_driven: bool
     child_run_count: int = Field(description="Number of child runs this scenario expands into")
     tags: list[str] = Field(default_factory=list)
+    # Sweep presets: which aiperf setting the steps set, and the default steps.
+    sweep_param: str | None = None
+    default_steps: list[float] = Field(default_factory=list)
+    step_warmup_s: int | None = None
+    step_duration_floor_s: int | None = None
+    step_min_requests: int | None = None
 
 
 class ScenarioCatalogResponse(BaseModel):
     """Response from GET /api/benchmarks/scenarios."""
+
     scenarios: list[ScenarioCatalogItem]
     total: int
 
@@ -508,6 +665,7 @@ class ScenarioRunRequest(BaseModel):
     (one per concurrency point and/or phase) and dispatches each child to a connected
     agent over the existing WebSocket protocol.
     """
+
     scenario_key: str = Field(..., description="Scenario preset key, e.g. 'prefix-cache'")
     agent_id: int | None = Field(default=None, description="Agent to run on. None = first connected agent.")
     run_label: str | None = None
@@ -515,6 +673,12 @@ class ScenarioRunRequest(BaseModel):
     overrides: dict | None = Field(
         default=None,
         description="Per-child aiperf flag overrides applied to every child config (e.g. {'model': '...'}).",
+    )
+    steps: list[float] | None = Field(
+        default=None,
+        min_length=1,
+        max_length=12,
+        description="Load steps for a sweep preset (e.g. request rates in req/s); replaces its default steps.",
     )
 
     # Keys that callers must never be allowed to override — they control which
@@ -525,34 +689,32 @@ class ScenarioRunRequest(BaseModel):
     @field_validator("overrides")
     @classmethod
     def no_internal_keys(cls, v: dict | None) -> dict | None:
-        if v is None:
-            return v
-        forbidden_exact = cls._FORBIDDEN_OVERRIDE_KEYS & v.keys()
-        forbidden_prefix = {k for k in v if k.startswith("_")}
-        bad = forbidden_exact | forbidden_prefix
-        if bad:
-            raise ValueError(
-                f"Override key(s) not permitted: {sorted(bad)}. "
-                "Keys 'trace_url' and any key starting with '_' are reserved for "
-                "server-side use and cannot be supplied by callers."
-            )
-        return v
+        return reject_internal_override_keys(v, cls._FORBIDDEN_OVERRIDE_KEYS)
 
 
 class RunGroupChildSummary(BaseModel):
     """Compact child-run summary within a run-group response."""
+
     id: int
     variant_label: str | None
     status: str
     concurrency: int | None = None
+    request_rate: float | None = None
     latency_p50: float | None = None
     latency_p99: float | None = None
     overall_rps: float | None = None
     tokens_per_sec: float | None = None
+    # What the router did and what it bought (ms; see run_point_metrics).
+    cache_hit_pct: float | None = None
+    ttft_avg: float | None = None
+    ttft_p50: float | None = None
+    ttft_p99: float | None = None
+    error_rate_pct: float | None = None
 
 
 class RunGroupSummary(BaseModel):
     """Compact run-group summary (list view)."""
+
     id: int
     scenario_key: str
     scenario_name: str | None
@@ -573,6 +735,7 @@ class RunGroupSummary(BaseModel):
 
 class RunGroupResponse(RunGroupSummary):
     """Full run-group response: group + child runs + aggregate metrics."""
+
     agent_id: int | None
     base_url: str | None
     tags: dict | None
@@ -588,8 +751,64 @@ class RunGroupResponse(RunGroupSummary):
     runs: list[RunGroupChildSummary] = Field(default_factory=list)
 
 
+class RunGroupListResponse(BaseModel):
+    """Response from GET /api/benchmarks/run-groups."""
+
+    groups: list[RunGroupSummary]
+    total: int
+
+
+class RunGroupCurvesRequest(BaseModel):
+    """Sweeps to plot against each other (one line per group)."""
+
+    group_ids: list[int] = Field(..., min_length=1, max_length=8)
+
+
+class CurvePoint(BaseModel):
+    """One load point of a sweep (a completed child run); latencies in ms except latency_p50/p99 (s)."""
+
+    run_id: int
+    variant_label: str | None
+    concurrency: float | None = None
+    request_rate: float | None = None
+    benchmark_duration: float | None = None
+    total_requests: int | None = None
+    latency_p50: float | None = None
+    latency_p99: float | None = None
+    overall_rps: float | None = None
+    tokens_per_sec: float | None = None
+    success_rate_pct: float | None = None
+    ttft_p50: float | None = None
+    ttft_p99: float | None = None
+    itl_p50: float | None = None
+    itl_p99: float | None = None
+    per_user_throughput_p50: float | None = None
+    goodput: float | None = None
+    good_request_pct: float | None = None
+    error_rate_pct: float | None = None
+    osl_avg: float | None = None
+    requested_osl: float | None = None
+    effective_concurrency: float | None = None
+
+
+class CurveGroup(RunGroupSummary):
+    points: list[CurvePoint]
+    load_axis: str = "concurrency"
+    # Goodput targets the sweep ran with, e.g. {"time_to_first_token": 2000} (ms).
+    goodput_targets: dict[str, float] = Field(default_factory=dict)
+
+
+class RunGroupCurvesResponse(BaseModel):
+    """Load curves for several sweeps, aligned by variant label."""
+
+    groups: list[CurveGroup]
+    # Why the curves may not be comparable (different scenario, model or target).
+    mismatch_reasons: list[str] = Field(default_factory=list)
+
+
 class ScenarioRunResponse(BaseModel):
     """Response from triggering a scenario run."""
+
     run_group_id: int
     scenario_key: str
     agent_id: int
@@ -605,8 +824,10 @@ class ScenarioRunResponse(BaseModel):
 # Proxy Discovery Schemas (Phase 5)
 # =============================================================================
 
+
 class ProxyDiscoveryResultItem(BaseModel):
     """Discovery result for a single proxy type."""
+
     proxy_type: str
     found: bool
     proxy_url: str | None = None
@@ -618,6 +839,7 @@ class ProxyDiscoveryResultItem(BaseModel):
 
 class ProxyDiscoveryResponse(BaseModel):
     """Response from POST /api/benchmarks/targets/{id}/discover-proxies."""
+
     target_id: int
     target_name: str
     cluster_id: int
@@ -641,8 +863,10 @@ class ProxyTaskStatusResponse(BaseModel):
 # Target Discovery Schemas (Phase 5b) — auto-discover LLM services on cluster
 # =============================================================================
 
+
 class DiscoverTargetsRequest(BaseModel):
     """Request to scan a cluster for LLM services."""
+
     cluster_id: int = Field(..., description="K8s cluster to scan")
     auto_create: bool = Field(default=False, description="If True, auto-create targets for all discovered services")
     selected_services: list[str] | None = Field(
@@ -653,6 +877,7 @@ class DiscoverTargetsRequest(BaseModel):
 
 class DiscoveredLLMServiceItem(BaseModel):
     """An LLM service found during cluster scan."""
+
     service_name: str
     namespace: str
     base_url: str
@@ -666,6 +891,7 @@ class DiscoveredLLMServiceItem(BaseModel):
 
 class CreatedTargetItem(BaseModel):
     """A BenchmarkTarget auto-created from discovery."""
+
     id: int
     name: str
     llm_base_url: str
@@ -674,6 +900,7 @@ class CreatedTargetItem(BaseModel):
 
 class TargetProxyDiscoveryResult(BaseModel):
     """Proxy discovery result for a single auto-created target."""
+
     target_id: int
     target_name: str
     discovered_proxies: int = 0
@@ -683,6 +910,7 @@ class TargetProxyDiscoveryResult(BaseModel):
 
 class CreatedConfigItem(BaseModel):
     """A BenchmarkConfig auto-created from discovery."""
+
     name: str
     target_name: str
     proxy_type: str
@@ -690,6 +918,7 @@ class CreatedConfigItem(BaseModel):
 
 class DiscoverTargetsResponse(BaseModel):
     """Response from POST /api/benchmarks/discover-targets."""
+
     cluster_id: int
     cluster_name: str
     discovered_services: list[DiscoveredLLMServiceItem]
@@ -703,28 +932,50 @@ class DiscoverTargetsResponse(BaseModel):
 # Forge-managed remote benchmark agent hosts (Slice 1) — SSH-host registration
 # =============================================================================
 
+
 class BenchmarkAgentHostCreate(BaseModel):
     """Create a Forge-managed remote benchmark agent host.
 
     The host will be registered with provision_status='unprovisioned'.
     SSH provisioning happens in a later slice.
     """
+
     # Charset is restricted to safe identifier chars: the name is interpolated
     # into a shell command (nohup fallback re-parses /etc/forge/agent.env via
     # `$(cat ... | xargs)`), so spaces / shell metacharacters must never reach it.
     name: str = Field(..., min_length=1, max_length=255, pattern=r"^[A-Za-z0-9._-]+$")
     project_id: int = Field(..., description="FK to projects.id — host is scoped to this project")
-    host_ip: str = Field(..., min_length=1, max_length=45, description="IP Forge will SSH to")
-    ssh_credential_id: int = Field(..., description="FK to ssh_credentials.id — credential for SSH access")
+    host_ip: str | None = Field(
+        default=None, max_length=45, description="Host IP address or hostname (optional for outbound agents)"
+    )
+    ssh_credential_id: int | None = Field(
+        default=None, description="FK to ssh_credentials.id — credential for SSH access (optional for outbound agents)"
+    )
     ssh_port: int = Field(default=22, ge=1, le=65535)
+    agent_mode: str | None = Field(
+        default=None,
+        description="Connection mode: 'outbound' (agent connects via WS) or 'ssh' (Forge SSHs to host)",
+    )
     jumphost_chain: list[dict] | None = Field(
         default=None,
         description="Optional jumphost chain: [{'ssh_credential_id': N}, ...]",
     )
+    connected_project_ids: list[int] | None = Field(
+        default=None, description="Optional additional projects this agent is connected to (e.g. on-prem shared)"
+    )
+    infra: str | None = Field(default=None, description="Optional infra type: aws | azure | gke | on-prem | generic")
+    agent_type: str | None = Field(
+        default="aiperf", description="Agent type: aiperf | inferencex | cloud-jumphost | generic"
+    )
+    heartbeat_interval: int | None = Field(default=15, description="Heartbeat interval in seconds")
+    setup_mode: str | None = Field(default="systemd", description="Deployment setup mode: systemd | cli | managed")
+    tags: dict | None = Field(default=None, description="Optional custom tags")
+    capabilities: dict | None = Field(default=None, description="Optional custom capabilities")
 
 
 class BenchmarkAgentHostResponse(BaseModel):
     """Response for a Forge-managed remote benchmark agent host."""
+
     id: int
     name: str
     hostname: str | None
@@ -736,6 +987,9 @@ class BenchmarkAgentHostResponse(BaseModel):
 
     # Project-scoped SSH-host fields
     project_id: int | None
+    project_name: str | None = None
+    connected_projects: list[str] | None = None
+    infra: str | None = None
     host_ip: str | None
     ssh_credential_id: int | None
     ssh_port: int | None
@@ -756,8 +1010,10 @@ class BenchmarkAgentHostResponse(BaseModel):
 # Agent Host Scan (Slice 2) — SSH suitability probe
 # =============================================================================
 
+
 class AgentHostScanRequest(BaseModel):
     """Optional body for POST /api/benchmarks/agent-hosts/{id}/scan."""
+
     target_ids: list[int] | None = Field(
         default=None,
         description=(
@@ -769,6 +1025,7 @@ class AgentHostScanRequest(BaseModel):
 
 class AgentHostScanResponse(BaseModel):
     """Response from POST /api/benchmarks/agent-hosts/{id}/scan."""
+
     host_id: int
     message: str
     celery_task_id: str
@@ -778,8 +1035,10 @@ class AgentHostScanResponse(BaseModel):
 # Agent Host Provision (Slice 3) — SSH install + systemd
 # =============================================================================
 
+
 class AgentHostProvisionResponse(BaseModel):
     """Response from POST /api/benchmarks/agent-hosts/{id}/provision."""
+
     host_id: int
     message: str
     celery_task_id: str
@@ -789,8 +1048,10 @@ class AgentHostProvisionResponse(BaseModel):
 # Agent Host Candidates (Slice 5) — aggregated project host picker
 # =============================================================================
 
+
 class AgentHostCandidate(BaseModel):
     """A pre-fillable candidate host from an existing Forge resource."""
+
     label: str = Field(description="Human-readable display name")
     host_ip: str = Field(description="IP address to SSH to")
     ssh_credential_id: int | None = Field(
@@ -811,11 +1072,13 @@ class AgentHostCandidate(BaseModel):
 
 class AgentHostCandidatesResponse(BaseModel):
     """Response from GET /api/benchmarks/agent-host-candidates."""
+
     candidates: list[AgentHostCandidate]
     project_id: int
 
 
 class ImportAwsJumphostRequest(BaseModel):
     """Request body for POST /api/benchmarks/agent-host-candidates/import-aws-jumphost."""
+
     project_id: int = Field(..., description="FK to projects.id")
     module_id: int = Field(..., description="ProjectModule whose infra key to import")
