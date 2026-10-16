@@ -3,6 +3,7 @@ Authentication middleware for BNK-Forge.
 Protects all API routes except auth endpoints, health checks, and WebSocket.
 Can be disabled via REQUIRE_AUTH=false for backward compatibility.
 """
+
 import logging
 from typing import TYPE_CHECKING
 
@@ -65,7 +66,7 @@ PUBLIC_PATHS = {
 PUBLIC_PREFIXES = (
     "/api/auth/login",
     "/api/system/health",  # Docker healthcheck + proxy healthcheck (no token available)
-    "/ws/",        # WebSocket connections (have their own auth via registration token)
+    "/ws/",  # WebSocket connections (have their own auth via registration token)
     "/api/operators/install/",  # Operator install YAML (auth via token in URL)
     "/api/operators/register-poll",  # Polling operator registration (uses registration token)
 )
@@ -124,9 +125,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # Skip operator polling paths (they use registration token auth, not JWT)
         # Pattern: /api/operators/{operator_id}/poll, /results/*, /heartbeat
-        if path.startswith("/api/operators/") and any(
-            pattern in path for pattern in OPERATOR_POLLING_PATTERNS
-        ):
+        if path.startswith("/api/operators/") and any(pattern in path for pattern in OPERATOR_POLLING_PATTERNS):
             return await call_next(request)
 
         # Skip benchmark agent registration/ingest — governed by BENCHMARK_AGENT_AUTH_REQUIRED
@@ -157,6 +156,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         try:
             from core.errors import ForbiddenError
             from services.auth_service import enforce_password_change
+
             if token.startswith(API_TOKEN_PREFIX):
                 # Long-lived CLI / CI-CD token — a DB-backed hash, not a JWT, so
                 # decode_token() would reject it. ~32 /api routes have no auth
@@ -172,24 +172,29 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 enforce_password_change(path, user)
             else:
                 from services.auth_service import decode_token, token_user_state
-                decode_token(token)  # Will raise UnauthorizedError if invalid
-                # #184/#186: the dependency-only gate is bypassed on routes that
-                # declare no get_current_user; enforce must_change here too, where
-                # auth is actually resolved. decode_token already succeeded, so a
-                # None from token_user_state is a VALID JWT whose user can't be
-                # resolved (deleted/disabled/DB error) -- the fail-CLOSED case, per
-                # its own contract and the WS validators. Refuse it, don't skip the
-                # gate (bonnyr-f5 #186 r2: skipping was a fail-open bypass on the
-                # ~32 dependency-less routes).
-                # bonnyr-f5 #186 r5 (Major): token_user_state opens a SYNC DB
-                # session on every authenticated request. Run it in a worker
-                # thread so the blocking DB round-trip never stalls the event
-                # loop (the gate previously only paid this cost for rare bnk_
-                # tokens; it now runs for every JWT request).
-                jwt_user = await run_in_threadpool(token_user_state, token)
-                if jwt_user is None:
-                    raise UnauthorizedError("Token subject could not be resolved")
-                enforce_password_change(path, jwt_user)
+
+                payload = decode_token(token)  # Will raise UnauthorizedError if invalid
+                # Agent tokens carry role="agent" and represent machine daemons/runners,
+                # not human Users in the database. Their authorizations are gated by
+                # downstream route dependencies.
+                if payload.get("role") != "agent":
+                    # #184/#186: the dependency-only gate is bypassed on routes that
+                    # declare no get_current_user; enforce must_change here too, where
+                    # auth is actually resolved. decode_token already succeeded, so a
+                    # None from token_user_state is a VALID JWT whose user can't be
+                    # resolved (deleted/disabled/DB error) -- the fail-CLOSED case, per
+                    # its own contract and the WS validators. Refuse it, don't skip the
+                    # gate (bonnyr-f5 #186 r2: skipping was a fail-open bypass on the
+                    # ~32 dependency-less routes).
+                    # bonnyr-f5 #186 r5 (Major): token_user_state opens a SYNC DB
+                    # session on every authenticated request. Run it in a worker
+                    # thread so the blocking DB round-trip never stalls the event
+                    # loop (the gate previously only paid this cost for rare bnk_
+                    # tokens; it now runs for every JWT request).
+                    jwt_user = await run_in_threadpool(token_user_state, token)
+                    if jwt_user is None:
+                        raise UnauthorizedError("Token subject could not be resolved")
+                    enforce_password_change(path, jwt_user)
         except ForbiddenError as exc:
             return JSONResponse(
                 status_code=403,

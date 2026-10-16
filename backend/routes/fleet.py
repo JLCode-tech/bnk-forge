@@ -60,6 +60,7 @@ router = APIRouter(prefix="/api/fleet", tags=["fleet"])
 # Response schemas
 # ---------------------------------------------------------------------------
 
+
 class FleetMemberOut(BaseModel):
     id: int
     project_id: int | None
@@ -102,6 +103,7 @@ class VocabularyResponse(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _member_to_out(m: FleetMember) -> FleetMemberOut:
     return FleetMemberOut(
         id=m.id,
@@ -114,9 +116,7 @@ def _member_to_out(m: FleetMember) -> FleetMemberOut:
         fault_domain=m.fault_domain,
         health_status=m.health_status,
         lifecycle_state=m.lifecycle_state,
-        last_reconciled_at=(
-            m.last_reconciled_at.isoformat() if m.last_reconciled_at else None
-        ),
+        last_reconciled_at=(m.last_reconciled_at.isoformat() if m.last_reconciled_at else None),
     )
 
 
@@ -128,12 +128,14 @@ def _label_filter_matches(member: FleetMember, label_filters: list[str]) -> bool
     Kept here for backward-compatibility with existing test imports.
     """
     from services.fleet_selector import matches_selector
+
     return matches_selector(member, label_filters)
 
 
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
 
 @router.get(
     "/members",
@@ -161,9 +163,7 @@ def list_fleet_members(
     query = db.query(FleetMember)
 
     if effective_role(current_user) != "admin":
-        owned_project_ids = [
-            pid for (pid,) in db.query(Project.id).filter(Project.user_id == current_user.id).all()
-        ]
+        owned_project_ids = [pid for (pid,) in db.query(Project.id).filter(Project.user_id == current_user.id).all()]
         query = query.filter(FleetMember.project_id.in_(owned_project_ids))
 
     if member_type:
@@ -269,9 +269,7 @@ def get_label_vocabulary(
     """
     query = db.query(FleetMember)
     if effective_role(current_user) != "admin":
-        owned_project_ids = [
-            pid for (pid,) in db.query(Project.id).filter(Project.user_id == current_user.id).all()
-        ]
+        owned_project_ids = [pid for (pid,) in db.query(Project.id).filter(Project.user_id == current_user.id).all()]
         query = query.filter(FleetMember.project_id.in_(owned_project_ids))
 
     members = query.all()
@@ -284,10 +282,7 @@ def get_label_vocabulary(
             if k and v:
                 vocab.setdefault(k, set()).add(v)
 
-    keys = [
-        LabelKeyEntry(key=k, values=sorted(vocab[k]))
-        for k in sorted(vocab)
-    ]
+    keys = [LabelKeyEntry(key=k, values=sorted(vocab[k])) for k in sorted(vocab)]
     return LabelVocabularyResponse(keys=keys)
 
 
@@ -347,9 +342,7 @@ def preview_selector(
 
     query = db.query(FleetMember)
     if effective_role(current_user) != "admin":
-        owned_project_ids = [
-            pid for (pid,) in db.query(Project.id).filter(Project.user_id == current_user.id).all()
-        ]
+        owned_project_ids = [pid for (pid,) in db.query(Project.id).filter(Project.user_id == current_user.id).all()]
         query = query.filter(FleetMember.project_id.in_(owned_project_ids))
 
     if label_filters:
@@ -367,8 +360,7 @@ def preview_selector(
             matched = matched + extra
 
     sample_out = [
-        PreviewMemberOut(id=m.id, name=m.name, member_type=m.member_type)
-        for m in matched[:_PREVIEW_SAMPLE_LIMIT]
+        PreviewMemberOut(id=m.id, name=m.name, member_type=m.member_type) for m in matched[:_PREVIEW_SAMPLE_LIMIT]
     ]
     return PreviewSelectorResponse(matched_count=len(matched), sample=sample_out)
 
@@ -392,11 +384,7 @@ def get_fleet_members_by_fleet(
     """
     from services.fleet_selector import matches_selector
 
-    target = (
-        db.query(FleetTarget)
-        .filter(FleetTarget.id == fleet_id, FleetTarget.deleted_at.is_(None))
-        .first()
-    )
+    target = db.query(FleetTarget).filter(FleetTarget.id == fleet_id, FleetTarget.deleted_at.is_(None)).first()
     if not target:
         raise NotFoundError("FleetTarget", str(fleet_id))
 
@@ -409,9 +397,7 @@ def get_fleet_members_by_fleet(
 
     query = db.query(FleetMember)
     if effective_role(current_user) != "admin":
-        owned_ids = [
-            pid for (pid,) in db.query(Project.id).filter(Project.user_id == current_user.id).all()
-        ]
+        owned_ids = [pid for (pid,) in db.query(Project.id).filter(Project.user_id == current_user.id).all()]
         query = query.filter(FleetMember.project_id.in_(owned_ids))
 
     if label_filters:
@@ -423,9 +409,17 @@ def get_fleet_members_by_fleet(
     # Also include explicitly pinned members not already in selector result.
     if pinned:
         existing_ids = {m.id for m in members}
-        extra_ids = [pid for pid in pinned if pid not in existing_ids]
+        existing_cluster_ids = {m.member_id for m in members if m.member_type == "cluster"}
+        extra_ids = [pid for pid in pinned if pid not in existing_ids and pid not in existing_cluster_ids]
         if extra_ids:
-            extra = db.query(FleetMember).filter(FleetMember.id.in_(extra_ids)).all()
+            extra = (
+                db.query(FleetMember)
+                .filter(
+                    (FleetMember.id.in_(extra_ids))
+                    | ((FleetMember.member_type == "cluster") & FleetMember.member_id.in_(extra_ids))
+                )
+                .all()
+            )
             members = members + extra
 
     members_out = [_member_to_out(m) for m in members]
@@ -560,7 +554,7 @@ class UpdateStrategyRequest(BaseModel):
 
 class CreateTargetRequest(BaseModel):
     name: str
-    selector: dict
+    selector: dict | None = None
     description: str | None = None
     pinned_member_ids: list[int] | None = None
     project_id: int | None = None
@@ -719,22 +713,16 @@ def _validate_strategy_fields(
     # wave_by: "fault_domain" or "label:<non-empty-key>"
     if wave_by != "fault_domain":
         if not wave_by.startswith("label:") or len(wave_by) <= len("label:"):
-            raise BadRequestError(
-                "wave_by must be 'fault_domain' or 'label:<key>' (e.g. 'label:env')."
-            )
+            raise BadRequestError("wave_by must be 'fault_domain' or 'label:<key>' (e.g. 'label:env').")
     # max_concurrency_pct 1-100
     if not (1 <= max_concurrency_pct <= 100):
         raise BadRequestError("max_concurrency_pct must be between 1 and 100.")
     # gate_kind
     if gate_kind not in STRATEGY_GATE_KINDS:
-        raise BadRequestError(
-            f"gate_kind '{gate_kind}' is not valid. Allowed: {sorted(STRATEGY_GATE_KINDS)}"
-        )
+        raise BadRequestError(f"gate_kind '{gate_kind}' is not valid. Allowed: {sorted(STRATEGY_GATE_KINDS)}")
     # gate_wait_seconds required for timed_wait
     if gate_kind == GATE_KIND_TIMED_WAIT and (gate_wait_seconds is None or gate_wait_seconds < 1):
-        raise BadRequestError(
-            "gate_wait_seconds is required and must be >= 1 when gate_kind='timed_wait'."
-        )
+        raise BadRequestError("gate_wait_seconds is required and must be >= 1 when gate_kind='timed_wait'.")
 
 
 def _apply_strategy_snapshot(run: FleetBulkRun, strategy: FleetOperationStrategy) -> None:
@@ -812,11 +800,7 @@ def _compute_fleet_rollup(
     """Shared computation for single + batch rollup endpoints."""
     from services.fleet_selector import matches_selector
 
-    target = (
-        db.query(FleetTarget)
-        .filter(FleetTarget.id == fleet_id, FleetTarget.deleted_at.is_(None))
-        .first()
-    )
+    target = db.query(FleetTarget).filter(FleetTarget.id == fleet_id, FleetTarget.deleted_at.is_(None)).first()
     if not target:
         raise NotFoundError("FleetTarget", str(fleet_id))
 
@@ -832,22 +816,28 @@ def _compute_fleet_rollup(
         member_query = db.query(FleetMember)
         if effective_role(current_user) != "admin":
             from models.project import Project as _Project
-            owned_ids = [
-                pid for (pid,) in db.query(_Project.id).filter(_Project.user_id == current_user.id).all()
-            ]
+
+            owned_ids = [pid for (pid,) in db.query(_Project.id).filter(_Project.user_id == current_user.id).all()]
             member_query = member_query.filter(FleetMember.project_id.in_(owned_ids))
 
         if label_filters:
-            members = [m for m in member_query.order_by(FleetMember.id).all()
-                       if matches_selector(m, label_filters)]
+            members = [m for m in member_query.order_by(FleetMember.id).all() if matches_selector(m, label_filters)]
         else:
             members = []
 
         if pinned:
             existing_ids = {m.id for m in members}
-            extra_ids = [pid for pid in pinned if pid not in existing_ids]
+            existing_cluster_ids = {m.member_id for m in members if m.member_type == "cluster"}
+            extra_ids = [pid for pid in pinned if pid not in existing_ids and pid not in existing_cluster_ids]
             if extra_ids:
-                extra = db.query(FleetMember).filter(FleetMember.id.in_(extra_ids)).all()
+                extra = (
+                    db.query(FleetMember)
+                    .filter(
+                        (FleetMember.id.in_(extra_ids))
+                        | ((FleetMember.member_type == "cluster") & FleetMember.member_id.in_(extra_ids))
+                    )
+                    .all()
+                )
                 members = members + extra
 
     member_count = len(members)
@@ -877,11 +867,7 @@ def _compute_fleet_rollup(
     # --- 3. Policy rollup — latest evaluation per policy for this fleet ---
     from models.fleet_policy import FleetPolicy, PolicyEvaluation
 
-    policies = (
-        db.query(FleetPolicy)
-        .filter(FleetPolicy.target_id == fleet_id, FleetPolicy.deleted_at.is_(None))
-        .all()
-    )
+    policies = db.query(FleetPolicy).filter(FleetPolicy.target_id == fleet_id, FleetPolicy.deleted_at.is_(None)).all()
     policy_count = len(policies)
 
     total_compliant = 0
@@ -928,11 +914,13 @@ def _compute_fleet_rollup(
     # --- 5. Operations status — derived from FleetBulkRun rows for this fleet ---
     # 2-hop join: FleetBulkRun.decision_id → FleetDecision.target_id == fleet_id
     # Non-terminal states considered active: pending | running | paused_gate
-    _ACTIVE_STATUSES = frozenset({
-        BULK_RUN_STATUS_PENDING,
-        BULK_RUN_STATUS_RUNNING,
-        BULK_RUN_STATUS_PAUSED_GATE,
-    })
+    _ACTIVE_STATUSES = frozenset(
+        {
+            BULK_RUN_STATUS_PENDING,
+            BULK_RUN_STATUS_RUNNING,
+            BULK_RUN_STATUS_PAUSED_GATE,
+        }
+    )
     _FAILED_STATUS = "failed"
 
     all_runs_for_fleet = (
@@ -1034,12 +1022,16 @@ def create_fleet_target(
 ) -> TargetOut:
     """Create a named label-selector target."""
     from services.fleet_selector import validate_selector
-    validate_selector(body.selector)
+
+    selector = body.selector if body.selector is not None else {"labels": []}
+    validate_selector(selector)
 
     target = FleetTarget(
         project_id=body.project_id,
         name=body.name,
-        selector=body.selector,
+        description=body.description,
+        selector=selector,
+        pinned_member_ids=body.pinned_member_ids or [],
         created_by=current_user.username,
     )
     db.add(target)
@@ -1062,12 +1054,9 @@ def list_fleet_targets(
     query = db.query(FleetTarget).filter(FleetTarget.deleted_at.is_(None))
     if effective_role(current_user) != "admin":
         from models.project import Project
-        owned_ids = [
-            pid for (pid,) in db.query(Project.id).filter(Project.user_id == current_user.id).all()
-        ]
-        query = query.filter(
-            (FleetTarget.project_id.is_(None)) | (FleetTarget.project_id.in_(owned_ids))
-        )
+
+        owned_ids = [pid for (pid,) in db.query(Project.id).filter(Project.user_id == current_user.id).all()]
+        query = query.filter((FleetTarget.project_id.is_(None)) | (FleetTarget.project_id.in_(owned_ids)))
     targets = query.order_by(FleetTarget.id).all()
     return [_target_to_out(t) for t in targets]
 
@@ -1083,11 +1072,7 @@ def get_fleet_target(
     db: Session = Depends(get_db),
 ) -> TargetOut:
     """Get a fleet target by ID. Returns 404 if soft-deleted."""
-    target = (
-        db.query(FleetTarget)
-        .filter(FleetTarget.id == target_id, FleetTarget.deleted_at.is_(None))
-        .first()
-    )
+    target = db.query(FleetTarget).filter(FleetTarget.id == target_id, FleetTarget.deleted_at.is_(None)).first()
     if not target:
         raise NotFoundError("FleetTarget", str(target_id))
     return _target_to_out(target)
@@ -1112,11 +1097,7 @@ def update_fleet_target(
     """
     from services.fleet_selector import validate_selector
 
-    target = (
-        db.query(FleetTarget)
-        .filter(FleetTarget.id == target_id, FleetTarget.deleted_at.is_(None))
-        .first()
-    )
+    target = db.query(FleetTarget).filter(FleetTarget.id == target_id, FleetTarget.deleted_at.is_(None)).first()
     if not target:
         raise NotFoundError("FleetTarget", str(target_id))
 
@@ -1156,11 +1137,7 @@ def delete_fleet_target(
     """
     from datetime import UTC, datetime
 
-    target = (
-        db.query(FleetTarget)
-        .filter(FleetTarget.id == target_id, FleetTarget.deleted_at.is_(None))
-        .first()
-    )
+    target = db.query(FleetTarget).filter(FleetTarget.id == target_id, FleetTarget.deleted_at.is_(None)).first()
     if not target:
         raise NotFoundError("FleetTarget", str(target_id))
 
@@ -1190,11 +1167,7 @@ def resolve_fleet_target(
     """
     from services.fleet_selector import resolve_target
 
-    target = (
-        db.query(FleetTarget)
-        .filter(FleetTarget.id == target_id, FleetTarget.deleted_at.is_(None))
-        .first()
-    )
+    target = db.query(FleetTarget).filter(FleetTarget.id == target_id, FleetTarget.deleted_at.is_(None)).first()
     if not target:
         raise NotFoundError("FleetTarget", str(target_id))
 
@@ -1264,10 +1237,7 @@ def start_fleet_bulk_op(
     """
     # Validate action allowlist upfront (before DB write).
     if body.action not in SAFE_ACTIONS:
-        raise BadRequestError(
-            f"Action '{body.action}' is not allowed. "
-            f"Allowed actions: {sorted(SAFE_ACTIONS)}"
-        )
+        raise BadRequestError(f"Action '{body.action}' is not allowed. Allowed actions: {sorted(SAFE_ACTIONS)}")
 
     decision = db.query(FleetDecision).filter(FleetDecision.id == body.decision_id).first()
     if not decision:
@@ -1283,12 +1253,7 @@ def start_fleet_bulk_op(
     member_ids: list[int] = decision.resolved_member_ids or []
     member_project_ids: list[int | None] = [decision.project_id]
     if member_ids:
-        rows = (
-            db.query(FleetMember.project_id)
-            .filter(FleetMember.id.in_(member_ids))
-            .distinct()
-            .all()
-        )
+        rows = db.query(FleetMember.project_id).filter(FleetMember.id.in_(member_ids)).distinct().all()
         member_project_ids.extend(pid for (pid,) in rows)
 
     # RBAC gate — fail-closed; refuse before any run row is written or Celery dispatched.
@@ -1296,9 +1261,7 @@ def start_fleet_bulk_op(
 
     # Resolve concurrency / gate_mode: explicit override wins, else Project defaults.
     if body.concurrency is None or body.gate_mode is None:
-        default_concurrency, default_gate_mode = resolve_rollout_defaults(
-            db, member_project_ids
-        )
+        default_concurrency, default_gate_mode = resolve_rollout_defaults(db, member_project_ids)
         concurrency = body.concurrency if body.concurrency is not None else default_concurrency
         gate_mode = body.gate_mode if body.gate_mode is not None else default_gate_mode
     else:
@@ -1307,10 +1270,7 @@ def start_fleet_bulk_op(
 
     # Validate resolved values.
     if gate_mode not in GATE_MODES:
-        raise BadRequestError(
-            f"gate_mode '{gate_mode}' is not valid. "
-            f"Allowed: {sorted(GATE_MODES)}"
-        )
+        raise BadRequestError(f"gate_mode '{gate_mode}' is not valid. Allowed: {sorted(GATE_MODES)}")
     if concurrency < 1 or concurrency > 50:
         raise BadRequestError("concurrency must be between 1 and 50.")
 
@@ -1390,11 +1350,7 @@ def run_fleet_selection(
     from services.fleet_selector import decision_from_member_ids, matches_selector
 
     # 1. Load fleet.
-    target = (
-        db.query(FleetTarget)
-        .filter(FleetTarget.id == target_id, FleetTarget.deleted_at.is_(None))
-        .first()
-    )
+    target = db.query(FleetTarget).filter(FleetTarget.id == target_id, FleetTarget.deleted_at.is_(None)).first()
     if not target:
         raise NotFoundError("FleetTarget", str(target_id))
 
@@ -1423,33 +1379,21 @@ def run_fleet_selection(
     # Intersect requested ids with the fleet's actual member set.
     intersected_ids = [mid for mid in body.member_ids if mid in fleet_member_ids]
     if not intersected_ids:
-        raise BadRequestError(
-            "None of the requested member_ids belong to this fleet, or the fleet is empty."
-        )
+        raise BadRequestError("None of the requested member_ids belong to this fleet, or the fleet is empty.")
 
     # 3. Validate action allowlist.
     if body.action not in SAFE_ACTIONS:
-        raise BadRequestError(
-            f"Action '{body.action}' is not allowed. "
-            f"Allowed actions: {sorted(SAFE_ACTIONS)}"
-        )
+        raise BadRequestError(f"Action '{body.action}' is not allowed. Allowed actions: {sorted(SAFE_ACTIONS)}")
 
     # 4. RBAC gate over all project_ids in the intersected blast radius.
-    rows = (
-        db.query(FleetMember.project_id)
-        .filter(FleetMember.id.in_(intersected_ids))
-        .distinct()
-        .all()
-    )
+    rows = db.query(FleetMember.project_id).filter(FleetMember.id.in_(intersected_ids)).distinct().all()
     member_project_ids: list[int | None] = [target.project_id]
     member_project_ids.extend(pid for (pid,) in rows)
     require_fleet_mutation(member_project_ids, current_user, db)
 
     # 5. Resolve concurrency / gate_mode.
     if body.concurrency is None or body.gate_mode is None:
-        default_concurrency, default_gate_mode = resolve_rollout_defaults(
-            db, member_project_ids
-        )
+        default_concurrency, default_gate_mode = resolve_rollout_defaults(db, member_project_ids)
         concurrency = body.concurrency if body.concurrency is not None else default_concurrency
         gate_mode = body.gate_mode if body.gate_mode is not None else default_gate_mode
     else:
@@ -1457,10 +1401,7 @@ def run_fleet_selection(
         gate_mode = body.gate_mode
 
     if gate_mode not in GATE_MODES:
-        raise BadRequestError(
-            f"gate_mode '{gate_mode}' is not valid. "
-            f"Allowed: {sorted(GATE_MODES)}"
-        )
+        raise BadRequestError(f"gate_mode '{gate_mode}' is not valid. Allowed: {sorted(GATE_MODES)}")
     if concurrency < 1 or concurrency > 50:
         raise BadRequestError("concurrency must be between 1 and 50.")
 
@@ -1557,18 +1498,14 @@ def list_fleet_bulk_ops(
 
     if effective_role(current_user) != "admin":
         from models.project import Project
-        owned_ids = [
-            pid for (pid,) in db.query(Project.id).filter(Project.user_id == current_user.id).all()
-        ]
-        query = query.filter(
-            (FleetBulkRun.project_id.is_(None)) | (FleetBulkRun.project_id.in_(owned_ids))
-        )
+
+        owned_ids = [pid for (pid,) in db.query(Project.id).filter(Project.user_id == current_user.id).all()]
+        query = query.filter((FleetBulkRun.project_id.is_(None)) | (FleetBulkRun.project_id.in_(owned_ids)))
 
     if fleet_id is not None:
         # 2-hop join: run → decision → target (target_id == fleet_id)
-        query = (
-            query.join(FleetDecision, FleetBulkRun.decision_id == FleetDecision.id)
-            .filter(FleetDecision.target_id == fleet_id)
+        query = query.join(FleetDecision, FleetBulkRun.decision_id == FleetDecision.id).filter(
+            FleetDecision.target_id == fleet_id
         )
 
     if status is not None:
@@ -1599,8 +1536,7 @@ def resume_fleet_bulk_op_route(
 
     if run.status != BULK_RUN_STATUS_PAUSED_GATE:
         raise BadRequestError(
-            f"FleetBulkRun {run_id} cannot be resumed — status is '{run.status}' "
-            "(must be 'paused_gate')."
+            f"FleetBulkRun {run_id} cannot be resumed — status is '{run.status}' (must be 'paused_gate')."
         )
 
     # RBAC gate — mirror of start_fleet_bulk_op.
@@ -1611,12 +1547,7 @@ def resume_fleet_bulk_op_route(
     if decision is not None:
         member_ids: list[int] = decision.resolved_member_ids or []
         if member_ids:
-            rows = (
-                db.query(FleetMember.project_id)
-                .filter(FleetMember.id.in_(member_ids))
-                .distinct()
-                .all()
-            )
+            rows = db.query(FleetMember.project_id).filter(FleetMember.id.in_(member_ids)).distinct().all()
             member_project_ids.extend(pid for (pid,) in rows)
     require_fleet_mutation(member_project_ids, current_user, db)
 
@@ -1656,8 +1587,6 @@ def cancel_fleet_bulk_op(
     """
     from datetime import UTC, datetime
 
-
-
     run = db.query(FleetBulkRun).filter(FleetBulkRun.id == run_id).first()
     if not run:
         raise NotFoundError("FleetBulkRun", str(run_id))
@@ -1668,8 +1597,7 @@ def cancel_fleet_bulk_op(
     if run.status in BULK_RUN_TERMINAL_STATUSES:
         raise ConflictError(
             "FleetBulkRun",
-            f"FleetBulkRun {run_id} cannot be cancelled — "
-            f"it is already terminal (status='{run.status}').",
+            f"FleetBulkRun {run_id} cannot be cancelled — it is already terminal (status='{run.status}').",
         )
 
     _cancellable = {BULK_RUN_STATUS_PENDING, BULK_RUN_STATUS_RUNNING, BULK_RUN_STATUS_PAUSED_GATE}
@@ -1704,9 +1632,7 @@ def create_fleet_strategy(
     db: Session = Depends(get_db),
 ) -> StrategyOut:
     """Create a reusable operation strategy (wave/concurrency/gate template)."""
-    _validate_strategy_fields(
-        body.wave_by, body.max_concurrency_pct, body.gate_kind, body.gate_wait_seconds
-    )
+    _validate_strategy_fields(body.wave_by, body.max_concurrency_pct, body.gate_kind, body.gate_wait_seconds)
 
     strategy = FleetOperationStrategy(
         project_id=body.project_id,
@@ -1743,12 +1669,9 @@ def list_fleet_strategies(
         query = query.filter(FleetOperationStrategy.target_id == fleet_id)
 
     if effective_role(current_user) != "admin":
-        owned_ids = [
-            pid for (pid,) in db.query(Project.id).filter(Project.user_id == current_user.id).all()
-        ]
+        owned_ids = [pid for (pid,) in db.query(Project.id).filter(Project.user_id == current_user.id).all()]
         query = query.filter(
-            (FleetOperationStrategy.project_id.is_(None))
-            | (FleetOperationStrategy.project_id.in_(owned_ids))
+            (FleetOperationStrategy.project_id.is_(None)) | (FleetOperationStrategy.project_id.in_(owned_ids))
         )
 
     strategies = query.order_by(FleetOperationStrategy.id).all()
@@ -1910,17 +1833,13 @@ def rerun_fleet_bulk_op(
     member_ids: list[int] = orig_decision.resolved_member_ids or []
     member_project_ids: list[int | None] = [original.project_id]
     if member_ids:
-        rows = (
-            db.query(FleetMember.project_id)
-            .filter(FleetMember.id.in_(member_ids))
-            .distinct()
-            .all()
-        )
+        rows = db.query(FleetMember.project_id).filter(FleetMember.id.in_(member_ids)).distinct().all()
         member_project_ids.extend(pid for (pid,) in rows)
     require_fleet_mutation(member_project_ids, current_user, db)
 
     # Re-resolve: get a FRESH Decision (old decision is stale).
     from services.fleet_selector import resolve_target
+
     new_decision = resolve_target(
         db,
         target,
@@ -1968,6 +1887,7 @@ def rerun_fleet_bulk_op(
     db.refresh(new_run)
 
     from tasks.fleet_tasks import run_fleet_bulk_op
+
     task = run_fleet_bulk_op.delay(new_run.id)
     new_run.celery_task_id = task.id
     db.commit()
@@ -2056,6 +1976,7 @@ class PolicyEvaluationOut(BaseModel):
 
 class PolicyComplianceRollupOut(BaseModel):
     """Compliance rollup for a single policy — GET {id}/compliance."""
+
     policy_id: int
     policy_name: str
     kind: str
@@ -2081,6 +2002,7 @@ class CreatePolicyRequest(BaseModel):
 
 class UpdatePolicyRequest(BaseModel):
     """All fields optional — only supplied fields are mutated."""
+
     name: str | None = None
     kind: str | None = None
     mode: str | None = None
@@ -2160,13 +2082,9 @@ def create_fleet_policy(
     )
 
     if body.kind not in POLICY_KINDS:
-        raise BadRequestError(
-            f"Unknown policy kind '{body.kind}'. Allowed: {sorted(POLICY_KINDS)}"
-        )
+        raise BadRequestError(f"Unknown policy kind '{body.kind}'. Allowed: {sorted(POLICY_KINDS)}")
     if body.mode not in POLICY_MODES:
-        raise BadRequestError(
-            f"Unknown policy mode '{body.mode}'. Allowed: {sorted(POLICY_MODES)}"
-        )
+        raise BadRequestError(f"Unknown policy mode '{body.mode}'. Allowed: {sorted(POLICY_MODES)}")
 
     target = db.query(FleetTarget).filter(FleetTarget.id == body.target_id).first()
     if not target:
@@ -2185,6 +2103,7 @@ def create_fleet_policy(
         # a discovered-namespace key (e.g. os=ubuntu) is rejected at creation with
         # a clear 4xx, not silently at enforce time.
         from services.fleet_vocabulary import validate_assigned_labels
+
         rl_dict: dict[str, str] = {}
         for entry in rl:
             if "=" in entry:
@@ -2229,14 +2148,9 @@ def list_fleet_policies(
     query = db.query(FleetPolicy).filter(FleetPolicy.deleted_at.is_(None))
     if effective_role(current_user) != "admin":
         from models.project import Project
-        owned_ids = [
-            pid for (pid,) in db.query(Project.id).filter(
-                Project.user_id == current_user.id
-            ).all()
-        ]
-        query = query.filter(
-            (FleetPolicy.project_id.is_(None)) | (FleetPolicy.project_id.in_(owned_ids))
-        )
+
+        owned_ids = [pid for (pid,) in db.query(Project.id).filter(Project.user_id == current_user.id).all()]
+        query = query.filter((FleetPolicy.project_id.is_(None)) | (FleetPolicy.project_id.in_(owned_ids)))
     policies = query.order_by(FleetPolicy.id).all()
     return [_policy_to_out(p) for p in policies]
 
@@ -2254,11 +2168,7 @@ def get_fleet_policy(
     """Get a fleet policy by ID. Returns 404 if soft-deleted."""
     from models.fleet_policy import FleetPolicy
 
-    policy = (
-        db.query(FleetPolicy)
-        .filter(FleetPolicy.id == policy_id, FleetPolicy.deleted_at.is_(None))
-        .first()
-    )
+    policy = db.query(FleetPolicy).filter(FleetPolicy.id == policy_id, FleetPolicy.deleted_at.is_(None)).first()
     if not policy:
         raise NotFoundError("FleetPolicy", str(policy_id))
     return _policy_to_out(policy)
@@ -2285,11 +2195,7 @@ def evaluate_fleet_policy(
     from models.fleet_policy import FleetPolicy
     from services.fleet_policy_service import evaluate_policy
 
-    policy = (
-        db.query(FleetPolicy)
-        .filter(FleetPolicy.id == policy_id, FleetPolicy.deleted_at.is_(None))
-        .first()
-    )
+    policy = db.query(FleetPolicy).filter(FleetPolicy.id == policy_id, FleetPolicy.deleted_at.is_(None)).first()
     if not policy:
         raise NotFoundError("FleetPolicy", str(policy_id))
 
@@ -2325,11 +2231,7 @@ def enforce_fleet_policy(
     from models.fleet_policy import FleetPolicy
     from services.fleet_policy_service import enforce_policy
 
-    policy = (
-        db.query(FleetPolicy)
-        .filter(FleetPolicy.id == policy_id, FleetPolicy.deleted_at.is_(None))
-        .first()
-    )
+    policy = db.query(FleetPolicy).filter(FleetPolicy.id == policy_id, FleetPolicy.deleted_at.is_(None)).first()
     if not policy:
         raise NotFoundError("FleetPolicy", str(policy_id))
 
@@ -2349,12 +2251,7 @@ def enforce_fleet_policy(
     if latest_decision is not None:
         member_ids_for_rbac: list[int] = latest_decision.resolved_member_ids or []
         if member_ids_for_rbac:
-            rows = (
-                db.query(FleetMember.project_id)
-                .filter(FleetMember.id.in_(member_ids_for_rbac))
-                .distinct()
-                .all()
-            )
+            rows = db.query(FleetMember.project_id).filter(FleetMember.id.in_(member_ids_for_rbac)).distinct().all()
             policy_project_ids.extend(pid for (pid,) in rows)
 
     # RBAC gate — fail-closed; refuse before any enforcement dispatched.
@@ -2397,11 +2294,7 @@ def get_policy_compliance_rollup(
         PolicyEvaluation,
     )
 
-    policy = (
-        db.query(FleetPolicy)
-        .filter(FleetPolicy.id == policy_id, FleetPolicy.deleted_at.is_(None))
-        .first()
-    )
+    policy = db.query(FleetPolicy).filter(FleetPolicy.id == policy_id, FleetPolicy.deleted_at.is_(None)).first()
     if not policy:
         raise NotFoundError("FleetPolicy", str(policy_id))
 
@@ -2474,11 +2367,7 @@ def list_policy_evaluations(
     """
     from models.fleet_policy import FleetPolicy, PolicyEvaluation
 
-    policy = (
-        db.query(FleetPolicy)
-        .filter(FleetPolicy.id == policy_id, FleetPolicy.deleted_at.is_(None))
-        .first()
-    )
+    policy = db.query(FleetPolicy).filter(FleetPolicy.id == policy_id, FleetPolicy.deleted_at.is_(None)).first()
     if not policy:
         raise NotFoundError("FleetPolicy", str(policy_id))
 
@@ -2526,11 +2415,7 @@ def update_fleet_policy(
         FleetPolicy,
     )
 
-    policy = (
-        db.query(FleetPolicy)
-        .filter(FleetPolicy.id == policy_id, FleetPolicy.deleted_at.is_(None))
-        .first()
-    )
+    policy = db.query(FleetPolicy).filter(FleetPolicy.id == policy_id, FleetPolicy.deleted_at.is_(None)).first()
     if not policy:
         raise NotFoundError("FleetPolicy", str(policy_id))
 
@@ -2546,16 +2431,12 @@ def update_fleet_policy(
 
     if body.kind is not None:
         if body.kind not in POLICY_KINDS:
-            raise BadRequestError(
-                f"Unknown policy kind '{body.kind}'. Allowed: {sorted(POLICY_KINDS)}"
-            )
+            raise BadRequestError(f"Unknown policy kind '{body.kind}'. Allowed: {sorted(POLICY_KINDS)}")
         policy.kind = body.kind
 
     if body.mode is not None:
         if body.mode not in POLICY_MODES:
-            raise BadRequestError(
-                f"Unknown policy mode '{body.mode}'. Allowed: {sorted(POLICY_MODES)}"
-            )
+            raise BadRequestError(f"Unknown policy mode '{body.mode}'. Allowed: {sorted(POLICY_MODES)}")
         policy.mode = body.mode
 
     # Guard: os-compliance-seed must stay inform-only.
@@ -2576,6 +2457,7 @@ def update_fleet_policy(
                     "label-compliance policy requires a non-empty 'required_labels' list.",
                 )
             from services.fleet_vocabulary import validate_assigned_labels
+
             rl_dict: dict[str, str] = {}
             for entry in rl:
                 if "=" in entry:
@@ -2619,11 +2501,7 @@ def delete_fleet_policy(
 
     from models.fleet_policy import FleetPolicy
 
-    policy = (
-        db.query(FleetPolicy)
-        .filter(FleetPolicy.id == policy_id, FleetPolicy.deleted_at.is_(None))
-        .first()
-    )
+    policy = db.query(FleetPolicy).filter(FleetPolicy.id == policy_id, FleetPolicy.deleted_at.is_(None)).first()
     if not policy:
         raise NotFoundError("FleetPolicy", str(policy_id))
 

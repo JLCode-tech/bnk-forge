@@ -140,6 +140,10 @@ from models.fleet_targeting import (
     FleetTarget,
 )
 
+# --- Fleet deployable configs ---
+from models.fleet_config import FleetDeployableConfig
+
+
 # --- Kubernetes and F5 BNK networking ---
 from models.kubernetes import (
     BnkClusterConfig,
@@ -230,33 +234,71 @@ from models.variable import (
 __all__ = [
     "Base",
     # enums
-    "TaskStatus", "ModuleStatus", "ParallelExecutionStatus", "StackInstanceStatus",
-    "DiscoveryJobStatus", "DiscoveredNodeStatus",
-    "DriftCheckStatus", "BnkUpgradeStatus", "ReleaseSourceKind", "ReleaseSourceType", "ClusterStatus",
-    "K8sResourceStatus", "OperatorStatus", "OperatorCommandStatus", "AlertStatus",
-    "SyncJobStatus", "ModuleSyncStatus", "ModuleTestStatus", "DeploymentStatus",
-    "BlueprintReleaseState", "BlueprintValidationState",
-    "BareMetalDeploymentStatus", "BareMetalTopology", "DeploymentPhase", "DeploymentStepStatus", "HostAccessTier",
-    "ProxyMigrationStatus", "MigrationStepStatus",
+    "TaskStatus",
+    "ModuleStatus",
+    "ParallelExecutionStatus",
+    "StackInstanceStatus",
+    "DiscoveryJobStatus",
+    "DiscoveredNodeStatus",
+    "DriftCheckStatus",
+    "BnkUpgradeStatus",
+    "ReleaseSourceKind",
+    "ReleaseSourceType",
+    "ClusterStatus",
+    "K8sResourceStatus",
+    "OperatorStatus",
+    "OperatorCommandStatus",
+    "AlertStatus",
+    "SyncJobStatus",
+    "ModuleSyncStatus",
+    "ModuleTestStatus",
+    "DeploymentStatus",
+    "BlueprintReleaseState",
+    "BlueprintValidationState",
+    "BareMetalDeploymentStatus",
+    "BareMetalTopology",
+    "DeploymentPhase",
+    "DeploymentStepStatus",
+    "HostAccessTier",
+    "ProxyMigrationStatus",
+    "MigrationStepStatus",
     # kubernetes
-    "KubernetesCluster", "BnkClusterConfig", "K8sGateway", "FirewallPolicy", "EgressConfiguration", "SnatPool",
+    "KubernetesCluster",
+    "BnkClusterConfig",
+    "K8sGateway",
+    "FirewallPolicy",
+    "EgressConfiguration",
+    "SnatPool",
     # project
-    "Project", "ProjectModule", "ProjectSecret", "Environment", "Deployment", "DeploymentLog",
+    "Project",
+    "ProjectModule",
+    "ProjectSecret",
+    "Environment",
+    "Deployment",
+    "DeploymentLog",
     "ModuleStateTransition",
     # project config extractions
-    "ProjectEncryptionConfig", "ProjectBackendConfig", "ProjectInfraConfig", "ProjectCloudConfig",
+    "ProjectEncryptionConfig",
+    "ProjectBackendConfig",
+    "ProjectInfraConfig",
+    "ProjectCloudConfig",
     # module
-    "ModuleLibrary", "ModuleSource", "ModuleSnapshot",
+    "ModuleLibrary",
+    "ModuleSource",
+    "ModuleSnapshot",
     # variable
-    "VariableMapping", "VariableMappingTemplate",
+    "VariableMapping",
+    "VariableMappingTemplate",
     # stack
-    "StackTemplate", "StackInstance",
+    "StackTemplate",
+    "StackInstance",
     # task
     "Task",
     # associations (IMP-020)
     "module_dependencies",
     # drift
-    "DriftCheck", "DriftSettings",
+    "DriftCheck",
+    "DriftSettings",
     # F5 BIG-IP (D-023 P1)
     "F5Credential",
     "F5BIGIPDevice",
@@ -265,36 +307,61 @@ __all__ = [
     # container registries
     "ContainerRegistry",
     # system
-    "ApplicationSetting", "SyncJob", "CloudCredentialTemplate", "User", "ApiToken", "AuditLog", "Notification", "HelmChart",
+    "ApplicationSetting",
+    "SyncJob",
+    "CloudCredentialTemplate",
+    "User",
+    "ApiToken",
+    "AuditLog",
+    "Notification",
+    "HelmChart",
     # operator
-    "OperatorRegistrationToken", "ConnectedOperator", "OperatorCommandQueue",
+    "OperatorRegistrationToken",
+    "ConnectedOperator",
+    "OperatorCommandQueue",
     # alert
-    "AlertChannel", "AlertHistory",
+    "AlertChannel",
+    "AlertHistory",
     # benchmark (Phase 2 + Phase 4b + Phase 6 scenarios)
-    "BenchmarkRun", "BenchmarkRunGroup", "BenchmarkConfig", "BenchmarkAgent",
-    "BenchmarkTarget", "ProxyDeployment",
-    "BenchmarkRunStatus", "BenchmarkAgentStatus",
-    "BenchmarkTargetStatus", "ProxyDeploymentStatus",
+    "BenchmarkRun",
+    "BenchmarkRunGroup",
+    "BenchmarkConfig",
+    "BenchmarkAgent",
+    "BenchmarkTarget",
+    "ProxyDeployment",
+    "BenchmarkRunStatus",
+    "BenchmarkAgentStatus",
+    "BenchmarkTargetStatus",
+    "ProxyDeploymentStatus",
     # bnk_release
     "BnkRelease",
     # bnk_upgrade
     "BnkUpgrade",
     # blueprint catalog
-    "BlueprintSource", "BlueprintRelease",
+    "BlueprintSource",
+    "BlueprintRelease",
     # config_snapshot
     "ConfigSnapshot",
     # config_promotion
     "ConfigPromotion",
     # discovery
-    "DiscoveryJob", "DiscoveredNode",
+    "DiscoveryJob",
+    "DiscoveredNode",
     # bare metal (DPU deployment)
-    "BareMetalHost", "BareMetalDeployment", "DeploymentStep", "BnkDeployableRelease",
+    "BareMetalHost",
+    "BareMetalDeployment",
+    "DeploymentStep",
+    "BnkDeployableRelease",
     # release source (ADR-494)
     "ReleaseSource",
     # proxy migration (D-021 P3)
-    "ProxyMigration", "ProxyMigrationStep",
+    "ProxyMigration",
+    "ProxyMigrationStep",
     # DPU provisioning (Blueprint 1)
-    "BfConfTemplate", "BluefieldSoftwareImage", "Dpu", "ProjectDpuSettings",
+    "BfConfTemplate",
+    "BluefieldSoftwareImage",
+    "Dpu",
+    "ProjectDpuSettings",
     # fleet membership + label layer (D-022)
     "FleetMember",
     # fleet targeting + bulk-ops (D-022 Phase 2 + P6 Slice D)
@@ -303,9 +370,13 @@ __all__ = [
     "FleetBulkRun",
     "FleetBulkRunResult",
     "FleetOperationStrategy",
+    # fleet deployable configs
+    "FleetDeployableConfig",
     # fleet policy + compliance (D-022 Phase 3)
     "FleetPolicy",
     "PolicyEvaluation",
     # use-case artifacts (D-034 Phase 0 tracer)
-    "UseCaseArtifact", "UseCaseArtifactVersion", "UseCaseApplication",
+    "UseCaseArtifact",
+    "UseCaseArtifactVersion",
+    "UseCaseApplication",
 ]

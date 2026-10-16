@@ -18,6 +18,7 @@ from core.errors import (
     DecryptionError,
     ForbiddenError,
     InternalError,
+    NetworkUnreachableError,
     NotFoundError,
     ServiceError,
     TimeoutError,
@@ -26,6 +27,7 @@ from core.errors import (
     classify_aws_credential_error,
     classify_aws_subprocess_stderr,
     format_error_response,
+    general_exception_handler,
     handle_exception,
     handle_route_errors,
     handle_service_errors,
@@ -285,6 +287,7 @@ def _make_client_error(code: str, message: str = "test", operation: str = "GetCa
     """Construct a botocore ClientError the way botocore itself does."""
     try:
         from botocore.exceptions import ClientError
+
         return ClientError({"Error": {"Code": code, "Message": message}}, operation)
     except ImportError:
         pytest.skip("botocore not installed")
@@ -348,7 +351,9 @@ class TestClassifyAwsCredentialError:
 
 class TestClassifyAwsSubprocessStderr:
     def test_expired_token_in_stderr(self):
-        result = classify_aws_subprocess_stderr("An error occurred (ExpiredToken) when calling GetCallerIdentity", "EKS kubeconfig")
+        result = classify_aws_subprocess_stderr(
+            "An error occurred (ExpiredToken) when calling GetCallerIdentity", "EKS kubeconfig"
+        )
         assert result is not None
         assert isinstance(result, AuthenticationError)
         assert result.code == "REMOTE_AUTHENTICATION_FAILED"
@@ -463,3 +468,42 @@ class TestHandleExceptionAwsBotocore:
         )
         with pytest.raises(InternalError):
             handle_exception(err, "helm install")
+
+
+class TestNetworkUnreachableAndUrllib3:
+    def test_network_unreachable_defaults(self):
+        err = NetworkUnreachableError()
+        assert err.status_code == 503
+        assert err.code == "NETWORK_UNREACHABLE"
+        assert "Service 'remote service' is unreachable" in str(err)
+        assert err.details["target_type"] == "service"
+        assert err.details["target_id"] == 0
+        assert err.details["target_name"] == "remote service"
+        assert "Check network connectivity" in err.details["suggested_action"]
+
+    def test_handle_exception_urllib3_http_error(self):
+        import urllib3.exceptions
+
+        err = urllib3.exceptions.MaxRetryError(pool=None, url="http://10.0.0.1:8080", reason="Connection refused")
+        with pytest.raises(NetworkUnreachableError) as exc_info:
+            handle_exception(err, "cwc_license_status")
+        exc = exc_info.value
+        assert exc.status_code == 503
+        assert exc.code == "NETWORK_UNREACHABLE"
+        assert exc.details["target_name"] == "cwc_license_status"
+        assert exc.details["error_type"] == "MaxRetryError"
+
+    @pytest.mark.asyncio
+    async def test_general_exception_handler_urllib3(self):
+        from unittest.mock import MagicMock
+        import urllib3.exceptions
+
+        req = MagicMock()
+        req.url.path = "/api/licensing/1/status"
+        err = urllib3.exceptions.NewConnectionError(None, "Failed to establish a new connection")
+
+        resp = await general_exception_handler(req, err)
+        assert resp.status_code == 503
+        body = json.loads(resp.body.decode())
+        assert body["error"]["code"] == "NETWORK_UNREACHABLE"
+        assert body["error"]["details"]["error_type"] == "NewConnectionError"

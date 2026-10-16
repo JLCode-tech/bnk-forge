@@ -2,6 +2,7 @@
 Centralized error handling for BNK-Forge
 Provides structured error responses with error codes for better debugging
 """
+
 import logging
 from collections.abc import Callable
 from enum import StrEnum
@@ -60,18 +61,14 @@ class UnauthorizedError(AppError):
     """Authentication required (401)"""
 
     def __init__(self, message: str = "Authentication required"):
-        super().__init__(
-            code="UNAUTHORIZED", message=message, status_code=401, details={}
-        )
+        super().__init__(code="UNAUTHORIZED", message=message, status_code=401, details={})
 
 
 class ForbiddenError(AppError):
     """Insufficient permissions (403)"""
 
     def __init__(self, message: str = "Insufficient permissions"):
-        super().__init__(
-            code="FORBIDDEN", message=message, status_code=403, details={}
-        )
+        super().__init__(code="FORBIDDEN", message=message, status_code=403, details={})
 
 
 class ConflictError(AppError):
@@ -172,6 +169,7 @@ class TimeoutError(AppError):
 # Connectivity / reachability errors (RFC: unified connectivity architecture)
 # =============================================================================
 
+
 class NetworkUnreachableError(AppError):
     """Target is not reachable over the network (503).
 
@@ -182,10 +180,10 @@ class NetworkUnreachableError(AppError):
 
     def __init__(
         self,
-        target_type: str,
-        target_id: int,
-        target_name: str,
-        suggested_action: str,
+        target_type: str = "service",
+        target_id: int = 0,
+        target_name: str = "remote service",
+        suggested_action: str = "Check network connectivity, host status, and firewall rules.",
         last_success_at: str | None = None,
         details: dict[str, Any] | None = None,
     ):
@@ -307,18 +305,24 @@ def scrub_secrets(text: str) -> str:
     including them in API responses. Prevents accidental credential leaks.
     """
     import re
+
     # AWS Access Key IDs (AKIA...)
-    text = re.sub(r'AKIA[A-Z0-9]{16}', 'AKIA***REDACTED***', text)
+    text = re.sub(r"AKIA[A-Z0-9]{16}", "AKIA***REDACTED***", text)
     # AWS Secret Access Keys (40-char base64)
-    text = re.sub(r'(?<![A-Za-z0-9/+=])[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=])', '***SECRET_REDACTED***', text)
+    text = re.sub(r"(?<![A-Za-z0-9/+=])[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=])", "***SECRET_REDACTED***", text)
     # Bearer tokens
-    text = re.sub(r'Bearer\s+[A-Za-z0-9._-]{20,}', 'Bearer ***REDACTED***', text)
+    text = re.sub(r"Bearer\s+[A-Za-z0-9._-]{20,}", "Bearer ***REDACTED***", text)
     # Private key blocks
-    text = re.sub(r'-----BEGIN[A-Z ]*PRIVATE KEY-----[\s\S]*?-----END[A-Z ]*PRIVATE KEY-----',
-                  '***PRIVATE_KEY_REDACTED***', text)
+    text = re.sub(
+        r"-----BEGIN[A-Z ]*PRIVATE KEY-----[\s\S]*?-----END[A-Z ]*PRIVATE KEY-----", "***PRIVATE_KEY_REDACTED***", text
+    )
     # Generic password= or token= in query strings or config
-    text = re.sub(r'(password|token|secret|api_key|apikey|access_key)([=:]\s*)[^\s,;&"\']+',
-                  r'\1\2***REDACTED***', text, flags=re.IGNORECASE)
+    text = re.sub(
+        r'(password|token|secret|api_key|apikey|access_key)([=:]\s*)[^\s,;&"\']+',
+        r"\1\2***REDACTED***",
+        text,
+        flags=re.IGNORECASE,
+    )
     return text
 
 
@@ -331,6 +335,7 @@ def format_error_response(error: Exception, request: Any = None) -> dict[str, An
     """
     # OBS-001: Include correlation ID in error responses for support tracing
     from core.correlation import get_request_id
+
     request_id = get_request_id()
 
     # Handle AppError instances
@@ -340,9 +345,8 @@ def format_error_response(error: Exception, request: Any = None) -> dict[str, An
             "error": {
                 "code": error.code,
                 "message": scrub_secrets(error.message),
-                "details": {k: scrub_secrets(str(v)) if isinstance(v, str) else v
-                            for k, v in error.details.items()},
-                "path": str(request.url.path) if hasattr(request, 'url') else str(request),
+                "details": {k: scrub_secrets(str(v)) if isinstance(v, str) else v for k, v in error.details.items()},
+                "path": str(request.url.path) if hasattr(request, "url") else str(request),
             }
         }
         if request_id:
@@ -355,7 +359,7 @@ def format_error_response(error: Exception, request: Any = None) -> dict[str, An
             "code": "INTERNAL_ERROR",
             "message": scrub_secrets(str(error)),
             "details": {"error_type": type(error).__name__},
-            "path": str(request.url.path) if hasattr(request, 'url') else str(request),
+            "path": str(request.url.path) if hasattr(request, "url") else str(request),
         }
     }
     if request_id:
@@ -370,9 +374,7 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
         extra={"code": exc.code, "details": exc.details, "path": request.url.path},
     )
 
-    return JSONResponse(
-        status_code=exc.status_code, content=format_error_response(exc, request)
-    )
+    return JSONResponse(status_code=exc.status_code, content=format_error_response(exc, request))
 
 
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
@@ -384,13 +386,27 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
         details={},
     )
 
-    return JSONResponse(
-        status_code=exc.status_code, content=format_error_response(error, request)
-    )
+    return JSONResponse(status_code=exc.status_code, content=format_error_response(error, request))
 
 
 async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Handler for unexpected exceptions"""
+    try:
+        import urllib3.exceptions
+
+        if isinstance(exc, urllib3.exceptions.HTTPError):
+            logger.warning(f"Network error intercepted in general handler: {exc}", extra={"path": request.url.path})
+            net_err = NetworkUnreachableError(
+                target_type="service",
+                target_id=0,
+                target_name="remote service",
+                suggested_action="Check network connectivity, host status, and firewall rules.",
+                details={"error_type": type(exc).__name__, "reason": str(exc)},
+            )
+            return JSONResponse(status_code=503, content=format_error_response(net_err, request))
+    except ImportError:
+        pass
+
     logger.exception(f"Unhandled exception: {exc}", extra={"path": request.url.path})
 
     error = AppError(
@@ -466,6 +482,7 @@ def raise_service_error(service: str, error: Exception) -> None:
 # Route Error Handler Decorator (R4-003)
 # =============================================================================
 
+
 def handle_route_errors(operation: str) -> Callable[[F], F]:
     """
     Decorator that replaces the blanket except-Exception pattern in routes.
@@ -497,6 +514,7 @@ def handle_route_errors(operation: str) -> Callable[[F], F]:
 
     def decorator(fn: F) -> F:
         if inspect.iscoroutinefunction(fn):
+
             @functools.wraps(fn)
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 try:
@@ -505,8 +523,10 @@ def handle_route_errors(operation: str) -> Callable[[F], F]:
                     raise
                 except Exception as e:
                     handle_exception(e, operation)
+
             return cast(F, async_wrapper)
         else:
+
             @functools.wraps(fn)
             def wrapper(*args: Any, **kwargs: Any) -> Any:
                 try:
@@ -515,7 +535,9 @@ def handle_route_errors(operation: str) -> Callable[[F], F]:
                     raise
                 except Exception as e:
                     handle_exception(e, operation)
+
             return cast(F, wrapper)
+
     return decorator
 
 
@@ -539,6 +561,7 @@ def handle_service_errors(operation: str) -> Callable[[F], F]:
 
     def decorator(fn: F) -> F:
         if inspect.iscoroutinefunction(fn):
+
             @functools.wraps(fn)
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 try:
@@ -547,8 +570,10 @@ def handle_service_errors(operation: str) -> Callable[[F], F]:
                     raise
                 except Exception as e:
                     handle_exception(e, operation)
+
             return cast(F, async_wrapper)
         else:
+
             @functools.wraps(fn)
             def wrapper(*args: Any, **kwargs: Any) -> Any:
                 try:
@@ -557,7 +582,9 @@ def handle_service_errors(operation: str) -> Callable[[F], F]:
                     raise
                 except Exception as e:
                     handle_exception(e, operation)
+
             return cast(F, wrapper)
+
     return decorator
 
 
@@ -605,10 +632,8 @@ def classify_aws_credential_error(e: Exception) -> "AuthenticationError | None":
         # Check for AccessDeniedException ONLY when the message clearly refers to an SSO/STS token
         if code == "AccessDeniedException":
             msg_lower = message.lower()
-            sso_token_expired = (
-                "token" in msg_lower and (
-                    "expired" in msg_lower or "invalid" in msg_lower or "sso" in msg_lower
-                )
+            sso_token_expired = "token" in msg_lower and (
+                "expired" in msg_lower or "invalid" in msg_lower or "sso" in msg_lower
             )
             if not sso_token_expired:
                 return None
@@ -619,9 +644,7 @@ def classify_aws_credential_error(e: Exception) -> "AuthenticationError | None":
         target_type="aws",
         target_id=0,
         target_name="AWS",
-        suggested_action=(
-            "Refresh your AWS credentials in Project Settings → Credential Templates, then retry."
-        ),
+        suggested_action=("Refresh your AWS credentials in Project Settings → Credential Templates, then retry."),
         details={"aws_error_code": code, "aws_error_message": message},
     )
 
@@ -652,8 +675,9 @@ def handle_exception(e: Exception, operation: str) -> NoReturn:
     # SQLAlchemy IntegrityError (duplicate key, FK violation)
     try:
         from sqlalchemy.exc import IntegrityError, OperationalError
+
         if isinstance(e, IntegrityError):
-            detail = str(e.orig) if hasattr(e, 'orig') else str(e)
+            detail = str(e.orig) if hasattr(e, "orig") else str(e)
             raise ConflictError("resource", f"Database constraint violation: {detail}")
         if isinstance(e, OperationalError):
             logger.exception(f"Database operational error during {operation}")
@@ -684,6 +708,7 @@ def handle_exception(e: Exception, operation: str) -> NoReturn:
     _boto_classified: AuthenticationError | None = None
     try:
         from botocore.exceptions import ClientError as BotoCoreClientError
+
         if isinstance(e, BotoCoreClientError):
             _boto_classified = classify_aws_credential_error(e)
     except ImportError:
@@ -702,15 +727,14 @@ def handle_exception(e: Exception, operation: str) -> NoReturn:
             target_type="aws",
             target_id=0,
             target_name="AWS",
-            suggested_action=(
-                "Refresh your AWS credentials in Project Settings → Credential Templates, then retry."
-            ),
+            suggested_action=("Refresh your AWS credentials in Project Settings → Credential Templates, then retry."),
             details={"aws_error": str(e)},
         )
 
     # subprocess.CalledProcessError
     try:
         import subprocess
+
         if isinstance(e, subprocess.CalledProcessError):
             stderr = (e.stderr or "")[:500]
             aws_auth = classify_aws_subprocess_stderr(stderr, operation)
@@ -726,6 +750,7 @@ def handle_exception(e: Exception, operation: str) -> NoReturn:
     # K8s API exceptions
     try:
         from kubernetes.client.exceptions import ApiException
+
         if isinstance(e, ApiException):
             if e.status == 404:
                 raise NotFoundError("kubernetes resource", str(e.reason))
@@ -743,11 +768,27 @@ def handle_exception(e: Exception, operation: str) -> NoReturn:
     # requests connection errors
     try:
         from requests.exceptions import ConnectionError as RequestsConnectionError
+
         if isinstance(e, RequestsConnectionError):
             raise ServiceError("http", f"Connection failed: {str(e)}")
     except (ImportError, AppError):
         if isinstance(e, AppError):
             raise
+        pass
+
+    # urllib3 HTTP / network errors (MaxRetryError, NameResolutionError, NewConnectionError, TimeoutError, etc.)
+    try:
+        import urllib3.exceptions
+
+        if isinstance(e, urllib3.exceptions.HTTPError):
+            raise NetworkUnreachableError(
+                target_type="service",
+                target_id=0,
+                target_name=operation,
+                suggested_action="Check network connectivity, host status, and firewall rules.",
+                details={"error_type": type(e).__name__, "reason": str(e)},
+            )
+    except ImportError:
         pass
 
     # Fallback: log FULL traceback and raise generic InternalError

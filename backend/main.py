@@ -2,6 +2,7 @@
 BNK-Forge API - Main Application Entry Point
 Modular FastAPI application for OpenTofu module deployment and F5 security management
 """
+
 import asyncio
 import atexit
 import logging
@@ -31,9 +32,7 @@ from core.maintenance_middleware import MaintenanceMiddleware
 
 # DEVOPS-004: Configure structured logging before anything else logs
 configure_logging(
-    environment=settings.ENVIRONMENT,
-    log_level=os.getenv("LOG_LEVEL", "INFO"),
-    service_name=settings.APP_NAME
+    environment=settings.ENVIRONMENT, log_level=os.getenv("LOG_LEVEL", "INFO"), service_name=settings.APP_NAME
 )
 
 # Legacy configuration removed in v2 - using environment variables directly
@@ -71,6 +70,7 @@ from routes.drift import router as drift_router
 from routes.f5_devices import credentials_router as f5_credentials_router
 from routes.f5_devices import devices_router as f5_devices_router
 from routes.fleet import router as fleet_router
+from routes.fleet_configs import router as fleet_configs_router
 from routes.helm import router as helm_router
 from routes.k8s import (
     clusters_router,
@@ -121,6 +121,7 @@ logger = logging.getLogger(__name__)
 
 # Initialize background scheduler
 scheduler = BackgroundScheduler()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -209,6 +210,7 @@ async def lifespan(app: FastAPI):
     try:
         from services.websocket_service import keepalive_task as keepalive_fn
         from services.websocket_service import start_redis_subscriber
+
         subscriber_task = asyncio.create_task(start_redis_subscriber())
         keepalive_task = asyncio.create_task(keepalive_fn())
         logger.info("✓ WebSocket service (Redis subscriber + keepalive)")
@@ -223,6 +225,7 @@ async def lifespan(app: FastAPI):
         from services.reachability import registry as _reach_registry
         from services.reachability.probes.cluster import ClusterProbe
         from services.reachability.probes.ssh import SSHProbe
+
         _reach_registry.configure(db_session_factory=_SessionLocal)
         _reach_registry.register(ClusterProbe(db_session_factory=_SessionLocal))
         _reach_registry.register(SSHProbe(db_session_factory=_SessionLocal))
@@ -243,6 +246,7 @@ async def lifespan(app: FastAPI):
     # Close all SSH tunnels
     try:
         from services.ssh_tunnel_manager import get_tunnel_manager
+
         tunnel_manager = get_tunnel_manager()
         tunnel_manager.close_all()
     except Exception as e:
@@ -251,6 +255,7 @@ async def lifespan(app: FastAPI):
     # Stop reachability scheduler
     try:
         from services.reachability import registry as _reach_registry
+
         await _reach_registry.stop()
     except Exception as e:
         logger.warning(f"Reachability scheduler shutdown error: {e}")
@@ -272,6 +277,7 @@ async def lifespan(app: FastAPI):
     if scheduler.running:
         scheduler.shutdown()
 
+
 # Create FastAPI app with lifespan
 app = FastAPI(title="BNK-Forge API", version=settings.VERSION, lifespan=lifespan)
 
@@ -281,6 +287,7 @@ app = FastAPI(title="BNK-Forge API", version=settings.VERSION, lifespan=lifespan
 limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 
 # Security Headers Middleware
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -294,6 +301,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-BNK-Forge-Version"] = settings.VERSION
         response.headers["X-BNK-Forge-API"] = "v1"
         return response
+
 
 # OBS-001: Correlation ID Middleware — must be outermost (added first, runs last)
 # Generates X-Request-ID for every request and propagates via contextvars
@@ -356,31 +364,31 @@ app.add_exception_handler(Exception, general_exception_handler)
 app.include_router(api_router)
 app.include_router(projects_router)
 app.include_router(project_variables_router)  # Project variables & variable defaults
-app.include_router(clusters_router)     # K8s cluster CRUD, scan, adaptive modules
-app.include_router(crds_router)         # CRD discovery — D-018 P1
-app.include_router(topology_router)    # Namespace topology graph — D-018 P4
-app.include_router(resources_router)    # K8s resource CRUD, pod/node ops, metrics
-app.include_router(search_router)       # Global multi-cluster & FQDN search
-app.include_router(f5bnk_router)        # F5 BNK gateways, topology, health
+app.include_router(clusters_router)  # K8s cluster CRUD, scan, adaptive modules
+app.include_router(crds_router)  # CRD discovery — D-018 P1
+app.include_router(topology_router)  # Namespace topology graph — D-018 P4
+app.include_router(resources_router)  # K8s resource CRUD, pod/node ops, metrics
+app.include_router(search_router)  # Global multi-cluster & FQDN search
+app.include_router(f5bnk_router)  # F5 BNK gateways, topology, health
 app.include_router(llm_observability_router)  # AI-gateway observability — Loki request analytics
-app.include_router(dpf_router)          # NVIDIA DPF — DPU devices, clusters, services, health
-app.include_router(bare_metal_hosts_router)               # Bare-metal DPU hosts — CRUD + discovery
-app.include_router(f5_devices_router)                     # F5 BIG-IP devices — CRUD + read-only probe (D-023 P1)
-app.include_router(f5_credentials_router)                 # F5 BIG-IP credentials — CRUD + test (D-023 P1)
-app.include_router(bare_metal_deployments_router)          # Bare-metal deployments — lifecycle
+app.include_router(dpf_router)  # NVIDIA DPF — DPU devices, clusters, services, health
+app.include_router(bare_metal_hosts_router)  # Bare-metal DPU hosts — CRUD + discovery
+app.include_router(f5_devices_router)  # F5 BIG-IP devices — CRUD + read-only probe (D-023 P1)
+app.include_router(f5_credentials_router)  # F5 BIG-IP credentials — CRUD + test (D-023 P1)
+app.include_router(bare_metal_deployments_router)  # Bare-metal deployments — lifecycle
 app.include_router(bare_metal_deployable_releases_router)  # BNK deployable releases — version catalog (ADR-478)
-app.include_router(release_sources_router)                 # BNK release sources — management + sync (ADR-494)
-app.include_router(bluefield_images_router)                # DPU Provisioning — BFB image catalog
-app.include_router(bf_conf_templates_router)               # DPU Provisioning — bf.conf template catalog
-app.include_router(dpus_router)                            # DPU Provisioning — per-project DPUs + settings
-app.include_router(dpus_ws_router)                         # DPU Provisioning — BMC serial console (WS)
-app.include_router(tmm_debug_router)    # TMM debug sidecar — tmctl, configview, bdt_cli diagnostics
-app.include_router(recovery_router)     # Post-reboot recovery — CWC cert re-sync, platform restart
-app.include_router(tunnels_router)      # SSH tunnel management
+app.include_router(release_sources_router)  # BNK release sources — management + sync (ADR-494)
+app.include_router(bluefield_images_router)  # DPU Provisioning — BFB image catalog
+app.include_router(bf_conf_templates_router)  # DPU Provisioning — bf.conf template catalog
+app.include_router(dpus_router)  # DPU Provisioning — per-project DPUs + settings
+app.include_router(dpus_ws_router)  # DPU Provisioning — BMC serial console (WS)
+app.include_router(tmm_debug_router)  # TMM debug sidecar — tmctl, configview, bdt_cli diagnostics
+app.include_router(recovery_router)  # Post-reboot recovery — CWC cert re-sync, platform restart
+app.include_router(tunnels_router)  # SSH tunnel management
 app.include_router(module_library_router)
 app.include_router(project_modules_router)
-app.include_router(project_execution_router)     # OpenTofu init/plan/apply/destroy/deploy/retry/cancel
-app.include_router(project_deployments_router)    # Deployment logs, history, state management
+app.include_router(project_execution_router)  # OpenTofu init/plan/apply/destroy/deploy/retry/cancel
+app.include_router(project_deployments_router)  # Deployment logs, history, state management
 app.include_router(project_variable_mappings_router)  # Variable mappings & templates
 app.include_router(cloud_auth_router)
 app.include_router(state_viewer_router)  # State file viewer - fixed for v2
@@ -421,6 +429,8 @@ app.include_router(benchmarks_ws_router)  # Benchmark WebSocket — real-time pr
 app.include_router(benchmarks_router)  # AI Performance Benchmarks — Phase 2 dashboard
 app.include_router(connectivity_router)  # Reachability state + SSE stream + force-probe
 app.include_router(fleet_router)  # Fleet members — D-022 host-inclusive fleet inventory
+app.include_router(fleet_configs_router)  # Fleet deployable configs — reusable configs across fleet clusters
+
 
 # Health check for quick verification
 @app.get("/ping")
