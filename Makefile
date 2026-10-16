@@ -74,11 +74,18 @@ PYTEST_COV  = --cov --cov-fail-under=0
 # The celery worker shells out to a pinned awsbnkctl release binary that is
 # bind-mounted at ./bin/awsbnkctl (see docker-compose.yml x-worker-volumes).
 # `make fetch-awsbnkctl` downloads + checksum-verifies the pinned linux/amd64
-# release instead of requiring a hand-run `go build` on the host.
-AWSBNKCTL_VERSION ?= 0.9.0-rc1
+AWSBNKCTL_VERSION ?= 2.4.0
 AWSBNKCTL_REPO    ?= JLCode-tech/awsbnkctl
 AWSBNKCTL_BIN     := bin/awsbnkctl
 AWSBNKCTL_STAMP   := bin/.awsbnkctl-$(AWSBNKCTL_VERSION).stamp
+UNAME_M           := $(shell uname -m)
+ifeq ($(UNAME_M),arm64)
+  AWSBNKCTL_ARCH  ?= arm64
+else ifeq ($(UNAME_M),aarch64)
+  AWSBNKCTL_ARCH  ?= arm64
+else
+  AWSBNKCTL_ARCH  ?= amd64
+endif
 
 .PHONY: install update status logs \
         test test-backend test-backend-unit test-backend-component test-backend-legacy test-frontend \
@@ -295,11 +302,11 @@ fetch-awsbnkctl: $(AWSBNKCTL_STAMP)
 
 $(AWSBNKCTL_STAMP):
 	@echo ""
-	@echo "=== Fetching awsbnkctl $(AWSBNKCTL_VERSION) (linux/amd64) ==="
+	@echo "=== Fetching awsbnkctl $(AWSBNKCTL_VERSION) (linux/$(AWSBNKCTL_ARCH)) ==="
 	@command -v gh >/dev/null 2>&1 || { echo "  ✗ GitHub CLI (gh) is required to download the release"; exit 1; }
 	@mkdir -p bin
 	@tmp="$$(mktemp -d)"; \
-	asset="awsbnkctl_$(AWSBNKCTL_VERSION)_linux_amd64.tar.gz"; \
+	asset="awsbnkctl_$(AWSBNKCTL_VERSION)_linux_$(AWSBNKCTL_ARCH).tar.gz"; \
 	echo "  Downloading $$asset + checksums.txt"; \
 	gh release download "v$(AWSBNKCTL_VERSION)" --repo "$(AWSBNKCTL_REPO)" \
 	  --pattern "$$asset" --pattern "checksums.txt" --dir "$$tmp" --clobber || { rm -rf "$$tmp"; exit 1; }; \

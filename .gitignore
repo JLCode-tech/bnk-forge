@@ -260,6 +260,8 @@ e2e-config.yaml
 
 # Experimental Go CLI — build artifacts, never commit the compiled binary
 cli/go/
+/bin/awsbnkctl
+/bin/.awsbnkctl*
 
 # --- Public release protection ---
 .env
