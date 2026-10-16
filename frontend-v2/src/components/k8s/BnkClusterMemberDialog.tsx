@@ -308,7 +308,7 @@ export function BnkClusterMemberDialog({
                           <label htmlFor={`host-member-${host.id}`} className="font-medium cursor-pointer">
                             {host.hostname || host.host_ip}
                           </label>
-                          <span className={cn('text-[11px]', tc.textMuted)}>
+                          <span className={cn('text-2xs', tc.textMuted)}>
                             IP: {host.host_ip} · Status: {host.last_discovery_status || 'active'}
                           </span>
                         </div>
@@ -316,12 +316,12 @@ export function BnkClusterMemberDialog({
 
                       <div className="flex items-center gap-2">
                         {foreign && (
-                          <Badge variant="outline" className="text-[10px] border-warning/40 text-warning">
+                          <Badge variant="outline" className="text-2xs border-warning/40 text-warning">
                             In cluster #{host.kubernetes_cluster_id}
                           </Badge>
                         )}
                         {isCp && (
-                          <Badge variant="default" className="text-[10px] bg-primary flex items-center gap-1">
+                          <Badge variant="default" className="text-2xs bg-primary flex items-center gap-1">
                             <ShieldCheck className="h-3 w-3" /> Control Plane
                           </Badge>
                         )}
@@ -335,7 +335,7 @@ export function BnkClusterMemberDialog({
                             <Label
                               htmlFor={`cp-host-${host.id}`}
                               className={cn(
-                                'cursor-pointer px-2 py-1 rounded text-[10px] font-medium border transition-colors',
+                                'cursor-pointer px-2 py-1 rounded text-2xs font-medium border transition-colors',
                                 isCp
                                   ? 'bg-primary text-primary-foreground border-primary'
                                   : 'bg-muted hover:bg-accent border-border',
@@ -401,17 +401,17 @@ export function BnkClusterMemberDialog({
                           <label htmlFor={`dpu-member-${dpu.id}`} className="font-medium cursor-pointer">
                             {dpu.name || dpu.serial_number || dpu.host_hostname || `DPU #${dpu.id}`}
                           </label>
-                          <span className={cn('text-[11px]', tc.textMuted)}>
+                          <span className={cn('text-2xs', tc.textMuted)}>
                             Mode: {dpu.nic_mode || 'nic'} · Host: {ownerHost?.hostname || ownerHost?.host_ip || 'Unknown'} · IP: {dpu.oob0_ipv4 || dpu.dpu_os_ip || 'Unassigned'} · Status: {dpu.last_discovery_status || 'active'}
                           </span>
                         </div>
                       </div>
                       {foreign ? (
-                        <Badge variant="outline" className="text-[10px] border-warning/40 text-warning">
+                        <Badge variant="outline" className="text-2xs border-warning/40 text-warning">
                           In cluster #{dpu.kubernetes_cluster_id}
                         </Badge>
                       ) : (
-                        <Badge variant="outline" className="text-[10px]">
+                        <Badge variant="outline" className="text-2xs">
                           {dpu.last_discovery_status || 'active'}
                         </Badge>
                       )}

@@ -63,7 +63,7 @@ export function HTTPRouteDetail({ resource }: HTTPRouteDetailProps) {
                       {ref.name}
                     </code>
                     {ref.namespace && ref.namespace !== resource.metadata?.namespace && (
-                      <Badge variant="outline" className="text-[10px]">
+                      <Badge variant="outline" className="text-2xs">
                         {ref.namespace}
                       </Badge>
                     )}
@@ -137,7 +137,7 @@ export function HTTPRouteDetail({ resource }: HTTPRouteDetailProps) {
                         <div key={matchIdx}>
                           {match.path && (
                             <div className="flex items-center gap-2">
-                              <Badge variant={getPathTypeVariant(match.path.type)} className="text-[10px]">
+                              <Badge variant={getPathTypeVariant(match.path.type)} className="text-2xs">
                                 {match.path.type}
                               </Badge>
                               <code className="text-xs font-mono text-foreground/80">
@@ -171,12 +171,12 @@ export function HTTPRouteDetail({ resource }: HTTPRouteDetailProps) {
                                   {backend.name}
                                 </code>
                                 {isCrossNs && (
-                                  <Badge variant="warning" className="text-[10px]">
+                                  <Badge variant="warning" className="text-2xs">
                                     ns:{backend.namespace}
                                   </Badge>
                                 )}
                                 {isCustomKind && (
-                                  <Badge variant="outline" className="text-[10px]">
+                                  <Badge variant="outline" className="text-2xs">
                                     {backend.kind}
                                   </Badge>
                                 )}

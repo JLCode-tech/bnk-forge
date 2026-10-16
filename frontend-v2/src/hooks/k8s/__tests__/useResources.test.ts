@@ -4,11 +4,11 @@
  * Covers: create/update/delete K8s resources, scale deployment,
  * cluster scan, scan result, and adaptive module plan.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, waitFor, act } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { http, HttpResponse } from 'msw';
-import { server } from '@/test/mocks/server';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { renderHook, waitFor, act } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { http, HttpResponse } from "msw";
+import { server } from "@/test/mocks/server";
 import {
   useCreateK8sResource,
   useUpdateK8sResource,
@@ -17,12 +17,12 @@ import {
   useClusterScan,
   useClusterScanResult,
   useAdaptiveModulePlan,
-} from '../useResources';
-import React from 'react';
-import * as notifyModule from '@/lib/notify';
+} from "../useResources";
+import React from "react";
+import * as notifyModule from "@/lib/notify";
 
 // Module-level mock so notify.success / notify internal calls are interceptable
-vi.mock('@/lib/notify', () => ({
+vi.mock("@/lib/notify", () => ({
   notifyError: vi.fn(),
   notify: Object.assign(vi.fn(), {
     success: vi.fn(),
@@ -45,46 +45,71 @@ function createWrapper() {
   });
 
   return function Wrapper({ children }: { children: React.ReactNode }) {
-    return React.createElement(QueryClientProvider, { client: queryClient }, children);
+    return React.createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      children,
+    );
   };
 }
 
 function setupResourceHandlers() {
   server.use(
-    http.post('*/api/k8s/clusters/:clusterId/resources/:resourceType', async ({ request }) => {
-      const body = (await request.json()) as Record<string, unknown>;
-      return HttpResponse.json({
-        success: true,
-        message: 'Resource created successfully',
-        resource: { name: 'new-resource', namespace: body.namespace || 'default' },
-      });
-    }),
-    http.put('*/api/k8s/clusters/:clusterId/resources/:resourceType/:resourceName', async ({ params, request }) => {
-      const body = (await request.json()) as Record<string, unknown>;
-      return HttpResponse.json({
-        success: true,
-        message: 'Resource updated successfully',
-        resource: { name: params.resourceName, namespace: body.namespace || 'default' },
-      });
-    }),
-    http.delete('*/api/k8s/clusters/:clusterId/resources/:resourceType/:resourceName', () => {
-      return HttpResponse.json({ success: true, message: 'Resource deleted successfully' });
-    }),
-    http.post('*/api/k8s/clusters/:clusterId/deployments/:deploymentName/scale', async ({ request }) => {
-      const body = (await request.json()) as Record<string, unknown>;
-      return HttpResponse.json({
-        success: true,
-        message: `Deployment scaled to ${body.replicas} replicas`,
-        replicas: body.replicas,
-      });
-    }),
-    http.post('*/api/k8s/clusters/:clusterId/adaptive-modules', () => {
+    http.post(
+      "*/api/k8s/clusters/:clusterId/resources/:resourceType",
+      async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({
+          success: true,
+          message: "Resource created successfully",
+          resource: {
+            name: "new-resource",
+            namespace: body.namespace || "default",
+          },
+        });
+      },
+    ),
+    http.put(
+      "*/api/k8s/clusters/:clusterId/resources/:resourceType/:resourceName",
+      async ({ params, request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({
+          success: true,
+          message: "Resource updated successfully",
+          resource: {
+            name: params.resourceName,
+            namespace: body.namespace || "default",
+          },
+        });
+      },
+    ),
+    http.delete(
+      "*/api/k8s/clusters/:clusterId/resources/:resourceType/:resourceName",
+      () => {
+        return HttpResponse.json({
+          success: true,
+          message: "Resource deleted successfully",
+        });
+      },
+    ),
+    http.post(
+      "*/api/k8s/clusters/:clusterId/deployments/:deploymentName/scale",
+      async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({
+          success: true,
+          message: `Deployment scaled to ${body.replicas} replicas`,
+          replicas: body.replicas,
+        });
+      },
+    ),
+    http.post("*/api/k8s/clusters/:clusterId/adaptive-modules", () => {
       return HttpResponse.json({
         plan: {
-          modules: ['module-a', 'module-b'],
-          excluded: ['module-c'],
+          modules: ["module-a", "module-b"],
+          excluded: ["module-c"],
         },
-        template_slug: 'default',
+        template_slug: "default",
       });
     }),
   );
@@ -94,23 +119,25 @@ function setupResourceHandlers() {
 // useCreateK8sResource
 // ============================================================================
 
-describe('useCreateK8sResource', () => {
+describe("useCreateK8sResource", () => {
   beforeEach(() => {
     vi.mocked(notifyModule.notifyError).mockClear();
     vi.mocked(notifyModule.notify).mockClear();
     vi.mocked(notifyModule.notify.success).mockClear();
   });
 
-  it('creates a K8s resource', async () => {
+  it("creates a K8s resource", async () => {
     setupResourceHandlers();
-    const { result } = renderHook(() => useCreateK8sResource(), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useCreateK8sResource(), {
+      wrapper: createWrapper(),
+    });
 
     act(() => {
       result.current.mutate({
         clusterId: 1,
-        resourceType: 'deployments',
-        resourceYaml: 'apiVersion: apps/v1\nkind: Deployment\n...',
-        namespace: 'default',
+        resourceType: "deployments",
+        resourceYaml: "apiVersion: apps/v1\nkind: Deployment\n...",
+        namespace: "default",
       });
     });
 
@@ -118,20 +145,22 @@ describe('useCreateK8sResource', () => {
 
     expect(result.current.data).toMatchObject({
       success: true,
-      message: 'Resource created successfully',
+      message: "Resource created successfully",
     });
   });
 
-  it('posts success bell notification on non-dry-run create', async () => {
+  it("posts success bell notification on non-dry-run create", async () => {
     setupResourceHandlers();
-    const { result } = renderHook(() => useCreateK8sResource(), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useCreateK8sResource(), {
+      wrapper: createWrapper(),
+    });
 
     act(() => {
       result.current.mutate({
         clusterId: 1,
-        resourceType: 'deployments',
-        resourceYaml: 'apiVersion: apps/v1\nkind: Deployment\n...',
-        namespace: 'default',
+        resourceType: "deployments",
+        resourceYaml: "apiVersion: apps/v1\nkind: Deployment\n...",
+        namespace: "default",
         dryRun: false,
       });
     });
@@ -139,30 +168,32 @@ describe('useCreateK8sResource', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(vi.mocked(notifyModule.notify.success)).toHaveBeenCalledWith(
-      'Resource created successfully',
+      "Resource created successfully",
       undefined,
-      { category: 'cluster' },
+      { category: "cluster" },
     );
   });
 
-  it('does NOT post success bell notification on dry-run create', async () => {
+  it("does NOT post success bell notification on dry-run create", async () => {
     server.use(
-      http.post('*/api/k8s/clusters/:clusterId/resources/:resourceType', () => {
+      http.post("*/api/k8s/clusters/:clusterId/resources/:resourceType", () => {
         return HttpResponse.json({
           success: true,
-          message: 'Dry run: resource would be created',
-          resource: { name: 'test-resource', namespace: 'default' },
+          message: "Dry run: resource would be created",
+          resource: { name: "test-resource", namespace: "default" },
         });
       }),
     );
-    const { result } = renderHook(() => useCreateK8sResource(), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useCreateK8sResource(), {
+      wrapper: createWrapper(),
+    });
 
     act(() => {
       result.current.mutate({
         clusterId: 1,
-        resourceType: 'services',
-        resourceYaml: 'apiVersion: v1\nkind: Service\n...',
-        namespace: 'default',
+        resourceType: "services",
+        resourceYaml: "apiVersion: v1\nkind: Service\n...",
+        namespace: "default",
         dryRun: true,
       });
     });
@@ -172,65 +203,70 @@ describe('useCreateK8sResource', () => {
     expect(vi.mocked(notifyModule.notify.success)).not.toHaveBeenCalled();
   });
 
-  it('supports dry run mode', async () => {
+  it("supports dry run mode", async () => {
     server.use(
-      http.post('*/api/k8s/clusters/:clusterId/resources/:resourceType', () => {
+      http.post("*/api/k8s/clusters/:clusterId/resources/:resourceType", () => {
         return HttpResponse.json({
           success: true,
-          message: 'Dry run: resource would be created',
-          resource: { name: 'test-resource', namespace: 'default' },
+          message: "Dry run: resource would be created",
+          resource: { name: "test-resource", namespace: "default" },
         });
       }),
     );
 
-    const { result } = renderHook(() => useCreateK8sResource(), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useCreateK8sResource(), {
+      wrapper: createWrapper(),
+    });
 
     act(() => {
       result.current.mutate({
         clusterId: 1,
-        resourceType: 'services',
-        resourceYaml: 'apiVersion: v1\nkind: Service\n...',
-        namespace: 'default',
+        resourceType: "services",
+        resourceYaml: "apiVersion: v1\nkind: Service\n...",
+        namespace: "default",
         dryRun: true,
       });
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(result.current.data!.message).toContain('Dry run');
+    expect(result.current.data!.message).toContain("Dry run");
   });
 
-  it('handles creation error', async () => {
+  it("handles creation error", async () => {
     server.use(
-      http.post('*/api/k8s/clusters/:clusterId/resources/:resourceType', () => {
+      http.post("*/api/k8s/clusters/:clusterId/resources/:resourceType", () => {
         return HttpResponse.json(
-          { error: { message: 'Invalid YAML' } },
+          { error: { message: "Invalid YAML" } },
           { status: 400 },
         );
       }),
     );
 
-    const { result } = renderHook(() => useCreateK8sResource(), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useCreateK8sResource(), {
+      wrapper: createWrapper(),
+    });
 
     act(() => {
       result.current.mutate({
         clusterId: 1,
-        resourceType: 'deployments',
-        resourceYaml: 'invalid yaml',
+        resourceType: "deployments",
+        resourceYaml: "invalid yaml",
       });
     });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
   });
 
-  it('forwards OCP parse context into notify flow on create failure', async () => {
+  it("forwards OCP parse context into notify flow on create failure", async () => {
     server.use(
-      http.post('*/api/k8s/clusters/:clusterId/resources/:resourceType', () => {
+      http.post("*/api/k8s/clusters/:clusterId/resources/:resourceType", () => {
         return HttpResponse.json(
           {
             error: {
-              code: 'K8S_API_ERROR',
-              detail: 'forbidden: unable to validate against any security context constraint',
+              code: "K8S_API_ERROR",
+              detail:
+                "forbidden: unable to validate against any security context constraint",
             },
           },
           { status: 403 },
@@ -239,7 +275,7 @@ describe('useCreateK8sResource', () => {
     );
 
     const parseContext = {
-      detectedPlatformProfile: 'ocp' as const,
+      detectedPlatformProfile: "ocp" as const,
       platformCapabilities: { scc: true },
     };
 
@@ -250,9 +286,9 @@ describe('useCreateK8sResource', () => {
     act(() => {
       result.current.mutate({
         clusterId: 1,
-        resourceType: 'pods',
-        resourceYaml: 'apiVersion: v1\nkind: Pod\n...',
-        namespace: 'default',
+        resourceType: "pods",
+        resourceYaml: "apiVersion: v1\nkind: Pod\n...",
+        namespace: "default",
       });
     });
 
@@ -264,14 +300,15 @@ describe('useCreateK8sResource', () => {
     expect(lastCall?.[2]).toEqual(parseContext);
   });
 
-  it('does not forward OCP parse context when hook is called without context', async () => {
+  it("does not forward OCP parse context when hook is called without context", async () => {
     server.use(
-      http.post('*/api/k8s/clusters/:clusterId/resources/:resourceType', () => {
+      http.post("*/api/k8s/clusters/:clusterId/resources/:resourceType", () => {
         return HttpResponse.json(
           {
             error: {
-              code: 'K8S_API_ERROR',
-              detail: 'forbidden: unable to validate against any security context constraint',
+              code: "K8S_API_ERROR",
+              detail:
+                "forbidden: unable to validate against any security context constraint",
             },
           },
           { status: 403 },
@@ -286,9 +323,9 @@ describe('useCreateK8sResource', () => {
     act(() => {
       result.current.mutate({
         clusterId: 1,
-        resourceType: 'pods',
-        resourceYaml: 'apiVersion: v1\nkind: Pod\n...',
-        namespace: 'default',
+        resourceType: "pods",
+        resourceYaml: "apiVersion: v1\nkind: Pod\n...",
+        namespace: "default",
       });
     });
 
@@ -305,23 +342,25 @@ describe('useCreateK8sResource', () => {
 // useUpdateK8sResource
 // ============================================================================
 
-describe('useUpdateK8sResource', () => {
+describe("useUpdateK8sResource", () => {
   beforeEach(() => {
     vi.mocked(notifyModule.notify).mockClear();
     vi.mocked(notifyModule.notify.success).mockClear();
   });
 
-  it('updates a K8s resource', async () => {
+  it("updates a K8s resource", async () => {
     setupResourceHandlers();
-    const { result } = renderHook(() => useUpdateK8sResource(), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useUpdateK8sResource(), {
+      wrapper: createWrapper(),
+    });
 
     act(() => {
       result.current.mutate({
         clusterId: 1,
-        resourceType: 'deployments',
-        resourceName: 'nginx-deployment',
-        resourceYaml: 'apiVersion: apps/v1\nkind: Deployment\n...',
-        namespace: 'default',
+        resourceType: "deployments",
+        resourceName: "nginx-deployment",
+        resourceYaml: "apiVersion: apps/v1\nkind: Deployment\n...",
+        namespace: "default",
       });
     });
 
@@ -329,21 +368,23 @@ describe('useUpdateK8sResource', () => {
 
     expect(result.current.data).toMatchObject({
       success: true,
-      message: 'Resource updated successfully',
+      message: "Resource updated successfully",
     });
   });
 
-  it('posts success bell notification on non-dry-run update', async () => {
+  it("posts success bell notification on non-dry-run update", async () => {
     setupResourceHandlers();
-    const { result } = renderHook(() => useUpdateK8sResource(), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useUpdateK8sResource(), {
+      wrapper: createWrapper(),
+    });
 
     act(() => {
       result.current.mutate({
         clusterId: 1,
-        resourceType: 'deployments',
-        resourceName: 'nginx-deployment',
-        resourceYaml: 'apiVersion: apps/v1\nkind: Deployment\n...',
-        namespace: 'default',
+        resourceType: "deployments",
+        resourceName: "nginx-deployment",
+        resourceYaml: "apiVersion: apps/v1\nkind: Deployment\n...",
+        namespace: "default",
         dryRun: false,
       });
     });
@@ -351,31 +392,36 @@ describe('useUpdateK8sResource', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(vi.mocked(notifyModule.notify.success)).toHaveBeenCalledWith(
-      'Resource updated successfully',
+      "Resource updated successfully",
       undefined,
-      { category: 'cluster' },
+      { category: "cluster" },
     );
   });
 
-  it('does NOT post success bell notification on dry-run update', async () => {
+  it("does NOT post success bell notification on dry-run update", async () => {
     server.use(
-      http.put('*/api/k8s/clusters/:clusterId/resources/:resourceType/:resourceName', () => {
-        return HttpResponse.json({
-          success: true,
-          message: 'Dry run: resource would be updated',
-          resource: { name: 'nginx-deployment', namespace: 'default' },
-        });
-      }),
+      http.put(
+        "*/api/k8s/clusters/:clusterId/resources/:resourceType/:resourceName",
+        () => {
+          return HttpResponse.json({
+            success: true,
+            message: "Dry run: resource would be updated",
+            resource: { name: "nginx-deployment", namespace: "default" },
+          });
+        },
+      ),
     );
-    const { result } = renderHook(() => useUpdateK8sResource(), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useUpdateK8sResource(), {
+      wrapper: createWrapper(),
+    });
 
     act(() => {
       result.current.mutate({
         clusterId: 1,
-        resourceType: 'deployments',
-        resourceName: 'nginx-deployment',
-        resourceYaml: 'apiVersion: apps/v1\nkind: Deployment\n...',
-        namespace: 'default',
+        resourceType: "deployments",
+        resourceName: "nginx-deployment",
+        resourceYaml: "apiVersion: apps/v1\nkind: Deployment\n...",
+        namespace: "default",
         dryRun: true,
       });
     });
@@ -385,24 +431,29 @@ describe('useUpdateK8sResource', () => {
     expect(vi.mocked(notifyModule.notify.success)).not.toHaveBeenCalled();
   });
 
-  it('handles update error', async () => {
+  it("handles update error", async () => {
     server.use(
-      http.put('*/api/k8s/clusters/:clusterId/resources/:resourceType/:resourceName', () => {
-        return HttpResponse.json(
-          { error: { message: 'Resource not found' } },
-          { status: 404 },
-        );
-      }),
+      http.put(
+        "*/api/k8s/clusters/:clusterId/resources/:resourceType/:resourceName",
+        () => {
+          return HttpResponse.json(
+            { error: { message: "Resource not found" } },
+            { status: 404 },
+          );
+        },
+      ),
     );
 
-    const { result } = renderHook(() => useUpdateK8sResource(), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useUpdateK8sResource(), {
+      wrapper: createWrapper(),
+    });
 
     act(() => {
       result.current.mutate({
         clusterId: 1,
-        resourceType: 'deployments',
-        resourceName: 'nonexistent',
-        resourceYaml: 'apiVersion: apps/v1\n...',
+        resourceType: "deployments",
+        resourceName: "nonexistent",
+        resourceYaml: "apiVersion: apps/v1\n...",
       });
     });
 
@@ -414,17 +465,19 @@ describe('useUpdateK8sResource', () => {
 // useDeleteK8sResource
 // ============================================================================
 
-describe('useDeleteK8sResource', () => {
-  it('deletes a K8s resource', async () => {
+describe("useDeleteK8sResource", () => {
+  it("deletes a K8s resource", async () => {
     setupResourceHandlers();
-    const { result } = renderHook(() => useDeleteK8sResource(), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useDeleteK8sResource(), {
+      wrapper: createWrapper(),
+    });
 
     act(() => {
       result.current.mutate({
         clusterId: 1,
-        resourceType: 'deployments',
-        resourceName: 'nginx-deployment',
-        namespace: 'default',
+        resourceType: "deployments",
+        resourceName: "nginx-deployment",
+        namespace: "default",
       });
     });
 
@@ -432,27 +485,32 @@ describe('useDeleteK8sResource', () => {
 
     expect(result.current.data).toMatchObject({
       success: true,
-      message: 'Resource deleted successfully',
+      message: "Resource deleted successfully",
     });
   });
 
-  it('handles delete error', async () => {
+  it("handles delete error", async () => {
     server.use(
-      http.delete('*/api/k8s/clusters/:clusterId/resources/:resourceType/:resourceName', () => {
-        return HttpResponse.json(
-          { error: { message: 'Cannot delete system resource' } },
-          { status: 403 },
-        );
-      }),
+      http.delete(
+        "*/api/k8s/clusters/:clusterId/resources/:resourceType/:resourceName",
+        () => {
+          return HttpResponse.json(
+            { error: { message: "Cannot delete system resource" } },
+            { status: 403 },
+          );
+        },
+      ),
     );
 
-    const { result } = renderHook(() => useDeleteK8sResource(), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useDeleteK8sResource(), {
+      wrapper: createWrapper(),
+    });
 
     act(() => {
       result.current.mutate({
         clusterId: 1,
-        resourceType: 'namespaces',
-        resourceName: 'kube-system',
+        resourceType: "namespaces",
+        resourceName: "kube-system",
       });
     });
 
@@ -464,16 +522,18 @@ describe('useDeleteK8sResource', () => {
 // useScaleDeployment
 // ============================================================================
 
-describe('useScaleDeployment', () => {
-  it('scales a deployment', async () => {
+describe("useScaleDeployment", () => {
+  it("scales a deployment", async () => {
     setupResourceHandlers();
-    const { result } = renderHook(() => useScaleDeployment(), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useScaleDeployment(), {
+      wrapper: createWrapper(),
+    });
 
     act(() => {
       result.current.mutate({
         clusterId: 1,
-        deploymentName: 'nginx-deployment',
-        namespace: 'default',
+        deploymentName: "nginx-deployment",
+        namespace: "default",
         replicas: 5,
       });
     });
@@ -486,23 +546,28 @@ describe('useScaleDeployment', () => {
     });
   });
 
-  it('handles scale error', async () => {
+  it("handles scale error", async () => {
     server.use(
-      http.post('*/api/k8s/clusters/:clusterId/deployments/:deploymentName/scale', () => {
-        return HttpResponse.json(
-          { error: { message: 'Insufficient resources' } },
-          { status: 422 },
-        );
-      }),
+      http.post(
+        "*/api/k8s/clusters/:clusterId/deployments/:deploymentName/scale",
+        () => {
+          return HttpResponse.json(
+            { error: { message: "Insufficient resources" } },
+            { status: 422 },
+          );
+        },
+      ),
     );
 
-    const { result } = renderHook(() => useScaleDeployment(), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useScaleDeployment(), {
+      wrapper: createWrapper(),
+    });
 
     act(() => {
       result.current.mutate({
         clusterId: 1,
-        deploymentName: 'nginx-deployment',
-        namespace: 'default',
+        deploymentName: "nginx-deployment",
+        namespace: "default",
         replicas: 100,
       });
     });
@@ -515,9 +580,11 @@ describe('useScaleDeployment', () => {
 // useClusterScan
 // ============================================================================
 
-describe('useClusterScan', () => {
-  it('scans a cluster', async () => {
-    const { result } = renderHook(() => useClusterScan(), { wrapper: createWrapper() });
+describe("useClusterScan", () => {
+  it("scans a cluster", async () => {
+    const { result } = renderHook(() => useClusterScan(), {
+      wrapper: createWrapper(),
+    });
 
     act(() => {
       result.current.mutate(1);
@@ -532,18 +599,20 @@ describe('useClusterScan', () => {
     });
   });
 
-  it('handles scan error', async () => {
+  it("handles scan error", async () => {
     server.use(
-      http.post('*/api/k8s/clusters/:clusterId/scan', () => {
+      http.post("*/api/k8s/clusters/:clusterId/scan", () => {
         // Use 400 instead of 503 to avoid triggering axios retry interceptor
         return HttpResponse.json(
-          { error: { message: 'Cluster unreachable' } },
+          { error: { message: "Cluster unreachable" } },
           { status: 400 },
         );
       }),
     );
 
-    const { result } = renderHook(() => useClusterScan(), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useClusterScan(), {
+      wrapper: createWrapper(),
+    });
 
     act(() => {
       result.current.mutate(99);
@@ -557,26 +626,24 @@ describe('useClusterScan', () => {
 // useClusterScanResult
 // ============================================================================
 
-describe('useClusterScanResult', () => {
-  it('returns undefined data when query is disabled (enabled: false)', () => {
-    const { result } = renderHook(
-      () => useClusterScanResult(1),
-      { wrapper: createWrapper() },
-    );
+describe("useClusterScanResult", () => {
+  it("returns undefined data when query is disabled (enabled: false)", () => {
+    const { result } = renderHook(() => useClusterScanResult(1), {
+      wrapper: createWrapper(),
+    });
 
     // enabled: false means it never auto-fetches
     expect(result.current.data).toBeUndefined();
-    expect(result.current.fetchStatus).toBe('idle');
+    expect(result.current.fetchStatus).toBe("idle");
   });
 
-  it('handles null clusterId', () => {
-    const { result } = renderHook(
-      () => useClusterScanResult(null),
-      { wrapper: createWrapper() },
-    );
+  it("handles null clusterId", () => {
+    const { result } = renderHook(() => useClusterScanResult(null), {
+      wrapper: createWrapper(),
+    });
 
     expect(result.current.data).toBeUndefined();
-    expect(result.current.fetchStatus).toBe('idle');
+    expect(result.current.fetchStatus).toBe("idle");
   });
 });
 
@@ -584,13 +651,15 @@ describe('useClusterScanResult', () => {
 // useAdaptiveModulePlan
 // ============================================================================
 
-describe('useAdaptiveModulePlan', () => {
-  it('generates an adaptive module plan', async () => {
+describe("useAdaptiveModulePlan", () => {
+  it("generates an adaptive module plan", async () => {
     setupResourceHandlers();
-    const { result } = renderHook(() => useAdaptiveModulePlan(), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useAdaptiveModulePlan(), {
+      wrapper: createWrapper(),
+    });
 
     act(() => {
-      result.current.mutate({ clusterId: 1, templateSlug: 'default' });
+      result.current.mutate({ clusterId: 1, templateSlug: "default" });
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -602,17 +671,19 @@ describe('useAdaptiveModulePlan', () => {
     });
   });
 
-  it('handles plan generation error', async () => {
+  it("handles plan generation error", async () => {
     server.use(
-      http.post('*/api/k8s/clusters/:clusterId/adaptive-modules', () => {
+      http.post("*/api/k8s/clusters/:clusterId/adaptive-modules", () => {
         return HttpResponse.json(
-          { error: { message: 'Cannot connect to cluster' } },
+          { error: { message: "Cannot connect to cluster" } },
           { status: 500 },
         );
       }),
     );
 
-    const { result } = renderHook(() => useAdaptiveModulePlan(), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useAdaptiveModulePlan(), {
+      wrapper: createWrapper(),
+    });
 
     act(() => {
       result.current.mutate({ clusterId: 99 });

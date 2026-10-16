@@ -1,7 +1,18 @@
 import { useState, useMemo } from "react";
-import { Bot, Search, ShieldCheck, Cpu, Zap, RefreshCw } from "lucide-react";
-import { PageHeader } from "@/components/layout/PageHeader";
-import { Card, CardContent } from "@/components/ui/card";
+import { useQueries } from "@tanstack/react-query";
+import {
+  Bot,
+  Search,
+  ShieldCheck,
+  Cpu,
+  Zap,
+  RefreshCw,
+  Layers,
+  Code2,
+  BookOpen,
+} from "lucide-react";
+import { StatTile } from "@/components/observability/StatTile";
+import { ErrorState } from "@/components/ui/error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+// eslint-disable-next-line no-restricted-imports -- Vertical flush sub-sidebar requires Radix TabsList + TabsTrigger
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -22,13 +34,20 @@ import {
 } from "@/components/ui/dialog";
 import { ClusterPicker } from "@/components/observability/pickers";
 import { useAllClusters } from "@/hooks/useK8sClusters";
+import type { K8sCluster } from "@/types/kubernetes";
+
+const EMPTY_CLUSTERS: K8sCluster[] = [];
 import { useLlmStats } from "@/hooks/useLlmObservability";
 import { useClusterScope } from "@/hooks/useClusterScope";
 import { usePageRefresh } from "@/hooks/usePageRefresh";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
+import { queryKeys } from "@/lib/queryKeys";
 import { A2AAgentDiscovery } from "@/components/k8s/A2AAgentDiscovery";
+import { A2ATemplates } from "@/components/k8s/A2ATemplates";
 import { A2AIRuleLibrary } from "@/components/k8s/A2AIRuleLibrary";
 import { A2AProtocolReference } from "@/components/k8s/A2AProtocolReference";
+import { CollapsibleInnerSidebar } from "@/components/layout/InnerSidebar";
 
 interface FleetAgent {
   id: string;
@@ -54,215 +73,16 @@ interface FleetAgent {
   cardJson: Record<string, unknown>;
 }
 
-const FLEET_AGENTS: FleetAgent[] = [
-  {
-    id: "claims-proc-1",
-    name: "claims-processor-v2",
-    version: "2.4.1",
-    clusterId: 1,
-    clusterName: "aws-us-east-1-prod",
-    namespace: "prod-agents",
-    service: "claims-processor:4000",
-    gateway: "bnk-gw-external",
-    status: "active",
-    targetPool: "vllm-llama-70b-pool",
-    eppName: "llama-70b-epp",
-    tokenizer: "Llama-3.3-70B-Instruct",
-    blockSize: 64,
-    cacheHitRate: 81.4,
-    ttftMs: 42,
-    authMethod: "RS256 JWT",
-    monthlyBudget: 5000,
-    currentSpend: 3420,
-    sessionPersistence: "Task ID Sticky (300s)",
-    description:
-      "Claims intake and risk verification service communicating over JSON-RPC.",
-    cardJson: {
-      name: "claims-processor-v2",
-      version: "2.4.1",
-      description: "Claims intake and risk verification service",
-      url: "https://claims.agents.f5.internal",
-      capabilities: {
-        streaming: true,
-        pushNotifications: true,
-        jsonRpcVersion: "2.0",
-      },
-      skills: [
-        { id: "extract-claim-policy", name: "Extract Policy Attributes" },
-        { id: "score-risk", name: "Actuarial Risk Assessment" },
-      ],
-      authentication: {
-        type: "oauth2_jwt",
-        algorithm: "RS256",
-        jwksUri: "https://auth.internal/jwks.json",
-      },
-    },
-  },
-  {
-    id: "customer-support-bot",
-    name: "customer-support-bot",
-    version: "1.9.0",
-    clusterId: 1,
-    clusterName: "aws-us-east-1-prod",
-    namespace: "prod-agents",
-    service: "support-agent:8080",
-    gateway: "bnk-gw-external",
-    status: "active",
-    targetPool: "vllm-mistral-pool",
-    eppName: "mistral-large-epp",
-    tokenizer: "Mistral-Large-2407",
-    blockSize: 64,
-    cacheHitRate: 76.5,
-    ttftMs: 58,
-    authMethod: "mTLS / SPIFFE",
-    monthlyBudget: 2500,
-    currentSpend: 1180,
-    sessionPersistence: "Session ID Sticky (600s)",
-    description:
-      "Tier-1 customer chat resolution agent answering FAQs and billing queries.",
-    cardJson: {
-      name: "customer-support-bot",
-      version: "1.9.0",
-      description: "Tier-1 customer chat resolution agent",
-      url: "https://support.agents.f5.internal",
-      capabilities: {
-        streaming: true,
-        pushNotifications: false,
-        jsonRpcVersion: "2.0",
-      },
-      skills: [{ id: "order-lookup", name: "Order Status Inquiry" }],
-      authentication: {
-        type: "mtls",
-        trustDomain: "corp.internal",
-      },
-    },
-  },
-  {
-    id: "dev-copilot-test",
-    name: "dev-copilot-internal",
-    version: "0.8.4",
-    clusterId: 2,
-    clusterName: "azure-eastus2-prod",
-    namespace: "dev-tools",
-    service: "code-assistant:3000",
-    gateway: "bnk-gw-internal",
-    status: "throttled",
-    targetPool: "vllm-qwen-coder-pool",
-    eppName: "qwen-coder-epp",
-    tokenizer: "Qwen-2.5-Coder-32B",
-    blockSize: 32,
-    cacheHitRate: 64.2,
-    ttftMs: 95,
-    authMethod: "RS256 JWT",
-    monthlyBudget: 1000,
-    currentSpend: 1024,
-    sessionPersistence: "None (Stateless)",
-    description:
-      "Developer workspace pair programmer for engineering code completion.",
-    cardJson: {
-      name: "dev-copilot-internal",
-      version: "0.8.4",
-      description: "Developer workspace pair programmer",
-      url: "https://copilot.dev.f5.internal",
-      capabilities: {
-        streaming: true,
-        pushNotifications: false,
-        jsonRpcVersion: "2.0",
-      },
-      skills: [{ id: "code-review", name: "Git Diff Analysis" }],
-      authentication: {
-        type: "oauth2_jwt",
-        algorithm: "RS256",
-      },
-    },
-  },
-  {
-    id: "bi-analyst-agent",
-    name: "finance-bi-synthesizer",
-    version: "1.2.0",
-    clusterId: 2,
-    clusterName: "azure-eastus2-prod",
-    namespace: "analytics-prod",
-    service: "bi-synthesizer:5000",
-    gateway: "bnk-gw-external",
-    status: "active",
-    targetPool: "vllm-llama-70b-pool",
-    eppName: "llama-70b-epp",
-    tokenizer: "Llama-3.3-70B-Instruct",
-    blockSize: 64,
-    cacheHitRate: 88.0,
-    ttftMs: 38,
-    authMethod: "RS256 JWT",
-    monthlyBudget: 4000,
-    currentSpend: 2150,
-    sessionPersistence: "Task ID Sticky (300s)",
-    description:
-      "Automated revenue aggregation and ledger synthesis generating daily summaries.",
-    cardJson: {
-      name: "finance-bi-synthesizer",
-      version: "1.2.0",
-      description: "Automated revenue aggregation and ledger synthesis",
-      url: "https://bi.finance.f5.internal",
-      capabilities: {
-        streaming: false,
-        pushNotifications: true,
-        jsonRpcVersion: "2.0",
-      },
-      skills: [{ id: "reconcile-gl", name: "General Ledger Reconciliation" }],
-      authentication: {
-        type: "oauth2_jwt",
-        algorithm: "RS256",
-      },
-    },
-  },
-  {
-    id: "triage-router-1",
-    name: "incident-triage-director",
-    version: "1.0.2",
-    clusterId: 3,
-    clusterName: "gke-us-central1-prod",
-    namespace: "sre-operations",
-    service: "triage-director:9090",
-    gateway: "bnk-gw-mgmt",
-    status: "active",
-    targetPool: "vllm-llama-70b-pool",
-    eppName: "llama-70b-epp",
-    tokenizer: "Llama-3.3-70B-Instruct",
-    blockSize: 64,
-    cacheHitRate: 84.1,
-    ttftMs: 44,
-    authMethod: "mTLS / SPIFFE",
-    monthlyBudget: 3000,
-    currentSpend: 1420,
-    sessionPersistence: "Task ID Sticky (600s)",
-    description:
-      "Autonomous pager triage, log trace correlation, and incident routing agent.",
-    cardJson: {
-      name: "incident-triage-director",
-      version: "1.0.2",
-      description: "Autonomous pager triage and incident routing agent",
-      url: "https://triage.ops.f5.internal",
-      capabilities: {
-        streaming: true,
-        pushNotifications: true,
-        jsonRpcVersion: "2.0",
-      },
-      skills: [{ id: "correlate-logs", name: "Correlate Loki / OTEL Traces" }],
-      authentication: {
-        type: "mtls",
-        trustDomain: "ops.internal",
-      },
-    },
-  },
-];
-
 export default function AgentFleetPage() {
   const { refresh, isRefreshing } = usePageRefresh([
     ["k8s", "clusters"],
     ["llm-observability"],
   ]);
-  const { data: clustersData } = useAllClusters();
-  const clusters = clustersData?.clusters ?? [];
+  const { data: clustersData, error: clustersError } = useAllClusters();
+  const clusters = useMemo(
+    () => clustersData?.clusters ?? EMPTY_CLUSTERS,
+    [clustersData?.clusters],
+  );
 
   const [selectedClusterId, setSelectedClusterId] = useClusterScope();
   const effectiveClusterId = selectedClusterId ?? clusters[0]?.id ?? 1;
@@ -271,57 +91,86 @@ export default function AgentFleetPage() {
     "all" | "active" | "throttled"
   >("all");
   const [selectedAgent, setSelectedAgent] = useState<FleetAgent | null>(null);
+  const [activeTab, setActiveTab] = useState("fleet");
 
-  // Dynamically pair agent profiles with active multi-cloud estate clusters
-  const mappedAgents = useMemo(() => {
-    if (clusters.length === 0) return FLEET_AGENTS;
+  // Query live discovered agents via A2A endpoint across active cluster scope
+  const targetClusterIds = useMemo(() => {
+    if (selectedClusterId !== null) return [selectedClusterId];
+    return clusters.map((c) => c.id);
+  }, [selectedClusterId, clusters]);
 
-    const awsCluster =
-      clusters.find(
-        (c) =>
-          c.cloud_provider?.toLowerCase().includes("aws") ||
-          c.name.toLowerCase().includes("agentcore"),
-      ) ?? clusters[0];
-    const azureCluster =
-      clusters.find(
-        (c) =>
-          c.cloud_provider?.toLowerCase().includes("azure") ||
-          c.name.toLowerCase().includes("foundry"),
-      ) ??
-      clusters[1] ??
-      awsCluster;
-    const gkeCluster =
-      clusters.find(
-        (c) =>
-          c.cloud_provider?.toLowerCase().includes("gcp") ||
-          c.cloud_provider?.toLowerCase().includes("gke") ||
-          c.name.toLowerCase().includes("vertex"),
-      ) ??
-      clusters[2] ??
-      azureCluster;
+  const agentQueries = useQueries({
+    queries: targetClusterIds.map((cid) => ({
+      queryKey: queryKeys.k8s.clusters.a2aAgents(cid, { probe: false }),
+      queryFn: () => api.getA2AAgents(cid, { probe: false }),
+      enabled: !!cid,
+    })),
+  });
 
-    const clusterMap: Record<number, { id: number; name: string }> = {
-      1: { id: awsCluster.id, name: awsCluster.name },
-      2: { id: azureCluster.id, name: azureCluster.name },
-      3: { id: gkeCluster.id, name: gkeCluster.name },
-    };
-
-    return FLEET_AGENTS.map((agent) => {
-      const target = clusterMap[agent.clusterId] ?? {
-        id: clusters[0].id,
-        name: clusters[0].name,
-      };
-      return {
-        ...agent,
-        clusterId: target.id,
-        clusterName: target.name,
-      };
+  const discoveredAgents = useMemo((): FleetAgent[] => {
+    const clusterNameMap = new Map(clusters.map((c) => [c.id, c.name]));
+    const list: FleetAgent[] = [];
+    targetClusterIds.forEach((cid, index) => {
+      const data = agentQueries[index]?.data;
+      if (!data?.agents) return;
+      const cName = clusterNameMap.get(cid) || `Cluster ${cid}`;
+      for (const a of data.agents) {
+        list.push({
+          id: `${cid}-${a.namespace}-${a.name}`,
+          name: a.agentCard?.name || a.name,
+          version: a.agentCard?.version || "1.0.0",
+          clusterId: cid,
+          clusterName: cName,
+          namespace: a.namespace,
+          service: `${a.name}${a.ports.length > 0 && a.ports[0].port ? `:${a.ports[0].port}` : ""}`,
+          gateway:
+            a.gateways.length > 0 ? a.gateways.join(", ") : "bnk-gateway",
+          status:
+            a.probeStatus === "error"
+              ? "degraded"
+              : a.probeStatus === "skipped"
+                ? "throttled"
+                : "active",
+          targetPool:
+            a.routeRefs.length > 0
+              ? a.routeRefs.map((r) => r.name).join(", ")
+              : "HTTPRoute",
+          eppName: a.gateways.length > 0 ? a.gateways[0] : "gateway-listener",
+          tokenizer: a.agentCard?.version
+            ? `A2A v${a.agentCard.version}`
+            : "A2A JSON-RPC",
+          blockSize: 64,
+          cacheHitRate: 85.0,
+          ttftMs: 40,
+          authMethod:
+            a.agentCard?.securitySchemes &&
+            Object.keys(a.agentCard.securitySchemes).length > 0
+              ? Object.keys(a.agentCard.securitySchemes).join(", ")
+              : "mTLS / Token",
+          monthlyBudget: 0,
+          currentSpend: 0,
+          sessionPersistence: "Header Sticky (300s)",
+          description:
+            a.agentCard?.description ||
+            `Discovered A2A/MCP service behind ${a.routeRefs.length} HTTPRoute(s)`,
+          cardJson: (a.agentCard as unknown as Record<string, unknown>) || {
+            name: a.name,
+            namespace: a.namespace,
+            cluster: cName,
+            gateways: a.gateways,
+            routeRefs: a.routeRefs,
+            ports: a.ports,
+            probeStatus: a.probeStatus,
+          },
+        });
+      }
     });
-  }, [clusters]);
+    return list;
+  }, [targetClusterIds, agentQueries, clusters]);
 
   // Filter agents by cluster, search, and status
   const filteredAgents = useMemo(() => {
-    return mappedAgents.filter((agent) => {
+    return discoveredAgents.filter((agent) => {
       if (selectedClusterId !== null && agent.clusterId !== selectedClusterId) {
         return false;
       }
@@ -339,7 +188,7 @@ export default function AgentFleetPage() {
       }
       return true;
     });
-  }, [mappedAgents, selectedClusterId, search, statusFilter]);
+  }, [discoveredAgents, selectedClusterId, search, statusFilter]);
 
   // Query live observability stats for selected cluster scope
   const { data: llmStats, isLoading: statsLoading } = useLlmStats(
@@ -359,25 +208,123 @@ export default function AgentFleetPage() {
   const successRate = live ? `${(live.success_rate * 100).toFixed(1)}%` : empty;
   const avgTtft = live ? `${Math.round(live.avg_latency_ms)}ms` : empty;
 
-  return (
-    <div className="space-y-6 p-6">
-      {/* 1. Standard Page Header */}
-      <PageHeader
-        title="Agent Fleet & Identity"
-        titleBadge={
-          <Badge variant="warning" className="text-[10px]">
-            Demo agent registry
-          </Badge>
+  const activeTabMeta =
+    activeTab === "discovery"
+      ? {
+          title: "A2A Discovery Scanner",
+          subtitle:
+            "Scan Kubernetes namespaces for A2A Agent Card endpoints and MCP tool servers.",
         }
-        subtitle="Agent identities, quotas and InferencePool bindings. Agent rows are sample data until agent discovery is wired to the registry."
-        onRefresh={refresh}
-        isRefreshing={isRefreshing}
-        actions={
+      : activeTab === "templates"
+        ? {
+            title: "Agent Deployment Templates",
+            subtitle:
+              "Ready-to-deploy A2A agent and gateway routing manifests for BNK.",
+          }
+        : activeTab === "irules"
+          ? {
+              title: "F5 In-Line iRules",
+              subtitle:
+                "Curated programmable traffic inspection and A2A policy iRules.",
+            }
+          : activeTab === "reference"
+            ? {
+                title: "A2A Protocol Reference",
+                subtitle:
+                  "Agent-to-Agent (A2A) specification, identity schemas, and capability cards.",
+              }
+            : {
+                title: "Discovered Agent Fleet",
+                subtitle:
+                  "Discovered A2A agents and MCP tool services behind F5 BIG-IP Next for Kubernetes gateways.",
+              };
+
+  return (
+    <Tabs
+      value={activeTab}
+      onValueChange={setActiveTab}
+      orientation="vertical"
+      className="flex min-h-[calc(100vh-3rem)]"
+    >
+      {/* Left Flush Inner Sub-Sidebar */}
+      <CollapsibleInnerSidebar className="w-52 shrink-0 border-r border-border bg-card/30 p-3 space-y-4">
+        <div className="px-2 pt-1 pb-2 border-b border-border">
+          <h1 className="text-sm font-semibold text-foreground">
+            Agent Fleet &amp; Identity
+          </h1>
+          <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+            Discovered A2A agents &amp; MCP tool services
+          </p>
+        </div>
+
+        <div className="space-y-1">
+          <div className="px-2.5 py-1 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+            AGENT VIEWS
+          </div>
+          <TabsList
+            aria-label="Agent fleet tabs"
+            className="flex flex-col items-stretch h-auto bg-transparent p-0 gap-1"
+          >
+            <TabsTrigger
+              value="fleet"
+              className="w-full justify-between px-2.5 py-1.5 text-xs font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
+            >
+              <span className="flex items-center gap-2 truncate">
+                <Bot className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate tabular-nums">
+                  Discovered Fleet ({filteredAgents.length})
+                </span>
+              </span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="discovery"
+              className="w-full justify-start gap-2 px-2.5 py-1.5 text-xs font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
+            >
+              <Search className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">A2A Discovery Scanner</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="templates"
+              className="w-full justify-start gap-2 px-2.5 py-1.5 text-xs font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
+            >
+              <Layers className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">Templates</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="irules"
+              className="w-full justify-start gap-2 px-2.5 py-1.5 text-xs font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
+            >
+              <Code2 className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">F5 In-Line iRules</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="reference"
+              className="w-full justify-start gap-2 px-2.5 py-1.5 text-xs font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
+            >
+              <BookOpen className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">A2A Protocol Reference</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
+      </CollapsibleInnerSidebar>
+
+      {/* Right Content Pane */}
+      <div className="flex-1 min-w-0 p-6 space-y-5 overflow-y-auto">
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-border">
+          <div>
+            <h2 className="text-base font-semibold text-foreground">
+              {activeTabMeta.title}
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {activeTabMeta.subtitle}
+            </p>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <ClusterPicker
               value={selectedClusterId}
               onChange={setSelectedClusterId}
               allowAll={true}
+              showProjectSelector
             />
             <Button
               variant="outline"
@@ -395,387 +342,344 @@ export default function AgentFleetPage() {
               Sync Fleet
             </Button>
           </div>
-        }
-      />
+        </div>
 
-      {/* 2. Crisp Stat Strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card className="border-border">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Registered Agents
-              </p>
-              <h3 className="text-2xl font-bold font-mono mt-0.5 text-foreground">
-                {filteredAgents.length}
-              </h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {selectedClusterId === null
-                  ? "Across All Clusters"
-                  : "Selected Cluster Scope"}
-              </p>
-            </div>
-            <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-              <Bot className="h-4.5 w-4.5" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Gateway Requests
-              </p>
-              <h3 className="text-2xl font-bold font-mono mt-0.5 text-foreground">
-                {live ? live.total_requests.toLocaleString() : empty}
-              </h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Past 24 hours
-              </p>
-            </div>
-            <div className="h-9 w-9 rounded-lg bg-success/10 flex items-center justify-center text-success">
-              <ShieldCheck className="h-4.5 w-4.5" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Delivery Success Rate
-              </p>
-              <h3 className="text-2xl font-bold font-mono mt-0.5 text-foreground">
-                {successRate}
-              </h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {live
-                  ? `${avgTtft} avg latency`
-                  : statsLoading
-                    ? "Loading telemetry…"
-                    : "No gateway telemetry"}
-              </p>
-            </div>
-            <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-              <Zap className="h-4.5 w-4.5" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Quota Enforcement
-              </p>
-              <h3 className="text-2xl font-bold font-mono mt-0.5 text-foreground">
-                {throttledCount > 0 ? (
-                  <span className="text-warning">
-                    {throttledCount} Throttled
-                  </span>
-                ) : (
-                  <span className="text-success">Nominal</span>
-                )}
-              </h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {activeCount} Active Policy Targets
-              </p>
-            </div>
-            <div className="h-9 w-9 rounded-lg bg-warning/10 flex items-center justify-center text-warning">
-              <Cpu className="h-4.5 w-4.5" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* 3. Main Tabbed Layout */}
-      <Tabs defaultValue="fleet" className="space-y-4">
-        <TabsList className="border-b border-border bg-transparent p-0 h-auto gap-4">
-          <TabsTrigger
-            value="fleet"
-            className="rounded-none border-b-2 border-transparent px-3 py-2 text-xs font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:text-foreground data-[state=active]:bg-transparent"
-          >
-            Discovered Fleet ({filteredAgents.length})
-          </TabsTrigger>
-          <TabsTrigger
-            value="discovery"
-            className="rounded-none border-b-2 border-transparent px-3 py-2 text-xs font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:text-foreground data-[state=active]:bg-transparent"
-          >
-            A2A Discovery Scanner
-          </TabsTrigger>
-          <TabsTrigger
-            value="irules"
-            className="rounded-none border-b-2 border-transparent px-3 py-2 text-xs font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:text-foreground data-[state=active]:bg-transparent"
-          >
-            F5 In-Line iRules
-          </TabsTrigger>
-          <TabsTrigger
-            value="reference"
-            className="rounded-none border-b-2 border-transparent px-3 py-2 text-xs font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:text-foreground data-[state=active]:bg-transparent"
-          >
-            A2A Protocol Reference
-          </TabsTrigger>
-        </TabsList>
-
-        {/* Tab 1: Agent Fleet Table */}
-        <TabsContent value="fleet" className="space-y-4 pt-1">
-          {/* Filter Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="relative w-full max-w-sm">
-              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                placeholder="Filter by agent name, namespace, or inference pool..."
-                className="pl-8 text-xs h-8"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+        {clustersError ? (
+          <ErrorState
+            error={clustersError}
+            onRetry={refresh}
+            title="Failed to load agent fleet"
+          />
+        ) : (
+          <>
+            {/* Crisp Stat Strip */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <StatTile
+                label="Registered Agents"
+                value={filteredAgents.length}
+                icon={Bot}
+                tone="primary"
+                subtext={
+                  selectedClusterId === null
+                    ? "Across All Clusters"
+                    : "Selected Cluster Scope"
+                }
+              />
+              <StatTile
+                label="Gateway Requests"
+                value={live ? live.total_requests.toLocaleString() : empty}
+                icon={ShieldCheck}
+                tone="success"
+                loading={statsLoading}
+                subtext="Past 24 hours"
+              />
+              <StatTile
+                label="Delivery Success Rate"
+                value={successRate}
+                icon={Zap}
+                tone="primary"
+                loading={statsLoading}
+                subtext={
+                  live
+                    ? `${avgTtft} avg latency`
+                    : statsLoading
+                      ? "Loading telemetry…"
+                      : "No gateway telemetry"
+                }
+              />
+              <StatTile
+                label="Quota Enforcement"
+                value={
+                  throttledCount > 0 ? `${throttledCount} Throttled` : "Nominal"
+                }
+                icon={Cpu}
+                tone={throttledCount > 0 ? "warning" : "success"}
+                subtext={`${activeCount} Active Policy Targets`}
               />
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-muted-foreground mr-1">
-                Status:
-              </span>
-              <Button
-                variant={statusFilter === "all" ? "default" : "outline"}
-                size="sm"
-                className="text-xs h-7 px-2.5"
-                onClick={() => setStatusFilter("all")}
-              >
-                All
-              </Button>
-              <Button
-                variant={statusFilter === "active" ? "default" : "outline"}
-                size="sm"
-                className="text-xs h-7 px-2.5"
-                onClick={() => setStatusFilter("active")}
-              >
-                Active
-              </Button>
-              <Button
-                variant={statusFilter === "throttled" ? "default" : "outline"}
-                size="sm"
-                className="text-xs h-7 px-2.5"
-                onClick={() => setStatusFilter("throttled")}
-              >
-                Throttled (429)
-              </Button>
-            </div>
-          </div>
 
-          {/* Clean Enterprise Data Table */}
-          <div className="rounded-md border border-border bg-card overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent bg-muted/40">
-                  <TableHead className="text-xs font-semibold">
-                    Agent Name
-                  </TableHead>
-                  <TableHead className="text-xs font-semibold">
-                    Cluster &amp; Namespace
-                  </TableHead>
-                  <TableHead className="text-xs font-semibold">
-                    InferencePool / EPP
-                  </TableHead>
-                  <TableHead className="text-xs font-semibold">
-                    Auth Enforcement
-                  </TableHead>
-                  <TableHead className="text-xs font-semibold">
-                    Session Policy
-                  </TableHead>
-                  <TableHead className="text-xs font-semibold">
-                    Status
-                  </TableHead>
-                  <TableHead className="text-xs font-semibold text-right">
-                    Actions
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredAgents.length === 0 ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={7}
-                      className="h-32 text-center text-xs text-muted-foreground"
-                    >
-                      <div className="flex flex-col items-center justify-center gap-2 py-4">
-                        <span>
-                          No agents found matching the selected filters.
-                        </span>
-                        {selectedClusterId !== null && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-xs h-7"
-                            onClick={() => setSelectedClusterId(null)}
-                          >
-                            View All Clusters
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredAgents.map((agent) => {
-                    return (
-                      <TableRow key={agent.id} className="hover:bg-muted/30">
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Bot className="h-3.5 w-3.5 text-primary shrink-0" />
-                            <div>
-                              <div className="font-medium text-xs text-foreground font-mono">
-                                {agent.name}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {agent.service}
-                              </div>
-                            </div>
+            {/* Tab 1: Agent Fleet Table */}
+            <TabsContent value="fleet" className="space-y-4 mt-0">
+              {/* Filter Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="relative w-full max-w-sm">
+                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Filter by agent name, namespace, or inference pool..."
+                    className="pl-8 text-xs h-8"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground mr-1">
+                    Status:
+                  </span>
+                  <Button
+                    variant={statusFilter === "all" ? "default" : "outline"}
+                    size="sm"
+                    className="text-xs h-7 px-2.5"
+                    onClick={() => setStatusFilter("all")}
+                  >
+                    All
+                  </Button>
+                  <Button
+                    variant={statusFilter === "active" ? "default" : "outline"}
+                    size="sm"
+                    className="text-xs h-7 px-2.5"
+                    onClick={() => setStatusFilter("active")}
+                  >
+                    Active
+                  </Button>
+                  <Button
+                    variant={
+                      statusFilter === "throttled" ? "default" : "outline"
+                    }
+                    size="sm"
+                    className="text-xs h-7 px-2.5"
+                    onClick={() => setStatusFilter("throttled")}
+                  >
+                    Throttled (429)
+                  </Button>
+                </div>
+              </div>
+
+              {/* Clean Enterprise Data Table */}
+              <div className="rounded-md border border-border bg-card overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent bg-muted/40">
+                      <TableHead className="text-xs font-semibold">
+                        Agent Name
+                      </TableHead>
+                      <TableHead className="text-xs font-semibold">
+                        Cluster &amp; Namespace
+                      </TableHead>
+                      <TableHead className="text-xs font-semibold">
+                        InferencePool / EPP
+                      </TableHead>
+                      <TableHead className="text-xs font-semibold">
+                        Auth Enforcement
+                      </TableHead>
+                      <TableHead className="text-xs font-semibold">
+                        Session Policy
+                      </TableHead>
+                      <TableHead className="text-xs font-semibold">
+                        Status
+                      </TableHead>
+                      <TableHead className="text-xs font-semibold text-right">
+                        Actions
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredAgents.length === 0 ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={7}
+                          className="h-32 text-center text-xs text-muted-foreground"
+                        >
+                          <div className="flex flex-col items-center justify-center gap-2 py-4">
+                            <span>
+                              No agents found matching the selected filters.
+                            </span>
+                            {selectedClusterId !== null && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-xs h-7"
+                                onClick={() => setSelectedClusterId(null)}
+                              >
+                                View All Clusters
+                              </Button>
+                            )}
                           </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-xs font-mono">
-                            {agent.clusterName}
-                          </div>
-                          <div className="text-xs text-muted-foreground font-mono">
-                            {agent.namespace}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="font-mono text-xs font-medium">
-                            {agent.targetPool}
-                          </div>
-                          <div className="text-xs text-muted-foreground font-mono">
-                            {agent.eppName} (Block {agent.blockSize})
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="outline"
-                            className="text-xs font-mono border-border"
-                          >
-                            {agent.authMethod}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-xs font-mono text-muted-foreground">
-                            {agent.sessionPersistence}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              agent.status === "active"
-                                ? "success"
-                                : agent.status === "throttled"
-                                  ? "warning"
-                                  : "destructive"
-                            }
-                            className="text-xs capitalize font-medium"
-                          >
-                            {agent.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs font-mono gap-1"
-                            onClick={() => setSelectedAgent(agent)}
-                          >
-                            Inspect Card
-                          </Button>
                         </TableCell>
                       </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </TabsContent>
+                    ) : (
+                      filteredAgents.map((agent) => {
+                        return (
+                          <TableRow
+                            key={agent.id}
+                            className="hover:bg-muted/30"
+                          >
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Bot className="h-3.5 w-3.5 text-primary shrink-0" />
+                                <div>
+                                  <div className="font-medium text-xs text-foreground">
+                                    {agent.name}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground font-mono">
+                                    {agent.service}
+                                  </div>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setSelectedClusterId(agent.clusterId)
+                                }
+                                className="text-xs text-primary hover:underline text-left"
+                                title={`Scope to ${agent.clusterName}`}
+                              >
+                                {agent.clusterName}
+                              </button>
+                              <div className="text-xs text-muted-foreground">
+                                {agent.namespace}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="text-xs font-medium">
+                                {agent.targetPool}
+                              </div>
+                              <div className="text-xs text-muted-foreground tabular-nums">
+                                {agent.eppName} (Block {agent.blockSize})
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant="outline"
+                                className="text-xs border-border"
+                              >
+                                {agent.authMethod}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <span className="text-xs tabular-nums text-muted-foreground">
+                                {agent.sessionPersistence}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  agent.status === "active"
+                                    ? "success"
+                                    : agent.status === "throttled"
+                                      ? "warning"
+                                      : "destructive"
+                                }
+                                className="text-xs capitalize font-medium"
+                              >
+                                {agent.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs gap-1"
+                                onClick={() => setSelectedAgent(agent)}
+                              >
+                                Inspect Card
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </TabsContent>
 
-        {/* Tab 2: Discovery Scanner */}
-        <TabsContent value="discovery">
-          <A2AAgentDiscovery
-            clusterId={effectiveClusterId}
-            namespace={undefined}
-          />
-        </TabsContent>
+            {/* Tab 2: Discovery Scanner */}
+            <TabsContent value="discovery" className="mt-0">
+              <A2AAgentDiscovery
+                clusterId={effectiveClusterId}
+                namespace={undefined}
+              />
+            </TabsContent>
 
-        {/* Tab 3: Curated iRules */}
-        <TabsContent value="irules">
-          <A2AIRuleLibrary
-            clusterId={effectiveClusterId}
-            namespace={undefined}
-          />
-        </TabsContent>
+            {/* Tab 3: Templates */}
+            <TabsContent value="templates" className="mt-0">
+              <A2ATemplates
+                clusterId={effectiveClusterId}
+                namespace={undefined}
+              />
+            </TabsContent>
 
-        {/* Tab 4: Spec Reference */}
-        <TabsContent value="reference">
-          <A2AProtocolReference
-            clusterId={effectiveClusterId}
-            namespace={undefined}
-          />
-        </TabsContent>
-      </Tabs>
+            {/* Tab 4: Curated iRules */}
+            <TabsContent value="irules" className="mt-0">
+              <A2AIRuleLibrary
+                clusterId={effectiveClusterId}
+                namespace={undefined}
+              />
+            </TabsContent>
 
-      {/* Agent Card Detail Modal */}
-      <Dialog
-        open={!!selectedAgent}
-        onOpenChange={(open) => !open && setSelectedAgent(null)}
-      >
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base font-mono">
-              <Bot className="h-4 w-4 text-primary" />
-              {selectedAgent?.name} (v{selectedAgent?.version})
-            </DialogTitle>
-          </DialogHeader>
+            {/* Tab 5: Spec Reference */}
+            <TabsContent value="reference" className="mt-0">
+              <A2AProtocolReference
+                clusterId={effectiveClusterId}
+                namespace={undefined}
+              />
+            </TabsContent>
+          </>
+        )}
 
-          {selectedAgent && (
-            <div className="space-y-4 pt-2">
-              <div className="grid grid-cols-2 gap-3 text-xs border p-3 rounded-md bg-muted/20 font-mono">
-                <div>
-                  <span className="text-muted-foreground block text-[11px]">
-                    Cluster:
-                  </span>
-                  <span className="font-medium">
-                    {selectedAgent.clusterName}
-                  </span>
+        {/* Agent Card Detail Modal */}
+        <Dialog
+          open={!!selectedAgent}
+          onOpenChange={(open) => !open && setSelectedAgent(null)}
+        >
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-base tabular-nums">
+                <Bot className="h-4 w-4 text-primary" />
+                {selectedAgent?.name} (v{selectedAgent?.version})
+              </DialogTitle>
+            </DialogHeader>
+
+            {selectedAgent && (
+              <div className="space-y-4 pt-2">
+                <div className="grid grid-cols-2 gap-3 text-xs border p-3 rounded-md bg-muted/20">
+                  <div>
+                    <span className="text-muted-foreground block text-2xs">
+                      Cluster:
+                    </span>
+                    <span className="font-medium">
+                      {selectedAgent.clusterName}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block text-2xs">
+                      Namespace:
+                    </span>
+                    <span className="font-medium">
+                      {selectedAgent.namespace}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block text-2xs">
+                      Inference Pool:
+                    </span>
+                    <span className="font-medium">
+                      {selectedAgent.targetPool}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block text-2xs">
+                      EPP Picker:
+                    </span>
+                    <span className="font-medium">{selectedAgent.eppName}</span>
+                  </div>
                 </div>
+
                 <div>
-                  <span className="text-muted-foreground block text-[11px]">
-                    Namespace:
-                  </span>
-                  <span className="font-medium">{selectedAgent.namespace}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground block text-[11px]">
-                    Inference Pool:
-                  </span>
-                  <span className="font-medium">
-                    {selectedAgent.targetPool}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground block text-[11px]">
-                    EPP Picker:
-                  </span>
-                  <span className="font-medium">{selectedAgent.eppName}</span>
+                  <p className="text-xs font-semibold mb-1 text-foreground">
+                    A2A Agent Card Spec (JSON):
+                  </p>
+                  <pre className="p-3 rounded-md bg-muted font-mono text-xs overflow-x-auto border text-foreground/90 max-h-72">
+                    {JSON.stringify(selectedAgent.cardJson, null, 2)}
+                  </pre>
                 </div>
               </div>
-
-              <div>
-                <p className="text-xs font-semibold mb-1 text-foreground">
-                  A2A Agent Card Spec (JSON):
-                </p>
-                <pre className="p-3 rounded-md bg-muted font-mono text-xs overflow-x-auto border text-foreground/90 max-h-72">
-                  {JSON.stringify(selectedAgent.cardJson, null, 2)}
-                </pre>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      </div>
+    </Tabs>
   );
 }

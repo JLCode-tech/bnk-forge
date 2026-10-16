@@ -186,7 +186,7 @@ function buildRfNode(n: TopologyNode): Node {
       label: (
         <div className="flex flex-col items-center gap-0.5 px-1 w-full overflow-hidden">
           <span
-            className={`text-[9px] font-bold uppercase tracking-wider px-1 rounded ${cfg.color} ${cfg.bg}`}
+            className={`text-2xs font-bold uppercase tracking-wider px-1 rounded ${cfg.color} ${cfg.bg}`}
           >
             {shortKind}
           </span>

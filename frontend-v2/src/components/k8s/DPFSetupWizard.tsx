@@ -148,7 +148,7 @@ function StepIndicator({
           >
             <span
               className={cn(
-                'flex h-5 w-5 items-center justify-center rounded-full border text-[10px] font-semibold',
+                'flex h-5 w-5 items-center justify-center rounded-full border text-2xs font-semibold',
                 isActive
                   ? 'border-primary bg-primary text-primary-foreground'
                   : isDone
@@ -300,7 +300,7 @@ function ClusterStep({
             placeholder="dpu-cluster-1"
             className="h-8 text-sm"
           />
-          <p className="text-[10px] mt-0.5 text-muted-foreground">
+          <p className="text-2xs mt-0.5 text-muted-foreground">
             Unique name for this DPU cluster resource.
           </p>
         </div>
@@ -313,7 +313,7 @@ function ClusterStep({
               <SelectItem value="static">Static (external kubeconfig)</SelectItem>
             </SelectContent>
           </Select>
-          <p className="text-[10px] mt-0.5 text-muted-foreground">
+          <p className="text-2xs mt-0.5 text-muted-foreground">
             {state.clusterType === 'kamaji'
               ? 'Kamaji auto-provisions a K8s control plane for DPU nodes. Requires Kamaji to be installed.'
               : 'Uses an externally provided kubeconfig. You manage the DPU cluster control plane separately.'}
@@ -327,7 +327,7 @@ function ClusterStep({
             onChange={(e) => onChange({ maxNodes: parseInt(e.target.value) || 0 })}
             className="h-8 text-sm"
           />
-          <p className="text-[10px] mt-0.5 text-muted-foreground">
+          <p className="text-2xs mt-0.5 text-muted-foreground">
             Maximum number of DPU nodes this cluster can manage.
           </p>
         </div>
@@ -339,7 +339,7 @@ function ClusterStep({
             <h5 className="text-xs font-semibold mb-1 text-foreground/80">
               Control Plane Endpoint
             </h5>
-            <p className="text-[10px] mb-2 text-muted-foreground">
+            <p className="text-2xs mb-2 text-muted-foreground">
               Kamaji uses Keepalived for HA. The VIP is the stable API server address that DPU nodes connect to.
             </p>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -351,7 +351,7 @@ function ClusterStep({
                   placeholder="10.0.0.100"
                   className="h-8 text-sm"
                 />
-                <p className="text-[10px] mt-0.5 text-muted-foreground">
+                <p className="text-2xs mt-0.5 text-muted-foreground">
                   Virtual IP for the DPU cluster API server. Must be reachable from DPU nodes.
                 </p>
               </div>
@@ -366,7 +366,7 @@ function ClusterStep({
                   min={1}
                   max={255}
                 />
-                <p className="text-[10px] mt-0.5 text-muted-foreground">
+                <p className="text-2xs mt-0.5 text-muted-foreground">
                   VRRP ID (1-255). Must be unique on the network segment to avoid VIP conflicts.
                 </p>
               </div>
@@ -378,7 +378,7 @@ function ClusterStep({
                   placeholder="eth0"
                   className="h-8 text-sm"
                 />
-                <p className="text-[10px] mt-0.5 text-muted-foreground">
+                <p className="text-2xs mt-0.5 text-muted-foreground">
                   Network interface for VIP advertisement. Usually the primary interface on host nodes.
                 </p>
               </div>
@@ -433,7 +433,7 @@ function ProvisioningStep({
                   <div className="text-sm font-medium text-foreground/80">
                     {img.name}
                   </div>
-                  <div className="text-[10px] truncate text-muted-foreground">
+                  <div className="text-2xs truncate text-muted-foreground">
                     {img.description}
                   </div>
                 </div>
@@ -485,7 +485,7 @@ function ProvisioningStep({
       <details className="rounded-lg border border-border">
         <summary className="cursor-pointer px-4 py-3 text-xs font-semibold select-none flex items-center justify-between text-foreground/80 hover:text-foreground">
           <span>DPU Flavor Configuration</span>
-          <span className="text-[10px] font-normal text-muted-foreground">
+          <span className="text-2xs font-normal text-muted-foreground">
             {state.dpuFlavorMode || state.kernelParameters.length > 0 || state.sysctlParameters.length > 0 || state.containerdRegistryEndpoint
               ? 'Customized'
               : 'Using defaults — click to customize'}
@@ -513,7 +513,7 @@ function ProvisioningStep({
                   <SelectItem value="nic">NIC (pass-through)</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-[10px] mt-1 text-muted-foreground">
+              <p className="text-2xs mt-1 text-muted-foreground">
                 {!state.dpuFlavorMode && 'Inherits from provisioning mode — DPU mode for host-trusted, zero-trust mode for zero-trust.'}
                 {state.dpuFlavorMode === 'dpu' && 'Host traffic steered through the DPU embedded switch for hardware-accelerated networking.'}
                 {state.dpuFlavorMode === 'zero-trust' && 'DPU operates independently of the host OS. Provisioned and managed via BMC/Redfish only.'}
@@ -533,7 +533,7 @@ function ProvisioningStep({
                 className="text-xs font-mono min-h-[56px] resize-y"
                 rows={2}
               />
-              <p className="text-[10px] mt-0.5 text-muted-foreground">
+              <p className="text-2xs mt-0.5 text-muted-foreground">
                 Boot-time kernel parameters. One per line.
               </p>
             </div>
@@ -546,7 +546,7 @@ function ProvisioningStep({
                 className="text-xs font-mono min-h-[56px] resize-y"
                 rows={2}
               />
-              <p className="text-[10px] mt-0.5 text-muted-foreground">
+              <p className="text-2xs mt-0.5 text-muted-foreground">
                 Runtime kernel tuning. One per line.
               </p>
             </div>
@@ -561,14 +561,14 @@ function ProvisioningStep({
               placeholder="Leave empty for public registries"
               className="h-8 text-sm"
             />
-            <p className="text-[10px] mt-0.5 text-muted-foreground">
+            <p className="text-2xs mt-0.5 text-muted-foreground">
               Private containerd registry for disconnected environments.
             </p>
           </div>
 
           {/* Advanced Flavor Settings */}
           <details className="rounded-lg border border-border">
-            <summary className="cursor-pointer px-3 py-2 text-[11px] font-medium select-none text-muted-foreground hover:text-foreground/80">
+            <summary className="cursor-pointer px-3 py-2 text-2xs font-medium select-none text-muted-foreground hover:text-foreground/80">
               Advanced: NVConfig, BF Config, OVS Script
             </summary>
             <div className="px-3 pb-3 space-y-3">
@@ -670,7 +670,7 @@ function ProvisioningStep({
                 placeholder="1"
                 className="h-8 text-sm"
               />
-              <p className="text-[10px] mt-0.5 text-muted-foreground">
+              <p className="text-2xs mt-0.5 text-muted-foreground">
                 Max DPUs updated simultaneously. Use a number or percentage (e.g. &quot;25%&quot;).
               </p>
             </div>
@@ -693,7 +693,7 @@ function ProvisioningStep({
             placeholder="Leave empty to target all nodes — e.g. node-role.kubernetes.io/dpu=true, nvidia.com/gpu=present"
             className="h-8 text-sm"
           />
-          <p className="text-[10px] mt-0.5 text-muted-foreground">
+          <p className="text-2xs mt-0.5 text-muted-foreground">
             Comma-separated label selectors to target specific host nodes. Empty = all DPU-capable nodes.
           </p>
         </div>
@@ -767,11 +767,11 @@ function ServicesStep({
                 </span>
                 {selected && <Check className="h-4 w-4 text-primary ml-auto" />}
               </div>
-              <p className="text-[11px] leading-relaxed text-muted-foreground">
+              <p className="text-2xs leading-relaxed text-muted-foreground">
                 {preset.description}
               </p>
               {svcCount > 0 && (
-                <Badge variant="outline" className="mt-2 text-[10px] px-1.5 py-0">
+                <Badge variant="outline" className="mt-2 text-2xs px-1.5 py-0">
                   {svcCount} service{svcCount !== 1 ? 's' : ''}
                 </Badge>
               )}
@@ -793,11 +793,11 @@ function ServicesStep({
                 <span className="font-medium text-foreground/80">
                   {svc.name}
                 </span>
-                <span className="font-mono text-[10px] text-muted-foreground">
+                <span className="font-mono text-2xs text-muted-foreground">
                   {svc.repoURL}
                 </span>
                 {svc.version && (
-                  <Badge variant="outline" className="text-[10px] px-1 py-0">
+                  <Badge variant="outline" className="text-2xs px-1 py-0">
                     v{svc.version}
                   </Badge>
                 )}
@@ -866,7 +866,7 @@ function ReviewStep({
           <Code className="h-3 w-3" />
           YAML Preview
         </div>
-        <pre className="p-4 text-[11px] font-mono leading-relaxed overflow-auto max-h-[500px] bg-card text-foreground/80">
+        <pre className="p-4 text-2xs font-mono leading-relaxed overflow-auto max-h-[500px] bg-card text-foreground/80">
           {yaml}
         </pre>
       </div>

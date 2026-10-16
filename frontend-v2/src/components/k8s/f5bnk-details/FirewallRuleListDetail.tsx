@@ -35,7 +35,7 @@ export function FirewallRuleListDetail({ resource }: DetailPanelProps) {
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-medium text-sm">{rule.name || `Rule ${idx + 1}`}</span>
-                    <Badge variant={isAllow ? 'success' : 'destructive'} className="text-[10px]">
+                    <Badge variant={isAllow ? 'success' : 'destructive'} className="text-2xs">
                       {rule.action || 'N/A'}
                     </Badge>
                   </div>

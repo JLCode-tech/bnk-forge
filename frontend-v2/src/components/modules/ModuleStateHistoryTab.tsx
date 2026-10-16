@@ -125,7 +125,7 @@ export function ModuleStateHistoryTab({ moduleId, currentStatus }: Props) {
                 </Badge>
                 {t.fence_token != null && (
                   <span
-                    className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
+                    className="font-mono text-2xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
                     title="Lock fence token at the moment of the transition"
                   >
                     fence={t.fence_token}
@@ -133,7 +133,7 @@ export function ModuleStateHistoryTab({ moduleId, currentStatus }: Props) {
                 )}
                 {t.task_id != null && (
                   <span
-                    className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
+                    className="font-mono text-2xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
                     title="Task ID that drove the transition"
                   >
                     task#{t.task_id}
@@ -148,7 +148,7 @@ export function ModuleStateHistoryTab({ moduleId, currentStatus }: Props) {
               )}
 
               <div
-                className="mt-1 text-[11px] text-muted-foreground"
+                className="mt-1 text-2xs text-muted-foreground"
                 title={formatAbsolute(t.at)}
               >
                 {formatRelative(t.at)}

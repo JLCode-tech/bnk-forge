@@ -7,14 +7,16 @@
  * Key naming convention: STORAGE_KEYS.CATEGORY_PURPOSE
  */
 
-// One cluster scope shared by every cluster-scoped page (K8s, BNK, CNF, AI,
-// Benchmarks) so a selection made on one page carries to the next.
+// One project and cluster scope shared by every cluster-scoped page (K8s, BNK,
+// CNF, AI, Benchmarks) so a selection made on one page carries to the next.
+const PROJECT_SCOPE = "bnk-forge-project-scope";
 const CLUSTER_SCOPE = "bnk-forge-cluster-scope";
 
 export const STORAGE_KEYS = {
   // Kubernetes & Cluster Management
+  PROJECT_SCOPE,
   CLUSTER_SCOPE,
-  K8S_PROJECT: "bnk-forge-k8s-project",
+  K8S_PROJECT: PROJECT_SCOPE,
   K8S_CLUSTER: CLUSTER_SCOPE,
   K8S_NAMESPACE: "bnk-forge-k8s-namespace",
   K8S_RESOURCE_TYPE: "bnk-forge-k8s-resource-type",
@@ -22,11 +24,11 @@ export const STORAGE_KEYS = {
   K8S_VIEW_MODE: "bnk-forge-k8s-view-mode",
 
   // F5 BNK Management
-  BNK_PROJECT: "bnk-forge-bnk-project",
+  BNK_PROJECT: PROJECT_SCOPE,
   BNK_CLUSTER: CLUSTER_SCOPE,
 
   // CNF Dashboard (Custom Resource browser)
-  CNF_PROJECT: "bnk-forge-cnf-project",
+  CNF_PROJECT: PROJECT_SCOPE,
   CNF_CLUSTER: CLUSTER_SCOPE,
 
   // Authentication

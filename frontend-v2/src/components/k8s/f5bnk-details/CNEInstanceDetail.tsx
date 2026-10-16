@@ -40,12 +40,12 @@ export function CNEInstanceDetail({ resource }: DetailPanelProps) {
               <div key={idx} className="flex items-center justify-between">
                 <span className="text-muted-foreground">{f.label}:</span>
                 {f.value ? (
-                  <Badge variant="success" className="text-[10px]">
+                  <Badge variant="success" className="text-2xs">
                     <CheckCircle2 className="h-2.5 w-2.5 mr-1" />
                     Enabled
                   </Badge>
                 ) : (
-                  <Badge variant="outline" className="text-[10px]">
+                  <Badge variant="outline" className="text-2xs">
                     Disabled
                   </Badge>
                 )}

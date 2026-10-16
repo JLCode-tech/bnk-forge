@@ -10,9 +10,10 @@
  * types (ClusterScanCis, useTranslateCis) which are now provided by D-023.
  */
 
-export { ExistingProxiesCard } from './ExistingProxiesCard';
-export { CisMigrationCard } from './CisMigrationCard';
-export { MigrationPanel } from './MigrationPanel';
-export { ScanCard, StatusBadge, StatusDot, statusConfig } from './ScanCard';
-export { StatRow } from './StatRow';
-export type { PrereqStatus } from './ScanCard';
+export { ExistingProxiesCard } from "./ExistingProxiesCard";
+export { CisMigrationCard } from "./CisMigrationCard";
+export { MigrationPanel } from "./MigrationPanel";
+export { StatusBadge } from "@/components/ui/StatusBadge";
+export { ScanCard, StatusDot, statusConfig } from "./ScanCard";
+export { StatRow } from "./StatRow";
+export type { PrereqStatus } from "./ScanCard";

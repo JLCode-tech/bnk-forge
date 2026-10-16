@@ -11,3 +11,4 @@ export { SectionHeader } from './SectionHeader';
 export { ValueJourneyBanner } from './ValueJourneyBanner';
 export { HeroOmniSearch } from './HeroOmniSearch';
 export { MultiCloudEstate } from './MultiCloudEstate';
+export { AIGatewayPulseBanner } from './AIGatewayPulseBanner';

@@ -31,7 +31,7 @@ export function L4RouteDetail({ resource }: DetailPanelProps) {
                     {ref.name}
                   </code>
                   {ref.sectionName && (
-                    <Badge variant="outline" className="text-[10px]">
+                    <Badge variant="outline" className="text-2xs">
                       {ref.sectionName}
                     </Badge>
                   )}
@@ -69,12 +69,12 @@ export function L4RouteDetail({ resource }: DetailPanelProps) {
                           {backend.name}
                         </code>
                         {backend.namespace && backend.namespace !== resource.metadata?.namespace && (
-                          <Badge variant="warning" className="text-[10px]">
+                          <Badge variant="warning" className="text-2xs">
                             ns:{backend.namespace}
                           </Badge>
                         )}
                         {backend.kind && backend.kind !== 'Service' && (
-                          <Badge variant="outline" className="text-[10px]">
+                          <Badge variant="outline" className="text-2xs">
                             {backend.kind}
                           </Badge>
                         )}

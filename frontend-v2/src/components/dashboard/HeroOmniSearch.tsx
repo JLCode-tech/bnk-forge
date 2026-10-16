@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useRef, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Search,
   X,
@@ -8,20 +8,20 @@ import {
   ExternalLink,
   Server,
   FolderGit2,
-} from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
-import { MIN_SEARCH_LENGTH, useGlobalSearch } from '@/hooks/useGlobalSearch';
+} from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { MIN_SEARCH_LENGTH, useGlobalSearch } from "@/hooks/useGlobalSearch";
 import {
   getCloudProviderBadgeInfo,
   getClusterLocationInfo,
   getProjectLocationInfo,
   normalizeProvider,
-} from '@/lib/aws-regions';
-import type { Project, K8sCluster } from '@/types';
-import type { ClusterSearchResult, ProjectSearchResult } from '@/types/search';
+} from "@/lib/aws-regions";
+import type { Project, K8sCluster } from "@/types";
+import type { ClusterSearchResult, ProjectSearchResult } from "@/types/search";
 
 interface HeroOmniSearchProps {
   projects?: Project[];
@@ -30,7 +30,7 @@ interface HeroOmniSearchProps {
   debounceMs?: number;
 }
 
-type SearchFilter = 'all' | 'fqdn' | 'aws' | 'azure' | 'gke' | 'metal';
+type SearchFilter = "all" | "fqdn" | "aws" | "azure" | "gke" | "metal";
 
 export function HeroOmniSearch({
   projects = [],
@@ -39,44 +39,45 @@ export function HeroOmniSearch({
   debounceMs = 400,
 }: HeroOmniSearchProps) {
   const navigate = useNavigate();
-  const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<SearchFilter>('all');
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<SearchFilter>("all");
   const [isOpen, setIsOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const { data: searchResults, isSearching } = useGlobalSearch(query, 25, debounceMs);
+  const { data: searchResults, isSearching } = useGlobalSearch(
+    query,
+    25,
+    debounceMs,
+  );
 
-  // Global keyboard shortcut ('/' or 'Cmd+K' / 'Ctrl+K')
+  // Global keyboard shortcut ('/')
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't intercept if user is typing in another input or textarea
+      // Don't intercept if user is typing in another input, textarea, or select
       const target = e.target as HTMLElement;
       if (
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.tagName === "SELECT" ||
         target.isContentEditable
       ) {
-        if (e.key === 'Escape' && target === inputRef.current) {
+        if (e.key === "Escape" && target === inputRef.current) {
           setIsOpen(false);
           inputRef.current?.blur();
         }
         return;
       }
 
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        inputRef.current?.focus();
-        setIsOpen(true);
-      } else if (e.key === '/' && document.activeElement !== inputRef.current) {
+      if (e.key === "/" && document.activeElement !== inputRef.current) {
         e.preventDefault();
         inputRef.current?.focus();
         setIsOpen(true);
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   // Close dropdown on click outside
@@ -90,19 +91,19 @@ export function HeroOmniSearch({
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   // Filter backend results according to selected chip
   const filteredIngresses = useMemo(() => {
     const list = searchResults?.ingresses || [];
-    if (filter === 'all' || filter === 'fqdn') return list;
+    if (filter === "all" || filter === "fqdn") return list;
     return list.filter((i) => normalizeProvider(i.cloud_provider) === filter);
   }, [searchResults?.ingresses, filter]);
 
   const filteredClusters = useMemo(() => {
-    if (filter === 'fqdn') return [];
+    if (filter === "fqdn") return [];
     const qLower = query.trim().toLowerCase();
     const backendList = searchResults?.clusters || [];
     // Combine with local clusters when query matches
@@ -112,7 +113,7 @@ export function HeroOmniSearch({
             (c) =>
               c.name.toLowerCase().includes(qLower) ||
               c.cloud_provider?.toLowerCase().includes(qLower) ||
-              c.region?.toLowerCase().includes(qLower)
+              c.region?.toLowerCase().includes(qLower),
           )
           .map((c) => ({
             id: c.id,
@@ -132,12 +133,12 @@ export function HeroOmniSearch({
     });
 
     const list = Array.from(combinedMap.values());
-    if (filter === 'all') return list;
+    if (filter === "all") return list;
     return list.filter((c) => normalizeProvider(c.cloud_provider) === filter);
   }, [searchResults?.clusters, clusters, query, filter]);
 
   const filteredProjects = useMemo(() => {
-    if (filter === 'fqdn') return [];
+    if (filter === "fqdn") return [];
     const qLower = query.trim().toLowerCase();
     const backendList = searchResults?.projects || [];
     const localMatches: ProjectSearchResult[] = qLower
@@ -146,7 +147,7 @@ export function HeroOmniSearch({
             (p) =>
               p.name.toLowerCase().includes(qLower) ||
               p.cloud_provider?.toLowerCase().includes(qLower) ||
-              p.region?.toLowerCase().includes(qLower)
+              p.region?.toLowerCase().includes(qLower),
           )
           .map((p) => ({
             id: p.id,
@@ -167,60 +168,81 @@ export function HeroOmniSearch({
     });
 
     const list = Array.from(combinedMap.values());
-    if (filter === 'all') return list;
+    if (filter === "all") return list;
     return list.filter((p) => normalizeProvider(p.cloud_provider) === filter);
   }, [searchResults?.projects, projects, query, filter]);
 
   const totalResultsCount =
-    filteredIngresses.length + filteredClusters.length + filteredProjects.length;
+    filteredIngresses.length +
+    filteredClusters.length +
+    filteredProjects.length;
 
   const isBnkResource = (kind?: string): boolean => {
-    const k = (kind || '').toLowerCase().replace(/[-_]/g, '');
+    const k = (kind || "").toLowerCase().replace(/[-_]/g, "");
     return [
-      'egress',
-      'f5spkegress',
-      'f5egress',
-      'snatpool',
-      'f5spksnatpool',
-      'bnkgateway',
-      'f5bnkgateway',
-      'bnksecpolicy',
-      'bnknetpolicy',
-      'f5bigfwpolicy',
-      'f5bigfwrulelist',
-      'f5bigddosglobal',
-      'f5bigcneirule',
-      'f5bigloghslpub',
-      'f5biglogprofile',
-      'f5bigcneaddresslist',
-      'f5bigcneportlist',
-      'f5aianalyzer',
-      'cneinstance',
-      'ipamrange',
-      'vlan',
+      "egress",
+      "f5spkegress",
+      "f5egress",
+      "snatpool",
+      "f5spksnatpool",
+      "bnkgateway",
+      "f5bnkgateway",
+      "bnksecpolicy",
+      "bnknetpolicy",
+      "f5bigfwpolicy",
+      "f5bigfwrulelist",
+      "f5bigddosglobal",
+      "f5bigcneirule",
+      "f5bigloghslpub",
+      "f5biglogprofile",
+      "f5bigcneaddresslist",
+      "f5bigcneportlist",
+      "f5aianalyzer",
+      "cneinstance",
+      "ipamrange",
+      "vlan",
     ].some((prefix) => k.includes(prefix));
   };
 
   const mapKindToResourceParam = (kind?: string): string => {
-    const k = (kind || '').toLowerCase();
-    if (k === 'ingress' || k === 'ingresses') return 'ingress';
-    if (k === 'service' || k === 'services') return 'service';
-    if (k === 'httproute' || k === 'httproutes') return 'httproute';
-    if (k === 'virtualserver' || k === 'virtualservers') return 'cis_virtualserver';
-    if (k === 'egress' || k === 'f5-spk-egress' || k === 'f5-spk-egresses' || k === 'f5spkegress') return 'f5spkegress';
-    if (k === 'snatpool' || k === 'f5-spk-snatpools' || k === 'f5spksnatpool') return 'f5spksnatpool';
-    if (k === 'gateway' || k === 'gateways') return 'gateway';
-    if (k === 'bnkgateway' || k === 'f5-bnkgateways' || k === 'f5-bnkgateway' || k === 'f5bnkgateway') return 'f5bnkgateway';
-    if (k === 'l4route' || k === 'l4routes') return 'l4route';
-    if (k === 'deployment' || k === 'deployments') return 'deployment';
-    if (k === 'pod' || k === 'pods') return 'pod';
-    return k || 'ingress';
+    const k = (kind || "").toLowerCase();
+    if (k === "ingress" || k === "ingresses") return "ingress";
+    if (k === "service" || k === "services") return "service";
+    if (k === "httproute" || k === "httproutes") return "httproute";
+    if (k === "virtualserver" || k === "virtualservers")
+      return "cis_virtualserver";
+    if (
+      k === "egress" ||
+      k === "f5-spk-egress" ||
+      k === "f5-spk-egresses" ||
+      k === "f5spkegress"
+    )
+      return "f5spkegress";
+    if (k === "snatpool" || k === "f5-spk-snatpools" || k === "f5spksnatpool")
+      return "f5spksnatpool";
+    if (k === "gateway" || k === "gateways") return "gateway";
+    if (
+      k === "bnkgateway" ||
+      k === "f5-bnkgateways" ||
+      k === "f5-bnkgateway" ||
+      k === "f5bnkgateway"
+    )
+      return "f5bnkgateway";
+    if (k === "l4route" || k === "l4routes") return "l4route";
+    if (k === "deployment" || k === "deployments") return "deployment";
+    if (k === "pod" || k === "pods") return "pod";
+    return k || "ingress";
   };
 
   // Deep links carry the cluster's project so the target page doesn't swap the
   // cluster for one from the project remembered in localStorage.
-  const clusterScope = (clusterId: number, projectId?: number | null): string =>
-    projectId ? `cluster=${clusterId}&project=${projectId}` : `cluster=${clusterId}`;
+  const clusterScope = (
+    clusterId: number,
+    projectId?: number | null,
+  ): string =>
+    projectId
+      ? `cluster=${clusterId}&project=${projectId}`
+      : `cluster=${clusterId}`;
 
   const handleSelectIngress = (
     clusterId: number,
@@ -228,18 +250,18 @@ export function HeroOmniSearch({
     namespace: string,
     name: string,
     kind?: string,
-    resourceType?: string
+    resourceType?: string,
   ) => {
     setIsOpen(false);
     const scope = clusterScope(clusterId, projectId);
-    const k = (kind || '').toLowerCase().replace(/[-_]/g, '');
+    const k = (kind || "").toLowerCase().replace(/[-_]/g, "");
 
     // Egress resources route directly to F5 BNK Traffic Flow Pipeline
-    if (k === 'egress' || k === 'f5spkegress' || k === 'f5egress') {
+    if (k === "egress" || k === "f5spkegress" || k === "f5egress") {
       navigate(
         `/bnk?${scope}&view=traffic-flow&namespace=${encodeURIComponent(
-          namespace
-        )}&name=${encodeURIComponent(name)}`
+          namespace,
+        )}&name=${encodeURIComponent(name)}`,
       );
       return;
     }
@@ -249,8 +271,8 @@ export function HeroOmniSearch({
       const resource = resourceType || mapKindToResourceParam(kind);
       navigate(
         `/bnk?${scope}&namespace=${encodeURIComponent(
-          namespace
-        )}&resource=${encodeURIComponent(resource)}&name=${encodeURIComponent(name)}`
+          namespace,
+        )}&resource=${encodeURIComponent(resource)}&name=${encodeURIComponent(name)}`,
       );
       return;
     }
@@ -259,12 +281,15 @@ export function HeroOmniSearch({
     const resource = resourceType || mapKindToResourceParam(kind);
     navigate(
       `/kubernetes?${scope}&namespace=${encodeURIComponent(
-        namespace
-      )}&resource=${encodeURIComponent(resource)}&name=${encodeURIComponent(name)}&view=advanced`
+        namespace,
+      )}&resource=${encodeURIComponent(resource)}&name=${encodeURIComponent(name)}&view=advanced`,
     );
   };
 
-  const handleSelectCluster = (clusterId: number, projectId?: number | null) => {
+  const handleSelectCluster = (
+    clusterId: number,
+    projectId?: number | null,
+  ) => {
     setIsOpen(false);
     navigate(`/kubernetes?${clusterScope(clusterId, projectId)}&view=advanced`);
   };
@@ -277,7 +302,7 @@ export function HeroOmniSearch({
   const hasQuery = query.trim().length >= MIN_SEARCH_LENGTH;
 
   return (
-    <div ref={containerRef} className={cn('relative w-full', className)}>
+    <div ref={containerRef} className={cn("relative w-full", className)}>
       {/* Search Input Box */}
       <div className="relative flex items-center bg-card border border-border/70 rounded-xl shadow-sm focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary transition-all">
         <div className="pl-4 text-muted-foreground flex items-center justify-center pointer-events-none">
@@ -306,7 +331,7 @@ export function HeroOmniSearch({
             variant="ghost"
             size="sm"
             onClick={() => {
-              setQuery('');
+              setQuery("");
               inputRef.current?.focus();
             }}
             className="mr-2 h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
@@ -315,11 +340,11 @@ export function HeroOmniSearch({
           </Button>
         ) : (
           <div className="hidden sm:flex items-center gap-1 mr-3 pointer-events-none">
-            <kbd className="inline-flex items-center justify-center px-2 py-0.5 text-[11px] font-mono text-muted-foreground bg-muted rounded border border-border">
+            <kbd className="inline-flex items-center justify-center px-2 py-0.5 text-2xs font-mono text-muted-foreground bg-muted rounded border border-border">
               ⌘K
             </kbd>
-            <span className="text-[11px] text-muted-foreground/60">or</span>
-            <kbd className="inline-flex items-center justify-center px-1.5 py-0.5 text-[11px] font-mono text-muted-foreground bg-muted rounded border border-border">
+            <span className="text-2xs text-muted-foreground/60">or</span>
+            <kbd className="inline-flex items-center justify-center px-1.5 py-0.5 text-2xs font-mono text-muted-foreground bg-muted rounded border border-border">
               /
             </kbd>
           </div>
@@ -328,75 +353,77 @@ export function HeroOmniSearch({
 
       {/* Quick Filter Chips */}
       <div className="flex items-center gap-1.5 mt-2.5 overflow-x-auto pb-1 text-xs">
-        <span className="text-muted-foreground/80 font-medium mr-1 text-[11px]">Filter:</span>
+        <span className="text-muted-foreground/80 font-medium mr-1 text-2xs">
+          Filter:
+        </span>
         <button
           type="button"
-          onClick={() => setFilter('all')}
+          onClick={() => setFilter("all")}
           className={cn(
-            'px-2.5 py-1 rounded-full font-medium transition-colors cursor-pointer text-xs',
-            filter === 'all'
-              ? 'bg-primary text-primary-foreground shadow-xs'
-              : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
+            "px-2.5 py-1 rounded-full font-medium transition-colors cursor-pointer text-xs",
+            filter === "all"
+              ? "bg-primary text-primary-foreground shadow-xs"
+              : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground",
           )}
         >
           All
         </button>
         <button
           type="button"
-          onClick={() => setFilter('fqdn')}
+          onClick={() => setFilter("fqdn")}
           className={cn(
-            'px-2.5 py-1 rounded-full font-medium transition-colors cursor-pointer text-xs flex items-center gap-1',
-            filter === 'fqdn'
-              ? 'bg-primary text-primary-foreground shadow-xs'
-              : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
+            "px-2.5 py-1 rounded-full font-medium transition-colors cursor-pointer text-xs flex items-center gap-1",
+            filter === "fqdn"
+              ? "bg-primary text-primary-foreground shadow-xs"
+              : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground",
           )}
         >
           <Globe className="w-3 h-3" /> Ingresses & VIPs
         </button>
         <button
           type="button"
-          onClick={() => setFilter('aws')}
+          onClick={() => setFilter("aws")}
           className={cn(
-            'px-2.5 py-1 rounded-full font-medium transition-colors cursor-pointer text-xs flex items-center gap-1',
-            filter === 'aws'
-              ? 'bg-primary text-primary-foreground shadow-xs'
-              : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
+            "px-2.5 py-1 rounded-full font-medium transition-colors cursor-pointer text-xs flex items-center gap-1",
+            filter === "aws"
+              ? "bg-primary text-primary-foreground shadow-xs"
+              : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground",
           )}
         >
           AWS
         </button>
         <button
           type="button"
-          onClick={() => setFilter('azure')}
+          onClick={() => setFilter("azure")}
           className={cn(
-            'px-2.5 py-1 rounded-full font-medium transition-colors cursor-pointer text-xs flex items-center gap-1',
-            filter === 'azure'
-              ? 'bg-primary text-primary-foreground shadow-xs'
-              : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
+            "px-2.5 py-1 rounded-full font-medium transition-colors cursor-pointer text-xs flex items-center gap-1",
+            filter === "azure"
+              ? "bg-primary text-primary-foreground shadow-xs"
+              : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground",
           )}
         >
           Azure
         </button>
         <button
           type="button"
-          onClick={() => setFilter('gke')}
+          onClick={() => setFilter("gke")}
           className={cn(
-            'px-2.5 py-1 rounded-full font-medium transition-colors cursor-pointer text-xs flex items-center gap-1',
-            filter === 'gke'
-              ? 'bg-primary text-primary-foreground shadow-xs'
-              : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
+            "px-2.5 py-1 rounded-full font-medium transition-colors cursor-pointer text-xs flex items-center gap-1",
+            filter === "gke"
+              ? "bg-primary text-primary-foreground shadow-xs"
+              : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground",
           )}
         >
           GKE
         </button>
         <button
           type="button"
-          onClick={() => setFilter('metal')}
+          onClick={() => setFilter("metal")}
           className={cn(
-            'px-2.5 py-1 rounded-full font-medium transition-colors cursor-pointer text-xs flex items-center gap-1',
-            filter === 'metal'
-              ? 'bg-primary text-primary-foreground shadow-xs'
-              : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
+            "px-2.5 py-1 rounded-full font-medium transition-colors cursor-pointer text-xs flex items-center gap-1",
+            filter === "metal"
+              ? "bg-primary text-primary-foreground shadow-xs"
+              : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground",
           )}
         >
           Bare Metal
@@ -415,9 +442,15 @@ export function HeroOmniSearch({
             ) : (
               <div className="text-center py-8 px-4 text-muted-foreground">
                 <Globe className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                <p className="font-medium text-foreground">No matches found for &quot;{query}&quot;</p>
+                <p className="font-medium text-foreground">
+                  No matches found for &quot;{query}&quot;
+                </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Try searching by FQDN (e.g. <code className="bg-muted px-1 py-0.5 rounded">api.company.com</code>), cluster name, or service name.
+                  Try searching by FQDN (e.g.{" "}
+                  <code className="bg-muted px-1 py-0.5 rounded">
+                    api.company.com
+                  </code>
+                  ), cluster name, or service name.
                 </p>
               </div>
             )
@@ -434,18 +467,33 @@ export function HeroOmniSearch({
                 <div>
                   <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
                     <span className="flex items-center gap-1.5">
-                      <Globe className="w-3.5 h-3.5 text-primary" /> Ingresses, VIPs & FQDNs ({filteredIngresses.length})
+                      <Globe className="w-3.5 h-3.5 text-primary" /> Ingresses,
+                      VIPs & FQDNs ({filteredIngresses.length})
                     </span>
                   </div>
                   <div className="space-y-1">
                     {filteredIngresses.map((item, idx) => {
-                      const providerBadge = getCloudProviderBadgeInfo(item.cloud_provider);
-                      const location = getClusterLocationInfo(item.cloud_provider, item.region);
+                      const providerBadge = getCloudProviderBadgeInfo(
+                        item.cloud_provider,
+                      );
+                      const location = getClusterLocationInfo(
+                        item.cloud_provider,
+                        item.region,
+                      );
 
                       return (
                         <div
                           key={`ing-${item.cluster_id}-${item.namespace}-${item.name}-${idx}`}
-                          onClick={() => handleSelectIngress(item.cluster_id, item.project_id, item.namespace, item.name, item.kind, item.resource_type)}
+                          onClick={() =>
+                            handleSelectIngress(
+                              item.cluster_id,
+                              item.project_id,
+                              item.namespace,
+                              item.name,
+                              item.kind,
+                              item.resource_type,
+                            )
+                          }
                           className="group flex items-center justify-between p-2.5 rounded-lg hover:bg-accent/80 cursor-pointer transition-colors"
                         >
                           <div className="flex items-center gap-3 min-w-0">
@@ -457,20 +505,28 @@ export function HeroOmniSearch({
                                 <span className="font-semibold text-sm text-foreground truncate group-hover:text-primary transition-colors">
                                   {item.matched_host || item.name}
                                 </span>
-                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                                <Badge
+                                  variant="secondary"
+                                  className="text-2xs px-1.5 py-0"
+                                >
                                   {item.kind}
                                 </Badge>
                               </div>
                               <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5 truncate">
                                 <span>ns: {item.namespace}</span>
                                 <span>•</span>
-                                <span>target: {item.target_service || item.name}</span>
+                                <span>
+                                  target: {item.target_service || item.name}
+                                </span>
                               </div>
                             </div>
                           </div>
 
                           <div className="flex items-center gap-2 shrink-0">
-                            <Badge className={providerBadge.badgeClass} variant={providerBadge.badgeVariant}>
+                            <Badge
+                              className={providerBadge.badgeClass}
+                              variant={providerBadge.badgeVariant}
+                            >
                               {providerBadge.shortLabel}
                             </Badge>
                             {location?.flag && (
@@ -495,18 +551,26 @@ export function HeroOmniSearch({
                 <div>
                   <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
                     <span className="flex items-center gap-1.5">
-                      <Server className="w-3.5 h-3.5 text-primary" /> Kubernetes Clusters ({filteredClusters.length})
+                      <Server className="w-3.5 h-3.5 text-primary" /> Kubernetes
+                      Clusters ({filteredClusters.length})
                     </span>
                   </div>
                   <div className="space-y-1">
                     {filteredClusters.map((cluster) => {
-                      const providerBadge = getCloudProviderBadgeInfo(cluster.cloud_provider);
-                      const location = getClusterLocationInfo(cluster.cloud_provider, cluster.region);
+                      const providerBadge = getCloudProviderBadgeInfo(
+                        cluster.cloud_provider,
+                      );
+                      const location = getClusterLocationInfo(
+                        cluster.cloud_provider,
+                        cluster.region,
+                      );
 
                       return (
                         <div
                           key={`cluster-${cluster.id}`}
-                          onClick={() => handleSelectCluster(cluster.id, cluster.project_id)}
+                          onClick={() =>
+                            handleSelectCluster(cluster.id, cluster.project_id)
+                          }
                           className="group flex items-center justify-between p-2.5 rounded-lg hover:bg-accent/80 cursor-pointer transition-colors"
                         >
                           <div className="flex items-center gap-3 min-w-0">
@@ -518,13 +582,16 @@ export function HeroOmniSearch({
                                 {cluster.name}
                               </span>
                               <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                                {cluster.node_count !== undefined && cluster.node_count !== null && (
-                                  <span>{cluster.node_count} nodes</span>
-                                )}
+                                {cluster.node_count !== undefined &&
+                                  cluster.node_count !== null && (
+                                    <span>{cluster.node_count} nodes</span>
+                                  )}
                                 {cluster.detected_platform_profile && (
                                   <>
                                     <span>•</span>
-                                    <span>{cluster.detected_platform_profile}</span>
+                                    <span>
+                                      {cluster.detected_platform_profile}
+                                    </span>
                                   </>
                                 )}
                               </div>
@@ -532,7 +599,10 @@ export function HeroOmniSearch({
                           </div>
 
                           <div className="flex items-center gap-2 shrink-0">
-                            <Badge className={providerBadge.badgeClass} variant={providerBadge.badgeVariant}>
+                            <Badge
+                              className={providerBadge.badgeClass}
+                              variant={providerBadge.badgeVariant}
+                            >
                               {providerBadge.shortLabel}
                             </Badge>
                             {location?.flag && (
@@ -554,13 +624,19 @@ export function HeroOmniSearch({
                 <div>
                   <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
                     <span className="flex items-center gap-1.5">
-                      <FolderGit2 className="w-3.5 h-3.5 text-primary" /> Projects ({filteredProjects.length})
+                      <FolderGit2 className="w-3.5 h-3.5 text-primary" />{" "}
+                      Projects ({filteredProjects.length})
                     </span>
                   </div>
                   <div className="space-y-1">
                     {filteredProjects.map((project) => {
-                      const providerBadge = getCloudProviderBadgeInfo(project.cloud_provider);
-                      const location = getProjectLocationInfo(project.cloud_provider, project.region);
+                      const providerBadge = getCloudProviderBadgeInfo(
+                        project.cloud_provider,
+                      );
+                      const location = getProjectLocationInfo(
+                        project.cloud_provider,
+                        project.region,
+                      );
 
                       return (
                         <div
@@ -586,9 +662,13 @@ export function HeroOmniSearch({
 
                           <div className="flex items-center gap-2 shrink-0">
                             <span className="text-xs text-muted-foreground">
-                              {project.deployed_count}/{project.module_count} modules
+                              {project.deployed_count}/{project.module_count}{" "}
+                              modules
                             </span>
-                            <Badge className={providerBadge.badgeClass} variant={providerBadge.badgeVariant}>
+                            <Badge
+                              className={providerBadge.badgeClass}
+                              variant={providerBadge.badgeVariant}
+                            >
                               {providerBadge.shortLabel}
                             </Badge>
                             {location?.flag && (

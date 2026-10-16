@@ -332,7 +332,7 @@ function SetupCertManagerFlow({ clusterId, setupData }: SetupFlowProps) {
                   {step.step.replace(/_/g, ' ')}
                 </span>
                 {step.detail && (
-                  <span className="text-[11px] text-muted-foreground">— {step.detail}</span>
+                  <span className="text-2xs text-muted-foreground">— {step.detail}</span>
                 )}
               </div>
             ))}
@@ -374,19 +374,19 @@ function SetupCertManagerFlow({ clusterId, setupData }: SetupFlowProps) {
             <ul className="text-xs space-y-1.5 ml-4 text-muted-foreground">
               <li className="flex items-start gap-2">
                 <span className="text-primary mt-0.5">1.</span>
-                Create a cert-manager <code className="font-mono text-[11px]">Certificate</code> for the CWC
+                Create a cert-manager <code className="font-mono text-2xs">Certificate</code> for the CWC
                 REST API server (replaces legacy self-signed cert)
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-primary mt-0.5">2.</span>
-                Update the <code className="font-mono text-[11px]">cwc-license-certs</code> secret with the
+                Update the <code className="font-mono text-2xs">cwc-license-certs</code> secret with the
                 new certificate
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-warning mt-0.5">3.</span>
                 <span>
                   <strong>Restart the CWC pod</strong> so it picks up the new certs
-                  <span className="block text-[11px] mt-0.5 text-muted-foreground">
+                  <span className="block text-2xs mt-0.5 text-muted-foreground">
                     Licensing and telemetry are unaffected. The restart takes ~30 seconds.
                   </span>
                 </span>
@@ -884,7 +884,7 @@ function StatusTree({ node, depth }: {
               </span>
               <Badge
                 variant={isOk ? 'success' : isFail ? 'destructive' : 'outline'}
-                className="text-[10px]"
+                className="text-2xs"
               >
                 {value.status}
               </Badge>
@@ -892,7 +892,7 @@ function StatusTree({ node, depth }: {
             {value.msgs && value.msgs.length > 0 && (
               <div className="ml-5 mt-0.5 space-y-0.5">
                 {value.msgs.map((msg, i) => (
-                  <p key={i} className={cn('text-[11px]', isFail ? 'text-destructive' : 'text-muted-foreground')}>
+                  <p key={i} className={cn('text-2xs', isFail ? 'text-destructive' : 'text-muted-foreground')}>
                     {msg}
                   </p>
                 ))}

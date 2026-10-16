@@ -178,7 +178,7 @@ export function RollbackReleaseDialog({
                             <div className="flex items-center gap-2">
                               <span className="text-sm">{rev.revision}</span>
                               {isCurrent && (
-                                <Badge variant="info" className="text-[9px] px-1.5 py-0">
+                                <Badge variant="info" className="text-2xs px-1.5 py-0">
                                   CURRENT
                                 </Badge>
                               )}
@@ -188,7 +188,7 @@ export function RollbackReleaseDialog({
                             {calculateAge(rev.updated)}
                           </td>
                           <td className="py-2 px-3">
-                            <Badge variant={getStatusVariant(rev.status)} className="text-[10px]">
+                            <Badge variant={getStatusVariant(rev.status)} className="text-2xs">
                               {rev.status}
                             </Badge>
                           </td>

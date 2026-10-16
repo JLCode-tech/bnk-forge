@@ -132,16 +132,16 @@ export const ModuleTableRow = memo(function ModuleTableRow({
       </td>
       <td className="py-3 px-4">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <Badge variant="outline" className={cn('text-[10px]', enginePresentation.className)}>
+          <Badge variant="outline" className={cn('text-2xs', enginePresentation.className)}>
             {enginePresentation.label}
           </Badge>
           {!capabilities.supports_destroy && (
-            <Badge variant="warning" className="text-[10px]">
+            <Badge variant="warning" className="text-2xs">
               No destroy
             </Badge>
           )}
           {module.connectivity_risk && (
-            <Badge variant="warning" className="text-[10px]">
+            <Badge variant="warning" className="text-2xs">
               ⚠ SSH risk
             </Badge>
           )}
@@ -163,7 +163,7 @@ export const ModuleTableRow = memo(function ModuleTableRow({
               );
             })}
             {module.dependencies.length > 3 && (
-              <Badge variant="outline" className="text-[10px]">
+              <Badge variant="outline" className="text-2xs">
                 +{module.dependencies.length - 3}
               </Badge>
             )}

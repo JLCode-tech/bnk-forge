@@ -35,9 +35,9 @@ export function ActivityItem({ action, module, project, time, status }: Activity
           <span className="font-medium text-xs text-foreground">{action}</span>
           <span className="text-xs truncate text-muted-foreground">{module}</span>
         </div>
-        <span className="text-[11px] text-muted-foreground">{project}</span>
+        <span className="text-2xs text-muted-foreground">{project}</span>
       </div>
-      <span className="text-[11px] flex-shrink-0 text-muted-foreground">{time}</span>
+      <span className="text-2xs flex-shrink-0 text-muted-foreground">{time}</span>
     </div>
   );
 }

@@ -1,9 +1,10 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { SectionCard } from '@/components/ui/section-card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useEffect, useState, useRef, useCallback } from "react";
+import { SectionCard } from "@/components/ui/section-card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Terminal,
   Play,
@@ -13,13 +14,13 @@ import {
   AlertTriangle,
   Loader2,
   Download,
-} from 'lucide-react';
-import type { ProjectModule } from '@/types';
-import { logger } from '@/lib/logger';
+} from "lucide-react";
+import type { ProjectModule } from "@/types";
+import { logger } from "@/lib/logger";
 
 interface LogEntry {
   timestamp: string;
-  level: 'info' | 'success' | 'warning' | 'error';
+  level: "info" | "success" | "warning" | "error";
   message: string;
 }
 
@@ -28,12 +29,18 @@ interface DeploymentLogViewerProps {
   autoConnect?: boolean;
 }
 
-export function DeploymentLogViewer({ module, autoConnect = false }: DeploymentLogViewerProps) {
+export function DeploymentLogViewer({
+  module,
+  autoConnect = false,
+}: DeploymentLogViewerProps) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isConnected, setIsConnected] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<string>('disconnected');
-  const [moduleStatus, setModuleStatus] = useState<string>(module.status || 'unknown');
-  const [currentStage, setCurrentStage] = useState<string>('');
+  const [connectionStatus, setConnectionStatus] =
+    useState<string>("disconnected");
+  const [moduleStatus, setModuleStatus] = useState<string>(
+    module.status || "unknown",
+  );
+  const [currentStage, setCurrentStage] = useState<string>("");
   const wsRef = useRef<WebSocket | null>(null);
   const pingIntervalRef = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -43,7 +50,7 @@ export function DeploymentLogViewer({ module, autoConnect = false }: DeploymentL
   // This allows the app to work when accessed from any host
   const getWsUrl = () => {
     if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     return `${protocol}//${window.location.host}`;
   };
   const wsUrl = getWsUrl();
@@ -57,13 +64,13 @@ export function DeploymentLogViewer({ module, autoConnect = false }: DeploymentL
 
     ws.onopen = () => {
       setIsConnected(true);
-      setConnectionStatus('connected');
-      addLog('info', 'Connected to deployment stream');
+      setConnectionStatus("connected");
+      addLog("info", "Connected to deployment stream");
 
       // Send ping to keep connection alive
       pingIntervalRef.current = window.setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ command: 'ping' }));
+          ws.send(JSON.stringify({ command: "ping" }));
         }
       }, 30000); // Ping every 30 seconds
     };
@@ -74,60 +81,63 @@ export function DeploymentLogViewer({ module, autoConnect = false }: DeploymentL
 
         // Handle different message types
         switch (data.type) {
-          case 'connected':
+          case "connected":
             setModuleStatus(data.data.current_status);
-            addLog('success', `Connected to module: ${data.data.module_name}`);
+            addLog("success", `Connected to module: ${data.data.module_name}`);
             break;
 
-          case 'status':
+          case "status":
             setConnectionStatus(data.data.status);
             if (data.data.message) {
-              addLog('info', data.data.message);
+              addLog("info", data.data.message);
             }
             break;
 
-          case 'output': {
-            const line = data.data.line || '';
-            addLog(data.data.level || 'info', line);
+          case "output": {
+            const line = data.data.line || "";
+            addLog(data.data.level || "info", line);
             // Extract stage from SSH engine output prefixes
             const stageMatch = line.match(
-              /^\[ssh(?::exec:(\d+\/\d+)|:pre-stage|:validate)?\]\s*(.+)/
+              /^\[ssh(?::exec:(\d+\/\d+)|:pre-stage|:validate)?\]\s*(.+)/,
             );
             if (stageMatch) {
               if (stageMatch[1]) {
                 setCurrentStage(`Executing ${stageMatch[1]}...`);
-              } else if (line.includes(':pre-stage')) {
-                setCurrentStage('Pre-staging...');
-              } else if (line.includes(':validate')) {
-                setCurrentStage('Validating...');
-              } else if (line.includes('Reconnect')) {
+              } else if (line.includes(":pre-stage")) {
+                setCurrentStage("Pre-staging...");
+              } else if (line.includes(":validate")) {
+                setCurrentStage("Validating...");
+              } else if (line.includes("Reconnect")) {
                 setCurrentStage(stageMatch[2].substring(0, 60));
-              } else if (line.includes('Applying')) {
-                setCurrentStage('Starting...');
+              } else if (line.includes("Applying")) {
+                setCurrentStage("Starting...");
               }
             }
             break;
           }
 
-          case 'progress': {
+          case "progress": {
             const { current, total, message } = data.data;
-            addLog('info', message || `Progress: ${current}/${total}`);
+            addLog("info", message || `Progress: ${current}/${total}`);
             break;
           }
 
-          case 'error':
-            addLog('error', data.data.error);
+          case "error":
+            addLog("error", data.data.error);
             break;
 
-          case 'complete': {
+          case "complete": {
             const success = data.data.success;
-            addLog(success ? 'success' : 'error', data.data.message || 'Operation complete');
-            setConnectionStatus('idle');
-            setCurrentStage('');
+            addLog(
+              success ? "success" : "error",
+              data.data.message || "Operation complete",
+            );
+            setConnectionStatus("idle");
+            setCurrentStage("");
             break;
           }
 
-          case 'pong':
+          case "pong":
             // Heartbeat response, no action needed
             break;
 
@@ -138,20 +148,20 @@ export function DeploymentLogViewer({ module, autoConnect = false }: DeploymentL
             }
         }
       } catch (error) {
-        logger.error('Error parsing WebSocket message:', error);
+        logger.error("Error parsing WebSocket message:", error);
       }
     };
 
     ws.onerror = (error) => {
-      logger.error('WebSocket error:', error);
-      setConnectionStatus('error');
-      addLog('error', 'Connection error occurred');
+      logger.error("WebSocket error:", error);
+      setConnectionStatus("error");
+      addLog("error", "Connection error occurred");
     };
 
     ws.onclose = () => {
       setIsConnected(false);
-      setConnectionStatus('disconnected');
-      addLog('warning', 'Disconnected from deployment stream');
+      setConnectionStatus("disconnected");
+      addLog("warning", "Disconnected from deployment stream");
 
       if (pingIntervalRef.current) {
         clearInterval(pingIntervalRef.current);
@@ -164,7 +174,7 @@ export function DeploymentLogViewer({ module, autoConnect = false }: DeploymentL
 
   const disconnect = () => {
     if (wsRef.current) {
-      wsRef.current.send(JSON.stringify({ command: 'close' }));
+      wsRef.current.send(JSON.stringify({ command: "close" }));
       wsRef.current.close();
       wsRef.current = null;
     }
@@ -187,7 +197,7 @@ export function DeploymentLogViewer({ module, autoConnect = false }: DeploymentL
     }
   }, [logs, autoScroll]);
 
-  const addLog = (level: LogEntry['level'], message: string) => {
+  const addLog = (level: LogEntry["level"], message: string) => {
     const timestamp = new Date().toLocaleTimeString();
     setLogs((prev) => [...prev, { timestamp, level, message }]);
   };
@@ -197,10 +207,15 @@ export function DeploymentLogViewer({ module, autoConnect = false }: DeploymentL
   };
 
   const downloadLogs = () => {
-    const logText = logs.map((log) => `[${log.timestamp}] [${log.level.toUpperCase()}] ${log.message}`).join('\n');
-    const blob = new Blob([logText], { type: 'text/plain' });
+    const logText = logs
+      .map(
+        (log) =>
+          `[${log.timestamp}] [${log.level.toUpperCase()}] ${log.message}`,
+      )
+      .join("\n");
+    const blob = new Blob([logText], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
     a.download = `deployment-logs-${module.id}-${Date.now()}.txt`;
     document.body.appendChild(a);
@@ -209,31 +224,13 @@ export function DeploymentLogViewer({ module, autoConnect = false }: DeploymentL
     URL.revokeObjectURL(url);
   };
 
-  const getStatusColor = (status: string): 'success' | 'info' | 'outline' | 'destructive' => {
-    switch (status) {
-      case 'connected':
-      case 'running':
-        return 'success';
-      case 'starting':
-        return 'info';
-      case 'idle':
-      case 'disconnected':
-        return 'outline';
-      case 'error':
-      case 'cancelled':
-        return 'destructive';
-      default:
-        return 'outline';
-    }
-  };
-
   const getLevelIcon = (level: string) => {
     switch (level) {
-      case 'success':
+      case "success":
         return <CheckCircle2 className="h-4 w-4 text-success" />;
-      case 'error':
+      case "error":
         return <XCircle className="h-4 w-4 text-destructive" />;
-      case 'warning':
+      case "warning":
         return <AlertTriangle className="h-4 w-4 text-warning" />;
       default:
         return <Terminal className="h-4 w-4 text-info" />;
@@ -242,14 +239,14 @@ export function DeploymentLogViewer({ module, autoConnect = false }: DeploymentL
 
   const getLevelColor = (level: string) => {
     switch (level) {
-      case 'success':
-        return 'text-success';
-      case 'error':
-        return 'text-destructive';
-      case 'warning':
-        return 'text-warning';
+      case "success":
+        return "text-success";
+      case "error":
+        return "text-destructive";
+      case "warning":
+        return "text-warning";
       default:
-        return 'text-foreground';
+        return "text-foreground";
     }
   };
 
@@ -260,9 +257,7 @@ export function DeploymentLogViewer({ module, autoConnect = false }: DeploymentL
           Real-time streaming of OpenTofu operations.
         </p>
         <div className="flex items-center gap-2">
-          <Badge variant={getStatusColor(connectionStatus)}>
-            {connectionStatus}
-          </Badge>
+          <StatusBadge status={connectionStatus} />
           <Badge variant="outline">{moduleStatus}</Badge>
         </div>
       </div>
@@ -285,7 +280,12 @@ export function DeploymentLogViewer({ module, autoConnect = false }: DeploymentL
             Clear
           </Button>
 
-          <Button size="sm" variant="outline" onClick={downloadLogs} disabled={logs.length === 0}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={downloadLogs}
+            disabled={logs.length === 0}
+          >
             <Download className="h-4 w-4 mr-2" />
             Download
           </Button>
@@ -316,15 +316,25 @@ export function DeploymentLogViewer({ module, autoConnect = false }: DeploymentL
         {/* Log Output — console emulator surface */}
         <div className="border border-border rounded-lg bg-muted">
           <ScrollArea className="h-[400px]">
-            <div ref={scrollRef} className="p-4 font-mono text-sm space-y-1 text-foreground">
+            <div
+              ref={scrollRef}
+              className="p-4 font-mono text-sm space-y-1 text-foreground"
+            >
               {logs.length === 0 && isConnected && (
                 <div className="text-muted-foreground">Waiting for logs...</div>
               )}
               {logs.map((log, index) => (
-                <div key={index} className="flex items-start gap-2 hover:bg-muted/50 px-2 py-1 rounded">
+                <div
+                  key={index}
+                  className="flex items-start gap-2 hover:bg-muted/50 px-2 py-1 rounded"
+                >
                   {getLevelIcon(log.level)}
-                  <span className="text-muted-foreground text-xs">[{log.timestamp}]</span>
-                  <span className={getLevelColor(log.level)}>{log.message}</span>
+                  <span className="text-muted-foreground text-xs">
+                    [{log.timestamp}]
+                  </span>
+                  <span className={getLevelColor(log.level)}>
+                    {log.message}
+                  </span>
                 </div>
               ))}
             </div>
@@ -332,10 +342,10 @@ export function DeploymentLogViewer({ module, autoConnect = false }: DeploymentL
         </div>
 
         {/* Progress Indicator */}
-        {(connectionStatus === 'running' || currentStage) && (
+        {(connectionStatus === "running" || currentStage) && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            <span>{currentStage || 'Operation in progress...'}</span>
+            <span>{currentStage || "Operation in progress..."}</span>
           </div>
         )}
       </div>

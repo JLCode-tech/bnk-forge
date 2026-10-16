@@ -126,11 +126,21 @@ describe('LlmDashboard', () => {
     expect(histogramRequests.every((u) => u.searchParams.get('model') === 'gpt-4o')).toBe(true);
   });
 
-  it('defaults to a single cluster, not the fleet aggregate', async () => {
+  it('defaults to the fleet aggregate when no cluster scope is stored', async () => {
+    localStorage.removeItem('bnk-forge-cluster-scope');
     render(<LlmDashboard />, { initialRoute: '/observability/ai-gateway' });
 
     await waitFor(() => expect(histogramRequests.length).toBeGreaterThan(0));
-    expect(histogramRequests.every((u) => u.pathname.includes('/api/k8s/clusters/'))).toBe(true);
+    expect(histogramRequests.every((u) => !u.pathname.includes('/api/k8s/clusters/'))).toBe(true);
+  });
+
+  it('defaults to the shared cluster scope when one is stored', async () => {
+    localStorage.setItem('bnk-forge-cluster-scope', '1');
+    render(<LlmDashboard />, { initialRoute: '/observability/ai-gateway' });
+
+    await waitFor(() => expect(histogramRequests.length).toBeGreaterThan(0));
+    expect(histogramRequests.every((u) => u.pathname.includes('/api/k8s/clusters/1/'))).toBe(true);
+    localStorage.removeItem('bnk-forge-cluster-scope');
   });
 
   it('renders multi-cluster latency series when All Clusters is selected', async () => {

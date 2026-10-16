@@ -7,7 +7,14 @@
  * step from the most recently COMPLETED run and jumps straight to Launch when
  * everything it needs (agent still connected) still resolves cleanly.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   Dialog,
   DialogContent,
@@ -15,21 +22,33 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { ArrowLeft, ArrowRight, History, Loader2, Play, AlertTriangle } from 'lucide-react';
+} from "@/components/ui/select";
+import {
+  ArrowLeft,
+  ArrowRight,
+  ChevronDown,
+  ChevronRight,
+  History,
+  Loader2,
+  Play,
+  AlertTriangle,
+  RefreshCw,
+  SlidersHorizontal,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   useBenchmarkTargets,
   useProxyDeployments,
@@ -39,10 +58,12 @@ import {
   useBenchmarkRuns,
   useTriggerRun,
   useRunScenario,
-} from '@/hooks/useBenchmarks';
-import { parseApiError } from '@/lib/error-handler';
-import { ProxyBadge, targetOptionLabel } from './benchmark-utils';
-import type { SetupSection } from './benchmark-runs-view';
+} from "@/hooks/useBenchmarks";
+import { parseApiError } from "@/lib/error-handler";
+import { targetOptionLabel } from "./benchmark-constants";
+import { ProxyBadge } from "./benchmark-utils";
+import type { SetupSection } from "./benchmark-runs-view";
+import { AiperfSettingsEditor } from "./AiperfSettingsEditor";
 import {
   emptyWizardState,
   eligibleProxies as computeEligibleProxies,
@@ -52,11 +73,16 @@ import {
   autoSelectAgentId,
   canAdvanceStep,
   prefillFromRun,
+  RUN_DEFAULTS,
+  effectiveSettings,
+  diffOverrides,
+  parseSteps,
+  rateSweepMinutes,
   type WizardMode,
   type WizardStep,
-} from './run-benchmark-wizard-logic';
+} from "./run-benchmark-wizard-logic";
 
-const LAST_CONFIG_KEY_PREFIX = 'benchmarks_last_config_for_target_';
+const LAST_CONFIG_KEY_PREFIX = "benchmarks_last_config_for_target_";
 
 export interface RunBenchmarkWizardLaunchResult {
   runId?: number;
@@ -88,16 +114,65 @@ export function RunBenchmarkWizard({
   const targets = useMemo(() => targetsData?.targets ?? [], [targetsData]);
 
   const { data: proxies } = useProxyDeployments(state.targetId ?? undefined);
-  const eligibleProxies = useMemo(() => computeEligibleProxies(proxies ?? []), [proxies]);
+  const eligibleProxies = useMemo(
+    () => computeEligibleProxies(proxies ?? []),
+    [proxies],
+  );
 
-  const { data: agents } = useBenchmarkAgents();
-  const connectedAgents = useMemo(() => computeConnectedAgents(agents ?? []), [agents]);
+  const {
+    data: agents,
+    refetch: refetchAgents,
+    isFetching: isFetchingAgents,
+  } = useBenchmarkAgents();
+  const connectedAgents = useMemo(
+    () => computeConnectedAgents(agents ?? []),
+    [agents],
+  );
+  const disconnectedAgents = useMemo(
+    () => (agents ?? []).filter((a) => a.status !== "connected"),
+    [agents],
+  );
 
   const { data: configs } = useBenchmarkConfigs();
   const { data: scenarioCatalog } = useScenarios();
   const scenarios = scenarioCatalog?.scenarios ?? [];
+  const selectedScenario = scenarios.find((sc) => sc.key === state.scenarioKey);
+  const parsedSteps = parseSteps(state.steps);
+  const sweepSteps = selectedScenario?.sweep_param
+    ? Array.isArray(parsedSteps)
+      ? parsedSteps
+      : (selectedScenario.default_steps ?? [])
+    : [];
+  const sweepMinutes =
+    selectedScenario?.step_duration_floor_s != null
+      ? rateSweepMinutes(
+          sweepSteps,
+          selectedScenario.step_warmup_s ?? 0,
+          selectedScenario.step_duration_floor_s,
+          selectedScenario.step_min_requests ?? 0,
+        )
+      : null;
 
-  const { data: lastCompletedData } = useBenchmarkRuns({ status: 'completed', limit: 1, pollingEnabled: false });
+  // Settings edited at launch sit on top of the picked config (run mode) or are
+  // applied to every step of the scenario (scenario mode).
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const baseSettings = useMemo<Record<string, unknown>>(() => {
+    if (state.mode !== "run") return {};
+    return (
+      (configs ?? []).find((c) => c.id === state.configId)?.config_json ?? {}
+    );
+  }, [state.mode, state.configId, configs]);
+  const editedSettings = useMemo(
+    () => effectiveSettings(baseSettings, state.overrides),
+    [baseSettings, state.overrides],
+  );
+  const changedKeys = Object.keys(state.overrides);
+
+  const { data: lastCompletedData } = useBenchmarkRuns({
+    status: "completed",
+    limit: 1,
+    pollingEnabled: false,
+  });
   const lastCompletedRun = lastCompletedData?.runs?.[0];
 
   const triggerRun = useTriggerRun();
@@ -108,11 +183,36 @@ export function RunBenchmarkWizard({
   // synchronously the instant handleLaunch runs.
   const submittingRef = useRef(false);
 
-  const prefillFromLastRun = useCallback((jumpToLaunch: boolean) => {
-    if (!lastCompletedRun) return;
-    setState(prefillFromRun(lastCompletedRun, connectedAgents.map((a) => a.id), jumpToLaunch, eligibleProxies.map((p) => p.id)));
-    setPrefilledFromReRun(true);
-  }, [lastCompletedRun, connectedAgents, eligibleProxies]);
+  // The re-run's proxy eligibility must be judged against the LAST RUN's target,
+  // not the wizard's (still empty) selection, so load that target's proxies.
+  const reRunTargetId = open
+    ? (lastCompletedRun?.target_id ?? undefined)
+    : undefined;
+  const { data: reRunProxies, isFetched: reRunProxiesFetched } =
+    useProxyDeployments(reRunTargetId);
+  const reRunReady =
+    !!lastCompletedRun &&
+    agents !== undefined &&
+    (reRunTargetId == null || reRunProxiesFetched);
+
+  const prefillFromLastRun = useCallback(
+    (jumpToLaunch: boolean) => {
+      if (!lastCompletedRun) return;
+      const eligibleIds = computeEligibleProxies(reRunProxies ?? []).map(
+        (p) => p.id,
+      );
+      setState(
+        prefillFromRun(
+          lastCompletedRun,
+          connectedAgents.map((a) => a.id),
+          jumpToLaunch,
+          eligibleIds,
+        ),
+      );
+      setPrefilledFromReRun(true);
+    },
+    [lastCompletedRun, connectedAgents, reRunProxies],
+  );
 
   // Reset on close; on open, either prefill from "re-run last" or start blank.
   useEffect(() => {
@@ -120,14 +220,15 @@ export function RunBenchmarkWizard({
       setState(emptyWizardState());
       setLaunchError(null);
       setPrefilledFromReRun(false);
+      setSettingsOpen(false);
       submittingRef.current = false;
       return;
     }
-    if (initialReRunLast && lastCompletedRun && !prefilledFromReRun) {
+    if (initialReRunLast && reRunReady && !prefilledFromReRun) {
       prefillFromLastRun(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, initialReRunLast, lastCompletedRun, prefilledFromReRun]);
+  }, [open, initialReRunLast, reRunReady, prefilledFromReRun]);
 
   // Auto-select the target when there's exactly one.
   useEffect(() => {
@@ -152,9 +253,17 @@ export function RunBenchmarkWizard({
 
   // Default config: last-used config for this target, if it still exists.
   useEffect(() => {
-    if (!open || state.targetId == null || state.configId != null || prefilledFromReRun) return;
+    if (
+      !open ||
+      state.targetId == null ||
+      state.configId != null ||
+      prefilledFromReRun
+    )
+      return;
     try {
-      const saved = localStorage.getItem(`${LAST_CONFIG_KEY_PREFIX}${state.targetId}`);
+      const saved = localStorage.getItem(
+        `${LAST_CONFIG_KEY_PREFIX}${state.targetId}`,
+      );
       const savedId = saved ? Number(saved) : null;
       if (savedId && (configs ?? []).some((c) => c.id === savedId)) {
         setState((s) => ({ ...s, configId: savedId }));
@@ -171,11 +280,22 @@ export function RunBenchmarkWizard({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Run benchmark</DialogTitle>
-            <DialogDescription>No targets yet — add one on the Setup tab first.</DialogDescription>
+            <DialogDescription>
+              No targets yet — add one on the Setup tab first.
+            </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
-            <Button onClick={() => { onOpenChange(false); onGoToSetup('targets'); }}>Go to Setup</Button>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+            <Button
+              onClick={() => {
+                onOpenChange(false);
+                onGoToSetup("targets");
+              }}
+            >
+              Go to Setup
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -190,33 +310,45 @@ export function RunBenchmarkWizard({
 
   const canGoNext = canAdvanceStep(state.step, state);
 
-  const goNext = () => setState((s) => ({ ...s, step: (Math.min(4, s.step + 1) as WizardStep) }));
-  const goBack = () => setState((s) => ({ ...s, step: (Math.max(1, s.step - 1) as WizardStep) }));
+  const goNext = () =>
+    setState((s) => ({ ...s, step: Math.min(4, s.step + 1) as WizardStep }));
+  const goBack = () =>
+    setState((s) => ({ ...s, step: Math.max(1, s.step - 1) as WizardStep }));
 
   const handleLaunch = () => {
     if (isLaunching || submittingRef.current) return; // single-submission guard
     setLaunchError(null);
 
-    if (state.targetId == null || state.proxyId == null || state.agentId == null) {
-      setLaunchError('Missing target, proxy, or agent selection.');
+    if (
+      state.targetId == null ||
+      state.proxyId == null ||
+      state.agentId == null
+    ) {
+      setLaunchError("Missing target, proxy, or agent selection.");
       return;
     }
     if (!selectedProxyStillEligible) {
-      setLaunchError('The selected proxy is no longer ready or available. Go back and pick another proxy.');
+      setLaunchError(
+        "The selected proxy is no longer ready or available. Go back and pick another proxy.",
+      );
       return;
     }
     if (!selectedAgentStillConnected) {
-      setLaunchError('The selected agent is no longer connected. Go back and pick another agent.');
+      setLaunchError(
+        "The selected agent is no longer connected. Go back and pick another agent.",
+      );
       return;
     }
 
     submittingRef.current = true;
-    const clearSubmitting = () => { submittingRef.current = false; };
+    const clearSubmitting = () => {
+      submittingRef.current = false;
+    };
 
-    if (state.mode === 'scenario') {
+    if (state.mode === "scenario") {
       if (!state.scenarioKey) {
         submittingRef.current = false;
-        setLaunchError('Pick a scenario first.');
+        setLaunchError("Pick a scenario first.");
         return;
       }
       runScenario.mutate(
@@ -225,6 +357,11 @@ export function RunBenchmarkWizard({
           proxyId: state.proxyId,
           data: {
             scenario_key: state.scenarioKey,
+            overrides: changedKeys.length ? state.overrides : undefined,
+            steps:
+              selectedScenario?.sweep_param && Array.isArray(parsedSteps)
+                ? parsedSteps
+                : undefined,
             agent_id: state.agentId,
             run_label: state.runLabel || undefined,
           },
@@ -234,7 +371,10 @@ export function RunBenchmarkWizard({
             onLaunched({ groupId: result.run_group_id });
             onOpenChange(false);
           },
-          onError: (err) => { clearSubmitting(); setLaunchError(parseApiError(err).message); },
+          onError: (err) => {
+            clearSubmitting();
+            setLaunchError(parseApiError(err).message);
+          },
         },
       );
       return;
@@ -246,6 +386,7 @@ export function RunBenchmarkWizard({
         proxyId: state.proxyId,
         data: {
           config_id: state.configId ?? undefined,
+          overrides: changedKeys.length ? state.overrides : undefined,
           agent_id: state.agentId,
           run_label: state.runLabel || undefined,
         },
@@ -254,7 +395,10 @@ export function RunBenchmarkWizard({
         onSuccess: (result) => {
           try {
             if (state.configId != null && state.targetId != null) {
-              localStorage.setItem(`${LAST_CONFIG_KEY_PREFIX}${state.targetId}`, String(state.configId));
+              localStorage.setItem(
+                `${LAST_CONFIG_KEY_PREFIX}${state.targetId}`,
+                String(state.configId),
+              );
             }
           } catch {
             /* localStorage unavailable — non-fatal */
@@ -262,20 +406,31 @@ export function RunBenchmarkWizard({
           onLaunched({ runId: result.run_id });
           onOpenChange(false);
         },
-        onError: (err) => { clearSubmitting(); setLaunchError(parseApiError(err).message); },
+        onError: (err) => {
+          clearSubmitting();
+          setLaunchError(parseApiError(err).message);
+        },
       },
     );
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent
+        className={
+          state.step === 3 && settingsOpen
+            ? "sm:max-w-2xl max-h-[90vh] overflow-y-auto"
+            : "sm:max-w-lg"
+        }
+      >
         <DialogHeader>
           <div className="flex items-center justify-between gap-2">
             <DialogTitle>Run benchmark</DialogTitle>
-            {lastCompletedRun && !prefilledFromReRun && (
+            {reRunReady && !prefilledFromReRun && (
               <Button
-                variant="ghost" size="sm" className="gap-1.5 text-xs"
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 text-xs"
                 onClick={() => prefillFromLastRun(true)}
               >
                 <History className="h-3.5 w-3.5" />
@@ -292,10 +447,20 @@ export function RunBenchmarkWizard({
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Target</Label>
                 <Select
-                  value={state.targetId != null ? String(state.targetId) : undefined}
-                  onValueChange={(v) => setState((s) => ({ ...s, targetId: Number(v), proxyId: null }))}
+                  value={
+                    state.targetId != null ? String(state.targetId) : undefined
+                  }
+                  onValueChange={(v) =>
+                    setState((s) => ({
+                      ...s,
+                      targetId: Number(v),
+                      proxyId: null,
+                    }))
+                  }
                 >
-                  <SelectTrigger><SelectValue placeholder="Select a target" /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a target" />
+                  </SelectTrigger>
                   <SelectContent>
                     {targets.map((t) => (
                       <SelectItem key={t.id} value={String(t.id)}>
@@ -313,21 +478,37 @@ export function RunBenchmarkWizard({
                     <Alert>
                       <AlertTriangle className="h-4 w-4" />
                       <AlertDescription>
-                        No ready proxies on this target.{' '}
-                        <button className="underline" onClick={() => { onOpenChange(false); onGoToSetup('targets'); }}>
+                        No ready proxies on this target.{" "}
+                        <button
+                          className="underline"
+                          onClick={() => {
+                            onOpenChange(false);
+                            onGoToSetup("targets");
+                          }}
+                        >
                           Deploy one on Setup
                         </button>
                       </AlertDescription>
                     </Alert>
                   ) : (
                     <Select
-                      value={state.proxyId != null ? String(state.proxyId) : undefined}
-                      onValueChange={(v) => setState((s) => ({ ...s, proxyId: Number(v) }))}
+                      value={
+                        state.proxyId != null
+                          ? String(state.proxyId)
+                          : undefined
+                      }
+                      onValueChange={(v) =>
+                        setState((s) => ({ ...s, proxyId: Number(v) }))
+                      }
                     >
-                      <SelectTrigger><SelectValue placeholder="Select a proxy" /></SelectTrigger>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a proxy" />
+                      </SelectTrigger>
                       <SelectContent>
                         {eligibleProxies.map((p) => (
-                          <SelectItem key={p.id} value={String(p.id)}>{p.proxy_type}</SelectItem>
+                          <SelectItem key={p.id} value={String(p.id)}>
+                            {p.proxy_type}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -340,29 +521,104 @@ export function RunBenchmarkWizard({
           {state.step === 2 && (
             <div className="space-y-3">
               {connectedAgents.length === 0 ? (
-                <Alert variant="destructive">
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertDescription>
-                    No connected agents.{' '}
-                    <button className="underline" onClick={() => { onOpenChange(false); onGoToSetup('agents'); }}>
-                      Register one on Setup
-                    </button>
-                  </AlertDescription>
-                </Alert>
+                <div className="space-y-3">
+                  <Alert variant="destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription className="flex items-center justify-between">
+                      <span>
+                        {disconnectedAgents.length > 0
+                          ? `${disconnectedAgents.length} configured agent(s) disconnected.`
+                          : "No connected agents."}{" "}
+                        <button
+                          className="underline font-medium"
+                          onClick={() => {
+                            onOpenChange(false);
+                            onGoToSetup("agents");
+                          }}
+                        >
+                          Connect on Setup → Agents
+                        </button>
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-xs gap-1 ml-2 shrink-0"
+                        onClick={() => refetchAgents()}
+                        disabled={isFetchingAgents}
+                      >
+                        <RefreshCw
+                          className={cn(
+                            "h-3 w-3",
+                            isFetchingAgents && "animate-spin",
+                          )}
+                        />
+                        Refresh
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                </div>
               ) : (
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Agent</Label>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs text-muted-foreground">
+                      Agent
+                    </Label>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                      onClick={() => refetchAgents()}
+                      disabled={isFetchingAgents}
+                    >
+                      <RefreshCw
+                        className={cn(
+                          "h-3 w-3",
+                          isFetchingAgents && "animate-spin",
+                        )}
+                      />
+                      Refresh
+                    </Button>
+                  </div>
                   <Select
-                    value={state.agentId != null ? String(state.agentId) : undefined}
-                    onValueChange={(v) => setState((s) => ({ ...s, agentId: Number(v) }))}
+                    value={
+                      state.agentId != null ? String(state.agentId) : undefined
+                    }
+                    onValueChange={(v) =>
+                      setState((s) => ({ ...s, agentId: Number(v) }))
+                    }
                   >
-                    <SelectTrigger><SelectValue placeholder="Select a connected agent" /></SelectTrigger>
+                    <SelectTrigger className="[&>span]:truncate">
+                      <SelectValue placeholder="Select a connected agent" />
+                    </SelectTrigger>
                     <SelectContent>
                       {connectedAgents.map((a) => (
-                        <SelectItem key={a.id} value={String(a.id)}>{a.name}</SelectItem>
+                        <SelectItem key={a.id} value={String(a.id)}>
+                          {a.name}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {disconnectedAgents.length > 0 && (
+                    <div className="flex items-center justify-between p-2 rounded-md bg-muted/40 border border-border text-xs text-muted-foreground">
+                      <span className="truncate">
+                        {disconnectedAgents.length} configured{" "}
+                        {disconnectedAgents.length === 1
+                          ? "agent is"
+                          : "agents are"}{" "}
+                        disconnected (
+                        {disconnectedAgents.map((a) => a.name).join(", ")}).
+                      </span>
+                      <button
+                        className="underline text-primary hover:text-primary/80 font-medium ml-2 shrink-0"
+                        onClick={() => {
+                          onOpenChange(false);
+                          onGoToSetup("agents");
+                        }}
+                      >
+                        Connect in Setup
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -372,61 +628,236 @@ export function RunBenchmarkWizard({
             <div className="space-y-3">
               <RadioGroup
                 value={state.mode}
-                onValueChange={(v) => setState((s) => ({ ...s, mode: v as WizardMode }))}
+                onValueChange={(v) =>
+                  setState((s) => ({
+                    ...s,
+                    mode: v as WizardMode,
+                    overrides: {},
+                  }))
+                }
                 className="flex gap-4"
               >
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="run" id="wizard-mode-run" />
-                  <Label htmlFor="wizard-mode-run" className="text-sm cursor-pointer">Saved config</Label>
+                  <Label
+                    htmlFor="wizard-mode-run"
+                    className="text-sm cursor-pointer"
+                  >
+                    Saved config
+                  </Label>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="scenario" id="wizard-mode-scenario" disabled={scenarios.length === 0} />
-                  <Label htmlFor="wizard-mode-scenario" className="text-sm cursor-pointer">Scenario</Label>
+                  <RadioGroupItem
+                    value="scenario"
+                    id="wizard-mode-scenario"
+                    disabled={scenarios.length === 0}
+                  />
+                  <Label
+                    htmlFor="wizard-mode-scenario"
+                    className="text-sm cursor-pointer"
+                  >
+                    Scenario
+                  </Label>
                 </div>
               </RadioGroup>
 
-              {state.mode === 'run' ? (
+              {state.mode === "run" ? (
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Config (optional — defaults if none picked)</Label>
+                  <Label className="text-xs text-muted-foreground">
+                    Config (optional — defaults if none picked)
+                  </Label>
                   <Select
-                    value={state.configId != null ? String(state.configId) : 'none'}
-                    onValueChange={(v) => setState((s) => ({ ...s, configId: v === 'none' ? null : Number(v) }))}
+                    value={
+                      state.configId != null ? String(state.configId) : "none"
+                    }
+                    onValueChange={(v) =>
+                      setState((s) => ({
+                        ...s,
+                        configId: v === "none" ? null : Number(v),
+                        overrides: {},
+                      }))
+                    }
                   >
-                    <SelectTrigger><SelectValue placeholder="Default config" /></SelectTrigger>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Default config" />
+                    </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">Default (no saved config)</SelectItem>
+                      <SelectItem value="none">
+                        Default (no saved config)
+                      </SelectItem>
                       {(configs ?? []).map((c) => (
-                        <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                        <SelectItem key={c.id} value={String(c.id)}>
+                          {c.name}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
               ) : (
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Scenario</Label>
+                  <Label className="text-xs text-muted-foreground">
+                    Scenario
+                  </Label>
                   <Select
                     value={state.scenarioKey ?? undefined}
-                    onValueChange={(v) => setState((s) => ({ ...s, scenarioKey: v }))}
+                    onValueChange={(v) =>
+                      setState((s) => ({
+                        ...s,
+                        scenarioKey: v,
+                        overrides: {},
+                        steps: "",
+                      }))
+                    }
                   >
-                    <SelectTrigger><SelectValue placeholder="Select a scenario" /></SelectTrigger>
+                    <SelectTrigger className="[&>span]:truncate">
+                      <SelectValue placeholder="Select a scenario" />
+                    </SelectTrigger>
                     <SelectContent>
                       {scenarios.map((sc) => (
-                        <SelectItem key={sc.key} value={sc.key}>
-                          {sc.name} <span className="text-muted-foreground">({sc.child_run_count} runs)</span>
+                        <SelectItem
+                          key={sc.key}
+                          value={sc.key}
+                          className="whitespace-nowrap"
+                        >
+                          <div className="flex items-center justify-between gap-4 w-full">
+                            <span>{sc.name}</span>
+                            <span className="text-muted-foreground text-xs shrink-0">
+                              ({sc.child_run_count} runs)
+                            </span>
+                          </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {selectedScenario && (
+                    <p className="text-xs text-muted-foreground">
+                      {selectedScenario.description}
+                    </p>
+                  )}
                 </div>
               )}
 
+              {state.mode === "scenario" &&
+                selectedScenario?.sweep_param === "request_rate" && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">
+                      Request rates (req/s)
+                    </Label>
+                    <Input
+                      value={state.steps}
+                      onChange={(e) =>
+                        setState((s) => ({ ...s, steps: e.target.value }))
+                      }
+                      placeholder={(selectedScenario.default_steps ?? []).join(
+                        ", ",
+                      )}
+                    />
+                    <p
+                      className={
+                        parsedSteps === "invalid"
+                          ? "text-xs text-destructive"
+                          : "text-xs text-muted-foreground"
+                      }
+                    >
+                      {parsedSteps === "invalid"
+                        ? "Enter 1–12 rates above 0, separated by commas."
+                        : `${sweepSteps.length} steps, about ${sweepMinutes} min. Pick rates from light load to past the point where the proxy saturates.`}
+                    </p>
+                  </div>
+                )}
+
+              {state.mode === "scenario" &&
+                selectedScenario?.sweep_param === "concurrency" && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">
+                      Concurrent sessions (ladder)
+                    </Label>
+                    <Input
+                      value={state.steps}
+                      onChange={(e) =>
+                        setState((s) => ({ ...s, steps: e.target.value }))
+                      }
+                      placeholder={(selectedScenario.default_steps ?? []).join(
+                        ", ",
+                      )}
+                    />
+                    <p
+                      className={
+                        parsedSteps === "invalid"
+                          ? "text-xs text-destructive"
+                          : "text-xs text-muted-foreground"
+                      }
+                    >
+                      {parsedSteps === "invalid"
+                        ? "Enter 1–12 concurrency levels above 0, separated by commas."
+                        : `${sweepSteps.length} concurrent session steps. Measures multi-turn agentic scaling.`}
+                    </p>
+                  </div>
+                )}
+
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Run label (optional)</Label>
+                <Label className="text-xs text-muted-foreground">
+                  Run label (optional)
+                </Label>
                 <Input
                   value={state.runLabel}
-                  onChange={(e) => setState((s) => ({ ...s, runLabel: e.target.value }))}
-                  placeholder={selectedProxy ? `${selectedProxy.proxy_type}-${selectedTarget?.name ?? ''}` : ''}
+                  onChange={(e) =>
+                    setState((s) => ({ ...s, runLabel: e.target.value }))
+                  }
+                  placeholder={
+                    selectedProxy
+                      ? `${selectedProxy.proxy_type}-${selectedTarget?.name ?? ""}`
+                      : ""
+                  }
                 />
+              </div>
+
+              <div className="rounded-md border border-border">
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-between px-3 py-2 text-sm"
+                  onClick={() => setSettingsOpen((o) => !o)}
+                >
+                  <span className="flex items-center gap-2">
+                    <SlidersHorizontal className="h-3.5 w-3.5" />
+                    aiperf settings
+                    {changedKeys.length > 0 && (
+                      <Badge variant="muted">
+                        {changedKeys.length} changed
+                      </Badge>
+                    )}
+                  </span>
+                  {settingsOpen ? (
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  ) : (
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  )}
+                </button>
+                {settingsOpen && (
+                  <div className="border-t border-border p-3">
+                    <AiperfSettingsEditor
+                      value={editedSettings}
+                      defaults={
+                        state.mode === "run"
+                          ? { ...RUN_DEFAULTS, ...baseSettings }
+                          : {}
+                      }
+                      onChange={(next) =>
+                        setState((s) => ({
+                          ...s,
+                          overrides: diffOverrides(baseSettings, next),
+                        }))
+                      }
+                      lockedNote={
+                        state.mode === "scenario"
+                          ? selectedScenario?.sweep_param === "request_rate"
+                            ? `Applied to every step. Each step keeps its rate, at least ${selectedScenario.step_warmup_s} s warmup and ${selectedScenario.step_duration_floor_s} s measured; longer values here are kept.`
+                            : "Applied to every step of the scenario. Leave load fields empty to keep its sweep."
+                          : "url, model and endpoint come from the target and proxy."
+                      }
+                    />
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -434,24 +865,64 @@ export function RunBenchmarkWizard({
           {state.step === 4 && (
             <div className="space-y-3 text-sm">
               <div className="rounded-md border border-border p-3 space-y-2">
-                <SummaryRow label="Target" value={selectedTarget?.name ?? '—'} />
-                <SummaryRow label="Proxy" value={selectedProxy ? <ProxyBadge proxy={selectedProxy.proxy_type} /> : '—'} />
-                <SummaryRow label="Agent" value={selectedAgent?.name ?? '—'} />
                 <SummaryRow
-                  label={state.mode === 'scenario' ? 'Scenario' : 'Config'}
+                  label="Target"
+                  value={selectedTarget?.name ?? "—"}
+                />
+                <SummaryRow
+                  label="Proxy"
                   value={
-                    state.mode === 'scenario'
-                      ? scenarios.find((sc) => sc.key === state.scenarioKey)?.name ?? state.scenarioKey ?? '—'
-                      : (configs ?? []).find((c) => c.id === state.configId)?.name ?? 'Default'
+                    selectedProxy ? (
+                      <ProxyBadge proxy={selectedProxy.proxy_type} />
+                    ) : (
+                      "—"
+                    )
                   }
                 />
+                <SummaryRow label="Agent" value={selectedAgent?.name ?? "—"} />
+                <SummaryRow
+                  label={state.mode === "scenario" ? "Scenario" : "Config"}
+                  value={
+                    state.mode === "scenario"
+                      ? (scenarios.find((sc) => sc.key === state.scenarioKey)
+                          ?.name ??
+                        state.scenarioKey ??
+                        "—")
+                      : ((configs ?? []).find((c) => c.id === state.configId)
+                          ?.name ?? "Default")
+                  }
+                />
+                {state.mode === "scenario" && sweepSteps.length > 0 && (
+                  <SummaryRow
+                    label="Request rates"
+                    value={`${sweepSteps.join(", ")} req/s · about ${sweepMinutes} min`}
+                  />
+                )}
+                {changedKeys.length > 0 && (
+                  <SummaryRow
+                    label="Settings changed"
+                    value={
+                      <span className="font-mono text-xs">
+                        {changedKeys
+                          .map(
+                            (k) => `${k}=${JSON.stringify(state.overrides[k])}`,
+                          )
+                          .join(", ")}
+                      </span>
+                    }
+                  />
+                )}
               </div>
 
               {!selectedProxyStillEligible && (
                 <Alert variant="destructive">
                   <AlertTriangle className="h-4 w-4" />
                   <AlertDescription>
-                    The selected proxy is no longer ready. <button className="underline" onClick={goBack}>Go back</button> and pick another.
+                    The selected proxy is no longer ready.{" "}
+                    <button className="underline" onClick={goBack}>
+                      Go back
+                    </button>{" "}
+                    and pick another.
                   </AlertDescription>
                 </Alert>
               )}
@@ -460,7 +931,11 @@ export function RunBenchmarkWizard({
                 <Alert variant="destructive">
                   <AlertTriangle className="h-4 w-4" />
                   <AlertDescription>
-                    The selected agent disconnected. <button className="underline" onClick={goBack}>Go back</button> and pick another.
+                    The selected agent disconnected.{" "}
+                    <button className="underline" onClick={goBack}>
+                      Go back
+                    </button>{" "}
+                    and pick another.
                   </AlertDescription>
                 </Alert>
               )}
@@ -478,22 +953,44 @@ export function RunBenchmarkWizard({
         <DialogFooter className="flex items-center justify-between sm:justify-between">
           <div>
             {state.step > 1 && (
-              <Button variant="ghost" size="sm" className="gap-1" onClick={goBack} disabled={isLaunching}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1"
+                onClick={goBack}
+                disabled={isLaunching}
+              >
                 <ArrowLeft className="h-3.5 w-3.5" />
                 Back
               </Button>
             )}
           </div>
           <div className="flex gap-2">
-            <Badge variant="muted" className="self-center">{state.step}/4</Badge>
+            <Badge variant="muted" className="self-center">
+              {state.step}/4
+            </Badge>
             {state.step < 4 ? (
-              <Button size="sm" className="gap-1" disabled={!canGoNext} onClick={goNext}>
+              <Button
+                size="sm"
+                className="gap-1"
+                disabled={!canGoNext}
+                onClick={goNext}
+              >
                 Next
                 <ArrowRight className="h-3.5 w-3.5" />
               </Button>
             ) : (
-              <Button size="sm" className="gap-1.5" onClick={handleLaunch} disabled={isLaunching}>
-                {isLaunching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+              <Button
+                size="sm"
+                className="gap-1.5"
+                onClick={handleLaunch}
+                disabled={isLaunching}
+              >
+                {isLaunching ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Play className="h-3.5 w-3.5" />
+                )}
                 Launch
               </Button>
             )}

@@ -681,7 +681,7 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
                       <Alert className="border-warning/30 bg-warning/10 py-2">
                         <Terminal className="h-4 w-4 text-warning" />
                         <AlertDescription className="text-xs text-foreground/80">
-                          <strong>SSH Jumphost</strong> — All discovery and cluster access will be tunneled through <Badge variant="outline" className="text-[10px] px-1 py-0 mx-0.5">{selected.username}@{selected.host}</Badge>.
+                          <strong>SSH Jumphost</strong> — All discovery and cluster access will be tunneled through <Badge variant="outline" className="text-2xs px-1 py-0 mx-0.5">{selected.username}@{selected.host}</Badge>.
                           After creation, BNK Forge will auto-detect available clusters.
                         </AlertDescription>
                       </Alert>
@@ -691,7 +691,7 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
                     <Alert className="border-warning/30 bg-warning/10 py-2">
                       <Terminal className="h-4 w-4 text-warning" />
                       <AlertDescription className="text-xs text-foreground/80">
-                        <strong>SSH Jumphost</strong> — All discovery and cluster access will be tunneled through <Badge variant="outline" className="text-[10px] px-1 py-0 mx-0.5">{newSshCred.username}@{newSshCred.host}</Badge>.
+                        <strong>SSH Jumphost</strong> — All discovery and cluster access will be tunneled through <Badge variant="outline" className="text-2xs px-1 py-0 mx-0.5">{newSshCred.username}@{newSshCred.host}</Badge>.
                         After creation, BNK Forge will auto-detect available clusters.
                       </AlertDescription>
                     </Alert>

@@ -1,24 +1,24 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
-import { countDetectedClusters } from '@/lib/api/kubernetes';
-import type { K8sClusterCreateRequest, K8sClusterUpdateRequest } from '@/types';
-import { QUERY_STALE_TIME, POLL_INTERVALS } from '@/lib/constants';
-import { notify } from '@/lib/notify';
-import { queryKeys } from '@/lib/queryKeys';
-import { useAppMutation } from '@/hooks/lib/useAppMutation';
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
+import { countDetectedClusters } from "@/lib/api/kubernetes";
+import type { K8sClusterCreateRequest, K8sClusterUpdateRequest } from "@/types";
+import { QUERY_STALE_TIME, POLL_INTERVALS } from "@/lib/constants";
+import { notify } from "@/lib/notify";
+import { queryKeys } from "@/lib/queryKeys";
+import { useAppMutation } from "@/hooks/lib/useAppMutation";
 
 // Stops polling when the tab is hidden. Mirrors the pattern used by
 // useSystem / useFleet / ProcessMetricsBar so background tabs don't
 // hammer the backend.
 function useDocumentVisibility(): boolean {
   const [isVisible, setIsVisible] = useState(() =>
-    typeof document !== 'undefined' ? !document.hidden : true
+    typeof document !== "undefined" ? !document.hidden : true,
   );
   useEffect(() => {
     const handler = () => setIsVisible(!document.hidden);
-    document.addEventListener('visibilitychange', handler);
-    return () => document.removeEventListener('visibilitychange', handler);
+    document.addEventListener("visibilitychange", handler);
+    return () => document.removeEventListener("visibilitychange", handler);
   }, []);
   return isVisible;
 }
@@ -41,7 +41,10 @@ export function useAllClusters() {
   });
 }
 
-export function useProjectClusters(projectId: number, options?: { pollingEnabled?: boolean }) {
+export function useProjectClusters(
+  projectId: number,
+  options?: { pollingEnabled?: boolean },
+) {
   return useQuery({
     queryKey: queryKeys.k8s.clusters.byProject(projectId),
     queryFn: () => api.getProjectClusters(projectId),
@@ -63,12 +66,23 @@ export function useCreateCluster(options?: { silent?: boolean }) {
   const queryClient = useQueryClient();
 
   return useAppMutation({
-    mutationFn: ({ projectId, data }: { projectId: number; data: K8sClusterCreateRequest }) =>
-      api.createCluster(projectId, data),
+    mutationFn: ({
+      projectId,
+      data,
+    }: {
+      projectId: number;
+      data: K8sClusterCreateRequest;
+    }) => api.createCluster(projectId, data),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.k8s.clusters.byProject(variables.projectId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.k8s.clusters.batchConnectivity() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(variables.projectId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.k8s.clusters.byProject(variables.projectId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.k8s.clusters.batchConnectivity(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.projects.detail(variables.projectId),
+      });
     },
     silent: options?.silent,
   });
@@ -78,8 +92,13 @@ export function useUpdateCluster(options?: { silent?: boolean }) {
   const queryClient = useQueryClient();
 
   return useAppMutation({
-    mutationFn: ({ clusterId, data }: { clusterId: number; data: K8sClusterUpdateRequest }) =>
-      api.updateCluster(clusterId, data),
+    mutationFn: ({
+      clusterId,
+      data,
+    }: {
+      clusterId: number;
+      data: K8sClusterUpdateRequest;
+    }) => api.updateCluster(clusterId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.k8s.clusters.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.projects.all });
@@ -96,7 +115,9 @@ export function useDeleteCluster() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.k8s.clusters.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.projects.all });
-      notify.success('Cluster deleted successfully', undefined, { category: 'cluster' });
+      notify.success("Cluster deleted successfully", undefined, {
+        category: "cluster",
+      });
     },
   });
 }
@@ -106,9 +127,15 @@ export function useTestClusterConnection() {
     mutationFn: (clusterId: number) => api.testClusterConnection(clusterId),
     onSuccess: (data) => {
       if (data.success) {
-        notify.success('Connection successful', `Kubernetes version: ${data.version || 'Unknown'}`, { category: 'cluster' });
+        notify.success(
+          "Connection successful",
+          `Kubernetes version: ${data.version || "Unknown"}`,
+          { category: "cluster" },
+        );
       } else {
-        notify.error('Connection test failed', data.message, { category: 'cluster' });
+        notify.error("Connection test failed", data.message, {
+          category: "cluster",
+        });
       }
     },
   });
@@ -120,24 +147,36 @@ export function useDetectClusters() {
   return useAppMutation({
     mutationFn: (projectId: number) => api.detectClusters(projectId),
     onSuccess: (data, projectId) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.k8s.clusters.byProject(projectId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.k8s.clusters.batchConnectivity() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(projectId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.k8s.clusters.byProject(projectId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.k8s.clusters.batchConnectivity(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.projects.detail(projectId),
+      });
 
       // Module-output detection lists already-registered clusters as registered too.
       const detected = countDetectedClusters(data);
       if (detected > 0) {
         notify.success(
           `Detected ${detected} cluster(s)`,
-          'New clusters were registered; existing ones were left unchanged',
-          { category: 'cluster' },
+          "New clusters were registered; existing ones were left unchanged",
+          { category: "cluster" },
         );
       } else {
-        notify.info('No clusters detected', data.message, { category: 'cluster' });
+        notify.info("No clusters detected", data.message, {
+          category: "cluster",
+        });
       }
 
       if (data.errors.length > 0) {
-        notify.warning(`${data.errors.length} cluster(s) failed to register`, 'Check console for details', { category: 'cluster' });
+        notify.warning(
+          `${data.errors.length} cluster(s) failed to register`,
+          "Check console for details",
+          { category: "cluster" },
+        );
       }
     },
   });
@@ -145,6 +184,7 @@ export function useDetectClusters() {
 
 /** @deprecated Use useDetectClusters(). */
 export const useDetectEKSClusters = useDetectClusters;
+export const useAddDetectedClusters = useDetectClusters;
 
 export function useRefreshClusterKubeconfig() {
   const queryClient = useQueryClient();
@@ -154,18 +194,21 @@ export function useRefreshClusterKubeconfig() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.k8s.clusters.all });
       notify.success(
-        data.message || 'Kubeconfig refreshed successfully',
-        data.refresh_method === 'ssh'
-          ? 'Kubeconfig re-fetched from remote host via SSH'
-          : 'The cluster now uses updated cloud credentials',
-        { category: 'cluster' },
+        data.message || "Kubeconfig refreshed successfully",
+        data.refresh_method === "ssh"
+          ? "Kubeconfig re-fetched from remote host via SSH"
+          : "The cluster now uses updated cloud credentials",
+        { category: "cluster" },
       );
     },
   });
 }
 
 // Connectivity Probes
-export function useClusterConnectivity(clusterId: number, options?: { enabled?: boolean }) {
+export function useClusterConnectivity(
+  clusterId: number,
+  options?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: queryKeys.k8s.clusters.connectivity(clusterId),
     queryFn: () => api.getClusterConnectivity(clusterId),
@@ -174,7 +217,10 @@ export function useClusterConnectivity(clusterId: number, options?: { enabled?: 
   });
 }
 
-export function useBatchConnectivity(options?: { enabled?: boolean; pollingEnabled?: boolean }) {
+export function useBatchConnectivity(options?: {
+  enabled?: boolean;
+  pollingEnabled?: boolean;
+}) {
   return useQuery({
     queryKey: queryKeys.k8s.clusters.batchConnectivity(),
     queryFn: api.getBatchConnectivity,
@@ -185,7 +231,10 @@ export function useBatchConnectivity(options?: { enabled?: boolean; pollingEnabl
 }
 
 // Namespaces
-export function useClusterNamespaces(clusterId: number, options?: { enabled?: boolean }) {
+export function useClusterNamespaces(
+  clusterId: number,
+  options?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: queryKeys.k8s.clusters.namespaces(clusterId),
     queryFn: () => api.getClusterNamespaces(clusterId),
@@ -199,7 +248,7 @@ export function useClusterResources(
   clusterId: number,
   resourceType: string,
   params?: { namespace?: string; label_selector?: string },
-  options?: { pollingEnabled?: boolean; enabled?: boolean }
+  options?: { pollingEnabled?: boolean; enabled?: boolean },
 ) {
   return useQuery({
     queryKey: queryKeys.k8s.clusters.resources(clusterId, resourceType, params),
@@ -217,11 +266,17 @@ export function useClusterResources(
 export function useClusterResourceSummary(
   clusterId: number,
   namespace: string | undefined,
-  options?: { enabled?: boolean }
+  options?: { enabled?: boolean },
 ) {
   const isVisible = useDocumentVisibility();
   return useQuery({
-    queryKey: ['k8s', 'clusters', clusterId, 'resource-summary', namespace ?? 'all'],
+    queryKey: [
+      "k8s",
+      "clusters",
+      clusterId,
+      "resource-summary",
+      namespace ?? "all",
+    ],
     queryFn: () => api.getClusterResourceSummary(clusterId, namespace),
     enabled: options?.enabled !== false && !!clusterId,
     // Backend caches for 60s; match that so we don't re-request until needed.

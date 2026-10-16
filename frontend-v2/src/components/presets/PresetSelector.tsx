@@ -102,7 +102,7 @@ export function PresetSelector({
           <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
             {category.label}
             {isModified && (
-              <Badge variant="warning" className="text-[10px] py-0">
+              <Badge variant="warning" className="text-2xs py-0">
                 <PenLine className="h-2.5 w-2.5 mr-1" />
                 Modified
               </Badge>
@@ -180,7 +180,7 @@ export function PresetSelector({
                     <Label className="text-xs flex items-center gap-2">
                       {field.label}
                       {fieldModified && (
-                        <Badge variant="warning" className="text-[10px] py-0">
+                        <Badge variant="warning" className="text-2xs py-0">
                           Modified
                         </Badge>
                       )}

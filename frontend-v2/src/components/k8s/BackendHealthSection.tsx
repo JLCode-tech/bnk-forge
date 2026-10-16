@@ -126,7 +126,7 @@ export function BackendHealthSection({
       )}
 
       {data?.available && data.backends.length > 0 && (
-        <p className="text-[10px] italic text-muted-foreground mt-1">
+        <p className="text-2xs italic text-muted-foreground mt-1">
           Source: per-pod <code>/metrics</code> via K8s API server proxy, vLLM-shape parser. Correlate with router-level p50/p95 above to identify queue-vs-backend bottlenecks.
         </p>
       )}
@@ -142,14 +142,14 @@ function BackendRow({ b }: { b: BackendPodHealth }) {
     <tr className="border-t">
       <td className="py-2 px-3">
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className={cn('text-[9px]', BACKEND_KIND_COLOR[b.backend_kind])}>
+          <Badge variant="outline" className={cn('text-2xs', BACKEND_KIND_COLOR[b.backend_kind])}>
             {b.backend_kind}
           </Badge>
           <div>
             <div className="font-mono text-xs truncate max-w-[200px]" title={b.pod_name}>
               {b.pod_name}
             </div>
-            <div className="text-[10px] text-muted-foreground truncate max-w-[200px]">
+            <div className="text-2xs text-muted-foreground truncate max-w-[200px]">
               {b.model || 'unknown model'}
               <span
                 className={cn(
@@ -205,12 +205,12 @@ function BackendRow({ b }: { b: BackendPodHealth }) {
         {b.gpu_util_pct != null ? (
           <>
             <div className={cn('font-semibold', gpuColor)}>{b.gpu_util_pct}%</div>
-            <div className="text-[10px] text-muted-foreground">
+            <div className="text-2xs text-muted-foreground">
               {b.vram_used_gb?.toFixed(1) ?? '—'}/{b.vram_total_gb ?? '—'}GB · {b.gpu_temp_c ?? '—'}°C
             </div>
           </>
         ) : (
-          <span className="text-muted-foreground text-[10px]">N/A — no DCGM</span>
+          <span className="text-muted-foreground text-2xs">N/A — no DCGM</span>
         )}
       </td>
     </tr>

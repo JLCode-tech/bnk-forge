@@ -1,13 +1,14 @@
 /**
  * Shared filter state for the AI Gateway observability pages, synced to the
  * URL search params (cluster/range/model/status/tab) so views are linkable and
- * survive reloads. Cluster defaults to the HGX cluster when present, else the
- * first cluster; the fleet aggregate is an explicit `?cluster=all`.
+ * survive reloads. Without a `?cluster=` param the shared cluster scope is
+ * used (see useClusterScope); the fleet aggregate is an explicit `?cluster=all`.
  */
 import { useCallback, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAllClusters } from '@/hooks/useK8sClusters';
 import type { LlmClusterScope } from '@/hooks/useLlmObservability';
+import { readClusterScope, writeClusterScope } from '@/hooks/useClusterScope';
 import type { LlmTimeRange } from '@/types/llm-observability';
 
 const RANGES: LlmTimeRange[] = ['1h', '6h', '24h', '7d'];
@@ -64,15 +65,12 @@ export function useObservabilityFilters(defaultTab: string): ObservabilityFilter
     [setParams],
   );
 
-  // Default the cluster to HGX (or the first cluster) once clusters load.
+  // Default to the shared cluster scope (if still a known cluster), else All.
   useEffect(() => {
     if (clusterId !== undefined || clusters.length === 0) return;
-    const hgx = clusters.find(
-      (c) =>
-        c.name.toLowerCase().includes('hgx') ||
-        c.context?.toLowerCase().includes('kubernetes-admin'),
-    );
-    update({ cluster: String((hgx ?? clusters[0]).id) });
+    const scoped = readClusterScope();
+    const known = scoped !== null && clusters.some((c) => c.id === scoped);
+    update({ cluster: known ? String(scoped) : 'all' });
   }, [clusterId, clusters, update]);
 
   return {
@@ -81,7 +79,10 @@ export function useObservabilityFilters(defaultTab: string): ObservabilityFilter
     model,
     status,
     tab,
-    setClusterId: (id) => update({ cluster: id === null ? 'all' : String(id) }),
+    setClusterId: (id) => {
+      writeClusterScope(id);
+      update({ cluster: id === null ? 'all' : String(id) });
+    },
     setRange: (r) => update({ range: r }),
     setModel: (m) => update({ model: m || null }),
     setStatus: (s) => update({ status: s || null }),

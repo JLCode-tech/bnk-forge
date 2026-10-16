@@ -105,7 +105,7 @@ export function CNFDetailPanel({
             <h4 className="text-xs font-semibold mb-2">Labels</h4>
             <div className="flex flex-wrap gap-1">
               {Object.entries(labels).map(([k, v]) => (
-                <Badge key={k} variant="outline" className="text-[10px] font-mono h-5">
+                <Badge key={k} variant="outline" className="text-2xs font-mono h-5">
                   {k}={v}
                 </Badge>
               ))}
@@ -122,7 +122,7 @@ export function CNFDetailPanel({
                 ({Object.keys(annotations).length})
               </span>
             </h4>
-            <div className="space-y-1 text-[10px] font-mono">
+            <div className="space-y-1 text-2xs font-mono">
               {Object.entries(annotations).slice(0, 5).map(([k, v]) => (
                 <div key={k} className="flex gap-1 min-w-0">
                   <span className="shrink-0 text-muted-foreground">{k}:</span>
@@ -167,12 +167,12 @@ export function CNFDetailPanel({
                         </span>
                       </div>
                       {cond.reason && (
-                        <p className="ml-5 text-[10px] text-muted-foreground">
+                        <p className="ml-5 text-2xs text-muted-foreground">
                           {cond.reason}
                         </p>
                       )}
                       {cond.message && (
-                        <p className="ml-5 text-[10px] text-muted-foreground">
+                        <p className="ml-5 text-2xs text-muted-foreground">
                           {cond.message}
                         </p>
                       )}
@@ -192,7 +192,7 @@ export function CNFDetailPanel({
               <Button
                 variant={rawView === 'json' ? 'default' : 'outline'}
                 size="sm"
-                className="h-6 text-[10px] px-2"
+                className="h-6 text-2xs px-2"
                 onClick={() => setRawView(rawView === 'json' ? null : 'json')}
               >
                 JSON
@@ -200,7 +200,7 @@ export function CNFDetailPanel({
             </div>
           </div>
           {rawView === 'json' && (
-            <pre className="text-[10px] font-mono overflow-auto max-h-64 p-2 rounded bg-background text-foreground">
+            <pre className="text-2xs font-mono overflow-auto max-h-64 p-2 rounded bg-background text-foreground">
               {rawJson}
             </pre>
           )}

@@ -37,13 +37,13 @@ export function InfraDetail({ resource }: DetailPanelProps) {
                       <code className="font-mono font-medium text-foreground/80">{net.name}</code>
                     </div>
                     {net.type && (
-                      <Badge variant="outline" className="text-[10px] uppercase font-mono">
+                      <Badge variant="outline" className="text-2xs uppercase font-mono">
                         {net.type}
                       </Badge>
                     )}
                   </div>
                   {net.vlan && (
-                    <div className="text-[11px] text-muted-foreground flex gap-3 pl-5">
+                    <div className="text-2xs text-muted-foreground flex gap-3 pl-5">
                       {net.vlan.tag !== undefined && <span>Tag: <code className="font-mono">{net.vlan.tag}</code></span>}
                       {net.vlan.mtu && <span>MTU: <code className="font-mono">{net.vlan.mtu}</code></span>}
                       {net.vlan.networkAttachmentRef?.name && (
@@ -52,7 +52,7 @@ export function InfraDetail({ resource }: DetailPanelProps) {
                     </div>
                   )}
                   {net.vxlan && (
-                    <div className="text-[11px] text-muted-foreground flex gap-3 pl-5">
+                    <div className="text-2xs text-muted-foreground flex gap-3 pl-5">
                       {net.vxlan.port && <span>Port: <code className="font-mono">{net.vxlan.port}</code></span>}
                       {net.vxlan.vni !== undefined && <span>VNI: <code className="font-mono">{net.vxlan.vni}</code></span>}
                     </div>
@@ -72,10 +72,10 @@ export function InfraDetail({ resource }: DetailPanelProps) {
                     <code className="font-mono font-medium text-foreground/80">{ipam.name}</code>
                   </div>
                   {(ipam.ipPools || []).map((pool, pIdx) => (
-                    <div key={pIdx} className="text-[11px] text-muted-foreground flex flex-wrap items-center gap-3 pl-5">
+                    <div key={pIdx} className="text-2xs text-muted-foreground flex flex-wrap items-center gap-3 pl-5">
                       <span>Range: <code className="font-mono">{pool.rangeStart} - {pool.rangeEnd}</code></span>
                       {pool.availabilityZone && (
-                        <Badge variant="secondary" className="text-[10px] font-mono">
+                        <Badge variant="secondary" className="text-2xs font-mono">
                           AZ: {pool.availabilityZone}
                         </Badge>
                       )}
@@ -113,7 +113,7 @@ export function InfraDetail({ resource }: DetailPanelProps) {
                   <span className="text-muted-foreground">VRFs:</span>
                   <div className="flex flex-wrap gap-1">
                     {vrfs.map((vrf, idx) => (
-                      <Badge key={idx} variant="outline" className="text-[10px] font-mono">
+                      <Badge key={idx} variant="outline" className="text-2xs font-mono">
                         {typeof vrf === 'string' ? vrf : vrf.name}
                       </Badge>
                     ))}

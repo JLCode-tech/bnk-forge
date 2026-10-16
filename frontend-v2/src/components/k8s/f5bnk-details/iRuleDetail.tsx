@@ -50,7 +50,7 @@ export function iRuleDetail({ resource }: DetailPanelProps) {
                 {lineCount <= 30 ? 'iRule Code' : 'Code Preview'}
               </h4>
               <pre
-                className="text-[11px] font-mono leading-relaxed overflow-auto text-muted-foreground"
+                className="text-2xs font-mono leading-relaxed overflow-auto text-muted-foreground"
                 style={{ maxHeight: lineCount <= 30 ? 'none' : '200px' }}
               >
                 {lineCount <= 30

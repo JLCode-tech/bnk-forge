@@ -10,11 +10,9 @@ import {
   KeyRound,
   Bot,
   Zap,
-  TrendingUp,
   Globe,
   HardDrive,
   Box,
-  Database,
   Shield,
   Cpu,
   Server,
@@ -25,6 +23,8 @@ import type { UserRole } from "@/types";
 export interface NavItem {
   name: string;
   href: string;
+  matchPaths?: string[];
+  description?: string;
   icon: React.ElementType;
   showCount?: string;
   minRole?: UserRole;
@@ -33,99 +33,170 @@ export interface NavItem {
 
 export interface NavSection {
   label: string;
+  icon?: React.ElementType;
   minRole?: UserRole;
   items: NavItem[];
 }
 
-// Workflow-First Navigation Structure
+export const TOP_STANDALONES: NavItem[] = [
+  {
+    name: "Overview",
+    href: "/",
+    description: "Platform overview, fleet health & quick actions",
+    icon: LayoutDashboard,
+  },
+];
+
+// Workflow-First Single-Column Navigation Structure
 export const navigationSections: NavSection[] = [
   {
-    // Standalone home item (no section header) — sits above OBSERVE.
+    // Standalone home item (no section header) — sits at the top of the sidebar.
     label: "",
-    items: [{ name: "Command Center", href: "/", icon: LayoutDashboard }],
+    icon: LayoutDashboard,
+    items: TOP_STANDALONES,
   },
   {
-    label: "AI CONTROL PLANE",
+    label: "Build",
+    icon: FolderGit2,
     items: [
       {
-        name: "Agent Fleet & Identity",
-        href: "/ai/agents",
-        icon: Bot,
-        minRole: "viewer",
-      },
-      {
-        name: "Token & Cost Governance",
-        href: "/ai/governance",
-        icon: TrendingUp,
-        minRole: "viewer",
-      },
-      {
-        name: "SmartLLM Traffic Router",
-        href: "/ai/routing",
-        icon: Zap,
-        minRole: "viewer",
-      },
-      {
-        name: "Request Audit Logs",
-        href: "/ai/logs",
-        icon: ScrollText,
-        minRole: "viewer",
-      },
-    ],
-  },
-  {
-    label: "OBSERVE",
-    items: [{ name: "Benchmarks", href: "/benchmarks", icon: BarChart3 }],
-  },
-  {
-    label: "BUILD",
-    items: [
-      { name: "Catalog", href: "/catalog", icon: Package },
-      { name: "Blueprints", href: "/stacks", icon: Layers },
-      {
-        name: "Access Methods",
-        href: "/auth-templates",
-        icon: KeyRound,
-        minRole: "operator",
-      },
-      {
-        name: "Projects",
+        name: "Workspaces",
         href: "/projects",
+        description: "IaC workspaces, modules, variables & state",
         icon: FolderGit2,
         showCount: "projects",
         showDriftBadge: true,
       },
       {
-        name: "Operations Log",
+        name: "Catalog & Blueprints",
+        href: "/catalog",
+        description: "Deployable blueprints, stacks, modules & Helm charts",
+        icon: Package,
+      },
+      {
+        name: "Activity Log",
         href: "/tasks",
+        description: "Global task queue, execution logs & history",
         icon: ScrollText,
         showCount: "activity",
       },
     ],
   },
   {
-    label: "OPERATE",
+    label: "Clusters",
+    icon: Globe,
     items: [
-      { name: "Fleet", href: "/fleet", icon: Globe, showCount: "fleet" },
-      // D-022 P6 IA: Infrastructure section — DPU/BlueField + bare-metal hosts
-      { name: "Infrastructure", href: "/infrastructure", icon: HardDrive },
+      {
+        name: "Cluster Fleet",
+        href: "/fleet",
+        description: "Multi-cluster health, comparison, promotion & lifecycle",
+        icon: Globe,
+        showCount: "fleet",
+      },
       {
         name: "Kubernetes",
         href: "/kubernetes",
+        description: "Single-cluster workloads, networking, storage & CRDs",
         icon: Box,
         showCount: "clusters",
       },
-      { name: "CR Explorer", href: "/crds", icon: Database },
-      { name: "F5 BNK", href: "/bnk", icon: Shield },
-      { name: "F5 CNF", href: "/cnf", icon: Cpu },
+      {
+        name: "F5 BNK",
+        href: "/bnk",
+        description:
+          "BIG-IP Next for Kubernetes — Gateway, BGP/BFD, CGNAT & Security",
+        icon: Shield,
+      },
+      {
+        name: "F5 CNF",
+        href: "/cnf",
+        description: "Cloud-Native Network Functions — DNS, Telco & L4/L7",
+        icon: Cpu,
+      },
+      {
+        name: "CR Explorer",
+        href: "/crds",
+        description:
+          "Browse Custom Resource Definitions, schemas & live instances",
+        icon: Layers,
+      },
+      {
+        name: "Infrastructure",
+        href: "/infrastructure",
+        description: "Bare-metal hosts, NVIDIA BlueField DPUs & topology",
+        icon: HardDrive,
+      },
+      {
+        name: "Benchmarks",
+        href: "/benchmarks",
+        description: "Cluster network & data-plane performance benchmarks",
+        icon: BarChart3,
+      },
     ],
   },
   {
-    label: "SETTINGS",
-    minRole: "operator",
+    label: "AI Service Plane",
+    icon: Bot,
     items: [
-      { name: "Users", href: "/users", icon: Users, minRole: "admin" },
-      { name: "System", href: "/system", icon: Server, minRole: "admin" },
+      {
+        name: "Token Governance and Intelligence",
+        href: "/ai/mcp-gateway",
+        matchPaths: ["/ai/mcp-gateway", "/ai/governance"],
+        description: "Model Context Protocol servers & tool governance",
+        icon: Layers,
+        minRole: "viewer",
+      },
+      {
+        name: "Agent Fleet",
+        href: "/ai/agents",
+        description: "Autonomous AI agents, identities & policies",
+        icon: Bot,
+        minRole: "viewer",
+      },
+      {
+        name: "Intelligent Inference",
+        href: "/ai/llm-router",
+        matchPaths: ["/ai/llm-router", "/ai/routing"],
+        description: "SmartLLM traffic routing, failover & model endpoints",
+        icon: Zap,
+        minRole: "viewer",
+      },
+      {
+        name: "AI Traffic Logs",
+        href: "/ai/logs",
+        description: "AI request audit trail, latency & token telemetry",
+        icon: ScrollText,
+        minRole: "viewer",
+      },
+    ],
+  },
+  {
+    label: "Settings & Access",
+    icon: KeyRound,
+    minRole: "viewer",
+    items: [
+      {
+        name: "Credentials & Registries",
+        href: "/access-methods",
+        matchPaths: ["/access-methods", "/auth-templates"],
+        description: "SSH keys, cloud credentials & container registries",
+        icon: KeyRound,
+        minRole: "viewer",
+      },
+      {
+        name: "Users",
+        href: "/users",
+        description: "User accounts & role assignments",
+        icon: Users,
+        minRole: "admin",
+      },
+      {
+        name: "System",
+        href: "/system",
+        description: "Platform health, backups, upgrades & configuration",
+        icon: Server,
+        minRole: "admin",
+      },
     ],
   },
 ];

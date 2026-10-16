@@ -1,9 +1,10 @@
-import { Editor } from '@monaco-editor/react';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Check, X, AlertTriangle } from 'lucide-react';
-import { useState, useEffect } from 'react';
-import yaml from 'js-yaml';
+import { Editor } from "@monaco-editor/react";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Check, X, AlertTriangle } from "lucide-react";
+import { useState, useEffect } from "react";
+import yaml from "js-yaml";
+import { useTheme } from "@/context/ThemeContext";
 
 interface YamlEditorProps {
   value: string;
@@ -22,11 +23,14 @@ interface ValidationResult {
 export function YamlEditor({
   value,
   onChange,
-  height = '400px',
+  height = "400px",
   readOnly = false,
   showValidation = true,
 }: YamlEditorProps) {
-  const [validation, setValidation] = useState<ValidationResult>({ isValid: true });
+  const { isDark } = useTheme();
+  const [validation, setValidation] = useState<ValidationResult>({
+    isValid: true,
+  });
 
   useEffect(() => {
     if (!showValidation || !value) {
@@ -37,10 +41,10 @@ export function YamlEditor({
     try {
       const parsed = yaml.load(value);
 
-      if (!parsed || typeof parsed !== 'object') {
+      if (!parsed || typeof parsed !== "object") {
         setValidation({
           isValid: false,
-          error: 'Invalid YAML: Must be an object',
+          error: "Invalid YAML: Must be an object",
         });
         return;
       }
@@ -48,18 +52,29 @@ export function YamlEditor({
       // Check for required Kubernetes fields
       // Type guard: check if parsed object has expected K8s structure
       const hasApiVersion = (obj: unknown): obj is { apiVersion: string } =>
-        typeof obj === 'object' && obj !== null && 'apiVersion' in obj && typeof (obj as { apiVersion: unknown }).apiVersion === 'string';
+        typeof obj === "object" &&
+        obj !== null &&
+        "apiVersion" in obj &&
+        typeof (obj as { apiVersion: unknown }).apiVersion === "string";
       const hasKind = (obj: unknown): obj is { kind: string } =>
-        typeof obj === 'object' && obj !== null && 'kind' in obj && typeof (obj as { kind: unknown }).kind === 'string';
-      const hasMetadata = (obj: unknown): obj is { metadata: { name: string } } =>
-        typeof obj === 'object' && obj !== null && 'metadata' in obj &&
-        typeof (obj as { metadata: unknown }).metadata === 'object' && (obj as { metadata: { name?: unknown } }).metadata !== null &&
-        'name' in (obj as { metadata: { name?: unknown } }).metadata;
+        typeof obj === "object" &&
+        obj !== null &&
+        "kind" in obj &&
+        typeof (obj as { kind: unknown }).kind === "string";
+      const hasMetadata = (
+        obj: unknown,
+      ): obj is { metadata: { name: string } } =>
+        typeof obj === "object" &&
+        obj !== null &&
+        "metadata" in obj &&
+        typeof (obj as { metadata: unknown }).metadata === "object" &&
+        (obj as { metadata: { name?: unknown } }).metadata !== null &&
+        "name" in (obj as { metadata: { name?: unknown } }).metadata;
 
       if (!hasApiVersion(parsed)) {
         setValidation({
           isValid: true,
-          warning: 'Missing apiVersion field',
+          warning: "Missing apiVersion field",
         });
         return;
       }
@@ -67,7 +82,7 @@ export function YamlEditor({
       if (!hasKind(parsed)) {
         setValidation({
           isValid: true,
-          warning: 'Missing kind field',
+          warning: "Missing kind field",
         });
         return;
       }
@@ -75,7 +90,7 @@ export function YamlEditor({
       if (!hasMetadata(parsed)) {
         setValidation({
           isValid: true,
-          warning: 'Missing metadata.name field',
+          warning: "Missing metadata.name field",
         });
         return;
       }
@@ -84,13 +99,13 @@ export function YamlEditor({
     } catch (error) {
       setValidation({
         isValid: false,
-        error: error instanceof Error ? error.message : 'Invalid YAML syntax',
+        error: error instanceof Error ? error.message : "Invalid YAML syntax",
       });
     }
   }, [value, showValidation]);
 
   const handleEditorChange = (newValue: string | undefined) => {
-    onChange(newValue || '');
+    onChange(newValue || "");
   };
 
   return (
@@ -129,17 +144,18 @@ export function YamlEditor({
             minimap: { enabled: false },
             scrollBeyondLastLine: false,
             fontSize: 13,
-            lineNumbers: 'on',
+            fontFamily: "JetBrains Mono, monospace",
+            lineNumbers: "on",
             folding: true,
-            wordWrap: 'on',
+            wordWrap: "on",
             automaticLayout: true,
             tabSize: 2,
-            renderWhitespace: 'selection',
+            renderWhitespace: "selection",
             bracketPairColorization: {
               enabled: true,
             },
           }}
-          theme="vs-dark"
+          theme={isDark ? "vs-dark" : "vs"}
         />
       </Card>
     </div>

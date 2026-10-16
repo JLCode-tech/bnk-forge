@@ -34,7 +34,7 @@ function PolicyStatusBadge({ status }: { status?: { resolved: boolean; programme
   return (
     <Badge
       variant={ready ? 'success' : pending ? 'warning' : 'secondary'}
-      className="text-[10px] gap-1"
+      className="text-2xs gap-1"
     >
       {ready ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
       {ready ? 'Ready' : status.programmed ? 'Programmed' : status.resolved ? 'Resolved' : 'Pending'}
@@ -93,7 +93,7 @@ function RuleEndpointCell({
       <div className="flex flex-wrap gap-1">
         {addresses && addresses.length > 0 ? (
           addresses.map((addr) => (
-            <Badge key={addr} variant="outline" className="font-mono text-[10px] py-0">
+            <Badge key={addr} variant="outline" className="font-mono text-2xs py-0">
               {addr}
             </Badge>
           ))
@@ -118,7 +118,7 @@ function RuleEndpointCell({
       {ports && ports.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-1">
           {ports.map((port) => (
-            <Badge key={port} variant="secondary" className="text-[10px] py-0">
+            <Badge key={port} variant="secondary" className="text-2xs py-0">
               {port}
             </Badge>
           ))}
@@ -157,15 +157,22 @@ export function F5BNKPolicyViewer({ clusterId, namespace, onSelectResource }: F5
     const stats = data?.trafficStats;
     if (!stats?.available) return map;
     for (const rule of stats.firewallRules || []) {
-      const key = `${rule.namespace}/${rule.policyName}/${rule.ruleName}`;
-      map.set(key, rule.hitCount || 0);
+      const count = rule.hitCount ?? 0;
+      map.set(`${rule.namespace}/${rule.policyName}/${rule.ruleName}`, count);
+      if (rule.policyName) {
+        map.set(`${rule.policyName}/${rule.ruleName}`, count);
+      }
+      map.set(rule.ruleName, count);
     }
     return map;
   }, [data?.trafficStats]);
 
   const getRuleHits = (policyName: string, ruleName: string, associationNs: string) => {
     const key = `${associationNs}/${policyName}/${ruleName}`;
-    return ruleHitMap.get(key);
+    if (ruleHitMap.has(key)) return ruleHitMap.get(key);
+    const fallbackKey = `${policyName}/${ruleName}`;
+    if (ruleHitMap.has(fallbackKey)) return ruleHitMap.get(fallbackKey);
+    return ruleHitMap.get(ruleName);
   };
 
   const toggleRuleExpansion = (associationKey: string) => {

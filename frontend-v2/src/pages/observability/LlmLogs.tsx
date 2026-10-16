@@ -24,20 +24,25 @@ import {
   Hash,
   DollarSign,
   Boxes,
-  RefreshCw,
   Search,
   Settings2,
   ArrowUp,
   ArrowDown,
   ChevronLeft,
   ChevronRight,
+  AlertTriangle,
+  XCircle,
+  RefreshCw,
+  ListFilter,
 } from "lucide-react";
 import { SectionCard } from "@/components/ui/section-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import {
   Sheet,
   SheetContent,
@@ -85,6 +90,7 @@ import {
 import { llmObservabilityApi } from "@/lib/api/llmObservability";
 import { useObservabilityFilters } from "./use-observability-filters";
 import { parseTranscript } from "./transcript";
+import { CollapsibleInnerSidebar } from "@/components/layout/InnerSidebar";
 import type { LlmLogRow } from "@/types/llm-observability";
 
 const PAGE_LIMIT = 50;
@@ -95,9 +101,36 @@ type SortDir = "asc" | "desc";
 const OPTIONAL_COLUMNS = ["model", "tokens", "cost", "status"] as const;
 type OptionalColumn = (typeof OPTIONAL_COLUMNS)[number];
 
+const TRAFFIC_STATUS_VIEWS = [
+  {
+    value: "",
+    label: "All Requests",
+    subtitle: "Per-request audit trail across all gateway status codes.",
+    icon: ListFilter,
+  },
+  {
+    value: "200",
+    label: "Successful (2xx)",
+    subtitle: "Completed LLM inference requests (HTTP 200).",
+    icon: CheckCircle2,
+  },
+  {
+    value: "429",
+    label: "Rate Limited (429)",
+    subtitle: "Token or request quota throttled traffic (HTTP 429).",
+    icon: AlertTriangle,
+  },
+  {
+    value: "500",
+    label: "Server Errors (5xx)",
+    subtitle: "Upstream model or gateway error responses (HTTP 5xx).",
+    icon: XCircle,
+  },
+] as const;
+
 export default function LlmLogs() {
   useEffect(() => {
-    document.title = "Request Audit Logs | BNK-Forge";
+    document.title = "AI Traffic Logs | BNK-Forge";
   }, []);
 
   const f = useObservabilityFilters("logs");
@@ -205,284 +238,353 @@ export default function LlmLogs() {
     void histogram.refetch();
   };
 
+  const activeStatusMeta =
+    TRAFFIC_STATUS_VIEWS.find((v) => v.value === f.status) ??
+    TRAFFIC_STATUS_VIEWS[0];
+
   return (
-    <div className="space-y-5 p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-foreground">
-            Request Audit Logs
+    <div className="flex min-h-[calc(100vh-3rem)]">
+      {/* Left Flush Inner Sub-Sidebar */}
+      <CollapsibleInnerSidebar className="w-52 shrink-0 border-r border-border bg-card/30 p-3 space-y-4">
+        <div className="px-2 pt-1 pb-2 border-b border-border">
+          <h1 className="text-sm font-semibold text-foreground">
+            AI Traffic Logs
           </h1>
-          <p className="text-sm text-muted-foreground">
-            Per-request logs from the LLM gateway.
+          <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+            Prompt/response audit trail, latency &amp; token telemetry
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <ClusterPicker value={f.clusterId} onChange={f.setClusterId} />
-          <FilterSelect
-            value={f.model}
-            onChange={f.setModel}
-            options={filterData?.models ?? []}
-            allLabel="All models"
-            placeholder="Model"
-            ariaLabel="Model filter"
-          />
-          <TimeRangePicker value={f.range} onChange={f.setRange} />
-          <FilterSelect
-            value={f.status}
-            onChange={f.setStatus}
-            options={filterData?.statuses ?? []}
-            allLabel="All statuses"
-            placeholder="Status"
-            width="w-[130px]"
-            ariaLabel="Status filter"
-          />
+
+        <div className="space-y-1">
+          <div className="px-2.5 py-1 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+            TRAFFIC VIEWS
+          </div>
+          <div
+            role="navigation"
+            aria-label="Traffic status views"
+            className="flex flex-col items-stretch gap-0.5"
+          >
+            {TRAFFIC_STATUS_VIEWS.map((view) => {
+              const Icon = view.icon;
+              const isActive = f.status === view.value;
+              return (
+                <button
+                  key={view.label}
+                  type="button"
+                  onClick={() => f.setStatus(view.value)}
+                  className={cn(
+                    "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors text-left",
+                    isActive
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{view.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      </CollapsibleInnerSidebar>
 
-      {/* Controls row */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={refresh}
-          className="h-8 gap-1.5"
-        >
-          <RefreshCw
-            className={cn("h-3.5 w-3.5", logs.isFetching && "animate-spin")}
-          />
-          Refresh
-        </Button>
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Switch checked={live} onCheckedChange={setLive} aria-label="Live" />
-          Live
-          {live && (
-            <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
-          )}
-        </label>
-        <div className="relative flex-1 min-w-[180px] max-w-sm">
-          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search request text…"
-            className="h-8 pl-8 text-xs"
-          />
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="h-8 gap-1.5">
-              <Settings2 className="h-3.5 w-3.5" />
-              Columns
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Columns</DropdownMenuLabel>
-            {OPTIONAL_COLUMNS.map((col) => (
-              <DropdownMenuCheckboxItem
-                key={col}
-                checked={visibleCols[col]}
-                onCheckedChange={(v) =>
-                  setVisibleCols((prev) => ({ ...prev, [col]: !!v }))
-                }
-                className="capitalize"
-              >
-                {col}
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      {/* Right Content Pane */}
+      <div className="flex-1 min-w-0 p-6 space-y-5 overflow-y-auto">
+        {/* Top Header Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-border">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold text-foreground">
+              {activeStatusMeta.label}
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {activeStatusMeta.subtitle}
+            </p>
+          </div>
 
-      {/* Stat strip */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <StatTile
-          icon={Activity}
-          label="Total Requests"
-          tone="primary"
-          loading={stats.isLoading}
-          value={fmtInt(stats.data?.total_requests)}
-        />
-        <StatTile
-          icon={CheckCircle2}
-          label="Success Rate"
-          tone="success"
-          loading={stats.isLoading}
-          value={fmtPct(stats.data?.success_rate)}
-        />
-        <StatTile
-          icon={Clock}
-          label="Avg Latency"
-          tone="info"
-          loading={stats.isLoading}
-          value={fmtLatencyMs(stats.data?.avg_latency_ms)}
-        />
-        <StatTile
-          icon={Hash}
-          label="Total Tokens"
-          tone="warning"
-          loading={stats.isLoading}
-          value={fmtCompact(stats.data?.total_tokens)}
-        />
-        <StatTile
-          icon={DollarSign}
-          label="Total Cost"
-          tone="success"
-          loading={stats.isLoading}
-          value={fmtCost(stats.data?.total_cost)}
-        />
-        <StatTile
-          icon={Boxes}
-          label="Models"
-          tone="muted"
-          loading={stats.isLoading}
-          value={fmtInt(stats.data?.models)}
-        />
-      </div>
-
-      <ZoomableHistogram
-        series={histogram.data?.series ?? []}
-        loading={histogram.isLoading}
-        available={histogram.data?.available ?? true}
-      />
-
-      {/* Request table */}
-      <SectionCard compact>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <SortHead
-                  label="Time"
-                  k="ts"
-                  sortKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={toggleSort}
-                />
-                <TableHead>Request</TableHead>
-                {visibleCols.model && <TableHead>Model</TableHead>}
-                <SortHead
-                  label="Latency"
-                  k="latency_ms"
-                  sortKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={toggleSort}
-                  align="right"
-                />
-                {visibleCols.tokens && (
-                  <SortHead
-                    label="Tokens"
-                    k="total_tk"
-                    sortKey={sortKey}
-                    sortDir={sortDir}
-                    onSort={toggleSort}
-                    align="right"
-                  />
-                )}
-                {visibleCols.cost && (
-                  <SortHead
-                    label="Cost"
-                    k="cost"
-                    sortKey={sortKey}
-                    sortDir={sortDir}
-                    onSort={toggleSort}
-                    align="right"
-                  />
-                )}
-                {visibleCols.status && (
-                  <TableHead className="text-right">Status</TableHead>
-                )}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {logs.isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={7}>
-                    <Skeleton className="h-40 w-full" />
-                  </TableCell>
-                </TableRow>
-              ) : sortedRows.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={7}
-                    className="text-center text-sm text-muted-foreground py-8"
-                  >
-                    {logs.data?.available === false
-                      ? logs.data?.errors?.logs || "Log source unavailable."
-                      : "No requests in this window."}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                sortedRows.map((row, i) => (
-                  <TableRow
-                    key={`${row.ts}-${i}`}
-                    className="cursor-pointer"
-                    onClick={() => setSelected(i)}
-                  >
-                    <TableCell className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
-                      {fmtTime(row.ts)}
-                    </TableCell>
-                    <TableCell className="max-w-[280px] truncate text-foreground/90">
-                      {row.cluster_name && (
-                        <Badge
-                          variant="outline"
-                          className="mr-1.5 text-[10px] font-mono py-0 px-1 text-muted-foreground"
-                        >
-                          {row.cluster_name}
-                        </Badge>
-                      )}
-                      {row.message || "—"}
-                    </TableCell>
-                    {visibleCols.model && (
-                      <TableCell className="text-xs text-foreground/80">
-                        {row.model}
-                      </TableCell>
-                    )}
-                    <TableCell className="text-right tabular-nums text-foreground/80">
-                      {fmtLatencyMs(row.latency_ms)}
-                    </TableCell>
-                    {visibleCols.tokens && (
-                      <TableCell className="text-right tabular-nums text-foreground/80">
-                        {fmtInt(row.total_tk)}
-                      </TableCell>
-                    )}
-                    {visibleCols.cost && (
-                      <TableCell className="text-right tabular-nums text-foreground/80">
-                        {fmtCost(row.cost)}
-                      </TableCell>
-                    )}
-                    {visibleCols.status && (
-                      <TableCell className="text-right">
-                        <StatusBadge status={row.status} />
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <ClusterPicker
+              value={f.clusterId}
+              onChange={f.setClusterId}
+              showProjectSelector
+            />
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground px-2.5 h-8 rounded-md border border-border bg-card/50">
+              <Switch
+                checked={live}
+                onCheckedChange={setLive}
+                aria-label="Live"
+              />
+              Live
+              {live && (
+                <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
               )}
-            </TableBody>
-          </Table>
-        </div>
-
-        {nextEnd && sortedRows.length > 0 && (
-          <div className="mt-3 flex justify-center">
+            </label>
             <Button
               variant="outline"
               size="sm"
-              onClick={loadOlder}
-              disabled={loadingOlder}
-              className="h-8"
+              className="h-8 gap-1.5 text-xs"
+              onClick={refresh}
+              disabled={logs.isFetching}
             >
-              {loadingOlder ? "Loading…" : "Load older"}
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${logs.isFetching ? "animate-spin" : ""}`}
+              />
+              Refresh
             </Button>
           </div>
-        )}
-      </SectionCard>
+        </div>
 
-      <LogDetailDrawer
-        rows={sortedRows}
-        index={selected}
-        onIndexChange={setSelected}
-        onClose={() => setSelected(null)}
-      />
+        {/* Filter & Search Toolbar */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-64">
+              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Search request text…"
+                className="h-8 pl-8 text-xs"
+              />
+            </div>
+            <FilterSelect
+              value={f.model}
+              onChange={f.setModel}
+              options={filterData?.models ?? []}
+              allLabel="All models"
+              placeholder="Model"
+              width="w-[150px]"
+              ariaLabel="Model filter"
+            />
+            <TimeRangePicker value={f.range} onChange={f.setRange} />
+          </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 text-xs"
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+                Columns
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Columns</DropdownMenuLabel>
+              {OPTIONAL_COLUMNS.map((col) => (
+                <DropdownMenuCheckboxItem
+                  key={col}
+                  checked={visibleCols[col]}
+                  onCheckedChange={(v) =>
+                    setVisibleCols((prev) => ({ ...prev, [col]: !!v }))
+                  }
+                  className="capitalize"
+                >
+                  {col}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        {/* Stat strip */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <StatTile
+            icon={Activity}
+            label="Total Requests"
+            tone="primary"
+            loading={stats.isLoading}
+            value={fmtInt(stats.data?.total_requests)}
+          />
+          <StatTile
+            icon={CheckCircle2}
+            label="Success Rate"
+            tone="success"
+            loading={stats.isLoading}
+            value={fmtPct(stats.data?.success_rate)}
+          />
+          <StatTile
+            icon={Clock}
+            label="Avg Latency"
+            tone="info"
+            loading={stats.isLoading}
+            value={fmtLatencyMs(stats.data?.avg_latency_ms)}
+          />
+          <StatTile
+            icon={Hash}
+            label="Total Tokens"
+            tone="warning"
+            loading={stats.isLoading}
+            value={fmtCompact(stats.data?.total_tokens)}
+          />
+          <StatTile
+            icon={DollarSign}
+            label="Total Cost"
+            tone="success"
+            loading={stats.isLoading}
+            value={fmtCost(stats.data?.total_cost)}
+          />
+          <StatTile
+            icon={Boxes}
+            label="Models"
+            tone="muted"
+            loading={stats.isLoading}
+            value={fmtInt(stats.data?.models)}
+          />
+        </div>
+
+        <ZoomableHistogram
+          series={histogram.data?.series ?? []}
+          loading={histogram.isLoading}
+          available={histogram.data?.available ?? true}
+        />
+
+        {/* Request table */}
+        <SectionCard compact>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <SortHead
+                    label="Time"
+                    k="ts"
+                    sortKey={sortKey}
+                    sortDir={sortDir}
+                    onSort={toggleSort}
+                  />
+                  <TableHead>Request</TableHead>
+                  {visibleCols.model && <TableHead>Model</TableHead>}
+                  <SortHead
+                    label="Latency"
+                    k="latency_ms"
+                    sortKey={sortKey}
+                    sortDir={sortDir}
+                    onSort={toggleSort}
+                    align="right"
+                  />
+                  {visibleCols.tokens && (
+                    <SortHead
+                      label="Tokens"
+                      k="total_tk"
+                      sortKey={sortKey}
+                      sortDir={sortDir}
+                      onSort={toggleSort}
+                      align="right"
+                    />
+                  )}
+                  {visibleCols.cost && (
+                    <SortHead
+                      label="Cost"
+                      k="cost"
+                      sortKey={sortKey}
+                      sortDir={sortDir}
+                      onSort={toggleSort}
+                      align="right"
+                    />
+                  )}
+                  {visibleCols.status && (
+                    <TableHead className="text-right">Status</TableHead>
+                  )}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {logs.isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={7}>
+                      <Skeleton className="h-40 w-full" />
+                    </TableCell>
+                  </TableRow>
+                ) : sortedRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="p-6">
+                      <EmptyState
+                        icon={Activity}
+                        title={
+                          logs.data?.available === false
+                            ? "Log source unavailable"
+                            : "No requests in this window"
+                        }
+                        description={
+                          logs.data?.available === false
+                            ? logs.data?.errors?.logs ||
+                              "Log telemetry source is unreachable."
+                            : "No request telemetry matches the selected filter."
+                        }
+                      />
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  sortedRows.map((row, i) => (
+                    <TableRow
+                      key={`${row.ts}-${i}`}
+                      className="cursor-pointer"
+                      onClick={() => setSelected(i)}
+                    >
+                      <TableCell className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
+                        {fmtTime(row.ts)}
+                      </TableCell>
+                      <TableCell className="max-w-[280px] truncate text-foreground/90">
+                        {row.cluster_name && (
+                          <Badge
+                            variant="outline"
+                            className="mr-1.5 text-2xs font-mono py-0 px-1 text-muted-foreground"
+                          >
+                            {row.cluster_name}
+                          </Badge>
+                        )}
+                        {row.message || "—"}
+                      </TableCell>
+                      {visibleCols.model && (
+                        <TableCell className="text-xs text-foreground/80">
+                          {row.model}
+                        </TableCell>
+                      )}
+                      <TableCell className="text-right tabular-nums text-foreground/80">
+                        {fmtLatencyMs(row.latency_ms)}
+                      </TableCell>
+                      {visibleCols.tokens && (
+                        <TableCell className="text-right tabular-nums text-foreground/80">
+                          {fmtInt(row.total_tk)}
+                        </TableCell>
+                      )}
+                      {visibleCols.cost && (
+                        <TableCell className="text-right tabular-nums text-foreground/80">
+                          {fmtCost(row.cost)}
+                        </TableCell>
+                      )}
+                      {visibleCols.status && (
+                        <TableCell className="text-right">
+                          <StatusBadge status={row.status} />
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          {nextEnd && sortedRows.length > 0 && (
+            <div className="mt-3 flex justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={loadOlder}
+                disabled={loadingOlder}
+                className="h-8"
+              >
+                {loadingOlder ? "Loading…" : "Load older"}
+              </Button>
+            </div>
+          )}
+        </SectionCard>
+
+        <LogDetailDrawer
+          rows={sortedRows}
+          index={selected}
+          onIndexChange={setSelected}
+          onClose={() => setSelected(null)}
+        />
+      </div>
     </div>
   );
 }
@@ -641,7 +743,7 @@ function LogDetailDrawer({
                 {row.cluster_name && (
                   <Badge
                     variant="outline"
-                    className="font-mono text-[10px] font-normal text-muted-foreground"
+                    className="font-mono text-2xs font-normal text-muted-foreground"
                   >
                     {row.cluster_name}
                   </Badge>
@@ -696,7 +798,7 @@ function LogDetailDrawer({
                     key={i}
                     className="rounded-lg border border-border p-2.5"
                   >
-                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <div className="mb-1 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
                       {t.role}
                     </div>
                     <div className="whitespace-pre-wrap break-words text-sm text-foreground/90">
@@ -712,7 +814,7 @@ function LogDetailDrawer({
               <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
                 Raw JSON
               </summary>
-              <pre className="mt-2 max-h-72 overflow-auto rounded-lg border border-border bg-muted/40 p-2 text-[11px] leading-relaxed">
+              <pre className="mt-2 max-h-72 overflow-auto rounded-lg border border-border bg-muted/40 p-2 text-2xs leading-relaxed">
                 {JSON.stringify(
                   { request: row.req_body, response: row.resp_body },
                   null,
@@ -730,7 +832,7 @@ function LogDetailDrawer({
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground">
         {label}
       </div>
       <div className="font-mono text-sm font-medium text-foreground tabular-nums">
@@ -775,18 +877,6 @@ function SortHead({
         {active && <Icon className="h-3 w-3" />}
       </button>
     </TableHead>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const ok = status.startsWith("2");
-  return (
-    <Badge
-      variant={ok ? "success" : "destructive"}
-      className="font-mono text-[10px]"
-    >
-      {status}
-    </Badge>
   );
 }
 

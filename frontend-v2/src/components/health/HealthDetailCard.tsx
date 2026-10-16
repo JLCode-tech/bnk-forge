@@ -12,15 +12,15 @@
  * `text-destructive` rather than `text-emerald-*`/`text-amber-*`/`text-red-*`.
  */
 
-import { useState, useCallback } from 'react';
-import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { useState, useCallback } from "react";
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from '@/components/ui/collapsible';
+} from "@/components/ui/collapsible";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,7 +30,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+} from "@/components/ui/alert-dialog";
 import {
   Table,
   TableBody,
@@ -38,7 +38,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from "@/components/ui/table";
 import {
   AlertTriangle,
   ChevronDown,
@@ -52,16 +52,16 @@ import {
   MapPin,
   Server,
   Layers,
-} from 'lucide-react';
-import { useRestartPod } from '@/hooks/useK8s';
-import { notify } from '@/lib/notify';
+} from "lucide-react";
+import { useRestartPod } from "@/hooks/useK8s";
+import { notify } from "@/lib/notify";
 import type {
   HealthSeverity,
   HealthRemediationAction,
   HealthPodDetail,
-} from '@/types';
-import { SEVERITY_CONFIG } from '@/lib/health-severity';
-import { formatAvailabilityZone } from '@/lib/cloud-providers';
+} from "@/types";
+import { SEVERITY_CONFIG } from "@/lib/health-severity";
+import { formatAvailabilityZone } from "@/lib/cloud-providers";
 
 // --- Severity config (shared via PLAT-REL-001 / UX-OPS-002) ---
 
@@ -116,39 +116,56 @@ export function HealthDetailCard({
   const config = severityConfig[severity] || severityConfig.unknown;
   const StatusIcon = config.icon;
 
-  // Auto-expand for warning/critical
-  const [isOpen, setIsOpen] = useState(severity === 'warning' || severity === 'critical');
-  const [restartTarget, setRestartTarget] = useState<{ podName: string; namespace: string } | null>(null);
+  // Default to collapsed until expanded by user
+  const [isOpen, setIsOpen] = useState(false);
+  const [restartTarget, setRestartTarget] = useState<{
+    podName: string;
+    namespace: string;
+  } | null>(null);
 
   const restartPod = useRestartPod();
 
-  const unhealthyPods = podDetails.filter(p => p.issue);
+  const unhealthyPods = podDetails.filter((p) => p.issue);
   const hasIssues = unhealthyPods.length > 0;
 
-  const handleAction = useCallback((action: HealthRemediationAction) => {
-    switch (action.action) {
-      case 'view_logs':
-        onViewLogs?.(action.target, action.namespace);
-        break;
-      case 'restart_pod':
-        setRestartTarget({ podName: action.target, namespace: action.namespace });
-        break;
-      case 'describe':
-        onDescribe?.(action.target, action.namespace);
-        break;
-      case 'diagnostics':
-        // Diagnostics are available via the Diagnostics view on the BNK page
-        break;
-    }
-  }, [onViewLogs, onDescribe]);
+  const handleAction = useCallback(
+    (action: HealthRemediationAction) => {
+      switch (action.action) {
+        case "view_logs":
+          onViewLogs?.(action.target, action.namespace);
+          break;
+        case "restart_pod":
+          setRestartTarget({
+            podName: action.target,
+            namespace: action.namespace,
+          });
+          break;
+        case "describe":
+          onDescribe?.(action.target, action.namespace);
+          break;
+        case "diagnostics":
+          // Diagnostics are available via the Diagnostics view on the BNK page
+          break;
+      }
+    },
+    [onViewLogs, onDescribe],
+  );
 
   const handleConfirmRestart = useCallback(() => {
     if (!restartTarget) return;
     restartPod.mutate(
-      { clusterId, podName: restartTarget.podName, namespace: restartTarget.namespace },
+      {
+        clusterId,
+        podName: restartTarget.podName,
+        namespace: restartTarget.namespace,
+      },
       {
         onSuccess: () => {
-          notify.success('Pod restarting...', `${restartTarget.podName} will be recreated by its controller`, { category: 'system' });
+          notify.success(
+            "Pod restarting...",
+            `${restartTarget.podName} will be recreated by its controller`,
+            { category: "system" },
+          );
         },
         onError: () => {
           // useRestartPod already calls notifyError
@@ -160,16 +177,21 @@ export function HealthDetailCard({
 
   // Border emphasis for outer card — only for warning/critical
   const outerBorderClass =
-    severity === 'critical'
-      ? 'border-destructive/30'
-      : severity === 'warning'
-        ? 'border-warning/30'
-        : 'border-border';
+    severity === "critical"
+      ? "border-destructive/30"
+      : severity === "warning"
+        ? "border-warning/30"
+        : "border-border";
 
   return (
     <>
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-        <div className={cn('rounded-lg border bg-card transition-colors', outerBorderClass)}>
+        <div
+          className={cn(
+            "rounded-lg border bg-card transition-colors",
+            outerBorderClass,
+          )}
+        >
           {/* Collapsed header — always visible */}
           <CollapsibleTrigger asChild>
             <button
@@ -177,24 +199,35 @@ export function HealthDetailCard({
               aria-label={`${name} health: ${config.label}`}
             >
               <div className="flex items-center gap-3 min-w-0">
-                <div className={cn('p-2 rounded-lg shrink-0', config.bg)}>
-                  <StatusIcon className={cn('h-4 w-4', config.color)} />
+                <div className={cn("p-2 rounded-lg shrink-0", config.bg)}>
+                  <StatusIcon className={cn("h-4 w-4", config.color)} />
                 </div>
                 <div className="min-w-0">
-                  <h3 className="font-semibold text-sm text-foreground">{name}</h3>
+                  <h3 className="font-semibold text-sm text-foreground">
+                    {name}
+                  </h3>
                   <p className="text-xs truncate text-muted-foreground">
                     {summary}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0 ml-2">
-                <Badge className={cn('gap-1 font-medium text-xs', config.bg, config.color, config.border)}>
+                <Badge
+                  className={cn(
+                    "gap-1 font-medium text-xs",
+                    config.bg,
+                    config.color,
+                    config.border,
+                  )}
+                >
                   <StatusIcon className="h-3 w-3" />
                   {config.label}
                 </Badge>
-                {isOpen
-                  ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                  : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                {isOpen ? (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                )}
               </div>
             </button>
           </CollapsibleTrigger>
@@ -202,7 +235,6 @@ export function HealthDetailCard({
           {/* Expanded content */}
           <CollapsibleContent>
             <div className="px-4 pb-4 space-y-3 border-t border-border">
-
               {/* WHY section */}
               {explanation && (
                 <div className="flex items-start gap-2 mt-3 p-2.5 rounded-md bg-muted/50">
@@ -220,20 +252,34 @@ export function HealthDetailCard({
 
               {/* WHAT'S WRONG section */}
               {hasIssues && (
-                <div className={cn(
-                  'p-2.5 rounded-md',
-                  severity === 'critical' ? 'bg-destructive/10' : 'bg-warning/10',
-                )}>
+                <div
+                  className={cn(
+                    "p-2.5 rounded-md",
+                    severity === "critical"
+                      ? "bg-destructive/10"
+                      : "bg-warning/10",
+                  )}
+                >
                   <div className="flex items-center gap-1.5 mb-2">
-                    <AlertCircle className={cn(
-                      'h-3.5 w-3.5',
-                      severity === 'critical' ? 'text-destructive' : 'text-warning',
-                    )} />
-                    <span className={cn(
-                      'text-xs font-medium',
-                      severity === 'critical' ? 'text-destructive' : 'text-warning',
-                    )}>
-                      {unhealthyPods.length === 1 ? '1 issue detected' : `${unhealthyPods.length} issues detected`}
+                    <AlertCircle
+                      className={cn(
+                        "h-3.5 w-3.5",
+                        severity === "critical"
+                          ? "text-destructive"
+                          : "text-warning",
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        "text-xs font-medium",
+                        severity === "critical"
+                          ? "text-destructive"
+                          : "text-warning",
+                      )}
+                    >
+                      {unhealthyPods.length === 1
+                        ? "1 issue detected"
+                        : `${unhealthyPods.length} issues detected`}
                     </span>
                   </div>
                   <div className="space-y-1.5">
@@ -244,10 +290,14 @@ export function HealthDetailCard({
                           <code className="text-xs font-mono block truncate text-foreground">
                             {pod.podName}
                           </code>
-                          <span className={cn(
-                            'text-xs',
-                            severity === 'critical' ? 'text-destructive' : 'text-warning',
-                          )}>
+                          <span
+                            className={cn(
+                              "text-xs",
+                              severity === "critical"
+                                ? "text-destructive"
+                                : "text-warning",
+                            )}
+                          >
                             {pod.issue}
                           </span>
                         </div>
@@ -267,20 +317,37 @@ export function HealthDetailCard({
                     <Table className="text-xs">
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="py-1.5 px-2 h-auto">Pod</TableHead>
-                          <TableHead className="py-1.5 px-2 h-auto">Node</TableHead>
-                          <TableHead className="py-1.5 px-2 h-auto">Zone</TableHead>
-                          <TableHead className="py-1.5 px-2 h-auto">Type</TableHead>
-                          <TableHead className="py-1.5 px-2 h-auto">Status</TableHead>
-                          <TableHead className="py-1.5 px-2 h-auto text-right">Containers</TableHead>
-                          <TableHead className="py-1.5 px-2 h-auto text-right">Restarts</TableHead>
+                          <TableHead className="py-1.5 px-2 h-auto">
+                            Pod
+                          </TableHead>
+                          <TableHead className="py-1.5 px-2 h-auto">
+                            Node
+                          </TableHead>
+                          <TableHead className="py-1.5 px-2 h-auto">
+                            Zone
+                          </TableHead>
+                          <TableHead className="py-1.5 px-2 h-auto">
+                            Type
+                          </TableHead>
+                          <TableHead className="py-1.5 px-2 h-auto">
+                            Status
+                          </TableHead>
+                          <TableHead className="py-1.5 px-2 h-auto text-right">
+                            Containers
+                          </TableHead>
+                          <TableHead className="py-1.5 px-2 h-auto text-right">
+                            Restarts
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {podDetails.map((pod) => {
-                          const phaseVariant: 'success' | 'info' | 'warning' =
-                            pod.phase === 'Running' ? 'success' :
-                            pod.phase === 'Succeeded' ? 'info' : 'warning';
+                          const phaseVariant: "success" | "info" | "warning" =
+                            pod.phase === "Running"
+                              ? "success"
+                              : pod.phase === "Succeeded"
+                                ? "info"
+                                : "warning";
                           return (
                             <TableRow key={pod.podName}>
                               <TableCell className="py-1.5 px-2">
@@ -289,32 +356,42 @@ export function HealthDetailCard({
                                 </code>
                               </TableCell>
                               <TableCell className="py-1.5 px-2">
-                                <span className="font-mono truncate block max-w-[120px] text-[10px] text-muted-foreground">
-                                  {pod.nodeName || '--'}
+                                <span className="font-mono truncate block max-w-[120px] text-2xs text-muted-foreground">
+                                  {pod.nodeName || "--"}
                                 </span>
                               </TableCell>
                               <TableCell className="py-1.5 px-2">
-                                <span className="truncate block max-w-[120px] text-[10px] text-muted-foreground" title={formatAvailabilityZone(pod.nodeZone)}>
+                                <span
+                                  className="truncate block max-w-[120px] text-2xs text-muted-foreground"
+                                  title={formatAvailabilityZone(pod.nodeZone)}
+                                >
                                   {formatAvailabilityZone(pod.nodeZone)}
                                 </span>
                               </TableCell>
                               <TableCell className="py-1.5 px-2">
-                                <span className="truncate block max-w-[100px] text-[10px] text-muted-foreground">
-                                  {pod.nodeInstanceType || '--'}
+                                <span className="truncate block max-w-[100px] text-2xs text-muted-foreground">
+                                  {pod.nodeInstanceType || "--"}
                                 </span>
                               </TableCell>
                               <TableCell className="py-1.5 px-2">
-                                <Badge variant={phaseVariant} className="text-[10px] px-1.5 py-0">
+                                <Badge
+                                  variant={phaseVariant}
+                                  className="text-2xs px-1.5 py-0"
+                                >
                                   {pod.phase}
                                 </Badge>
                               </TableCell>
                               <TableCell className="py-1.5 px-2 text-right tabular-nums text-muted-foreground">
                                 {pod.containersReady}
                               </TableCell>
-                              <TableCell className={cn(
-                                'py-1.5 px-2 text-right tabular-nums',
-                                pod.restartCount > 5 ? 'text-warning font-medium' : 'text-muted-foreground',
-                              )}>
+                              <TableCell
+                                className={cn(
+                                  "py-1.5 px-2 text-right tabular-nums",
+                                  pod.restartCount > 5
+                                    ? "text-warning font-medium"
+                                    : "text-muted-foreground",
+                                )}
+                              >
                                 {pod.restartCount}
                               </TableCell>
                             </TableRow>
@@ -327,7 +404,9 @@ export function HealthDetailCard({
               )}
 
               {/* Placement context */}
-              {(namespaces.length > 0 || zones.length > 0 || nodes.length > 0) && (
+              {(namespaces.length > 0 ||
+                zones.length > 0 ||
+                nodes.length > 0) && (
                 <div className="space-y-2">
                   {namespaces.length > 0 && (
                     <div>
@@ -337,7 +416,11 @@ export function HealthDetailCard({
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {namespaces.map((ns) => (
-                          <Badge key={ns} variant="outline" className="text-[10px] font-normal">
+                          <Badge
+                            key={ns}
+                            variant="outline"
+                            className="text-2xs font-normal"
+                          >
                             {ns}
                           </Badge>
                         ))}
@@ -352,7 +435,11 @@ export function HealthDetailCard({
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {zones.map((zone) => (
-                          <Badge key={zone} variant="outline" className="text-[10px] font-normal">
+                          <Badge
+                            key={zone}
+                            variant="outline"
+                            className="text-2xs font-normal"
+                          >
                             {formatAvailabilityZone(zone)}
                           </Badge>
                         ))}
@@ -367,7 +454,11 @@ export function HealthDetailCard({
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {nodes.map((node) => (
-                          <Badge key={node} variant="outline" className="text-[10px] font-normal">
+                          <Badge
+                            key={node}
+                            variant="outline"
+                            className="text-2xs font-normal"
+                          >
                             {node}
                           </Badge>
                         ))}
@@ -378,11 +469,7 @@ export function HealthDetailCard({
               )}
 
               {/* Extra child content (StatRows, FeatureBadges, etc.) */}
-              {children && (
-                <div className="space-y-2">
-                  {children}
-                </div>
-              )}
+              {children && <div className="space-y-2">{children}</div>}
 
               {/* Action buttons */}
               {remediationActions.length > 0 && (
@@ -395,7 +482,7 @@ export function HealthDetailCard({
                       diagnostics: AlertTriangle,
                     };
                     const ActionIcon = actionIcons[action.action] || Eye;
-                    const isDestructive = action.action === 'restart_pod';
+                    const isDestructive = action.action === "restart_pod";
 
                     return (
                       <Button
@@ -403,8 +490,9 @@ export function HealthDetailCard({
                         variant="outline"
                         size="sm"
                         className={cn(
-                          'h-7 text-xs gap-1.5',
-                          isDestructive && 'text-warning hover:text-warning hover:border-warning/50',
+                          "h-7 text-xs gap-1.5",
+                          isDestructive &&
+                            "text-warning hover:text-warning hover:border-warning/50",
                         )}
                         onClick={() => handleAction(action)}
                       >
@@ -421,14 +509,22 @@ export function HealthDetailCard({
       </Collapsible>
 
       {/* Restart Pod Confirmation Dialog */}
-      <AlertDialog open={!!restartTarget} onOpenChange={(open) => { if (!open) setRestartTarget(null); }}>
+      <AlertDialog
+        open={!!restartTarget}
+        onOpenChange={(open) => {
+          if (!open) setRestartTarget(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Restart Pod</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to restart{' '}
-              <code className="font-mono text-sm">{restartTarget?.podName}</code>?
-              The pod will be deleted and recreated by its controller. This may cause brief service disruption.
+              Are you sure you want to restart{" "}
+              <code className="font-mono text-sm">
+                {restartTarget?.podName}
+              </code>
+              ? The pod will be deleted and recreated by its controller. This
+              may cause brief service disruption.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

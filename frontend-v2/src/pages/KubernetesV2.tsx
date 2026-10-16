@@ -15,9 +15,16 @@
  *   - k8s-constants         — resource tree, calculateAge, getStatusColor (pre-existing)
  */
 
-import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
+import {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  lazy,
+  Suspense,
+} from "react";
+import { useSearchParams } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -25,10 +32,11 @@ import {
   DropdownMenuItem,
   DropdownMenuCheckboxItem,
   DropdownMenuLabel,
-} from '@/components/ui/dropdown-menu';
-import { ResourcePageHeader } from '@/components/layout/ResourcePageHeader';
-import { ResourceExplorerLayout } from '@/components/layout/ResourceExplorerLayout';
-import { ResourceViewTabs } from '@/components/layout/ResourceViewTabs';
+} from "@/components/ui/dropdown-menu";
+import { ResourcePageHeader } from "@/components/layout/ResourcePageHeader";
+import { ResourceExplorerLayout } from "@/components/layout/ResourceExplorerLayout";
+import { ResourceSidebarViewTabs } from "@/components/layout/ResourceCategorySidebar";
+import { CollapsibleInnerSidebar } from "@/components/layout/InnerSidebar";
 import {
   Container,
   Database,
@@ -44,31 +52,37 @@ import {
   SlidersHorizontal,
   MoreVertical,
   ArrowRightLeft,
-} from 'lucide-react';
-import { useProjectClusters, useClusterNamespaces, useClusterResources, useClusterResourceSummary } from '@/hooks/useK8s';
-import { useAllClusters } from '@/hooks/useK8sClusters';
-import { MigrationPanel } from '@/components/k8s/migration';
-import { DetectClustersConfirmDialog } from '@/components/k8s/DetectClustersConfirmDialog';
-import { useHelmReleases, useUninstallHelmRelease } from '@/hooks/useHelm';
-import { useProjects } from '@/hooks/useProjects';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
-import { countDetectedClusters } from '@/lib/api/kubernetes';
-import { queryKeys } from '@/lib/queryKeys';
-import { notify, notifyError } from '@/lib/notify';
-import type { K8sCluster } from '@/types';
-import { parseApiError } from '@/lib/error-handler';
-import { getPlatformProfileLabel } from '@/lib/platform-context';
-import { SkeletonTable } from '@/components/ui/skeleton-table';
-import { EmptyState } from '@/components/ui/empty-state';
-import { ErrorState } from '@/components/ui/error-state';
-import { useDebounce } from '@/hooks/useDebounce';
-import { useAutoSelectProjectCluster } from '@/hooks/useAutoSelectProjectCluster';
-import { useLinkedClusterProject } from '@/hooks/useLinkedClusterProject';
-import { STORAGE_KEYS } from '@/lib/storage-keys';
-import { ConnectivityGate } from '@/components/ConnectivityGate';
-import { DEBOUNCE_MS } from '@/lib/constants';
-import type { K8sResource, HelmRelease } from '@/types';
+} from "lucide-react";
+import {
+  useProjectClusters,
+  useClusterNamespaces,
+  useClusterResources,
+  useClusterResourceSummary,
+} from "@/hooks/useK8s";
+import { useAllClusters } from "@/hooks/useK8sClusters";
+import { MigrationPanel } from "@/components/k8s/migration";
+import { DetectClustersConfirmDialog } from "@/components/k8s/DetectClustersConfirmDialog";
+import { ClusterScopePickerCard } from "@/components/k8s/ClusterScopePickerCard";
+import { useHelmReleases, useUninstallHelmRelease } from "@/hooks/useHelm";
+import { useProjects } from "@/hooks/useProjects";
+import { useQuery, useQueryClient, useIsFetching } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { countDetectedClusters } from "@/lib/api/kubernetes";
+import { queryKeys } from "@/lib/queryKeys";
+import { notify, notifyError } from "@/lib/notify";
+import type { K8sCluster } from "@/types";
+import { parseApiError } from "@/lib/error-handler";
+import { SkeletonTable } from "@/components/ui/skeleton-table";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
+import { useDebounce } from "@/hooks/useDebounce";
+import { useAutoSelectProjectCluster } from "@/hooks/useAutoSelectProjectCluster";
+import { useLinkedClusterProject } from "@/hooks/useLinkedClusterProject";
+import { STORAGE_KEYS } from "@/lib/storage-keys";
+import { getPlatformProfileLabel } from "@/lib/platform-context";
+import { ConnectivityGate } from "@/components/ConnectivityGate";
+import { DEBOUNCE_MS } from "@/lib/constants";
+import type { K8sResource, HelmRelease } from "@/types";
 
 import {
   K8sSidebar,
@@ -82,24 +96,34 @@ import {
   isHelmResourceType,
   isResourceUnhealthy,
   useK8sDialogs,
-} from './kubernetes';
-import type { ResourceAction, HelmAction } from './kubernetes';
+} from "./kubernetes";
+import type { ResourceAction, HelmAction } from "./kubernetes";
 
 // Lazy-load Helm dialogs to keep initial bundle small
 const InstallChartDialog = lazy(() =>
-  import('@/components/helm/InstallChartDialog').then((m) => ({ default: m.InstallChartDialog }))
+  import("@/components/helm/InstallChartDialog").then((m) => ({
+    default: m.InstallChartDialog,
+  })),
 );
 const UpgradeReleaseDialog = lazy(() =>
-  import('@/components/helm/UpgradeReleaseDialog').then((m) => ({ default: m.UpgradeReleaseDialog }))
+  import("@/components/helm/UpgradeReleaseDialog").then((m) => ({
+    default: m.UpgradeReleaseDialog,
+  })),
 );
 const RollbackReleaseDialog = lazy(() =>
-  import('@/components/helm/RollbackReleaseDialog').then((m) => ({ default: m.RollbackReleaseDialog }))
+  import("@/components/helm/RollbackReleaseDialog").then((m) => ({
+    default: m.RollbackReleaseDialog,
+  })),
 );
 const ReleaseDetailPanel = lazy(() =>
-  import('@/components/helm/ReleaseDetailPanel').then((m) => ({ default: m.ReleaseDetailPanel }))
+  import("@/components/helm/ReleaseDetailPanel").then((m) => ({
+    default: m.ReleaseDetailPanel,
+  })),
 );
 const RepositoryManagementDialog = lazy(() =>
-  import('@/components/helm/RepositoryManagementDialog').then((m) => ({ default: m.RepositoryManagementDialog }))
+  import("@/components/helm/RepositoryManagementDialog").then((m) => ({
+    default: m.RepositoryManagementDialog,
+  })),
 );
 
 // Alert dialog for uninstall confirmation
@@ -112,15 +136,15 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+} from "@/components/ui/alert-dialog";
 
 // ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
 
 export default function KubernetesV2() {
-  const borderDefault = 'border-border';
-  const bgCard = 'bg-card';
+  const borderDefault = "border-border";
+  const bgCard = "bg-card";
   const { data: projects } = useProjects();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -129,7 +153,7 @@ export default function KubernetesV2() {
   // ?project=<id> in the URL wins over localStorage so deep links from other
   // pages (e.g. project detail's "Go to Kubernetes Page") set the right scope.
   const [selectedProject, setSelectedProject] = useState<number | null>(() => {
-    const fromUrl = searchParams.get('project');
+    const fromUrl = searchParams.get("project");
     if (fromUrl) {
       const parsed = parseInt(fromUrl);
       if (!Number.isNaN(parsed)) return parsed;
@@ -140,12 +164,12 @@ export default function KubernetesV2() {
 
   // Consume and sync deep link searchParams
   useEffect(() => {
-    const clusterParam = searchParams.get('cluster');
-    const projectParam = searchParams.get('project');
-    const resourceParam = searchParams.get('resource');
-    const namespaceParam = searchParams.get('namespace');
-    const nameParam = searchParams.get('name');
-    const viewParam = searchParams.get('view');
+    const clusterParam = searchParams.get("cluster");
+    const projectParam = searchParams.get("project");
+    const resourceParam = searchParams.get("resource");
+    const namespaceParam = searchParams.get("namespace");
+    const nameParam = searchParams.get("name");
+    const viewParam = searchParams.get("view");
 
     if (clusterParam) {
       const parsed = parseInt(clusterParam);
@@ -160,10 +184,11 @@ export default function KubernetesV2() {
     }
     if (resourceParam) {
       const lower = resourceParam.toLowerCase();
-      if (lower === 'ingresses') setSelectedResourceType('ingress');
-      else if (lower === 'services') setSelectedResourceType('service');
-      else if (lower === 'httproutes') setSelectedResourceType('httproute');
-      else if (lower === 'virtualservers' || lower === 'virtualserver') setSelectedResourceType('cis_virtualserver');
+      if (lower === "ingresses") setSelectedResourceType("ingress");
+      else if (lower === "services") setSelectedResourceType("service");
+      else if (lower === "httproutes") setSelectedResourceType("httproute");
+      else if (lower === "virtualservers" || lower === "virtualserver")
+        setSelectedResourceType("cis_virtualserver");
       else setSelectedResourceType(lower);
     }
     if (namespaceParam) {
@@ -172,11 +197,26 @@ export default function KubernetesV2() {
     if (nameParam !== null && nameParam !== undefined) {
       setSearchQuery(nameParam);
     }
-    if (viewParam && ['advanced', 'migration', 'dashboard', 'crds'].includes(viewParam)) {
-      setViewMode(viewParam as 'dashboard' | 'advanced' | 'crds' | 'migration');
+    if (
+      viewParam &&
+      ["advanced", "migration", "dashboard", "crds"].includes(viewParam)
+    ) {
+      setViewMode(viewParam as "dashboard" | "advanced" | "crds" | "migration");
+    }
+    const crdParam = searchParams.get("crd");
+    if (crdParam) {
+      setInitialCrd(crdParam);
     }
 
-    const paramsToClean = ['project', 'cluster', 'namespace', 'resource', 'name', 'view'];
+    const paramsToClean = [
+      "project",
+      "cluster",
+      "namespace",
+      "resource",
+      "name",
+      "view",
+      "crd",
+    ];
     const hasAny = paramsToClean.some((p) => searchParams.has(p));
     if (hasAny) {
       const next = new URLSearchParams(searchParams);
@@ -188,7 +228,7 @@ export default function KubernetesV2() {
   }, [searchParams, setSearchParams]);
 
   const [selectedCluster, setSelectedCluster] = useState<number | null>(() => {
-    const fromUrl = searchParams.get('cluster');
+    const fromUrl = searchParams.get("cluster");
     if (fromUrl) {
       const parsed = parseInt(fromUrl);
       if (!Number.isNaN(parsed)) return parsed;
@@ -197,18 +237,21 @@ export default function KubernetesV2() {
     return stored ? parseInt(stored) : null;
   });
 
-  const [selectedResourceType, setSelectedResourceType] = useState<string>(() => {
-    const fromUrl = searchParams.get('resource');
-    if (fromUrl) {
-      const lower = fromUrl.toLowerCase();
-      if (lower === 'ingresses') return 'ingress';
-      if (lower === 'services') return 'service';
-      if (lower === 'httproutes') return 'httproute';
-      if (lower === 'virtualservers' || lower === 'virtualserver') return 'cis_virtualserver';
-      return lower;
-    }
-    return localStorage.getItem(STORAGE_KEYS.K8S_RESOURCE_TYPE) || 'pod';
-  });
+  const [selectedResourceType, setSelectedResourceType] = useState<string>(
+    () => {
+      const fromUrl = searchParams.get("resource");
+      if (fromUrl) {
+        const lower = fromUrl.toLowerCase();
+        if (lower === "ingresses") return "ingress";
+        if (lower === "services") return "service";
+        if (lower === "httproutes") return "httproute";
+        if (lower === "virtualservers" || lower === "virtualserver")
+          return "cis_virtualserver";
+        return lower;
+      }
+      return localStorage.getItem(STORAGE_KEYS.K8S_RESOURCE_TYPE) || "pod";
+    },
+  );
 
   // Default to a real namespace rather than 'all'. Cluster-wide mode is
   // expensive on real clusters (thousands of pods, MB of data per kind) and
@@ -217,62 +260,92 @@ export default function KubernetesV2() {
   // Namespace selection is persisted per-cluster so switching clusters
   // doesn't carry a namespace that doesn't exist on the new cluster.
   const [selectedNamespace, setSelectedNamespace] = useState<string>(() => {
-    const fromUrl = searchParams.get('namespace');
+    const fromUrl = searchParams.get("namespace");
     if (fromUrl) return fromUrl;
-    const clusterId = searchParams.get('cluster') || localStorage.getItem(STORAGE_KEYS.K8S_CLUSTER);
-    if (!clusterId) return 'default';
-    const stored = localStorage.getItem(`${STORAGE_KEYS.K8S_NAMESPACE}:${clusterId}`);
-    return stored || 'default';
+    const clusterId =
+      searchParams.get("cluster") ||
+      localStorage.getItem(STORAGE_KEYS.K8S_CLUSTER);
+    if (!clusterId) return "default";
+    const stored = localStorage.getItem(
+      `${STORAGE_KEYS.K8S_NAMESPACE}:${clusterId}`,
+    );
+    return stored || "default";
   });
 
   const [searchQuery, setSearchQuery] = useState(() => {
-    return searchParams.get('name') || '';
+    return searchParams.get("name") || "";
   });
   const debouncedSearchQuery = useDebounce(searchQuery, DEBOUNCE_MS.SEARCH);
-  const [selectedResource, setSelectedResource] = useState<K8sResource | null>(null);
+  const [selectedResource, setSelectedResource] = useState<K8sResource | null>(
+    null,
+  );
 
   // "Only unhealthy" view filter — hides healthy kinds in the sidebar and
   // healthy rows in the main table. Persisted across sessions.
   const [showOnlyUnhealthy, setShowOnlyUnhealthy] = useState<boolean>(() => {
-    return localStorage.getItem(STORAGE_KEYS.K8S_UNHEALTHY_ONLY) === 'true';
+    return localStorage.getItem(STORAGE_KEYS.K8S_UNHEALTHY_ONLY) === "true";
   });
 
   // View mode — "dashboard" shows the BNK-deployment-focused scan view as the
   // default landing. "advanced" shows the generic resource browser (sidebar
   // tree + table). "crds" shows the dedicated CRD explorer. "migration" shows the proxy/CIS migration surface.
-  const [viewMode, setViewMode] = useState<'dashboard' | 'advanced' | 'crds' | 'migration'>(() => {
-    const fromUrl = searchParams.get('view');
-    if (fromUrl === 'advanced' || fromUrl === 'migration' || fromUrl === 'dashboard' || fromUrl === 'crds') return fromUrl;
+  const [viewMode, setViewMode] = useState<
+    "dashboard" | "advanced" | "crds" | "migration"
+  >(() => {
+    const fromUrl = searchParams.get("view");
+    if (
+      fromUrl === "advanced" ||
+      fromUrl === "migration" ||
+      fromUrl === "dashboard" ||
+      fromUrl === "crds"
+    )
+      return fromUrl;
     const stored = localStorage.getItem(STORAGE_KEYS.K8S_VIEW_MODE);
-    if (stored === 'advanced' || stored === 'migration' || stored === 'crds') return stored;
-    return 'dashboard';
+    if (stored === "advanced" || stored === "migration" || stored === "crds")
+      return stored;
+    return "dashboard";
   });
+  const [initialCrd, setInitialCrd] = useState<string | null>(() =>
+    searchParams.get("crd"),
+  );
 
   // ── UI State ───────────────────────────────────────────────────────────
-  const [expandedCategories, setExpandedCategories] = useState(['Workloads', 'Networking']);
+  const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
   const [detailedView, setDetailedView] = useState(true);
   const [showClusterScan, setShowClusterScan] = useState(false);
   // DPF Infrastructure removed from K8s page — lives in Fleet only
 
   // ── Helm State (K8S-UX-004) ────────────────────────────────────────────
-  const [selectedHelmRelease, setSelectedHelmRelease] = useState<HelmRelease | null>(null);
+  const [selectedHelmRelease, setSelectedHelmRelease] =
+    useState<HelmRelease | null>(null);
   const [showHelmInstall, setShowHelmInstall] = useState(false);
   const [showHelmUpgrade, setShowHelmUpgrade] = useState(false);
   const [showHelmRollback, setShowHelmRollback] = useState(false);
   const [showHelmUninstall, setShowHelmUninstall] = useState(false);
   const [showRepoDialog, setShowRepoDialog] = useState(false);
   const [showDetectConfirm, setShowDetectConfirm] = useState(false);
-  const [preselectedChart, setPreselectedChart] = useState<{ name: string; version: string } | null>(null);
+  const [preselectedChart, setPreselectedChart] = useState<{
+    name: string;
+    version: string;
+  } | null>(null);
 
   const isHelmView = isHelmResourceType(selectedResourceType);
 
   // ── Dialog State (managed by useK8sDialogs hook) ───────────────────────
-  const { state: dialogState, handleAction: handleDialogAction, openCreateDialog, setDialogOpen } = useK8sDialogs();
+  const {
+    state: dialogState,
+    handleAction: handleDialogAction,
+    openCreateDialog,
+    setDialogOpen,
+  } = useK8sDialogs();
 
   // ── Persist selections to localStorage ─────────────────────────────────
   useEffect(() => {
     if (selectedProject !== null) {
-      localStorage.setItem(STORAGE_KEYS.K8S_PROJECT, selectedProject.toString());
+      localStorage.setItem(
+        STORAGE_KEYS.K8S_PROJECT,
+        selectedProject.toString(),
+      );
     } else {
       localStorage.removeItem(STORAGE_KEYS.K8S_PROJECT);
     }
@@ -280,7 +353,10 @@ export default function KubernetesV2() {
 
   useEffect(() => {
     if (selectedCluster !== null) {
-      localStorage.setItem(STORAGE_KEYS.K8S_CLUSTER, selectedCluster.toString());
+      localStorage.setItem(
+        STORAGE_KEYS.K8S_CLUSTER,
+        selectedCluster.toString(),
+      );
     } else {
       localStorage.removeItem(STORAGE_KEYS.K8S_CLUSTER);
     }
@@ -289,12 +365,18 @@ export default function KubernetesV2() {
   // Persist the selected resource type (same across clusters — Pods is Pods).
   useEffect(() => {
     if (selectedResourceType) {
-      localStorage.setItem(STORAGE_KEYS.K8S_RESOURCE_TYPE, selectedResourceType);
+      localStorage.setItem(
+        STORAGE_KEYS.K8S_RESOURCE_TYPE,
+        selectedResourceType,
+      );
     }
   }, [selectedResourceType]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.K8S_UNHEALTHY_ONLY, showOnlyUnhealthy ? 'true' : 'false');
+    localStorage.setItem(
+      STORAGE_KEYS.K8S_UNHEALTHY_ONLY,
+      showOnlyUnhealthy ? "true" : "false",
+    );
   }, [showOnlyUnhealthy]);
 
   useEffect(() => {
@@ -307,7 +389,7 @@ export default function KubernetesV2() {
     if (selectedCluster !== null && selectedNamespace) {
       localStorage.setItem(
         `${STORAGE_KEYS.K8S_NAMESPACE}:${selectedCluster}`,
-        selectedNamespace
+        selectedNamespace,
       );
     }
   }, [selectedCluster, selectedNamespace]);
@@ -317,7 +399,7 @@ export default function KubernetesV2() {
   useEffect(() => {
     if (selectedCluster !== null) {
       const stored = localStorage.getItem(
-        `${STORAGE_KEYS.K8S_NAMESPACE}:${selectedCluster}`
+        `${STORAGE_KEYS.K8S_NAMESPACE}:${selectedCluster}`,
       );
       if (stored && stored !== selectedNamespace) {
         setSelectedNamespace(stored);
@@ -327,16 +409,26 @@ export default function KubernetesV2() {
   }, [selectedCluster]);
 
   // ── Data Fetching ──────────────────────────────────────────────────────
-  const { data: clusters, isError: clustersError, error: clustersErrorData, refetch: refetchClusters } = useProjectClusters(selectedProject ?? 0, {
+  const {
+    data: clusters,
+    isError: clustersError,
+    error: clustersErrorData,
+    refetch: refetchClusters,
+  } = useProjectClusters(selectedProject ?? 0, {
     pollingEnabled: false,
   });
   const { data: allClustersResponse } = useAllClusters();
-  const allClusters = useMemo(() => allClustersResponse?.clusters ?? [], [allClustersResponse?.clusters]);
+  const allClusters = useMemo(
+    () => allClustersResponse?.clusters ?? [],
+    [allClustersResponse?.clusters],
+  );
 
   // Auto-resolve project from cluster (e.g. navigating from Fleet with only cluster ID)
   useEffect(() => {
     if (selectedCluster && !selectedProject && allClusters.length > 0) {
-      const match = allClusters.find((c: K8sCluster) => c.id === selectedCluster);
+      const match = allClusters.find(
+        (c: K8sCluster) => c.id === selectedCluster,
+      );
       if (match?.project_id) {
         setSelectedProject(match.project_id);
       }
@@ -359,20 +451,22 @@ export default function KubernetesV2() {
   // lands with a cluster dropdown that needs manual selection.
   useEffect(() => {
     if (!selectedProject || linkPending) return;
+    if (selectedCluster === null) return;
     const projectClusters = clusters ?? [];
     if (projectClusters.length === 0) return;
-    const stillValid = selectedCluster
-      ? projectClusters.some((c: K8sCluster) => c.id === selectedCluster)
-      : false;
+    const stillValid = projectClusters.some(
+      (c: K8sCluster) => c.id === selectedCluster,
+    );
     if (!stillValid) {
-      setSelectedCluster(projectClusters[0].id);
+      setSelectedCluster(null);
     }
   }, [selectedProject, clusters, selectedCluster, linkPending]);
   const visibleClusters = useMemo(() => {
-    if (!selectedProject) return clusters ?? [];
-    if ((clusters ?? []).length > 0) return clusters ?? [];
-    return allClusters.filter((cluster: K8sCluster) => cluster.project_id === selectedProject);
-  }, [selectedProject, clusters, allClusters]);
+    if (!selectedProject) return allClusters;
+    return allClusters.filter(
+      (cluster: K8sCluster) => cluster.project_id === selectedProject,
+    );
+  }, [selectedProject, allClusters]);
 
   useAutoSelectProjectCluster({
     projects,
@@ -384,52 +478,69 @@ export default function KubernetesV2() {
     setSelectedCluster,
   });
 
-  const { data: namespacesResponse, isLoading: isNamespacesLoading, error: namespacesError } = useClusterNamespaces(selectedCluster ?? 0, {
+  const {
+    data: namespacesResponse,
+    isLoading: isNamespacesLoading,
+    error: namespacesError,
+  } = useClusterNamespaces(selectedCluster ?? 0, {
     enabled: !!selectedCluster,
   });
-  const namespaces = useMemo(() => namespacesResponse?.namespaces || [], [namespacesResponse?.namespaces]);
+  const namespaces = useMemo(
+    () => namespacesResponse?.namespaces || [],
+    [namespacesResponse?.namespaces],
+  );
 
   useEffect(() => {
     if (namespaces.length === 0) return;
     // Keep an explicit "all namespaces" choice — user opted in via the
     // big-hammer button and we shouldn't second-guess them.
-    if (selectedNamespace === 'all') return;
+    if (selectedNamespace === "all") return;
     // If the currently-selected namespace doesn't exist on this cluster
     // (stale per-cluster localStorage, or the initial 'default' fallback
     // when the cluster doesn't have a 'default' namespace), pick a sane
     // one: 'default' if present, else the first listed namespace.
     const names = namespaces.map((ns) => ns.name);
     if (!selectedNamespace || !names.includes(selectedNamespace)) {
-      setSelectedNamespace(names.includes('default') ? 'default' : names[0]);
+      setSelectedNamespace(names.includes("default") ? "default" : names[0]);
     }
   }, [namespaces, selectedNamespace]);
 
   // K8s resource fetching (disabled for Helm views)
-  const { data: resourcesData, isFetching: isRefreshing, isLoading: isResourcesLoading, fetchStatus: resourcesFetchStatus } = useClusterResources(
+  const {
+    data: resourcesData,
+    isFetching: isRefreshing,
+    isLoading: isResourcesLoading,
+    fetchStatus: resourcesFetchStatus,
+  } = useClusterResources(
     selectedCluster ?? 0,
     selectedResourceType,
-    { namespace: selectedNamespace === 'all' ? undefined : selectedNamespace },
+    { namespace: selectedNamespace === "all" ? undefined : selectedNamespace },
     {
       enabled: !!selectedCluster && !!selectedResourceType && !isHelmView,
       pollingEnabled: false,
-    }
+    },
   );
-  const resources = useMemo(() => resourcesData?.resources || [], [resourcesData?.resources]);
+  const resources = useMemo(
+    () => resourcesData?.resources || [],
+    [resourcesData?.resources],
+  );
 
   // Per-kind counts + unhealthy for the sidebar badges. Scoped to the same
   // namespace as the selected view so the dot/count reflect what the user
   // would actually see if they clicked in.
-  const { data: resourceSummaryData, isLoading: isResourceSummaryLoading } = useClusterResourceSummary(
-    selectedCluster ?? 0,
-    selectedNamespace === 'all' ? undefined : selectedNamespace,
-    { enabled: !!selectedCluster && !isHelmView }
-  );
+  const { data: resourceSummaryData, isLoading: isResourceSummaryLoading } =
+    useClusterResourceSummary(
+      selectedCluster ?? 0,
+      selectedNamespace === "all" ? undefined : selectedNamespace,
+      { enabled: !!selectedCluster && !isHelmView },
+    );
   const resourceSummary = resourceSummaryData?.summary;
 
   // Helm release fetching (only when helmrelease selected)
   const {
     data: helmReleasesData,
     isLoading: isLoadingHelmReleases,
+    isFetching: isFetchingHelmReleases,
     fetchStatus: helmFetchStatus,
     isError: isHelmError,
     error: helmError,
@@ -438,93 +549,131 @@ export default function KubernetesV2() {
     selectedCluster,
     undefined, // all namespaces
     true,
-    { enabled: !!selectedCluster && selectedResourceType === 'helmrelease' }
+    { enabled: !!selectedCluster && selectedResourceType === "helmrelease" },
   );
-  const helmReleases = useMemo(() => helmReleasesData?.releases || [], [helmReleasesData?.releases]);
+  const helmReleases = useMemo(
+    () => helmReleasesData?.releases || [],
+    [helmReleasesData?.releases],
+  );
 
   // Helm uninstall mutation
   const uninstallMutation = useUninstallHelmRelease();
 
   const { data: nodeCount = 0 } = useQuery({
-    queryKey: ['k8s', 'clusters', selectedCluster, 'node-count'],
+    queryKey: ["k8s", "clusters", selectedCluster, "node-count"],
     queryFn: () => api.getClusterNodeCount(selectedCluster!),
     enabled: !!selectedCluster,
     staleTime: 30000,
   });
 
+  const k8sFetchingCount = useIsFetching({
+    predicate: (query) => {
+      const key = query.queryKey;
+      return (
+        (key[0] === "k8s" &&
+          key[1] === "clusters" &&
+          key[2] === selectedCluster) ||
+        (key[0] === "helm" && key[2] === selectedCluster)
+      );
+    },
+  });
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
+  const isRefreshingAny =
+    isManualRefreshing ||
+    isRefreshing ||
+    isFetchingHelmReleases ||
+    k8sFetchingCount > 0;
+
   // ── Derived / Memoized ─────────────────────────────────────────────────
   const toggleCategory = useCallback((category: string) => {
     setExpandedCategories((prev) =>
-      prev.includes(category) ? prev.filter((c) => c !== category) : [...prev, category]
+      prev.includes(category)
+        ? prev.filter((c) => c !== category)
+        : [...prev, category],
     );
   }, []);
 
   const filteredResources = useMemo(
     () =>
       resources.filter((r) => {
-        if (!r.metadata?.name?.toLowerCase().includes(debouncedSearchQuery.toLowerCase())) {
+        if (
+          !r.metadata?.name
+            ?.toLowerCase()
+            .includes(debouncedSearchQuery.toLowerCase())
+        ) {
           return false;
         }
-        if (showOnlyUnhealthy && !isResourceUnhealthy(r, selectedResourceType)) {
+        if (
+          showOnlyUnhealthy &&
+          !isResourceUnhealthy(r, selectedResourceType)
+        ) {
           return false;
         }
         return true;
       }),
-    [resources, debouncedSearchQuery, showOnlyUnhealthy, selectedResourceType]
+    [resources, debouncedSearchQuery, showOnlyUnhealthy, selectedResourceType],
   );
 
   // Filter helm releases by search query
   const filteredHelmReleases = useMemo(
     () =>
-      helmReleases.filter((r) =>
-        !debouncedSearchQuery ||
-        r.name?.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
-        r.chart?.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
-        r.namespace?.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
+      helmReleases.filter(
+        (r) =>
+          !debouncedSearchQuery ||
+          r.name?.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+          r.chart?.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+          r.namespace
+            ?.toLowerCase()
+            .includes(debouncedSearchQuery.toLowerCase()),
       ),
-    [helmReleases, debouncedSearchQuery]
+    [helmReleases, debouncedSearchQuery],
   );
 
   const selectedClusterData = useMemo(
-    () => visibleClusters.find((c: K8sCluster) => c.id === selectedCluster) ?? null,
-    [visibleClusters, selectedCluster]
+    () =>
+      visibleClusters.find((c: K8sCluster) => c.id === selectedCluster) ?? null,
+    [visibleClusters, selectedCluster],
   );
 
-  const isDetectedOcp = selectedClusterData?.detected_platform_profile === 'ocp';
+  const isDetectedOcp =
+    selectedClusterData?.detected_platform_profile === "ocp";
   const nodeOperationsDisabledReason = useMemo(() => {
     if (!isDetectedOcp) {
       return null;
     }
 
     const hasMachineConfigConstraint =
-      selectedClusterData?.platform_capabilities?.machine_config
-      || selectedClusterData?.platform_constraints?.direct_node_package_mutation_not_supported;
+      selectedClusterData?.platform_capabilities?.machine_config ||
+      selectedClusterData?.platform_constraints
+        ?.direct_node_package_mutation_not_supported;
 
     if (!hasMachineConfigConstraint) {
       return null;
     }
 
-    return 'OpenShift worker node day-2 changes are typically managed via MachineConfig and operator workflows; direct cordon/uncordon/drain from Forge is intentionally disabled in this context.';
+    return "OpenShift worker node day-2 changes are typically managed via MachineConfig and operator workflows; direct cordon/uncordon/drain from Forge is intentionally disabled in this context.";
   }, [
     isDetectedOcp,
     selectedClusterData?.platform_capabilities?.machine_config,
-    selectedClusterData?.platform_constraints?.direct_node_package_mutation_not_supported,
+    selectedClusterData?.platform_constraints
+      ?.direct_node_package_mutation_not_supported,
   ]);
 
   const createResourceDisabledReason = useMemo(() => {
-    if (!isDetectedOcp || selectedResourceType !== 'ingress') {
+    if (!isDetectedOcp || selectedResourceType !== "ingress") {
       return null;
     }
 
     const hasRouteOrOperatorSignals =
-      selectedClusterData?.platform_capabilities?.openshift_routes
-      || selectedClusterData?.platform_constraints?.operator_required_for_networking;
+      selectedClusterData?.platform_capabilities?.openshift_routes ||
+      selectedClusterData?.platform_constraints
+        ?.operator_required_for_networking;
 
     if (!hasRouteOrOperatorSignals) {
       return null;
     }
 
-    return 'On OpenShift, north-south exposure is commonly Route/operator-managed. Forge does not create this platform-managed path directly; generic Ingress create is disabled for this cluster context.';
+    return "On OpenShift, north-south exposure is commonly Route/operator-managed. Forge does not create this platform-managed path directly; generic Ingress create is disabled for this cluster context.";
   }, [
     isDetectedOcp,
     selectedResourceType,
@@ -537,19 +686,20 @@ export default function KubernetesV2() {
       return null;
     }
 
-    if (selectedResourceType !== 'ingress') {
+    if (selectedResourceType !== "ingress") {
       return null;
     }
 
     const operatorManagedNetworking =
-      selectedClusterData?.platform_constraints?.operator_required_for_networking
-      || selectedClusterData?.platform_capabilities?.openshift_routes;
+      selectedClusterData?.platform_constraints
+        ?.operator_required_for_networking ||
+      selectedClusterData?.platform_capabilities?.openshift_routes;
 
     if (!operatorManagedNetworking) {
       return null;
     }
 
-    return 'Forge can mutate a selected Ingress object directly, but OpenShift north-south exposure is commonly Route/operator-managed and remains outside Forge platform mutation scope.';
+    return "Forge can mutate a selected Ingress object directly, but OpenShift north-south exposure is commonly Route/operator-managed and remains outside Forge platform mutation scope.";
   }, [
     isDetectedOcp,
     selectedResourceType,
@@ -560,10 +710,22 @@ export default function KubernetesV2() {
   // ── Handlers ───────────────────────────────────────────────────────────
   const handleRefresh = async () => {
     if (!selectedCluster) return;
-    // The toolbar shows the refetch via isRefreshing (isFetching) — no toast needed.
-    await queryClient.invalidateQueries({ queryKey: ['k8s', 'clusters', selectedCluster] });
-    if (isHelmView) {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.helm.releases.byCluster(selectedCluster) });
+    setIsManualRefreshing(true);
+    const minWait = new Promise((resolve) => setTimeout(resolve, 400));
+    try {
+      await Promise.all([
+        minWait,
+        queryClient.invalidateQueries({
+          queryKey: ["k8s", "clusters", selectedCluster],
+        }),
+        isHelmView
+          ? queryClient.invalidateQueries({
+              queryKey: queryKeys.helm.releases.byCluster(selectedCluster),
+            })
+          : Promise.resolve(),
+      ]);
+    } finally {
+      setIsManualRefreshing(false);
     }
   };
 
@@ -572,17 +734,20 @@ export default function KubernetesV2() {
     try {
       const blob = await api.exportClusterConfig(selectedCluster);
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
       const clusterName =
-        visibleClusters.find((c: K8sCluster) => c.id === selectedCluster)?.name || `cluster-${selectedCluster}`;
+        visibleClusters.find((c: K8sCluster) => c.id === selectedCluster)
+          ?.name || `cluster-${selectedCluster}`;
       a.download = `bnk-config-${clusterName}-${new Date().toISOString().slice(0, 10)}.yaml`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch {
-      notify.error('Failed to export Kubernetes config', undefined, { category: 'cluster' });
+      notify.error("Failed to export Kubernetes config", undefined, {
+        category: "cluster",
+      });
     }
   };
 
@@ -602,67 +767,89 @@ export default function KubernetesV2() {
   /** Unified action handler for K8s resources — delegates restart inline, everything else to dialogs */
   const handleResourceAction = useCallback(
     async (action: ResourceAction) => {
-      if (action.type === 'nodeOps' && nodeOperationsDisabledReason) {
-        notify.warning(nodeOperationsDisabledReason, undefined, { category: 'cluster' });
+      if (action.type === "nodeOps" && nodeOperationsDisabledReason) {
+        notify.warning(nodeOperationsDisabledReason, undefined, {
+          category: "cluster",
+        });
         return;
       }
 
-      if ((action.type === 'edit' || action.type === 'delete') && ingressMutationBoundaryNotice) {
+      if (
+        (action.type === "edit" || action.type === "delete") &&
+        ingressMutationBoundaryNotice
+      ) {
         notify.warning(
-          'Direct object mutation only',
+          "Direct object mutation only",
           ingressMutationBoundaryNotice,
-          { category: 'cluster' },
+          { category: "cluster" },
         );
       }
 
-      if (action.type === 'restart') {
-        if (selectedCluster && action.resource.metadata?.name && action.resource.metadata?.namespace) {
+      if (action.type === "restart") {
+        if (
+          selectedCluster &&
+          action.resource.metadata?.name &&
+          action.resource.metadata?.namespace
+        ) {
           try {
             await api.deleteK8sResource(
               selectedCluster,
-              'pod',
+              "pod",
               action.resource.metadata.name,
-              { namespace: action.resource.metadata.namespace }
+              { namespace: action.resource.metadata.namespace },
             );
-            notify.success('Pod restarted (deleted, will be recreated by controller)', undefined, { category: 'cluster' });
+            notify.success(
+              "Pod restarted (deleted, will be recreated by controller)",
+              undefined,
+              { category: "cluster" },
+            );
             queryClient.invalidateQueries({
               queryKey: queryKeys.k8s.clusters.allResources(selectedCluster),
             });
           } catch (error) {
             const parsed = parseApiError(error);
-            notify.error(parsed.title, parsed.message, { category: 'cluster' });
+            notify.error(parsed.title, parsed.message, { category: "cluster" });
           }
         }
         return;
       }
       handleDialogAction(action);
     },
-    [selectedCluster, queryClient, handleDialogAction, nodeOperationsDisabledReason, ingressMutationBoundaryNotice]
+    [
+      selectedCluster,
+      queryClient,
+      handleDialogAction,
+      nodeOperationsDisabledReason,
+      ingressMutationBoundaryNotice,
+    ],
   );
 
   /** Helm action handler */
   const handleHelmAction = useCallback((action: HelmAction) => {
     setSelectedHelmRelease(action.release);
     switch (action.type) {
-      case 'view':
+      case "view":
         // Just select it — detail panel opens automatically
         break;
-      case 'upgrade':
+      case "upgrade":
         setShowHelmUpgrade(true);
         break;
-      case 'rollback':
+      case "rollback":
         setShowHelmRollback(true);
         break;
-      case 'uninstall':
+      case "uninstall":
         setShowHelmUninstall(true);
         break;
     }
   }, []);
 
-  const handleHelmInstallChart = useCallback((chart: { name: string; version: string }) => {
-    setPreselectedChart(chart);
-    setShowHelmInstall(true);
-  }, []);
+  const handleHelmInstallChart = useCallback(
+    (chart: { name: string; version: string }) => {
+      setPreselectedChart(chart);
+      setShowHelmInstall(true);
+    },
+    [],
+  );
 
   const confirmHelmUninstall = async () => {
     if (!selectedHelmRelease || !selectedCluster) return;
@@ -672,18 +859,26 @@ export default function KubernetesV2() {
         releaseName: selectedHelmRelease.name,
         namespace: selectedHelmRelease.namespace,
       });
-      notify.success(`Uninstall of "${selectedHelmRelease.name}" queued — refresh the Releases tab in ~30s to confirm`, undefined, { category: 'cluster' });
+      notify.success(
+        `Uninstall of "${selectedHelmRelease.name}" queued — refresh the Releases tab in ~30s to confirm`,
+        undefined,
+        { category: "cluster" },
+      );
       setShowHelmUninstall(false);
       setSelectedHelmRelease(null);
     } catch (error) {
       const errMsg = parseApiError(error);
-      notify.error('Failed to uninstall release', errMsg.message, { category: 'cluster' });
+      notify.error("Failed to uninstall release", errMsg.message, {
+        category: "cluster",
+      });
     }
   };
 
   // ── Content count for header ───────────────────────────────────────────
   const contentCount = isHelmView
-    ? (selectedResourceType === 'helmrelease' ? filteredHelmReleases.length : 0)
+    ? selectedResourceType === "helmrelease"
+      ? filteredHelmReleases.length
+      : 0
     : filteredResources.length;
 
   // ── Render ─────────────────────────────────────────────────────────────
@@ -701,6 +896,7 @@ export default function KubernetesV2() {
         }}
         clusters={visibleClusters}
         selectedClusterId={selectedCluster}
+        allowAllClusters={true}
         onClusterChange={setSelectedCluster}
         namespaces={namespaces}
         selectedNamespace={selectedNamespace}
@@ -708,25 +904,25 @@ export default function KubernetesV2() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onRefresh={handleRefresh}
-        isRefreshing={isRefreshing || isLoadingHelmReleases}
+        isRefreshing={isRefreshingAny}
       >
-        <div className="flex items-center gap-4 px-4 py-1.5 rounded-lg text-xs hidden md:flex bg-muted/50">
-          <div className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-success" />
-            <span className="text-muted-foreground">
-              {nodeCount} nodes
-            </span>
+        {selectedCluster && (
+          <div className="flex items-center gap-4 px-4 py-1.5 rounded-lg text-xs hidden md:flex bg-muted/50">
+            <div className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-success" />
+              <span className="text-muted-foreground">{nodeCount} nodes</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Container className="h-3.5 w-3.5 text-primary" />
+              <span className="text-muted-foreground">
+                {contentCount} {isHelmView ? "releases" : "resources"}
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            <Container className="h-3.5 w-3.5 text-primary" />
-            <span className="text-muted-foreground">
-              {contentCount} {isHelmView ? 'releases' : 'resources'}
-            </span>
-          </div>
-        </div>
+        )}
 
         {/* Filters — Advanced mode only (they only affect the raw resource tree). */}
-        {viewMode === 'advanced' && (
+        {viewMode === "advanced" && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -737,8 +933,11 @@ export default function KubernetesV2() {
                 title="Filters"
               >
                 <SlidersHorizontal className="h-4 w-4" />
-                {(showOnlyUnhealthy || selectedNamespace === 'all') && (
-                  <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
+                {(showOnlyUnhealthy || selectedNamespace === "all") && (
+                  <span
+                    className="h-1.5 w-1.5 rounded-full bg-primary"
+                    aria-hidden="true"
+                  />
                 )}
               </Button>
             </DropdownMenuTrigger>
@@ -751,13 +950,17 @@ export default function KubernetesV2() {
                 Only unhealthy
               </DropdownMenuCheckboxItem>
               <DropdownMenuCheckboxItem
-                checked={selectedNamespace === 'all'}
+                checked={selectedNamespace === "all"}
                 onCheckedChange={(checked) => {
                   if (checked) {
-                    setSelectedNamespace('all');
+                    setSelectedNamespace("all");
                   } else {
                     const names = namespaces.map((ns) => ns.name);
-                    setSelectedNamespace(names.includes('default') ? 'default' : names[0] || 'default');
+                    setSelectedNamespace(
+                      names.includes("default")
+                        ? "default"
+                        : names[0] || "default",
+                    );
                   }
                 }}
               >
@@ -781,7 +984,7 @@ export default function KubernetesV2() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
-            {viewMode === 'advanced' && (
+            {viewMode === "advanced" && (
               <DropdownMenuItem
                 onClick={() => setShowClusterScan(true)}
                 disabled={!selectedCluster}
@@ -790,7 +993,10 @@ export default function KubernetesV2() {
                 Cluster Scan
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={handleExportConfig} disabled={!selectedCluster}>
+            <DropdownMenuItem
+              onClick={handleExportConfig}
+              disabled={!selectedCluster}
+            >
               <Download className="mr-2 h-4 w-4" />
               Export Config
             </DropdownMenuItem>
@@ -798,62 +1004,99 @@ export default function KubernetesV2() {
         </DropdownMenu>
       </ResourcePageHeader>
 
-      {/* View-mode tab strip — Dashboard (BNK readiness) | Advanced (raw
-          browser) | CRDs (Custom Resource Definitions) | Migration (proxy/CIS migration). */}
-      {selectedCluster && (
-        <ResourceViewTabs
-          aria-label="Kubernetes view mode"
-          active={viewMode}
-          onChange={(key) => setViewMode(key as 'dashboard' | 'advanced' | 'crds' | 'migration')}
-          tabs={[
-            { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, title: 'BNK-focused deployment dashboard' },
-            { key: 'advanced', label: 'Workloads & Core', icon: Container, title: 'Kubernetes workloads, networking, config and nodes' },
-            { key: 'crds', label: 'Custom Resources (CRDs)', icon: Database, title: 'Browse installed Custom Resource Definitions and live instances' },
-            { key: 'migration', label: 'Migration', icon: ArrowRightLeft, title: 'Migrate existing proxies / classic BIG-IP (CIS) to BNK' },
-          ]}
-        />
-      )}
-
       {/* Main Content Area */}
       <ResourceExplorerLayout.Body>
-        {/* Left Sidebar — Advanced mode only. In Dashboard/CRDs/Migration mode
-            the view spans full width (no category tree needed). */}
-        {viewMode === 'advanced' && (
-          <K8sSidebar
-            clusterId={selectedCluster}
-            selectedResourceType={selectedResourceType}
-            onSelectResourceType={handleSelectResourceType}
-            expandedCategories={expandedCategories}
-            onToggleCategory={toggleCategory}
-            filteredResourceCount={contentCount}
-            showClusterScan={showClusterScan}
-            resourceSummary={resourceSummary}
-            isResourceSummaryLoading={isResourceSummaryLoading}
-            showOnlyUnhealthy={showOnlyUnhealthy}
+        {/* Persistent Flush Left Inner Sub-Sidebar */}
+        <CollapsibleInnerSidebar className="w-52 shrink-0 border-r border-border bg-card/30 flex flex-col">
+          <ResourceSidebarViewTabs
+            aria-label="Kubernetes view mode"
+            active={viewMode}
+            onChange={(key) => {
+              setViewMode(
+                key as "dashboard" | "advanced" | "crds" | "migration",
+              );
+              if (!selectedCluster && visibleClusters.length > 0) {
+                setSelectedCluster(visibleClusters[0].id);
+              }
+            }}
+            tabs={[
+              {
+                key: "dashboard",
+                label: "Overview",
+                icon: LayoutDashboard,
+                title: "Cluster overview, readiness & prerequisites",
+              },
+              {
+                key: "advanced",
+                label: "Workloads & Core",
+                icon: Container,
+                title: "Kubernetes workloads, networking, config and nodes",
+              },
+              {
+                key: "crds",
+                label: "Custom Resources (CRDs)",
+                icon: Database,
+                title:
+                  "Browse installed Custom Resource Definitions and live instances",
+              },
+              {
+                key: "migration",
+                label: "Migration",
+                icon: ArrowRightLeft,
+                title: "Migrate existing proxies / classic BIG-IP (CIS) to BNK",
+              },
+            ]}
           />
-        )}
+          {viewMode === "advanced" && (
+            <K8sSidebar
+              clusterId={selectedCluster}
+              selectedResourceType={selectedResourceType}
+              onSelectResourceType={(type) => {
+                handleSelectResourceType(type);
+                if (!selectedCluster && visibleClusters.length > 0) {
+                  setSelectedCluster(visibleClusters[0].id);
+                }
+              }}
+              expandedCategories={expandedCategories}
+              onToggleCategory={toggleCategory}
+              filteredResourceCount={contentCount}
+              showClusterScan={showClusterScan}
+              resourceSummary={resourceSummary}
+              isResourceSummaryLoading={isResourceSummaryLoading}
+              showOnlyUnhealthy={showOnlyUnhealthy}
+            />
+          )}
+        </CollapsibleInnerSidebar>
 
         {/* Middle: Resource Table / Helm Releases / Chart Browser / CRD Explorer / Empty / Scan View */}
-        <ResourceExplorerLayout.Content
-          className="flex flex-col bg-muted/30"
-        >
+        <ResourceExplorerLayout.Content className="flex flex-col bg-muted/30">
           {clustersError ? (
             <ErrorState error={clustersErrorData} onRetry={refetchClusters} />
           ) : !selectedCluster ? (
-            <EmptyState
-              icon={Server}
-              title="No cluster selected"
-              description="Select a cluster from the dropdown above to view and manage Kubernetes resources"
-              action={{
-                label: 'Auto-detect Kubernetes Clusters',
-                onClick: () => setShowDetectConfirm(true),
-              }}
-            />
-          ) : viewMode === 'crds' ? (
-            <div className="p-6 space-y-6">
-              <K8sCrdExplorerPanel clusterId={selectedCluster} />
+            <div className="p-6 space-y-4 w-full overflow-y-auto">
+              <ClusterScopePickerCard
+                clusters={visibleClusters}
+                onSelectCluster={(id) => setSelectedCluster(id)}
+                headerAction={
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs h-7 gap-1"
+                    onClick={() => setShowDetectConfirm(true)}
+                  >
+                    Auto-detect Clusters
+                  </Button>
+                }
+              />
             </div>
-          ) : viewMode === 'migration' ? (
+          ) : viewMode === "crds" ? (
+            <div className="p-6 space-y-6">
+              <K8sCrdExplorerPanel
+                clusterId={selectedCluster}
+                initialCrd={initialCrd}
+              />
+            </div>
+          ) : viewMode === "migration" ? (
             /* Migration mode: proxy/CIS migration surface (D-022 P6 Slice A).
                Canonical single location for migration — removed from Fleet page
                and from scan-results page. clusterId is non-null here because
@@ -861,42 +1104,46 @@ export default function KubernetesV2() {
             <div className="p-6 space-y-6">
               <MigrationPanel clusterId={selectedCluster} />
             </div>
-          ) : viewMode === 'dashboard' || showClusterScan ? (
+          ) : viewMode === "dashboard" || showClusterScan ? (
             /* Dashboard mode: BNK-deployment-focused scan view. Always the
                default landing when a cluster is selected, unless the user
                has explicitly flipped to Advanced mode in the sidebar. */
             <ConnectivityGate
               target={{
-                type: 'cluster',
+                type: "cluster",
                 id: selectedCluster,
-                displayName: clusters?.find((c) => c.id === selectedCluster)?.name,
+                displayName: clusters?.find((c) => c.id === selectedCluster)
+                  ?.name,
               }}
             >
               <K8sClusterScanView
                 clusterId={selectedCluster}
-                clusterName={clusters?.find((c) => c.id === selectedCluster)?.name}
+                clusterName={
+                  clusters?.find((c) => c.id === selectedCluster)?.name
+                }
               />
             </ConnectivityGate>
-          ) : selectedResourceType === 'helmcharts' ? (
+          ) : selectedResourceType === "helmcharts" ? (
             /* ── Chart Browser View ─────────────────────────────────── */
             <K8sHelmChartBrowser
               onInstallChart={handleHelmInstallChart}
               onManageRepos={() => setShowRepoDialog(true)}
             />
-          ) : selectedResourceType === 'helmrelease' ? (
+          ) : selectedResourceType === "helmrelease" ? (
             /* ── Helm Releases View ─────────────────────────────────── */
             <ConnectivityGate
               target={{
-                type: 'cluster',
+                type: "cluster",
                 id: selectedCluster,
-                displayName: clusters?.find((c) => c.id === selectedCluster)?.name,
+                displayName: clusters?.find((c) => c.id === selectedCluster)
+                  ?.name,
               }}
             >
               {/* Toolbar */}
               <div className="flex items-center justify-between px-4 py-2 border-b border-border">
                 <div className="flex items-center gap-2">
                   <h2 className="text-sm font-semibold">
-                    Helm Releases{' '}
+                    Helm Releases{" "}
                     <span className="text-muted-foreground">
                       ({filteredHelmReleases.length})
                     </span>
@@ -928,13 +1175,17 @@ export default function KubernetesV2() {
               </div>
 
               {/* Content Area */}
-              {isLoadingHelmReleases && helmFetchStatus === 'fetching' ? (
+              {isLoadingHelmReleases && helmFetchStatus === "fetching" ? (
                 <div className="flex-1 overflow-auto p-4 space-y-4">
                   <div className="flex items-center gap-3 rounded-md border border-info/20 bg-info/5 px-4 py-3">
                     <RefreshCw className="h-4 w-4 text-info animate-spin shrink-0" />
                     <div>
-                      <p className="text-sm font-medium text-info">Fetching Helm releases...</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Querying Helm release data from cluster</p>
+                      <p className="text-sm font-medium text-info">
+                        Fetching Helm releases...
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Querying Helm release data from cluster
+                      </p>
                     </div>
                   </div>
                   <SkeletonTable rows={6} columns={7} />
@@ -944,16 +1195,28 @@ export default function KubernetesV2() {
               ) : filteredHelmReleases.length === 0 ? (
                 <EmptyState
                   icon={Package}
-                  title={searchQuery ? 'No matching releases' : 'No Helm releases'}
+                  title={
+                    searchQuery ? "No matching releases" : "No Helm releases"
+                  }
                   description={
                     searchQuery
                       ? `No releases match "${searchQuery}"`
-                      : 'Install your first Helm chart to get started'
+                      : "Install your first Helm chart to get started"
                   }
                   action={
                     searchQuery
-                      ? { label: 'Clear Search', onClick: () => setSearchQuery(''), variant: 'outline' as const }
-                      : { label: 'Install Chart', onClick: () => { setPreselectedChart(null); setShowHelmInstall(true); } }
+                      ? {
+                          label: "Clear Search",
+                          onClick: () => setSearchQuery(""),
+                          variant: "outline" as const,
+                        }
+                      : {
+                          label: "Install Chart",
+                          onClick: () => {
+                            setPreselectedChart(null);
+                            setShowHelmInstall(true);
+                          },
+                        }
                   }
                 />
               ) : (
@@ -969,9 +1232,10 @@ export default function KubernetesV2() {
             /* ── Standard K8s Resource View ──────────────────────────── */
             <ConnectivityGate
               target={{
-                type: 'cluster',
+                type: "cluster",
                 id: selectedCluster,
-                displayName: clusters?.find((c) => c.id === selectedCluster)?.name,
+                displayName: clusters?.find((c) => c.id === selectedCluster)
+                  ?.name,
               }}
             >
               {/* Toolbar */}
@@ -980,7 +1244,7 @@ export default function KubernetesV2() {
                   <h2 className="text-sm font-semibold">
                     {selectedResourceType.charAt(0).toUpperCase() +
                       selectedResourceType.slice(1)}
-                    s{' '}
+                    s{" "}
                     <span className="text-muted-foreground">
                       ({filteredResources.length})
                     </span>
@@ -994,13 +1258,15 @@ export default function KubernetesV2() {
                     className="h-8"
                   >
                     <Columns className="h-3.5 w-3.5 mr-1.5" />
-                    {detailedView ? 'Detailed' : 'Compact'}
+                    {detailedView ? "Detailed" : "Compact"}
                   </Button>
                   <Button
                     size="sm"
                     className="h-8"
                     onClick={openCreateDialog}
-                    disabled={!selectedCluster || !!createResourceDisabledReason}
+                    disabled={
+                      !selectedCluster || !!createResourceDisabledReason
+                    }
                     title={createResourceDisabledReason ?? undefined}
                   >
                     <Plus className="h-3.5 w-3.5 mr-1.5" />
@@ -1009,16 +1275,21 @@ export default function KubernetesV2() {
                 </div>
               </div>
 
-              {selectedNamespace === 'all' && (
+              {selectedNamespace === "all" && (
                 <div className="px-4 py-2 border-b border-border text-xs flex items-center justify-between gap-3 bg-warning/10 text-warning">
                   <span>
-                    Showing resources from <strong>all namespaces</strong>. This is an
-                    expensive cluster-wide fetch — scope back to a single namespace for faster loads.
+                    Showing resources from <strong>all namespaces</strong>. This
+                    is an expensive cluster-wide fetch — scope back to a single
+                    namespace for faster loads.
                   </span>
                   <button
                     onClick={() => {
                       const names = namespaces.map((ns) => ns.name);
-                      setSelectedNamespace(names.includes('default') ? 'default' : names[0] || 'default');
+                      setSelectedNamespace(
+                        names.includes("default")
+                          ? "default"
+                          : names[0] || "default",
+                      );
                     }}
                     className="underline underline-offset-2 hover:no-underline whitespace-nowrap font-medium"
                   >
@@ -1039,11 +1310,16 @@ export default function KubernetesV2() {
                 </div>
               )}
 
-              {selectedResourceType === 'node' && nodeOperationsDisabledReason && (
-                <div className="px-4 py-2 border-b border-border text-xs text-warning">
-                  Node operations disabled for detected {getPlatformProfileLabel(selectedClusterData?.detected_platform_profile)} context: {nodeOperationsDisabledReason}
-                </div>
-              )}
+              {selectedResourceType === "node" &&
+                nodeOperationsDisabledReason && (
+                  <div className="px-4 py-2 border-b border-border text-xs text-warning">
+                    Node operations disabled for detected{" "}
+                    {getPlatformProfileLabel(
+                      selectedClusterData?.detected_platform_profile,
+                    )}{" "}
+                    context: {nodeOperationsDisabledReason}
+                  </div>
+                )}
 
               {/* Content Area */}
               {namespacesError ? (
@@ -1052,12 +1328,17 @@ export default function KubernetesV2() {
                     <div className="flex items-start gap-3">
                       <Server className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
                       <div className="flex-1">
-                        <p className="text-sm font-semibold text-destructive">Failed to connect to cluster</p>
+                        <p className="text-sm font-semibold text-destructive">
+                          Failed to connect to cluster
+                        </p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Could not list namespaces. The cluster may be unreachable, the kubeconfig may be invalid, or authentication may have failed.
+                          Could not list namespaces. The cluster may be
+                          unreachable, the kubeconfig may be invalid, or
+                          authentication may have failed.
                         </p>
                         <pre className="text-xs text-muted-foreground mt-2 p-2 bg-background/50 rounded border border-border overflow-auto max-h-32">
-{(namespacesError as Error)?.message || String(namespacesError)}
+                          {(namespacesError as Error)?.message ||
+                            String(namespacesError)}
                         </pre>
                       </div>
                     </div>
@@ -1068,19 +1349,29 @@ export default function KubernetesV2() {
                   <div className="flex items-center gap-3 rounded-md border border-info/20 bg-info/5 px-4 py-3">
                     <RefreshCw className="h-4 w-4 text-info animate-spin shrink-0" />
                     <div>
-                      <p className="text-sm font-medium text-info">Connecting to cluster...</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Listing namespaces via Kubernetes API</p>
+                      <p className="text-sm font-medium text-info">
+                        Connecting to cluster...
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Listing namespaces via Kubernetes API
+                      </p>
                     </div>
                   </div>
                 </div>
-              ) : isResourcesLoading && resourcesFetchStatus === 'fetching' ? (
+              ) : isResourcesLoading && resourcesFetchStatus === "fetching" ? (
                 <div className="flex-1 overflow-auto p-4 space-y-4">
                   <div className="flex items-center gap-3 rounded-md border border-info/20 bg-info/5 px-4 py-3">
                     <RefreshCw className="h-4 w-4 text-info animate-spin shrink-0" />
                     <div>
-                      <p className="text-sm font-medium text-info">Fetching {selectedResourceType} resources...</p>
+                      <p className="text-sm font-medium text-info">
+                        Fetching {selectedResourceType} resources...
+                      </p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        Querying cluster via Kubernetes API ({selectedNamespace === '' || selectedNamespace === 'all' ? 'all namespaces' : `namespace: ${selectedNamespace}`})
+                        Querying cluster via Kubernetes API (
+                        {selectedNamespace === "" || selectedNamespace === "all"
+                          ? "all namespaces"
+                          : `namespace: ${selectedNamespace}`}
+                        )
                       </p>
                     </div>
                   </div>
@@ -1091,14 +1382,14 @@ export default function KubernetesV2() {
                   icon={Database}
                   title={
                     showOnlyUnhealthy
-                      ? 'No unhealthy resources'
+                      ? "No unhealthy resources"
                       : searchQuery
-                        ? 'No matching resources'
-                        : 'No resources found'
+                        ? "No matching resources"
+                        : "No resources found"
                   }
                   description={
                     showOnlyUnhealthy
-                      ? `All ${selectedResourceType} resources in ${selectedNamespace === 'all' ? 'this cluster' : `namespace ${selectedNamespace}`} are healthy. Click the toggle again to see everything.`
+                      ? `All ${selectedResourceType} resources in ${selectedNamespace === "all" ? "this cluster" : `namespace ${selectedNamespace}`} are healthy. Click the toggle again to see everything.`
                       : searchQuery
                         ? `No ${selectedResourceType} resources match "${searchQuery}"`
                         : `No ${selectedResourceType} resources in namespace ${selectedNamespace}. Try switching namespaces or checking filters.`
@@ -1106,15 +1397,15 @@ export default function KubernetesV2() {
                   action={
                     showOnlyUnhealthy
                       ? {
-                          label: 'Show all',
+                          label: "Show all",
                           onClick: () => setShowOnlyUnhealthy(false),
-                          variant: 'outline' as const,
+                          variant: "outline" as const,
                         }
                       : searchQuery
                         ? {
-                            label: 'Clear Search',
-                            onClick: () => setSearchQuery(''),
-                            variant: 'outline' as const,
+                            label: "Clear Search",
+                            onClick: () => setSearchQuery(""),
+                            variant: "outline" as const,
                           }
                         : undefined
                   }
@@ -1137,7 +1428,7 @@ export default function KubernetesV2() {
         </ResourceExplorerLayout.Content>
 
         {/* Right Panel: Resource Details OR Helm Release Details */}
-        {selectedResourceType === 'helmrelease' && selectedHelmRelease ? (
+        {selectedResourceType === "helmrelease" && selectedHelmRelease ? (
           <ResourceExplorerLayout.DetailPanel open={true} className={bgCard}>
             <Suspense fallback={null}>
               <ReleaseDetailPanel
@@ -1152,16 +1443,19 @@ export default function KubernetesV2() {
             </Suspense>
           </ResourceExplorerLayout.DetailPanel>
         ) : (
-          <ResourceExplorerLayout.DetailPanel open={!!selectedResource} className={bgCard}>
+          <ResourceExplorerLayout.DetailPanel
+            open={!!selectedResource}
+            className={bgCard}
+          >
             {selectedResource && (
-                <K8sDetailPanel
-                  resource={selectedResource}
-                  selectedResourceType={selectedResourceType}
-                  nodeOperationsDisabledReason={nodeOperationsDisabledReason}
-                  networkMutationBoundaryNotice={ingressMutationBoundaryNotice}
-                  onClose={() => setSelectedResource(null)}
-                  onAction={handleResourceAction}
-                />
+              <K8sDetailPanel
+                resource={selectedResource}
+                selectedResourceType={selectedResourceType}
+                nodeOperationsDisabledReason={nodeOperationsDisabledReason}
+                networkMutationBoundaryNotice={ingressMutationBoundaryNotice}
+                onClose={() => setSelectedResource(null)}
+                onAction={handleResourceAction}
+              />
             )}
           </ResourceExplorerLayout.DetailPanel>
         )}
@@ -1173,7 +1467,8 @@ export default function KubernetesV2() {
         selectedResourceType={selectedResourceType}
         selectedNamespace={selectedNamespace}
         errorContext={{
-          detectedPlatformProfile: selectedClusterData?.detected_platform_profile,
+          detectedPlatformProfile:
+            selectedClusterData?.detected_platform_profile,
           platformCapabilities: selectedClusterData?.platform_capabilities,
           platformConstraints: selectedClusterData?.platform_constraints,
         }}
@@ -1213,7 +1508,9 @@ export default function KubernetesV2() {
               clusterId={selectedCluster}
               releaseName={selectedHelmRelease.name}
               releaseNamespace={selectedHelmRelease.namespace}
-              currentRevision={parseInt(selectedHelmRelease.revision?.toString() || '1')}
+              currentRevision={parseInt(
+                selectedHelmRelease.revision?.toString() || "1",
+              )}
             />
           </>
         )}
@@ -1237,12 +1534,16 @@ export default function KubernetesV2() {
             // Module-output detection lists already-registered clusters as registered too.
             const detected = countDetectedClusters(data);
             notify.success(
-              detected ? `Detected ${detected} cluster(s)` : 'No clusters detected',
-              detected ? 'New clusters were registered; existing ones were left unchanged' : data.message,
-              { category: 'system' },
+              detected
+                ? `Detected ${detected} cluster(s)`
+                : "No clusters detected",
+              detected
+                ? "New clusters were registered; existing ones were left unchanged"
+                : data.message,
+              { category: "system" },
             );
           } catch (error) {
-            notifyError(error, 'detecting clusters');
+            notifyError(error, "detecting clusters");
           }
         }}
       />
@@ -1253,19 +1554,24 @@ export default function KubernetesV2() {
           <AlertDialogHeader>
             <AlertDialogTitle>Uninstall Helm Release?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to uninstall{' '}
-              <code className="font-mono font-semibold">{selectedHelmRelease?.name}</code>?
-              This will delete all resources associated with this release. This action cannot be undone.
+              Are you sure you want to uninstall{" "}
+              <code className="font-mono font-semibold">
+                {selectedHelmRelease?.name}
+              </code>
+              ? This will delete all resources associated with this release.
+              This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={uninstallMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={uninstallMutation.isPending}>
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmHelmUninstall}
               disabled={uninstallMutation.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {uninstallMutation.isPending ? 'Uninstalling...' : 'Uninstall'}
+              {uninstallMutation.isPending ? "Uninstalling..." : "Uninstall"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -32,7 +32,7 @@ export function EgressDetail({ resource }: DetailPanelProps) {
             <Section title="Captured Namespaces">
               <div className="flex flex-wrap gap-1.5">
                 {capturedNamespaces.map((ns: string) => (
-                  <Badge key={ns} variant="secondary" className="text-[10px] py-0 font-mono">
+                  <Badge key={ns} variant="secondary" className="text-2xs py-0 font-mono">
                     {ns}
                   </Badge>
                 ))}

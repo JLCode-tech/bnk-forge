@@ -1,46 +1,41 @@
-import { useState, Suspense } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
-import { Sidebar } from './Sidebar';
-import { Header } from './Header';
+import { useState, Suspense } from "react";
+import { Outlet } from "react-router-dom";
+import { Sidebar } from "./Sidebar";
+import { Header } from "./Header";
 
-import { CommandPalette } from '@/components/CommandPalette';
-import { KeyboardShortcutsModal } from '@/components/KeyboardShortcutsModal';
-import { ThemeToggle } from '@/components/ui/ThemeToggle';
-import { useKeyboardShortcuts, useNavigationShortcuts } from '@/hooks/useKeyboardShortcuts';
-import { useRouteAnnouncer, useScrollToTop } from '@/hooks/useAccessibility';
-import { useConnectivitySession } from '@/hooks/useConnectivity';
-import { Loader2 } from 'lucide-react';
+import { CommandPalette } from "@/components/CommandPalette";
+import { KeyboardShortcutsModal } from "@/components/KeyboardShortcutsModal";
+import {
+  useKeyboardShortcuts,
+  useNavigationShortcuts,
+} from "@/hooks/useKeyboardShortcuts";
+import { useRouteAnnouncer, useScrollToTop } from "@/hooks/useAccessibility";
+import { useConnectivitySession } from "@/hooks/useConnectivity";
+import { Loader2 } from "lucide-react";
 
 export function AppShell() {
-  const navigate = useNavigate();
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
 
   // Global keyboard shortcuts
   useKeyboardShortcuts([
     {
-      key: 'k',
+      key: "k",
       meta: true,
       action: () => setCommandPaletteOpen(true),
-      description: 'Open command palette',
+      description: "Open command palette",
     },
     {
-      key: '/',
+      key: "/",
       meta: true,
       action: () => setShortcutsModalOpen((prev) => !prev),
-      description: 'Show keyboard shortcuts',
+      description: "Show keyboard shortcuts",
     },
     {
-      key: '?',
+      key: "?",
       shift: true,
       action: () => setShortcutsModalOpen((prev) => !prev),
-      description: 'Show keyboard shortcuts',
-    },
-    {
-      key: 'n',
-      meta: true,
-      action: () => navigate('/'),
-      description: 'Go to Dashboard',
+      description: "Show keyboard shortcuts",
     },
   ]);
 
@@ -57,13 +52,16 @@ export function AppShell() {
   return (
     <div className="flex h-screen bg-background">
       {/* B5: Skip navigation link for keyboard/screen reader users */}
-      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-4 focus:bg-background focus:text-foreground focus:border focus:rounded-md focus:top-2 focus:left-2">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-4 focus:bg-background focus:text-foreground focus:border focus:rounded-md focus:top-2 focus:left-2"
+      >
         Skip to main content
       </a>
       <Sidebar />
       <div className="flex flex-col flex-1 overflow-hidden">
         <Header />
-        <main id="main-content" className="flex-1 overflow-y-auto p-6">
+        <main id="main-content" className="flex-1 overflow-y-auto">
           <Suspense
             fallback={
               <div className="flex items-center justify-center h-full">
@@ -71,7 +69,7 @@ export function AppShell() {
               </div>
             }
           >
-            <div className="motion-safe:animate-page-enter">
+            <div className="h-full motion-safe:animate-page-enter">
               <Outlet />
             </div>
           </Suspense>
@@ -89,9 +87,6 @@ export function AppShell() {
         open={shortcutsModalOpen}
         onOpenChange={setShortcutsModalOpen}
       />
-
-      {/* Theme Toggle */}
-      <ThemeToggle />
     </div>
   );
 }

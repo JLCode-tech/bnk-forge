@@ -190,7 +190,7 @@ function GatewayStep({
                 {gatewayClasses.map(gc => (
                   <SelectItem key={gc.name} value={gc.name}>
                     {gc.name}
-                    <span className="text-[10px] ml-2 opacity-50">{gc.controllerName}</span>
+                    <span className="text-2xs ml-2 opacity-50">{gc.controllerName}</span>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -335,7 +335,7 @@ function RouteCard({
     <div className="border border-border rounded-lg bg-card">
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
-        <Badge variant="outline" className={cn('text-[10px]', ROUTE_KIND_COLORS[route.kind])}>{route.kind}</Badge>
+        <Badge variant="outline" className={cn('text-2xs', ROUTE_KIND_COLORS[route.kind])}>{route.kind}</Badge>
         <span className="text-xs font-mono opacity-40">#{index + 1}</span>
         <div className="flex-1" />
         <button onClick={onRemove} className="p-0.5 rounded hover:bg-destructive/10 text-destructive">
@@ -347,7 +347,7 @@ function RouteCard({
         {/* Row 1: Name + Listener */}
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="text-[10px] font-medium opacity-60">Route Name</label>
+            <label className="text-2xs font-medium opacity-60">Route Name</label>
             <Input
               value={route.name}
               onChange={e => onChange({ ...route, name: e.target.value })}
@@ -356,7 +356,7 @@ function RouteCard({
             />
           </div>
           <div>
-            <label className="text-[10px] font-medium opacity-60">Attach to Listener</label>
+            <label className="text-2xs font-medium opacity-60">Attach to Listener</label>
             <Select value={route.listenerName} onValueChange={v => onChange({ ...route, listenerName: v })}>
               <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Select listener..." /></SelectTrigger>
               <SelectContent>
@@ -373,14 +373,14 @@ function RouteCard({
           <>
             {/* Hostnames */}
             <div>
-              <label className="text-[10px] font-medium opacity-60">Hostnames (optional)</label>
+              <label className="text-2xs font-medium opacity-60">Hostnames (optional)</label>
               <div className="flex gap-1">
                 <Input
                   value={hostnameInput}
                   onChange={e => setHostnameInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addHostname())}
                   placeholder="example.com"
-                  className="h-6 text-[11px] flex-1"
+                  className="h-6 text-2xs flex-1"
                 />
                 <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={addHostname}>
                   <Plus className="h-3 w-3" />
@@ -389,7 +389,7 @@ function RouteCard({
               {route.hostnames.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-1">
                   {route.hostnames.map(h => (
-                    <Badge key={h} variant="secondary" className="text-[10px] pr-1 gap-0.5">
+                    <Badge key={h} variant="secondary" className="text-2xs pr-1 gap-0.5">
                       {h}
                       <button onClick={() => onChange({ ...route, hostnames: route.hostnames.filter(x => x !== h) })} className="ml-0.5 hover:text-destructive">×</button>
                     </Badge>
@@ -400,7 +400,7 @@ function RouteCard({
 
             {/* Match rules */}
             <div>
-              <label className="text-[10px] font-medium opacity-60">Match Rules</label>
+              <label className="text-2xs font-medium opacity-60">Match Rules</label>
               {route.matches.map((m, mi) => (
                 <div key={mi} className="flex items-center gap-2 mt-1">
                   <Select value={m.pathType} onValueChange={v => {
@@ -408,7 +408,7 @@ function RouteCard({
                     matches[mi] = { ...m, pathType: v as 'PathPrefix' | 'Exact' };
                     onChange({ ...route, matches });
                   }}>
-                    <SelectTrigger className="h-6 text-[11px] w-28"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="h-6 text-2xs w-28"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="PathPrefix">PathPrefix</SelectItem>
                       <SelectItem value="Exact">Exact</SelectItem>
@@ -422,7 +422,7 @@ function RouteCard({
                       onChange({ ...route, matches });
                     }}
                     placeholder="/"
-                    className="h-6 text-[11px] flex-1"
+                    className="h-6 text-2xs flex-1"
                   />
                   {route.matches.length > 1 && (
                     <button
@@ -437,7 +437,7 @@ function RouteCard({
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-5 text-[10px] mt-1 px-1"
+                className="h-5 text-2xs mt-1 px-1"
                 onClick={() => onChange({ ...route, matches: [...route.matches, { pathType: 'PathPrefix', pathValue: '/' }] })}
               >
                 <Plus className="h-2.5 w-2.5 mr-0.5" /> Match
@@ -448,17 +448,17 @@ function RouteCard({
 
         {/* Backends */}
         <div>
-          <label className="text-[10px] font-medium opacity-60">Backend Services</label>
+          <label className="text-2xs font-medium opacity-60">Backend Services</label>
           {route.backends.map((b, bi) => (
             <div key={bi} className="flex items-center gap-2 mt-1">
               {services.length > 0 ? (
                 <Select value={b.serviceName} onValueChange={v => updateBackend(bi, 'serviceName', v)}>
-                  <SelectTrigger className="h-6 text-[11px] flex-1"><SelectValue placeholder="Select service..." /></SelectTrigger>
+                  <SelectTrigger className="h-6 text-2xs flex-1"><SelectValue placeholder="Select service..." /></SelectTrigger>
                   <SelectContent>
                     {services.map(s => (
                       <SelectItem key={`${s.namespace}/${s.name}`} value={s.name}>
                         {s.name}
-                        <span className="text-[10px] ml-1 opacity-50">{s.namespace}</span>
+                        <span className="text-2xs ml-1 opacity-50">{s.namespace}</span>
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -468,7 +468,7 @@ function RouteCard({
                   value={b.serviceName}
                   onChange={e => updateBackend(bi, 'serviceName', e.target.value)}
                   placeholder="service-name"
-                  className="h-6 text-[11px] flex-1"
+                  className="h-6 text-2xs flex-1"
                 />
               )}
               <Input
@@ -476,7 +476,7 @@ function RouteCard({
                 value={b.servicePort}
                 onChange={e => updateBackend(bi, 'servicePort', parseInt(e.target.value) || 80)}
                 placeholder="80"
-                className="h-6 text-[11px] w-16"
+                className="h-6 text-2xs w-16"
               />
               {route.backends.length > 1 && (
                 <button onClick={() => removeBackend(bi)} className="p-0.5 text-destructive hover:bg-destructive/10 rounded">
@@ -485,7 +485,7 @@ function RouteCard({
               )}
             </div>
           ))}
-          <Button variant="ghost" size="sm" className="h-5 text-[10px] mt-1 px-1" onClick={addBackend}>
+          <Button variant="ghost" size="sm" className="h-5 text-2xs mt-1 px-1" onClick={addBackend}>
             <Plus className="h-2.5 w-2.5 mr-0.5" /> Backend
           </Button>
         </div>
@@ -586,7 +586,7 @@ function SecurityStep({
             <h4 className="text-xs font-semibold">Firewall Rules ({state.firewallRules.length})</h4>
             <div className="flex gap-1">
               {POLICY_TEMPLATES.slice(0, 3).map(t => (
-                <Button key={t.label} variant="ghost" size="sm" className="h-6 text-[10px] gap-1" onClick={() => applyTemplate(t.rules)}>
+                <Button key={t.label} variant="ghost" size="sm" className="h-6 text-2xs gap-1" onClick={() => applyTemplate(t.rules)}>
                   <Wand2 className="h-3 w-3" /> {t.label}
                 </Button>
               ))}
@@ -618,7 +618,7 @@ function SecurityStep({
 
           <div className="flex gap-1 mt-2">
             {RULE_TEMPLATES.map(t => (
-              <Button key={t.label} variant="outline" size="sm" className="h-6 text-[10px]" onClick={() => addRule(t.rule)}>
+              <Button key={t.label} variant="outline" size="sm" className="h-6 text-2xs" onClick={() => addRule(t.rule)}>
                 <Plus className="h-2.5 w-2.5 mr-0.5" /> {t.label}
               </Button>
             ))}
@@ -684,7 +684,7 @@ function SecurityStep({
                 >
                   <Code className="h-3 w-3 text-warning" />
                   <span className="flex-1">{ir.name}</span>
-                  <span className="opacity-50 text-[10px]">{ir.lineCount} lines</span>
+                  <span className="opacity-50 text-2xs">{ir.lineCount} lines</span>
                   {isAdded && <Check className="h-3 w-3 text-success" />}
                 </button>
               );
@@ -719,15 +719,15 @@ function CompactRuleCard({
 
   return (
     <div className="flex items-center gap-2 px-2 py-1.5 rounded border border-border bg-card">
-      <span className="text-[10px] font-mono opacity-40 w-4">#{index + 1}</span>
+      <span className="text-2xs font-mono opacity-40 w-4">#{index + 1}</span>
       <Input
         value={rule.name}
         onChange={e => onChange({ ...rule, name: e.target.value })}
         placeholder="rule-name"
-        className="h-6 text-[11px] w-28"
+        className="h-6 text-2xs w-28"
       />
       <Select value={rule.action} onValueChange={v => onChange({ ...rule, action: v as PolicyBuilderRule['action'] })}>
-        <SelectTrigger className="h-6 text-[11px] w-20"><SelectValue /></SelectTrigger>
+        <SelectTrigger className="h-6 text-2xs w-20"><SelectValue /></SelectTrigger>
         <SelectContent>
           <SelectItem value="accept">Accept</SelectItem>
           <SelectItem value="drop">Drop</SelectItem>
@@ -735,14 +735,14 @@ function CompactRuleCard({
         </SelectContent>
       </Select>
       <Select value={rule.ipProtocol} onValueChange={v => onChange({ ...rule, ipProtocol: v as PolicyBuilderRule['ipProtocol'] })}>
-        <SelectTrigger className="h-6 text-[11px] w-16"><SelectValue /></SelectTrigger>
+        <SelectTrigger className="h-6 text-2xs w-16"><SelectValue /></SelectTrigger>
         <SelectContent>
           <SelectItem value="tcp">TCP</SelectItem>
           <SelectItem value="udp">UDP</SelectItem>
           <SelectItem value="any">Any</SelectItem>
         </SelectContent>
       </Select>
-      <Badge variant={ruleVariant} className="text-[9px] px-1">{rule.action}</Badge>
+      <Badge variant={ruleVariant} className="text-2xs px-1">{rule.action}</Badge>
       <div className="flex-1" />
       <div className="flex items-center gap-0.5">
         <button onClick={onMoveUp} disabled={index === 0} className={cn('p-0.5 rounded', index === 0 ? 'opacity-20' : 'hover:bg-muted')}>

@@ -17,8 +17,9 @@ import AuditLog from "@/components/settings/AuditLog";
 import { AlertChannels } from "@/components/settings/AlertChannels";
 import { BackupPanel } from "@/components/settings/BackupPanel";
 import { McpPanel } from "@/components/system/McpPanel";
-import { Tabs, TabsContent } from "@/components/ui/tabs";
-import { ResourceViewTabs } from "@/components/layout/ResourceViewTabs";
+// eslint-disable-next-line no-restricted-imports -- Vertical flush sub-sidebar requires Radix TabsList + TabsTrigger
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -35,9 +36,10 @@ import {
   Bell,
   HardDrive,
   Bot,
+  RefreshCw,
 } from "lucide-react";
+import { CollapsibleInnerSidebar } from "@/components/layout/InnerSidebar";
 import { useUIStore } from "@/stores/uiStore";
-import { PageHeader } from "@/components/layout/PageHeader";
 import { usePageRefresh } from "@/hooks/usePageRefresh";
 
 // Old /system?tab=... URLs that now live under /catalog.
@@ -56,6 +58,16 @@ const VALID_TABS = [
   "defaults",
   "appearance",
   "backup",
+] as const;
+
+const SYSTEM_TABS = [
+  { key: "monitor", label: "System Monitor", icon: Monitor },
+  { key: "mcp", label: "MCP Server", icon: Bot },
+  { key: "audit", label: "Audit Log", icon: ScrollText },
+  { key: "alerts", label: "Alerts", icon: Bell },
+  { key: "defaults", label: "Defaults", icon: Settings2 },
+  { key: "appearance", label: "Appearance", icon: Palette },
+  { key: "backup", label: "Backup & Restore", icon: HardDrive },
 ] as const;
 
 export default function System() {
@@ -86,56 +98,93 @@ export default function System() {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <PageHeader
-        title="System"
-        subtitle="Monitor system health, audit activity, and configure application settings."
-        onRefresh={refresh}
-        isRefreshing={isRefreshing}
-      />
+    <Tabs
+      value={activeTab}
+      onValueChange={handleTabChange}
+      className="min-h-[calc(100vh-3rem)] flex"
+    >
+      {/* Left Flush Inner Sub-Sidebar */}
+      <CollapsibleInnerSidebar
+        aria-label="System sections"
+        className="w-52 shrink-0 border-r border-border bg-card/30 p-3 flex flex-col gap-4"
+      >
+        <div className="px-2 pt-1 pb-2 border-b border-border">
+          <h1 className="text-sm font-semibold text-foreground tracking-tight">
+            System
+          </h1>
+          <p className="text-xs text-muted-foreground leading-relaxed mt-1">
+            Monitor system health, audit activity, and configure application
+            settings.
+          </p>
+        </div>
 
-      <Tabs value={activeTab} onValueChange={handleTabChange}>
-        <ResourceViewTabs
-          variant="inline"
-          aria-label="System sections"
-          active={activeTab}
-          onChange={handleTabChange}
-          tabs={[
-            { key: "monitor", label: "System Monitor", icon: Monitor },
-            { key: "mcp", label: "MCP Server", icon: Bot },
-            { key: "audit", label: "Audit Log", icon: ScrollText },
-            { key: "alerts", label: "Alerts", icon: Bell },
-            { key: "defaults", label: "Defaults", icon: Settings2 },
-            { key: "appearance", label: "Appearance", icon: Palette },
-            { key: "backup", label: "Backup & Restore", icon: HardDrive },
-          ]}
-        />
+        <TabsList className="flex flex-col items-stretch h-auto bg-transparent p-0 gap-1">
+          {SYSTEM_TABS.map(({ key, label, icon: Icon }) => (
+            <TabsTrigger
+              key={key}
+              value={key}
+              className="justify-start gap-2.5 px-3 py-2 text-xs font-medium rounded-md data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none w-full"
+            >
+              <Icon className="h-3.5 w-3.5 shrink-0" />
+              <span>{label}</span>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </CollapsibleInnerSidebar>
 
-        <TabsContent value="monitor" className="space-y-6 mt-6">
+      {/* Right Content Area */}
+      <div className="flex-1 min-w-0 p-6 space-y-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold tracking-tight text-foreground">
+              {SYSTEM_TABS.find((t) => t.key === activeTab)?.label ?? "System"}
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Monitor system health, audit activity, and configure application
+              settings.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={refresh}
+            disabled={isRefreshing}
+            aria-label="Refresh"
+          >
+            <RefreshCw
+              className={cn(
+                "h-3.5 w-3.5 mr-1.5",
+                isRefreshing && "animate-spin",
+              )}
+            />
+            Refresh
+          </Button>
+        </div>
+
+        <TabsContent value="monitor" className="space-y-6 mt-0">
           <SystemUpgrade />
-          <PerformanceMonitor />
+          <PerformanceMonitor hideRefresh />
           <DatabaseManagement />
           <ContainerManagement />
         </TabsContent>
 
-        <TabsContent value="mcp" className="mt-6">
+        <TabsContent value="mcp" className="mt-0">
           <McpPanel />
         </TabsContent>
 
-        <TabsContent value="audit" className="mt-6">
+        <TabsContent value="audit" className="mt-0">
           <AuditLog />
         </TabsContent>
 
-        <TabsContent value="alerts" className="mt-6">
+        <TabsContent value="alerts" className="mt-0">
           <AlertChannels />
         </TabsContent>
 
-        <TabsContent value="defaults" className="mt-6">
+        <TabsContent value="defaults" className="mt-0">
           <SystemDefaults />
         </TabsContent>
 
-        <TabsContent value="appearance" className="mt-6">
+        <TabsContent value="appearance" className="mt-0">
           <SectionCard title="Appearance">
             <p className="text-sm text-muted-foreground mb-6">
               Customize the look and feel of the application.
@@ -198,10 +247,10 @@ export default function System() {
           </SectionCard>
         </TabsContent>
 
-        <TabsContent value="backup" className="mt-6">
+        <TabsContent value="backup" className="mt-0">
           <BackupPanel />
         </TabsContent>
-      </Tabs>
-    </div>
+      </div>
+    </Tabs>
   );
 }

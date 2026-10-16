@@ -42,6 +42,7 @@ export function getConditionColor(status: string) {
 
 export interface DetailPanelProps {
   resource: K8sResource;
+  onNavigateView?: (viewKey: string) => void;
 }
 
 export function InfoRow({ label, value, mono = false }: { label: string; value: string | number | boolean | null | undefined; mono?: boolean }) {

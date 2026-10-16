@@ -327,7 +327,7 @@ export default function AuditLog() {
                     <TableCell>
                       <Badge
                         variant={ACTION_VARIANTS[entry.action] ?? 'muted'}
-                        className="text-[10px] px-1.5 py-0"
+                        className="text-2xs px-1.5 py-0"
                       >
                         {entry.action}
                       </Badge>
@@ -346,7 +346,7 @@ export default function AuditLog() {
                     <TableCell>
                       <Badge
                         variant={STATUS_VARIANTS[entry.status] ?? 'muted'}
-                        className="text-[10px] px-1.5 py-0"
+                        className="text-2xs px-1.5 py-0"
                       >
                         {entry.status}
                       </Badge>

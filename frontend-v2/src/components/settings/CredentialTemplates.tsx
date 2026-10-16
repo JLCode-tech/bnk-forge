@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
-import { SectionCard } from '@/components/ui/section-card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { useEffect, useState } from "react";
+import { SectionCard } from "@/components/ui/section-card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Dialog,
   DialogContent,
@@ -13,14 +13,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -28,15 +28,15 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from "@/components/ui/table";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Switch } from '@/components/ui/switch';
+} from "@/components/ui/dropdown-menu";
+import { Switch } from "@/components/ui/switch";
 import {
   Loader2,
   Key,
@@ -53,30 +53,40 @@ import {
   Clock,
   CheckCircle2,
   MoreVertical,
-} from 'lucide-react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { notify, notifyError } from '@/lib/notify';
-import { api } from '@/lib/api';
-import { loadIbmRegionsFromApiKey } from '@/lib/ibm-cloud';
-import type { CloudCredentialTemplate, CloudCredentialTemplateCreate, CloudRegionOption, IBCosInstanceOption } from '@/types';
-import type { ApiCredentialTemplateCreate } from '@/types/api-schemas';
-import { RegionSelector } from '@/components/aws/RegionSelector';
-import { CloudRegionSelector } from '@/components/cloud/CloudRegionSelector';
-import { SSOAuthDialog } from './SSOAuthDialog';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { resolveCredStatus } from './resolveCredStatus';
-import { useAppMutation } from '@/hooks/lib/useAppMutation';
+} from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { notify, notifyError } from "@/lib/notify";
+import { api } from "@/lib/api";
+import { loadIbmRegionsFromApiKey } from "@/lib/ibm-cloud";
+import type {
+  CloudCredentialTemplate,
+  CloudCredentialTemplateCreate,
+  CloudRegionOption,
+  IBCosInstanceOption,
+} from "@/types";
+import type { ApiCredentialTemplateCreate } from "@/types/api-schemas";
+import { RegionSelector } from "@/components/aws/RegionSelector";
+import { CloudRegionSelector } from "@/components/cloud/CloudRegionSelector";
+import { SSOAuthDialog } from "./SSOAuthDialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { resolveCredStatus } from "./resolveCredStatus";
+import { useAppMutation } from "@/hooks/lib/useAppMutation";
 
 // Typed against the generated `provider` union so an invalid entry (or one
 // that drifts from the backend Literal) is a compile error. `ssh` is a valid
 // provider but intentionally not offered in this create UI; the type still
 // permits it, so adding it later is a one-line change with no cast.
-type TemplateProvider = ApiCredentialTemplateCreate['provider'];
+type TemplateProvider = ApiCredentialTemplateCreate["provider"];
 const TEMPLATE_PROVIDER_OPTIONS = [
-  { value: 'aws', label: 'Amazon Web Services (AWS)' },
-  { value: 'gcp', label: 'Google Cloud Platform (GCP)' },
-  { value: 'azure', label: 'Microsoft Azure' },
-  { value: 'ibm', label: 'IBM Cloud' },
+  { value: "aws", label: "Amazon Web Services (AWS)" },
+  { value: "gcp", label: "Google Cloud Platform (GCP)" },
+  { value: "azure", label: "Microsoft Azure" },
+  { value: "ibm", label: "IBM Cloud" },
 ] as const satisfies ReadonlyArray<{ value: TemplateProvider; label: string }>;
 
 /**
@@ -86,20 +96,31 @@ const TEMPLATE_PROVIDER_OPTIONS = [
  * (aws_credentials_expiry / azure_sso_token_expiry) and observation columns
  * into one priority-ordered result: failed > expired > warning > ok > unknown.
  */
-function CloudCredStatusBadge({ template }: { template: CloudCredentialTemplate }) {
+function CloudCredStatusBadge({
+  template,
+}: {
+  template: CloudCredentialTemplate;
+}) {
   const { level, headline, detail } = resolveCredStatus(template);
-  if (level === 'unknown') return null;
+  if (level === "unknown") return null;
 
   const icon =
-    level === 'failed' ? <AlertTriangle className="h-3 w-3" /> :
-    level === 'expired' ? <AlertCircle className="h-3 w-3" /> :
-    level === 'warning' ? <Clock className="h-3 w-3" /> :
-    <CheckCircle2 className="h-3 w-3" />;
+    level === "failed" ? (
+      <AlertTriangle className="h-3 w-3" />
+    ) : level === "expired" ? (
+      <AlertCircle className="h-3 w-3" />
+    ) : level === "warning" ? (
+      <Clock className="h-3 w-3" />
+    ) : (
+      <CheckCircle2 className="h-3 w-3" />
+    );
 
   const variant =
-    level === 'failed' || level === 'expired' ? 'destructive' :
-    level === 'warning' ? 'warning' :
-    'success';
+    level === "failed" || level === "expired"
+      ? "destructive"
+      : level === "warning"
+        ? "warning"
+        : "success";
 
   const badge = (
     <Badge variant={variant} className="gap-1 text-xs">
@@ -126,66 +147,89 @@ export default function CredentialTemplates() {
   const queryClient = useQueryClient();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState<CloudCredentialTemplate | null>(null);
-  const [filterProvider, setFilterProvider] = useState<string>('all');
+  const [editingTemplate, setEditingTemplate] =
+    useState<CloudCredentialTemplate | null>(null);
+  const [filterProvider, setFilterProvider] = useState<string>("all");
   const [ssoAuthDialogOpen, setSsoAuthDialogOpen] = useState(false);
-  const [ssoAuthTemplateId, setSsoAuthTemplateId] = useState<number | null>(null);
-  const [ssoAuthTemplateName, setSsoAuthTemplateName] = useState<string>('');
-  const [ssoAuthTemplateProvider, setSsoAuthTemplateProvider] = useState<string>('aws');
-  const [testingTemplateId, setTestingTemplateId] = useState<number | null>(null);
-  const [ibmRegionOptions, setIbmRegionOptions] = useState<CloudRegionOption[]>([]);
+  const [ssoAuthTemplateId, setSsoAuthTemplateId] = useState<number | null>(
+    null,
+  );
+  const [ssoAuthTemplateName, setSsoAuthTemplateName] = useState<string>("");
+  const [ssoAuthTemplateProvider, setSsoAuthTemplateProvider] =
+    useState<string>("aws");
+  const [testingTemplateId, setTestingTemplateId] = useState<number | null>(
+    null,
+  );
+  const [ibmRegionOptions, setIbmRegionOptions] = useState<CloudRegionOption[]>(
+    [],
+  );
   const [ibmRegionError, setIbmRegionError] = useState<string | null>(null);
-  const [ibmCosInstanceOptions, setIbmCosInstanceOptions] = useState<IBCosInstanceOption[]>([]);
-  const [ibmCosInstanceError, setIbmCosInstanceError] = useState<string | null>(null);
-  const [azureRegionOptions, setAzureRegionOptions] = useState<CloudRegionOption[]>([]);
+  const [ibmCosInstanceOptions, setIbmCosInstanceOptions] = useState<
+    IBCosInstanceOption[]
+  >([]);
+  const [ibmCosInstanceError, setIbmCosInstanceError] = useState<string | null>(
+    null,
+  );
+  const [azureRegionOptions, setAzureRegionOptions] = useState<
+    CloudRegionOption[]
+  >([]);
 
   // Form state
   const [formData, setFormData] = useState<CloudCredentialTemplateCreate>({
-    name: '',
-    description: '',
-    provider: 'aws',
-    aws_auth_method: 'access_keys',
-    region: '',
-    aws_profile: '',
-    aws_access_key_id: '',
-    aws_secret_access_key: '',
-    aws_session_token: '',
+    name: "",
+    description: "",
+    provider: "aws",
+    aws_auth_method: "access_keys",
+    region: "",
+    aws_profile: "",
+    aws_access_key_id: "",
+    aws_secret_access_key: "",
+    aws_session_token: "",
     aws_sso_enabled: false,
-    aws_sso_start_url: '',
-    aws_sso_region: '',
-    aws_sso_account_id: '',
-    aws_sso_role_name: '',
-    azure_auth_method: 'service_principal',
-    azure_subscription_id: '',
-    azure_tenant_id: '',
-    azure_client_id: '',
-    azure_client_secret: '',
-    ibmcloud_api_key: '',
-    ibm_cos_instance_name: '',
-    gcp_project_id: '',
-    gcp_credentials: '',
+    aws_sso_start_url: "",
+    aws_sso_region: "",
+    aws_sso_account_id: "",
+    aws_sso_role_name: "",
+    azure_auth_method: "service_principal",
+    azure_subscription_id: "",
+    azure_tenant_id: "",
+    azure_client_id: "",
+    azure_client_secret: "",
+    ibmcloud_api_key: "",
+    ibm_cos_instance_name: "",
+    gcp_project_id: "",
+    gcp_credentials: "",
     is_default: false,
   });
 
   // Load Azure regions once
   useEffect(() => {
-    api.listAzureRegions().then((res) => {
-      if (res.regions) setAzureRegionOptions(res.regions);
-    }).catch(() => {});
+    api
+      .listAzureRegions()
+      .then((res) => {
+        if (res.regions) setAzureRegionOptions(res.regions);
+      })
+      .catch(() => {});
   }, []);
 
   // Fetch templates
   const { data: templates, isLoading } = useQuery({
-    queryKey: ['credential-templates', filterProvider],
-    queryFn: () => api.listCredentialTemplates(filterProvider === 'all' ? undefined : filterProvider),
+    queryKey: ["credential-templates", filterProvider],
+    queryFn: () =>
+      api.listCredentialTemplates(
+        filterProvider === "all" ? undefined : filterProvider,
+      ),
   });
 
   // Create mutation
   const createMutation = useAppMutation({
-    mutationFn: (data: CloudCredentialTemplateCreate) => api.createCredentialTemplate(data),
+    mutationFn: (data: CloudCredentialTemplateCreate) =>
+      api.createCredentialTemplate(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['credential-templates'] });
-      notify.success('Credential template created successfully', undefined, { category: 'credentials' });
+      queryClient.invalidateQueries({ queryKey: ["credential-templates"] });
+      notify.success("Credential template created successfully", undefined, {
+        category: "credentials",
+      });
       setIsCreateDialogOpen(false);
       resetForm();
     },
@@ -196,11 +240,18 @@ export default function CredentialTemplates() {
 
   // Update mutation
   const updateMutation = useAppMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<CloudCredentialTemplateCreate> }) =>
-      api.updateCredentialTemplate(id, data),
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: number;
+      data: Partial<CloudCredentialTemplateCreate>;
+    }) => api.updateCredentialTemplate(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['credential-templates'] });
-      notify.success('Credential template updated successfully', undefined, { category: 'credentials' });
+      queryClient.invalidateQueries({ queryKey: ["credential-templates"] });
+      notify.success("Credential template updated successfully", undefined, {
+        category: "credentials",
+      });
       setIsEditDialogOpen(false);
       setEditingTemplate(null);
       resetForm();
@@ -214,8 +265,10 @@ export default function CredentialTemplates() {
   const deleteMutation = useAppMutation({
     mutationFn: (id: number) => api.deleteCredentialTemplate(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['credential-templates'] });
-      notify.success('Credential template deleted successfully', undefined, { category: 'credentials' });
+      queryClient.invalidateQueries({ queryKey: ["credential-templates"] });
+      notify.success("Credential template deleted successfully", undefined, {
+        category: "credentials",
+      });
     },
     onError: (error) => {
       notifyError(error);
@@ -231,10 +284,17 @@ export default function CredentialTemplates() {
     onSuccess: (data) => {
       setTestingTemplateId(null);
       if (data.success) {
-        const detail = data.arn || data.hostname || data.ssh_banner || data.message || '';
-        notify.success(`Connection test passed${detail ? `: ${detail}` : ''}`, undefined, { category: 'credentials' });
+        const detail =
+          data.arn || data.hostname || data.ssh_banner || data.message || "";
+        notify.success(
+          `Connection test passed${detail ? `: ${detail}` : ""}`,
+          undefined,
+          { category: "credentials" },
+        );
       } else {
-        notify.error(`Connection test failed: ${data.error || data.message || 'Unknown error'}`);
+        notify.error(
+          `Connection test failed: ${data.error || data.message || "Unknown error"}`,
+        );
       }
     },
     onError: (error) => {
@@ -251,10 +311,18 @@ export default function CredentialTemplates() {
       if (!formData.region && regions.length > 0) {
         setFormData((prev) => ({ ...prev, region: regions[0].value }));
       }
-      notify.success(`Loaded ${regions.length} IBM Cloud region(s)`, undefined, { category: 'credentials' });
+      notify.success(
+        `Loaded ${regions.length} IBM Cloud region(s)`,
+        undefined,
+        { category: "credentials" },
+      );
     },
     onError: (error) => {
-      setIbmRegionError(error instanceof Error ? error.message : 'Failed to load IBM Cloud regions');
+      setIbmRegionError(
+        error instanceof Error
+          ? error.message
+          : "Failed to load IBM Cloud regions",
+      );
       notifyError(error);
     },
   });
@@ -265,12 +333,23 @@ export default function CredentialTemplates() {
       setIbmCosInstanceOptions(data.instances);
       setIbmCosInstanceError(null);
       if (!formData.ibm_cos_instance_name && data.instances.length > 0) {
-        setFormData((prev) => ({ ...prev, ibm_cos_instance_name: data.instances[0].value }));
+        setFormData((prev) => ({
+          ...prev,
+          ibm_cos_instance_name: data.instances[0].value,
+        }));
       }
-      notify.success(`Loaded ${data.instances.length} IBM COS instance(s)`, undefined, { category: 'credentials' });
+      notify.success(
+        `Loaded ${data.instances.length} IBM COS instance(s)`,
+        undefined,
+        { category: "credentials" },
+      );
     },
     onError: (error) => {
-      setIbmCosInstanceError(error instanceof Error ? error.message : 'Failed to load IBM COS instances');
+      setIbmCosInstanceError(
+        error instanceof Error
+          ? error.message
+          : "Failed to load IBM COS instances",
+      );
       notifyError(error);
     },
   });
@@ -281,29 +360,29 @@ export default function CredentialTemplates() {
     setIbmCosInstanceOptions([]);
     setIbmCosInstanceError(null);
     setFormData({
-      name: '',
-      description: '',
-      provider: 'aws',
-      aws_auth_method: 'access_keys',
-      region: '',
-      aws_profile: '',
-      aws_access_key_id: '',
-      aws_secret_access_key: '',
-      aws_session_token: '',
+      name: "",
+      description: "",
+      provider: "aws",
+      aws_auth_method: "access_keys",
+      region: "",
+      aws_profile: "",
+      aws_access_key_id: "",
+      aws_secret_access_key: "",
+      aws_session_token: "",
       aws_sso_enabled: false,
-      aws_sso_start_url: '',
-      aws_sso_region: '',
-      aws_sso_account_id: '',
-      aws_sso_role_name: '',
-      azure_auth_method: 'service_principal',
-      azure_subscription_id: '',
-      azure_tenant_id: '',
-      azure_client_id: '',
-      azure_client_secret: '',
-      ibmcloud_api_key: '',
-      ibm_cos_instance_name: '',
-      gcp_project_id: '',
-      gcp_credentials: '',
+      aws_sso_start_url: "",
+      aws_sso_region: "",
+      aws_sso_account_id: "",
+      aws_sso_role_name: "",
+      azure_auth_method: "service_principal",
+      azure_subscription_id: "",
+      azure_tenant_id: "",
+      azure_client_id: "",
+      azure_client_secret: "",
+      ibmcloud_api_key: "",
+      ibm_cos_instance_name: "",
+      gcp_project_id: "",
+      gcp_credentials: "",
       is_default: false,
     });
   };
@@ -311,7 +390,8 @@ export default function CredentialTemplates() {
   const handleCreate = () => {
     const data = { ...formData };
     // The Azure form keeps both methods' inputs; submit only the chosen one.
-    if (data.provider === 'azure' && data.azure_auth_method === 'sso') delete data.azure_client_secret;
+    if (data.provider === "azure" && data.azure_auth_method === "sso")
+      delete data.azure_client_secret;
     createMutation.mutate(data);
   };
 
@@ -323,28 +403,28 @@ export default function CredentialTemplates() {
     setIbmCosInstanceError(null);
     setFormData({
       name: template.name,
-      description: template.description || '',
+      description: template.description || "",
       provider: template.provider,
-      aws_auth_method: template.aws_auth_method || 'access_keys',
-      region: template.region || '',
-      aws_profile: template.aws_profile || '',
-      aws_access_key_id: template.aws_access_key_id || '',
-      aws_secret_access_key: '', // Don't populate existing secrets
-      aws_session_token: '',
+      aws_auth_method: template.aws_auth_method || "access_keys",
+      region: template.region || "",
+      aws_profile: template.aws_profile || "",
+      aws_access_key_id: template.aws_access_key_id || "",
+      aws_secret_access_key: "", // Don't populate existing secrets
+      aws_session_token: "",
       aws_sso_enabled: template.aws_sso_enabled || false,
-      aws_sso_start_url: template.aws_sso_start_url || '',
-      aws_sso_region: template.aws_sso_region || '',
-      aws_sso_account_id: template.aws_sso_account_id || '',
-      aws_sso_role_name: template.aws_sso_role_name || '',
-      azure_auth_method: template.azure_auth_method || 'service_principal',
-      azure_subscription_id: template.azure_subscription_id || '',
-      azure_tenant_id: template.azure_tenant_id || '',
-      azure_client_id: template.azure_client_id || '',
-      azure_client_secret: '', // Don't populate existing secrets
-      ibmcloud_api_key: '',
-      ibm_cos_instance_name: template.ibm_cos_instance_name || '',
-      gcp_project_id: template.gcp_project_id || '',
-      gcp_credentials: '',  // Don't populate existing secrets
+      aws_sso_start_url: template.aws_sso_start_url || "",
+      aws_sso_region: template.aws_sso_region || "",
+      aws_sso_account_id: template.aws_sso_account_id || "",
+      aws_sso_role_name: template.aws_sso_role_name || "",
+      azure_auth_method: template.azure_auth_method || "service_principal",
+      azure_subscription_id: template.azure_subscription_id || "",
+      azure_tenant_id: template.azure_tenant_id || "",
+      azure_client_id: template.azure_client_id || "",
+      azure_client_secret: "", // Don't populate existing secrets
+      ibmcloud_api_key: "",
+      ibm_cos_instance_name: template.ibm_cos_instance_name || "",
+      gcp_project_id: template.gcp_project_id || "",
+      gcp_credentials: "", // Don't populate existing secrets
       is_default: template.is_default,
     });
     setIsEditDialogOpen(true);
@@ -360,13 +440,16 @@ export default function CredentialTemplates() {
       is_default: formData.is_default,
     };
 
-    if (formData.provider === 'aws') {
+    if (formData.provider === "aws") {
       updateData.aws_auth_method = formData.aws_auth_method;
       updateData.region = formData.region;
       if (formData.aws_profile) updateData.aws_profile = formData.aws_profile;
-      if (formData.aws_access_key_id) updateData.aws_access_key_id = formData.aws_access_key_id;
-      if (formData.aws_secret_access_key) updateData.aws_secret_access_key = formData.aws_secret_access_key;
-      if (formData.aws_session_token) updateData.aws_session_token = formData.aws_session_token;
+      if (formData.aws_access_key_id)
+        updateData.aws_access_key_id = formData.aws_access_key_id;
+      if (formData.aws_secret_access_key)
+        updateData.aws_secret_access_key = formData.aws_secret_access_key;
+      if (formData.aws_session_token)
+        updateData.aws_session_token = formData.aws_session_token;
 
       if (formData.aws_sso_enabled) {
         updateData.aws_sso_enabled = true;
@@ -377,24 +460,31 @@ export default function CredentialTemplates() {
       }
     }
 
-    if (formData.provider === 'azure') {
+    if (formData.provider === "azure") {
       updateData.azure_auth_method = formData.azure_auth_method;
       updateData.region = formData.region;
-      if (formData.azure_subscription_id) updateData.azure_subscription_id = formData.azure_subscription_id;
-      if (formData.azure_tenant_id) updateData.azure_tenant_id = formData.azure_tenant_id;
+      if (formData.azure_subscription_id)
+        updateData.azure_subscription_id = formData.azure_subscription_id;
+      if (formData.azure_tenant_id)
+        updateData.azure_tenant_id = formData.azure_tenant_id;
       updateData.azure_client_id = formData.azure_client_id;
-      if (formData.azure_auth_method !== 'sso' && formData.azure_client_secret) updateData.azure_client_secret = formData.azure_client_secret;
+      if (formData.azure_auth_method !== "sso" && formData.azure_client_secret)
+        updateData.azure_client_secret = formData.azure_client_secret;
     }
 
-    if (formData.provider === 'ibm') {
+    if (formData.provider === "ibm") {
       updateData.region = formData.region;
-      if (formData.ibmcloud_api_key) updateData.ibmcloud_api_key = formData.ibmcloud_api_key;
-      if (formData.ibm_cos_instance_name) updateData.ibm_cos_instance_name = formData.ibm_cos_instance_name;
+      if (formData.ibmcloud_api_key)
+        updateData.ibmcloud_api_key = formData.ibmcloud_api_key;
+      if (formData.ibm_cos_instance_name)
+        updateData.ibm_cos_instance_name = formData.ibm_cos_instance_name;
     }
 
-    if (formData.provider === 'gcp') {
-      if (formData.gcp_project_id) updateData.gcp_project_id = formData.gcp_project_id;
-      if (formData.gcp_credentials) updateData.gcp_credentials = formData.gcp_credentials;
+    if (formData.provider === "gcp") {
+      if (formData.gcp_project_id)
+        updateData.gcp_project_id = formData.gcp_project_id;
+      if (formData.gcp_credentials)
+        updateData.gcp_credentials = formData.gcp_credentials;
     }
 
     updateMutation.mutate({ id: editingTemplate.id, data: updateData });
@@ -402,17 +492,23 @@ export default function CredentialTemplates() {
 
   const handleDelete = (template: CloudCredentialTemplate) => {
     if (template.projects_count > 0) {
-      notify.error(`Cannot delete template. ${template.projects_count} project(s) are using it.`);
+      notify.error(
+        `Cannot delete template. ${template.projects_count} project(s) are using it.`,
+      );
       return;
     }
 
-    if (confirm(`Delete credential template "${template.name}"? This action cannot be undone.`)) {
+    if (
+      confirm(
+        `Delete credential template "${template.name}"? This action cannot be undone.`,
+      )
+    ) {
       deleteMutation.mutate(template.id);
     }
   };
 
   useEffect(() => {
-    if (formData.provider !== 'ibm') {
+    if (formData.provider !== "ibm") {
       setIbmRegionOptions([]);
       setIbmRegionError(null);
       setIbmCosInstanceOptions([]);
@@ -422,7 +518,7 @@ export default function CredentialTemplates() {
 
   const handleLoadIBMRegions = () => {
     if (!formData.ibmcloud_api_key) {
-      setIbmRegionError('Enter an IBM Cloud API key first');
+      setIbmRegionError("Enter an IBM Cloud API key first");
       return;
     }
     loadIBMRegionsMutation.mutate(formData.ibmcloud_api_key);
@@ -430,7 +526,7 @@ export default function CredentialTemplates() {
 
   const handleLoadIBMCosInstances = () => {
     if (!formData.ibmcloud_api_key) {
-      setIbmCosInstanceError('Enter an IBM Cloud API key first');
+      setIbmCosInstanceError("Enter an IBM Cloud API key first");
       return;
     }
     loadIBMCosInstancesMutation.mutate(formData.ibmcloud_api_key);
@@ -453,7 +549,9 @@ export default function CredentialTemplates() {
         <Textarea
           id="description"
           value={formData.description}
-          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+          onChange={(e) =>
+            setFormData({ ...formData, description: e.target.value })
+          }
           placeholder="Optional description"
           rows={2}
         />
@@ -463,7 +561,9 @@ export default function CredentialTemplates() {
         <Label htmlFor="provider">Cloud Provider *</Label>
         <Select
           value={formData.provider}
-          onValueChange={(value) => setFormData({ ...formData, provider: value })}
+          onValueChange={(value) =>
+            setFormData({ ...formData, provider: value })
+          }
           disabled={!!editingTemplate} // Can't change provider after creation
         >
           <SelectTrigger>
@@ -479,17 +579,22 @@ export default function CredentialTemplates() {
         </Select>
       </div>
 
-      {formData.provider === 'aws' && (
+      {formData.provider === "aws" && (
         <>
           <div>
             <Label>Authentication Method *</Label>
             <RadioGroup
               value={formData.aws_auth_method}
-              onValueChange={(value) => setFormData({ ...formData, aws_auth_method: value })}
+              onValueChange={(value) =>
+                setFormData({ ...formData, aws_auth_method: value })
+              }
             >
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="access_keys" id="access_keys" />
-                <Label htmlFor="access_keys" className="font-normal cursor-pointer">
+                <Label
+                  htmlFor="access_keys"
+                  className="font-normal cursor-pointer"
+                >
                   Access Keys (IAM User)
                 </Label>
               </div>
@@ -508,64 +613,89 @@ export default function CredentialTemplates() {
             </RadioGroup>
           </div>
 
-          {formData.aws_auth_method === 'profile' && (
+          {formData.aws_auth_method === "profile" && (
             <div>
               <Label htmlFor="aws_profile">AWS Profile Name *</Label>
               <Input
                 id="aws_profile"
                 value={formData.aws_profile}
-                onChange={(e) => setFormData({ ...formData, aws_profile: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, aws_profile: e.target.value })
+                }
                 placeholder="default"
               />
             </div>
           )}
 
-          {formData.aws_auth_method === 'access_keys' && (
+          {formData.aws_auth_method === "access_keys" && (
             <>
               <div>
                 <Label htmlFor="aws_access_key_id">AWS Access Key ID *</Label>
                 <Input
                   id="aws_access_key_id"
                   value={formData.aws_access_key_id}
-                  onChange={(e) => setFormData({ ...formData, aws_access_key_id: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      aws_access_key_id: e.target.value,
+                    })
+                  }
                   placeholder="AKIAIOSFODNN7EXAMPLE"
                 />
               </div>
 
               <div>
                 <Label htmlFor="aws_secret_access_key">
-                  AWS Secret Access Key {editingTemplate && '(leave blank to keep existing)'}
+                  AWS Secret Access Key{" "}
+                  {editingTemplate && "(leave blank to keep existing)"}
                 </Label>
                 <Input
                   id="aws_secret_access_key"
                   type="password"
                   value={formData.aws_secret_access_key}
-                  onChange={(e) => setFormData({ ...formData, aws_secret_access_key: e.target.value })}
-                  placeholder={editingTemplate ? '(existing key hidden)' : 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      aws_secret_access_key: e.target.value,
+                    })
+                  }
+                  placeholder={
+                    editingTemplate
+                      ? "(existing key hidden)"
+                      : "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+                  }
                 />
               </div>
 
               <div>
                 <Label htmlFor="aws_session_token">
-                  AWS Session Token (optional) {editingTemplate && '(leave blank to keep existing)'}
+                  AWS Session Token (optional){" "}
+                  {editingTemplate && "(leave blank to keep existing)"}
                 </Label>
                 <Input
                   id="aws_session_token"
                   type="password"
                   value={formData.aws_session_token}
-                  onChange={(e) => setFormData({ ...formData, aws_session_token: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      aws_session_token: e.target.value,
+                    })
+                  }
                   placeholder="For temporary credentials"
                 />
               </div>
             </>
           )}
 
-          {formData.aws_auth_method === 'sso' && (
+          {formData.aws_auth_method === "sso" && (
             <>
               <div className="flex items-center space-x-2">
                 <Switch
                   checked={formData.aws_sso_enabled}
-                  onCheckedChange={(checked) => setFormData({ ...formData, aws_sso_enabled: checked })}
+                  onCheckedChange={(checked) =>
+                    setFormData({ ...formData, aws_sso_enabled: checked })
+                  }
                 />
                 <Label>Enable AWS SSO</Label>
               </div>
@@ -577,7 +707,12 @@ export default function CredentialTemplates() {
                     <Input
                       id="aws_sso_start_url"
                       value={formData.aws_sso_start_url}
-                      onChange={(e) => setFormData({ ...formData, aws_sso_start_url: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          aws_sso_start_url: e.target.value,
+                        })
+                      }
                       placeholder="https://my-company.awsapps.com/start"
                     />
                   </div>
@@ -587,7 +722,12 @@ export default function CredentialTemplates() {
                     <Input
                       id="aws_sso_region"
                       value={formData.aws_sso_region}
-                      onChange={(e) => setFormData({ ...formData, aws_sso_region: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          aws_sso_region: e.target.value,
+                        })
+                      }
                       placeholder="e.g., us-east-1"
                     />
                   </div>
@@ -597,7 +737,12 @@ export default function CredentialTemplates() {
                     <Input
                       id="aws_sso_account_id"
                       value={formData.aws_sso_account_id}
-                      onChange={(e) => setFormData({ ...formData, aws_sso_account_id: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          aws_sso_account_id: e.target.value,
+                        })
+                      }
                       placeholder="123456789012"
                     />
                   </div>
@@ -607,7 +752,12 @@ export default function CredentialTemplates() {
                     <Input
                       id="aws_sso_role_name"
                       value={formData.aws_sso_role_name}
-                      onChange={(e) => setFormData({ ...formData, aws_sso_role_name: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          aws_sso_role_name: e.target.value,
+                        })
+                      }
                       placeholder="AdministratorAccess"
                     />
                   </div>
@@ -619,8 +769,10 @@ export default function CredentialTemplates() {
           <div>
             <Label htmlFor="region">Default Region *</Label>
             <RegionSelector
-              value={formData.region || ''}
-              onValueChange={(value) => setFormData({ ...formData, region: value })}
+              value={formData.region || ""}
+              onValueChange={(value) =>
+                setFormData({ ...formData, region: value })
+              }
             />
             <p className="text-xs text-muted-foreground mt-1">
               Projects using this template will inherit this region by default
@@ -629,24 +781,33 @@ export default function CredentialTemplates() {
         </>
       )}
 
-      {formData.provider === 'ibm' && (
+      {formData.provider === "ibm" && (
         <>
           <div>
             <Label htmlFor="ibmcloud_api_key">
-              IBM Cloud API Key {editingTemplate && '(leave blank to keep existing)'}
+              IBM Cloud API Key{" "}
+              {editingTemplate && "(leave blank to keep existing)"}
             </Label>
             <Input
               id="ibmcloud_api_key"
               type="password"
-              value={formData.ibmcloud_api_key || ''}
-              onChange={(e) => setFormData({ ...formData, ibmcloud_api_key: e.target.value })}
-              placeholder={editingTemplate ? '(existing key hidden)' : 'Enter IBM Cloud API key'}
+              value={formData.ibmcloud_api_key || ""}
+              onChange={(e) =>
+                setFormData({ ...formData, ibmcloud_api_key: e.target.value })
+              }
+              placeholder={
+                editingTemplate
+                  ? "(existing key hidden)"
+                  : "Enter IBM Cloud API key"
+              }
             />
           </div>
 
           <div>
             <div className="flex items-center justify-between gap-3">
-              <Label htmlFor="region">Default Region (visible to your account)</Label>
+              <Label htmlFor="region">
+                Default Region (visible to your account)
+              </Label>
               <Button
                 type="button"
                 variant="outline"
@@ -660,21 +821,26 @@ export default function CredentialTemplates() {
                     Loading Regions...
                   </>
                 ) : (
-                  'Load Regions'
+                  "Load Regions"
                 )}
               </Button>
             </div>
             <div className="mt-2">
               <CloudRegionSelector
                 provider="ibm"
-                value={formData.region || ''}
-                onValueChange={(value) => setFormData({ ...formData, region: value })}
+                value={formData.region || ""}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, region: value })
+                }
                 options={ibmRegionOptions}
               />
             </div>
-            {ibmRegionError && <p className="text-xs text-destructive mt-1">{ibmRegionError}</p>}
+            {ibmRegionError && (
+              <p className="text-xs text-destructive mt-1">{ibmRegionError}</p>
+            )}
             <p className="text-xs text-muted-foreground mt-1">
-              Load regions from IBM Cloud using the API key above, or enter one manually.
+              Load regions from IBM Cloud using the API key above, or enter one
+              manually.
             </p>
           </div>
 
@@ -682,18 +848,26 @@ export default function CredentialTemplates() {
             <Label htmlFor="ibmcloud_resource_group">IBM Resource Group</Label>
             <Input
               id="ibmcloud_resource_group"
-              value={formData.ibmcloud_resource_group || ''}
-              onChange={(e) => setFormData({ ...formData, ibmcloud_resource_group: e.target.value })}
+              value={formData.ibmcloud_resource_group || ""}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  ibmcloud_resource_group: e.target.value,
+                })
+              }
               placeholder="default"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Projects and blueprints using this template can inherit the IBM Cloud resource group automatically.
+              Projects and blueprints using this template can inherit the IBM
+              Cloud resource group automatically.
             </p>
           </div>
 
           <div>
             <div className="flex items-center justify-between gap-3">
-              <Label htmlFor="ibm_cos_instance_name">IBM COS Instance Name</Label>
+              <Label htmlFor="ibm_cos_instance_name">
+                IBM COS Instance Name
+              </Label>
               <Button
                 type="button"
                 variant="outline"
@@ -707,14 +881,16 @@ export default function CredentialTemplates() {
                     Loading Instances...
                   </>
                 ) : (
-                  'Load COS Instances'
+                  "Load COS Instances"
                 )}
               </Button>
             </div>
             <div className="mt-2">
               <Select
-                value={formData.ibm_cos_instance_name || ''}
-                onValueChange={(value) => setFormData({ ...formData, ibm_cos_instance_name: value })}
+                value={formData.ibm_cos_instance_name || ""}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, ibm_cos_instance_name: value })
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select IBM COS instance" />
@@ -728,63 +904,90 @@ export default function CredentialTemplates() {
                 </SelectContent>
               </Select>
             </div>
-            {ibmCosInstanceError && <p className="text-xs text-destructive mt-1">{ibmCosInstanceError}</p>}
+            {ibmCosInstanceError && (
+              <p className="text-xs text-destructive mt-1">
+                {ibmCosInstanceError}
+              </p>
+            )}
             <p className="text-xs text-muted-foreground mt-1">
-              Select the IBM Cloud Object Storage instance to use for remote state. BNK-Forge will handle the required COS access behind the scenes.
+              Select the IBM Cloud Object Storage instance to use for remote
+              state. BNK-Forge will handle the required COS access behind the
+              scenes.
             </p>
           </div>
         </>
       )}
 
-      {formData.provider === 'gcp' && (
+      {formData.provider === "gcp" && (
         <>
           <div>
             <Label htmlFor="gcp_project_id">GCP Project ID *</Label>
             <Input
               id="gcp_project_id"
               value={formData.gcp_project_id}
-              onChange={(e) => setFormData({ ...formData, gcp_project_id: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, gcp_project_id: e.target.value })
+              }
               placeholder="my-gcp-project-123456"
             />
           </div>
 
           <div>
             <Label htmlFor="gcp_credentials">
-              Service Account JSON Key {editingTemplate && '(leave blank to keep existing)'}
+              Service Account JSON Key{" "}
+              {editingTemplate && "(leave blank to keep existing)"}
             </Label>
             <Textarea
               id="gcp_credentials"
               value={formData.gcp_credentials}
-              onChange={(e) => setFormData({ ...formData, gcp_credentials: e.target.value })}
-              placeholder={editingTemplate ? '(existing key hidden)' : '{ "type": "service_account", "project_id": "...", ... }'}
+              onChange={(e) =>
+                setFormData({ ...formData, gcp_credentials: e.target.value })
+              }
+              placeholder={
+                editingTemplate
+                  ? "(existing key hidden)"
+                  : '{ "type": "service_account", "project_id": "...", ... }'
+              }
               rows={8}
               className="font-mono text-xs"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Paste the full JSON key for a service account with at least <code>roles/container.viewer</code> on the project.
-              Used to mint OAuth tokens for GKE; the gcloud CLI is not required.
+              Paste the full JSON key for a service account with at least{" "}
+              <code>roles/container.viewer</code> on the project. Used to mint
+              OAuth tokens for GKE; the gcloud CLI is not required.
             </p>
           </div>
         </>
       )}
 
-      {formData.provider === 'azure' && (
+      {formData.provider === "azure" && (
         <>
           <div>
             <Label>Authentication Method *</Label>
             <RadioGroup
-              value={formData.azure_auth_method || 'service_principal'}
-              onValueChange={(value) => setFormData({ ...formData, azure_auth_method: value })}
+              value={formData.azure_auth_method || "service_principal"}
+              onValueChange={(value) =>
+                setFormData({ ...formData, azure_auth_method: value })
+              }
             >
               <div className="flex items-center space-x-2">
-                <RadioGroupItem value="service_principal" id="azure_service_principal" />
-                <Label htmlFor="azure_service_principal" className="font-normal cursor-pointer">
+                <RadioGroupItem
+                  value="service_principal"
+                  id="azure_service_principal"
+                />
+                <Label
+                  htmlFor="azure_service_principal"
+                  className="font-normal cursor-pointer"
+                >
                   Service Principal (App Registration)
                 </Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="sso" id="azure_sso" />
-                <Label htmlFor="azure_sso" className="font-normal cursor-pointer">
+                <Label
+                  htmlFor="azure_sso"
+                  className="font-normal cursor-pointer"
+                >
                   Microsoft Entra ID SSO (Device Code)
                 </Label>
               </div>
@@ -795,8 +998,10 @@ export default function CredentialTemplates() {
             <Label htmlFor="azure_tenant_id">Tenant ID (Directory ID) *</Label>
             <Input
               id="azure_tenant_id"
-              value={formData.azure_tenant_id || ''}
-              onChange={(e) => setFormData({ ...formData, azure_tenant_id: e.target.value })}
+              value={formData.azure_tenant_id || ""}
+              onChange={(e) =>
+                setFormData({ ...formData, azure_tenant_id: e.target.value })
+              }
               placeholder="e.g., 00000000-0000-0000-0000-000000000000 or common"
             />
           </div>
@@ -805,35 +1010,58 @@ export default function CredentialTemplates() {
             <Label htmlFor="azure_subscription_id">Subscription ID</Label>
             <Input
               id="azure_subscription_id"
-              value={formData.azure_subscription_id || ''}
-              onChange={(e) => setFormData({ ...formData, azure_subscription_id: e.target.value })}
+              value={formData.azure_subscription_id || ""}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  azure_subscription_id: e.target.value,
+                })
+              }
               placeholder="e.g., 00000000-0000-0000-0000-000000000000"
             />
           </div>
 
           <div>
             <Label htmlFor="azure_client_id">
-              {formData.azure_auth_method === 'sso' ? 'Client ID (App ID, optional)' : 'Client ID (App ID) *'}
+              {formData.azure_auth_method === "sso"
+                ? "Client ID (App ID, optional)"
+                : "Client ID (App ID) *"}
             </Label>
             <Input
               id="azure_client_id"
-              value={formData.azure_client_id || ''}
-              onChange={(e) => setFormData({ ...formData, azure_client_id: e.target.value })}
-              placeholder={formData.azure_auth_method === 'sso' ? 'Leave blank for Azure CLI default' : 'e.g., 00000000-0000-0000-0000-000000000000'}
+              value={formData.azure_client_id || ""}
+              onChange={(e) =>
+                setFormData({ ...formData, azure_client_id: e.target.value })
+              }
+              placeholder={
+                formData.azure_auth_method === "sso"
+                  ? "Leave blank for Azure CLI default"
+                  : "e.g., 00000000-0000-0000-0000-000000000000"
+              }
             />
           </div>
 
-          {formData.azure_auth_method !== 'sso' && (
+          {formData.azure_auth_method !== "sso" && (
             <div>
               <Label htmlFor="azure_client_secret">
-                Client Secret {editingTemplate && '(leave blank to keep existing)'} *
+                Client Secret{" "}
+                {editingTemplate && "(leave blank to keep existing)"} *
               </Label>
               <Input
                 id="azure_client_secret"
                 type="password"
-                value={formData.azure_client_secret || ''}
-                onChange={(e) => setFormData({ ...formData, azure_client_secret: e.target.value })}
-                placeholder={editingTemplate ? '(existing secret hidden)' : 'Enter client secret'}
+                value={formData.azure_client_secret || ""}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    azure_client_secret: e.target.value,
+                  })
+                }
+                placeholder={
+                  editingTemplate
+                    ? "(existing secret hidden)"
+                    : "Enter client secret"
+                }
               />
             </div>
           )}
@@ -842,8 +1070,10 @@ export default function CredentialTemplates() {
             <Label htmlFor="region">Default Location / Region</Label>
             <CloudRegionSelector
               provider="azure"
-              value={formData.region || ''}
-              onValueChange={(value) => setFormData({ ...formData, region: value })}
+              value={formData.region || ""}
+              onValueChange={(value) =>
+                setFormData({ ...formData, region: value })
+              }
               options={azureRegionOptions}
             />
             <p className="text-xs text-muted-foreground mt-1">
@@ -858,9 +1088,13 @@ export default function CredentialTemplates() {
       <div className="flex items-center space-x-2">
         <Switch
           checked={formData.is_default}
-          onCheckedChange={(checked) => setFormData({ ...formData, is_default: checked })}
+          onCheckedChange={(checked) =>
+            setFormData({ ...formData, is_default: checked })
+          }
         />
-        <Label>Set as default template for {formData.provider.toUpperCase()}</Label>
+        <Label>
+          Set as default template for {formData.provider.toUpperCase()}
+        </Label>
       </div>
     </div>
   );
@@ -868,8 +1102,9 @@ export default function CredentialTemplates() {
   return (
     <SectionCard title="Cloud Credential Templates">
       <p className="text-sm text-muted-foreground -mt-1 mb-6">
-        Cloud provider credentials (AWS, GCP, Azure, IBM Cloud) for cloud-managed projects.
-        For on-prem/SSH access, use SSH Credentials above.
+        Cloud provider credentials (AWS, GCP, Azure, IBM Cloud) for
+        cloud-managed projects. For on-prem/SSH access, select SSH Credentials
+        from the section menu.
       </p>
       <div className="space-y-6">
         <div className="flex items-center gap-2">
@@ -928,7 +1163,7 @@ export default function CredentialTemplates() {
                 {templates.map((template) => {
                   const isRowTesting =
                     testingTemplateId === template.id && testMutation.isPending;
-                  const isLegacySsh = template.provider === 'ssh';
+                  const isLegacySsh = template.provider === "ssh";
 
                   return (
                     <TableRow key={template.id}>
@@ -941,7 +1176,9 @@ export default function CredentialTemplates() {
                             ) : (
                               <Cloud className="h-4 w-4 text-muted-foreground" />
                             )}
-                            <span className="font-medium text-foreground">{template.name}</span>
+                            <span className="font-medium text-foreground">
+                              {template.name}
+                            </span>
                             {template.is_default && (
                               <Badge variant="default">Default</Badge>
                             )}
@@ -958,10 +1195,12 @@ export default function CredentialTemplates() {
                       <TableCell>
                         <div className="flex flex-col gap-1">
                           <Badge variant="outline">
-                            {isLegacySsh ? 'SSH / On-Prem' : template.provider.toUpperCase()}
+                            {isLegacySsh
+                              ? "SSH / On-Prem"
+                              : template.provider.toUpperCase()}
                           </Badge>
                           {isLegacySsh && (
-                            <Badge variant="secondary" className="text-[10px]">
+                            <Badge variant="secondary" className="text-2xs">
                               Legacy — use SSH Credentials instead
                             </Badge>
                           )}
@@ -971,31 +1210,49 @@ export default function CredentialTemplates() {
                       {/* Provider-specific detail */}
                       <TableCell>
                         <div className="text-xs text-muted-foreground space-y-0.5">
-                          {template.provider === 'aws' && (
+                          {template.provider === "aws" && (
                             <>
                               <div>Method: {template.aws_auth_method}</div>
-                              {template.region && <div>Region: {template.region}</div>}
-                              {template.aws_profile && <div>Profile: {template.aws_profile}</div>}
+                              {template.region && (
+                                <div>Region: {template.region}</div>
+                              )}
+                              {template.aws_profile && (
+                                <div>Profile: {template.aws_profile}</div>
+                              )}
                               {template.has_aws_secret_access_key && (
                                 <div className="flex items-center gap-1 text-success">
                                   <CheckCircle className="h-3 w-3" />
                                   Credentials Configured
                                 </div>
                               )}
-                              {template.aws_sso_enabled && template.aws_sso_authenticated_at && (
-                                <div className="flex items-center gap-1 text-primary">
-                                  <Shield className="h-3 w-3" />
-                                  SSO Authenticated
-                                </div>
-                              )}
+                              {template.aws_sso_enabled &&
+                                template.aws_sso_authenticated_at && (
+                                  <div className="flex items-center gap-1 text-primary">
+                                    <Shield className="h-3 w-3" />
+                                    SSO Authenticated
+                                  </div>
+                                )}
                             </>
                           )}
-                          {template.provider === 'azure' && (
+                          {template.provider === "azure" && (
                             <>
-                              <div>Method: {template.azure_auth_method === 'sso' ? 'Entra ID SSO' : 'Service Principal'}</div>
-                              {template.region && <div>Region: {template.region}</div>}
-                              {template.azure_tenant_id && <div>Tenant: {template.azure_tenant_id}</div>}
-                              {template.azure_subscription_id && <div>Subscription: {template.azure_subscription_id}</div>}
+                              <div>
+                                Method:{" "}
+                                {template.azure_auth_method === "sso"
+                                  ? "Entra ID SSO"
+                                  : "Service Principal"}
+                              </div>
+                              {template.region && (
+                                <div>Region: {template.region}</div>
+                              )}
+                              {template.azure_tenant_id && (
+                                <div>Tenant: {template.azure_tenant_id}</div>
+                              )}
+                              {template.azure_subscription_id && (
+                                <div>
+                                  Subscription: {template.azure_subscription_id}
+                                </div>
+                              )}
                               {template.has_azure_client_secret && (
                                 <div className="flex items-center gap-1 text-success">
                                   <CheckCircle className="h-3 w-3" />
@@ -1010,9 +1267,11 @@ export default function CredentialTemplates() {
                               )}
                             </>
                           )}
-                          {template.provider === 'gcp' && (
+                          {template.provider === "gcp" && (
                             <>
-                              {template.gcp_project_id && <div>Project: {template.gcp_project_id}</div>}
+                              {template.gcp_project_id && (
+                                <div>Project: {template.gcp_project_id}</div>
+                              )}
                               {template.has_gcp_credentials && (
                                 <div className="flex items-center gap-1 text-success">
                                   <CheckCircle className="h-3 w-3" />
@@ -1025,11 +1284,18 @@ export default function CredentialTemplates() {
                             <>
                               <div className="flex items-center gap-1">
                                 <span className="font-mono">
-                                  {template.ssh_username}@{template.ssh_host}:{template.ssh_port || 22}
+                                  {template.ssh_username}@{template.ssh_host}:
+                                  {template.ssh_port || 22}
                                 </span>
                               </div>
-                              <div>Auth: {template.ssh_auth_type === 'key' ? 'SSH Key' : 'Password'}</div>
-                              {(template.has_ssh_password || template.has_ssh_key) && (
+                              <div>
+                                Auth:{" "}
+                                {template.ssh_auth_type === "key"
+                                  ? "SSH Key"
+                                  : "Password"}
+                              </div>
+                              {(template.has_ssh_password ||
+                                template.has_ssh_key) && (
                                 <div className="flex items-center gap-1 text-success">
                                   <CheckCircle className="h-3 w-3" />
                                   Credentials Configured
@@ -1037,11 +1303,16 @@ export default function CredentialTemplates() {
                               )}
                             </>
                           )}
-                          {template.provider === 'ibm' && (
+                          {template.provider === "ibm" && (
                             <>
-                              {template.region && <div>Region: {template.region}</div>}
+                              {template.region && (
+                                <div>Region: {template.region}</div>
+                              )}
                               {template.ibmcloud_resource_group && (
-                                <div>Resource Group: {template.ibmcloud_resource_group}</div>
+                                <div>
+                                  Resource Group:{" "}
+                                  {template.ibmcloud_resource_group}
+                                </div>
                               )}
                               {template.has_ibmcloud_api_key && (
                                 <div className="flex items-center gap-1 text-success">
@@ -1062,7 +1333,8 @@ export default function CredentialTemplates() {
 
                       {/* Status badge (AWS / Azure) */}
                       <TableCell>
-                        {(template.provider === 'aws' || template.provider === 'azure') && (
+                        {(template.provider === "aws" ||
+                          template.provider === "azure") && (
                           <CloudCredStatusBadge template={template} />
                         )}
                       </TableCell>
@@ -1088,7 +1360,9 @@ export default function CredentialTemplates() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            {(template.provider === 'aws' || template.provider === 'ibm' || template.provider === 'azure') && (
+                            {(template.provider === "aws" ||
+                              template.provider === "ibm" ||
+                              template.provider === "azure") && (
                               <DropdownMenuItem
                                 onClick={() => testMutation.mutate(template.id)}
                                 disabled={testMutation.isPending}
@@ -1101,31 +1375,40 @@ export default function CredentialTemplates() {
                                 Test connection
                               </DropdownMenuItem>
                             )}
-                             {((template.provider === 'aws' &&
-                               (template.aws_sso_enabled ||
-                                 template.aws_auth_method === 'sso' ||
-                                 !!(template.aws_sso_start_url && template.aws_sso_region && template.aws_sso_account_id && template.aws_sso_role_name))) ||
-                               (template.provider === 'azure' &&
-                                 template.azure_auth_method === 'sso')) && (
-                               <DropdownMenuItem
-                                 onClick={() => {
-                                   setSsoAuthTemplateId(template.id);
-                                   setSsoAuthTemplateName(template.name);
-                                   setSsoAuthTemplateProvider(template.provider);
-                                   setSsoAuthDialogOpen(true);
-                                 }}
-                               >
-                                 <Shield className="h-4 w-4 mr-2" />
-                                 Authenticate SSO
-                               </DropdownMenuItem>
-                             )}
+                            {((template.provider === "aws" &&
+                              (template.aws_sso_enabled ||
+                                template.aws_auth_method === "sso" ||
+                                !!(
+                                  template.aws_sso_start_url &&
+                                  template.aws_sso_region &&
+                                  template.aws_sso_account_id &&
+                                  template.aws_sso_role_name
+                                ))) ||
+                              (template.provider === "azure" &&
+                                template.azure_auth_method === "sso")) && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSsoAuthTemplateId(template.id);
+                                  setSsoAuthTemplateName(template.name);
+                                  setSsoAuthTemplateProvider(template.provider);
+                                  setSsoAuthDialogOpen(true);
+                                }}
+                              >
+                                <Shield className="h-4 w-4 mr-2" />
+                                Authenticate SSO
+                              </DropdownMenuItem>
+                            )}
                             {/* Legacy SSH templates are read-only — managed in SSH Credentials */}
                             {!isLegacySsh && (
                               <>
-                                {(template.provider === 'aws' || template.provider === 'ibm' || template.provider === 'azure') && (
+                                {(template.provider === "aws" ||
+                                  template.provider === "ibm" ||
+                                  template.provider === "azure") && (
                                   <DropdownMenuSeparator />
                                 )}
-                                <DropdownMenuItem onClick={() => handleEdit(template)}>
+                                <DropdownMenuItem
+                                  onClick={() => handleEdit(template)}
+                                >
                                   <Edit className="h-4 w-4 mr-2" />
                                   Edit
                                 </DropdownMenuItem>
@@ -1169,19 +1452,29 @@ export default function CredentialTemplates() {
             <DialogHeader>
               <DialogTitle>Create Credential Template</DialogTitle>
               <DialogDescription>
-                Create a reusable credential template for your projects. Credentials are encrypted at rest.
+                Create a reusable credential template for your projects.
+                Credentials are encrypted at rest.
               </DialogDescription>
             </DialogHeader>
             {renderTemplateForm()}
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+              <Button
+                variant="outline"
+                onClick={() => setIsCreateDialogOpen(false)}
+              >
                 Cancel
               </Button>
-              <Button onClick={handleCreate} disabled={createMutation.isPending}>
+              <Button
+                onClick={handleCreate}
+                disabled={createMutation.isPending}
+              >
                 {createMutation.isPending ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Creating...</>
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />{" "}
+                    Creating...
+                  </>
                 ) : (
-                  'Create Template'
+                  "Create Template"
                 )}
               </Button>
             </DialogFooter>
@@ -1203,19 +1496,29 @@ export default function CredentialTemplates() {
             <DialogHeader>
               <DialogTitle>Edit Credential Template</DialogTitle>
               <DialogDescription>
-                Update credential template. Leave sensitive fields blank to keep existing values.
+                Update credential template. Leave sensitive fields blank to keep
+                existing values.
               </DialogDescription>
             </DialogHeader>
             {renderTemplateForm()}
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+              <Button
+                variant="outline"
+                onClick={() => setIsEditDialogOpen(false)}
+              >
                 Cancel
               </Button>
-              <Button onClick={handleUpdate} disabled={updateMutation.isPending}>
+              <Button
+                onClick={handleUpdate}
+                disabled={updateMutation.isPending}
+              >
                 {updateMutation.isPending ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Updating...</>
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />{" "}
+                    Updating...
+                  </>
                 ) : (
-                  'Update Template'
+                  "Update Template"
                 )}
               </Button>
             </DialogFooter>
@@ -1231,7 +1534,9 @@ export default function CredentialTemplates() {
             templateName={ssoAuthTemplateName}
             provider={ssoAuthTemplateProvider}
             onSuccess={() => {
-              queryClient.invalidateQueries({ queryKey: ['credential-templates'] });
+              queryClient.invalidateQueries({
+                queryKey: ["credential-templates"],
+              });
             }}
           />
         )}

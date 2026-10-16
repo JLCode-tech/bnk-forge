@@ -10,10 +10,11 @@
  */
 import { useCallback, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { PageHeader } from "@/components/layout/PageHeader";
 import { usePageRefresh } from "@/hooks/usePageRefresh";
-import { Tabs, TabsContent } from "@/components/ui/tabs";
+// eslint-disable-next-line no-restricted-imports -- Vertical flush sub-sidebar requires Radix TabsList + TabsTrigger
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ResourceViewTabs } from "@/components/layout/ResourceViewTabs";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
@@ -24,12 +25,10 @@ import {
   Server,
   LayoutDashboard,
   ArrowLeft,
-  X,
-  BookOpen,
-  ChevronDown,
-  ChevronRight,
   SearchX,
   LineChart,
+  RefreshCw,
+  Play,
 } from "lucide-react";
 
 import { BenchmarkTargetsTab } from "./BenchmarkTargetsTab";
@@ -52,134 +51,9 @@ import {
   type SetupSection,
 } from "./benchmark-runs-view";
 import { ClusterPicker } from "@/components/observability/pickers";
+import { CollapsibleInnerSidebar } from "@/components/layout/InnerSidebar";
 import { readClusterScope, writeClusterScope } from "@/hooks/useClusterScope";
-
-// ──────────────────────────────────────────────────────────────────────────────
-// Getting Started Banner — dismissible, collapses to a re-openable pill (never
-// gone for good). localStorage remembers collapsed-vs-expanded, not "dismissed".
-// ──────────────────────────────────────────────────────────────────────────────
-
-const GUIDE_COLLAPSED_KEY = "benchmarks_guide_collapsed";
-
-function GettingStartedBanner({
-  collapsed,
-  onCollapse,
-  onGoToAgents,
-}: {
-  collapsed: boolean;
-  onCollapse: () => void;
-  onGoToAgents: () => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-
-  if (collapsed) return null;
-
-  return (
-    <div className="rounded-lg border border-border bg-card border-l-2 border-l-info px-4 py-3">
-      <div className="flex items-center gap-3">
-        <BookOpen className="h-5 w-5 text-info shrink-0" />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-foreground">
-            New to Benchmarks?
-          </p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Install aiperf, register a test agent, and push your first results.
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="shrink-0 text-xs"
-          onClick={() => setExpanded((e) => !e)}
-        >
-          {expanded ? (
-            <ChevronDown className="h-3.5 w-3.5 mr-1" />
-          ) : (
-            <ChevronRight className="h-3.5 w-3.5 mr-1" />
-          )}
-          {expanded ? "Collapse" : "Quick start"}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 shrink-0 text-muted-foreground"
-          onClick={onCollapse}
-          title="Collapse (re-open any time from the Setup guide button)"
-          aria-label="Collapse quick-start banner"
-        >
-          <X className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-
-      {expanded && (
-        <div className="mt-3 pt-3 border-t border-border text-xs text-muted-foreground">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <div>
-              <p className="font-medium mb-1 text-foreground/80">
-                1. Add a target
-              </p>
-              <p>
-                Scan a cluster to find LLM services, or add one manually. Sets
-                up the endpoint to benchmark against.
-              </p>
-            </div>
-            <div>
-              <p className="font-medium mb-1 text-foreground/80">
-                2. Deploy proxies
-              </p>
-              <p>
-                Click into your target and deploy envoy, nginx, haproxy, or F5
-                BNK proxies. Discover existing ones too.
-              </p>
-            </div>
-            <div>
-              <p className="font-medium mb-1 text-foreground/80">
-                3. Connect an agent
-              </p>
-              <p>
-                Register a test machine on the{" "}
-                <button
-                  className="text-primary hover:underline"
-                  onClick={onGoToAgents}
-                >
-                  Agents tab
-                </button>{" "}
-                — it runs aiperf and pushes results.
-              </p>
-            </div>
-            <div>
-              <p className="font-medium mb-1 text-foreground/80">
-                4. Run tests
-              </p>
-              <p>
-                Hit “Run test” on a proxy card, or use{" "}
-                <code className="px-1 bg-muted/60 border border-border rounded text-foreground/80">
-                  aiperf profile
-                </code>{" "}
-                and push the JSON.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Small pill shown once the banner is collapsed — the "never gone" re-open affordance. */
-function SetupGuidePill({ onExpand }: { onExpand: () => void }) {
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      className="text-xs gap-1.5"
-      onClick={onExpand}
-    >
-      <BookOpen className="h-3.5 w-3.5" />
-      Setup guide
-    </Button>
-  );
-}
+import { useBenchmarkSummary } from "@/hooks/useBenchmarks";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Setup tab — Targets/Agents/Configs as sub-sections, existing components as-is
@@ -461,13 +335,6 @@ function BenchmarkRunsSection({
 
 export default function Benchmarks() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [guideCollapsed, setGuideCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem(GUIDE_COLLAPSED_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardReRunLast, setWizardReRunLast] = useState(false);
 
@@ -596,90 +463,157 @@ export default function Benchmarks() {
     [goToRunDetail, goToRunGroup],
   );
 
-  const collapseGuide = useCallback(() => {
-    setGuideCollapsed(true);
-    try {
-      localStorage.setItem(GUIDE_COLLAPSED_KEY, "1");
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  const expandGuide = useCallback(() => {
-    setGuideCollapsed(false);
-    try {
-      localStorage.setItem(GUIDE_COLLAPSED_KEY, "0");
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
   const { refresh: handleRefresh, isRefreshing } = usePageRefresh();
+  const { data: summaryData } = useBenchmarkSummary(selectedClusterId);
+  const totalRuns = summaryData?.total_runs ?? 0;
+
+  const activeViewMeta =
+    primaryTab === "runs"
+      ? {
+          title: "Benchmark Runs",
+          subtitle:
+            "Inspect individual runs, compare proxy profiles, and analyze performance trends.",
+        }
+      : primaryTab === "setup"
+        ? {
+            title: "Target Setup & Readiness",
+            subtitle:
+              "Configure LLM inference targets, load-test agents, and benchmark profiles.",
+          }
+        : {
+            title: "Overview & Trends",
+            subtitle:
+              "Compare proxy and load-balancer performance for LLM inference traffic.",
+          };
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <PageHeader
-        title="Benchmarks"
-        subtitle="Compare proxy / load-balancer performance for LLM inference traffic."
-        actions={
-          <div className="flex items-center gap-2">
-            <ClusterPicker
-              value={selectedClusterId ?? null}
-              onChange={handleClusterChange}
-            />
-            {guideCollapsed && <SetupGuidePill onExpand={expandGuide} />}
+    <>
+      <Tabs
+        value={primaryTab}
+        onValueChange={goToPrimaryTab}
+        orientation="vertical"
+        className="flex min-h-[calc(100vh-3rem)]"
+      >
+        {/* Left Flush Inner Sub-Sidebar */}
+        <CollapsibleInnerSidebar className="w-52 shrink-0 border-r border-border bg-card/30 p-3 space-y-4">
+          <div className="px-2 pt-1 pb-2 border-b border-border">
+            <h1 className="text-sm font-semibold text-foreground">
+              Benchmarks
+            </h1>
+            <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+              Cluster network &amp; data-plane performance benchmarks
+            </p>
           </div>
-        }
-        onRefresh={handleRefresh}
-        isRefreshing={isRefreshing}
-      />
 
-      <GettingStartedBanner
-        collapsed={guideCollapsed}
-        onCollapse={collapseGuide}
-        onGoToAgents={() => goToSetupSection("agents")}
-      />
+          <div className="space-y-1">
+            <div className="px-2.5 py-1 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+              BENCHMARK VIEWS
+            </div>
+            <TabsList
+              aria-label="Benchmark sections"
+              className="flex flex-col items-stretch h-auto bg-transparent p-0 gap-0.5"
+            >
+              <TabsTrigger
+                value="overview"
+                className="w-full justify-start gap-2 px-2.5 py-1.5 text-xs font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
+              >
+                <LayoutDashboard className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">Overview &amp; Trends</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="runs"
+                className="w-full justify-between gap-2 px-2.5 py-1.5 text-xs font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
+              >
+                <span className="flex items-center gap-2 min-w-0">
+                  <Activity className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">Benchmark Runs</span>
+                </span>
+                <Badge
+                  variant="secondary"
+                  className="text-2xs px-1.5 py-0 h-4 tabular-nums"
+                >
+                  {totalRuns}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger
+                value="setup"
+                className="w-full justify-start gap-2 px-2.5 py-1.5 text-xs font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
+              >
+                <Settings2 className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">Target Setup &amp; Readiness</span>
+              </TabsTrigger>
+            </TabsList>
+          </div>
+        </CollapsibleInnerSidebar>
 
-      <Tabs value={primaryTab} onValueChange={goToPrimaryTab}>
-        <ResourceViewTabs
-          variant="inline"
-          aria-label="Benchmark sections"
-          active={primaryTab}
-          onChange={goToPrimaryTab}
-          tabs={[
-            { key: "overview", label: "Overview", icon: LayoutDashboard },
-            { key: "runs", label: "Runs", icon: Activity },
-            { key: "setup", label: "Setup", icon: Settings2 },
-          ]}
-        />
+        {/* Right Content Pane */}
+        <div className="flex-1 min-w-0 p-6 space-y-6 overflow-y-auto">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-border">
+            <div>
+              <h2 className="text-base font-semibold text-foreground">
+                {activeViewMeta.title}
+              </h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {activeViewMeta.subtitle}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <ClusterPicker
+                value={selectedClusterId ?? null}
+                onChange={handleClusterChange}
+                showProjectSelector
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 text-xs"
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+              >
+                <RefreshCw
+                  className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`}
+                />
+                Refresh
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                className="h-8 gap-1.5 text-xs"
+                onClick={() => openWizard(false)}
+              >
+                <Play className="h-3.5 w-3.5" />
+                Run Benchmark
+              </Button>
+            </div>
+          </div>
 
-        <TabsContent value="overview" className="mt-6">
-          <BenchmarkOverviewTab
-            onGoToSetup={goToSetupSection}
-            onGoToRun={goToRunDetail}
-            onGoToRunsList={() => goToPrimaryTab("runs")}
-            onGoToTrends={goToTrends}
-            onGoToCompare={goToCompare}
-            onOpenWizard={openWizard}
-            selectedClusterId={selectedClusterId}
-            onSelectCluster={handleClusterChange}
-          />
-        </TabsContent>
-        <TabsContent value="runs" className="mt-6">
-          <BenchmarkRunsSection
-            searchParams={searchParams}
-            setSearchParams={setSearchParams}
-            selectedClusterId={selectedClusterId}
-          />
-        </TabsContent>
-        <TabsContent value="setup" className="mt-6">
-          <BenchmarkSetupSection
-            activeSection={setupSection}
-            onSectionChange={goToSetupSection}
-            selectedClusterId={selectedClusterId}
-          />
-        </TabsContent>
+          <TabsContent value="overview" className="mt-0">
+            <BenchmarkOverviewTab
+              onGoToSetup={goToSetupSection}
+              onGoToRun={goToRunDetail}
+              onGoToRunsList={() => goToPrimaryTab("runs")}
+              onGoToTrends={goToTrends}
+              onGoToCompare={goToCompare}
+              onOpenWizard={openWizard}
+              selectedClusterId={selectedClusterId}
+              onSelectCluster={handleClusterChange}
+            />
+          </TabsContent>
+          <TabsContent value="runs" className="mt-0">
+            <BenchmarkRunsSection
+              searchParams={searchParams}
+              setSearchParams={setSearchParams}
+              selectedClusterId={selectedClusterId}
+            />
+          </TabsContent>
+          <TabsContent value="setup" className="mt-0">
+            <BenchmarkSetupSection
+              activeSection={setupSection}
+              onSectionChange={goToSetupSection}
+              selectedClusterId={selectedClusterId}
+            />
+          </TabsContent>
+        </div>
       </Tabs>
 
       <RunBenchmarkWizard
@@ -689,6 +623,6 @@ export default function Benchmarks() {
         onGoToSetup={goToSetupSection}
         initialReRunLast={wizardReRunLast}
       />
-    </div>
+    </>
   );
 }

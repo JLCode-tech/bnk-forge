@@ -11,29 +11,18 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Cpu, LayoutDashboard, Network, Radio } from "lucide-react";
 import { ResourcePageHeader } from "@/components/layout/ResourcePageHeader";
 import { ResourceExplorerLayout } from "@/components/layout/ResourceExplorerLayout";
-import { ResourceViewTabs } from "@/components/layout/ResourceViewTabs";
+import { ResourceSidebarViewTabs } from "@/components/layout/ResourceCategorySidebar";
+import { CollapsibleInnerSidebar } from "@/components/layout/InnerSidebar";
 import { ConnectivityGate } from "@/components/ConnectivityGate";
 import { ResourceDescribeViewer } from "@/components/k8s/ResourceDescribeViewer";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { ClusterScopePickerCard } from "@/components/k8s/ClusterScopePickerCard";
+import { ErrorState } from "@/components/ui/error-state";
+import { TableHead } from "@/components/ui/table";
 import { useProjects } from "@/hooks/useProjects";
 import { useAllClusters } from "@/hooks/useK8sClusters";
 import { useProjectClusters, useClusterNamespaces } from "@/hooks/useK8s";
@@ -57,16 +46,42 @@ export default function CNF() {
   // ---------------------------------------------------------------------------
   // View mode tab: 'overview' | 'dns' | 'telco' | 'network-graph'
   // ---------------------------------------------------------------------------
-  const [view, setView] = useState<
-    "overview" | "dns" | "telco" | "network-graph"
-  >("overview");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawView = searchParams.get("view");
+  const validViews = ["overview", "dns", "telco", "network-graph"] as const;
+  type CNFView = (typeof validViews)[number];
+  const view: CNFView = validViews.includes(rawView as CNFView)
+    ? (rawView as CNFView)
+    : "overview";
+
+  const setView = useCallback(
+    (nextView: string) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (nextView === "overview") {
+            next.delete("view");
+          } else {
+            next.set("view", nextView);
+          }
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
   const [searchQuery, setSearchQuery] = useState("");
 
   // ---------------------------------------------------------------------------
   // Projects & Clusters
   // ---------------------------------------------------------------------------
   const { data: projects = [] } = useProjects();
-  const { data: allClustersResponse } = useAllClusters();
+  const {
+    data: allClustersResponse,
+    error: allClustersError,
+    isLoading: allClustersLoading,
+  } = useAllClusters();
   const allClusters = useMemo(
     () => allClustersResponse?.clusters ?? [],
     [allClustersResponse?.clusters],
@@ -87,9 +102,29 @@ export default function CNF() {
   }, [selectedProject, allClusters]);
 
   const [selectedCluster, setSelectedCluster] = useState<number | null>(() => {
+    const fromUrl = searchParams.get("cluster");
+    if (fromUrl) {
+      const parsed = Number(fromUrl);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        localStorage.setItem(STORAGE_KEYS.CNF_CLUSTER, String(parsed));
+        return parsed;
+      }
+    }
     const fromStorage = localStorage.getItem(STORAGE_KEYS.CNF_CLUSTER);
     return fromStorage ? Number(fromStorage) : null;
   });
+
+  // Sync URL ?cluster= changes after initial mount
+  useEffect(() => {
+    const clusterParam = searchParams.get("cluster");
+    if (clusterParam) {
+      const parsed = Number(clusterParam);
+      if (Number.isFinite(parsed) && parsed > 0 && parsed !== selectedCluster) {
+        setSelectedCluster(parsed);
+        localStorage.setItem(STORAGE_KEYS.CNF_CLUSTER, String(parsed));
+      }
+    }
+  }, [searchParams, selectedCluster]);
 
   // Keep cluster selection valid: if cluster isn't in selected project, clear project (widen)
   // rather than wiping the shared cluster scope across the app (B-1 fix)
@@ -290,177 +325,155 @@ export default function CNF() {
         isRefreshing={isRefreshing}
       />
 
-      {/* View-mode tab strip */}
-      {selectedCluster && (
-        <ResourceViewTabs
-          aria-label="F5 CNF view mode"
-          active={view}
-          onChange={(key) =>
-            setView(key as "overview" | "dns" | "telco" | "network-graph")
-          }
-          tabs={[
-            {
-              key: "overview",
-              label: "Overview",
-              icon: LayoutDashboard,
-              title: "Executive summary, telco KPIs, and functional status",
-            },
-            {
-              key: "dns",
-              label: "DNS Services",
-              icon: Radio,
-              title:
-                "DNS Express resolution metrics, resolver caches, and listener status",
-            },
-            {
-              key: "telco",
-              label: "Network Functions",
-              icon: Cpu,
-              title: "Carrier-Grade NAT (CGNAT) and Diameter signaling router",
-            },
-            {
-              key: "network-graph",
-              label: "Network Graph",
-              icon: Network,
-              title: "Data plane packet pipeline and telco topology",
-            },
-          ]}
-        />
-      )}
-
       {/* Main Content Area */}
       <ResourceExplorerLayout.Body>
-        {!selectedCluster ? (
-          <div className="p-6 space-y-6 max-w-7xl mx-auto">
-            <Card className="border-border bg-card">
-              <CardHeader className="pb-3 border-b border-border/60">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-base font-semibold flex items-center gap-2">
-                      <Radio className="h-4 w-4 text-primary" />
-                      CNF by Cluster
-                    </CardTitle>
-                    <CardDescription className="text-xs">
-                      Network functions installed per cluster. Select one to
-                      inspect DNS, CGNAT and Diameter.
-                    </CardDescription>
-                  </div>
-                  <Badge variant="outline" className="text-xs">
-                    {visibleClusters.length} clusters
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent bg-muted/40">
-                      <TableHead className="text-xs font-semibold">
-                        Cluster Name
-                      </TableHead>
-                      <TableHead className="text-xs font-semibold">
-                        Cloud / Provider
-                      </TableHead>
-                      <TableHead className="text-xs font-semibold">
-                        CNF Functions
-                      </TableHead>
-                      <TableHead className="text-xs font-semibold text-right">
-                        Actions
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {visibleClusters.length === 0 ? (
-                      <TableRow>
-                        <TableCell
-                          colSpan={4}
-                          className="h-24 text-center text-xs text-muted-foreground"
-                        >
-                          No clusters found in this project.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      visibleClusters.map((cluster) => (
-                        <CNFClusterRow
-                          key={cluster.id}
-                          cluster={cluster}
-                          onInspect={() => {
-                            setSelectedCluster(cluster.id);
-                            localStorage.setItem(
-                              STORAGE_KEYS.CNF_CLUSTER,
-                              String(cluster.id),
-                            );
-                          }}
-                        />
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </div>
-        ) : (
-          <ConnectivityGate
-            target={{
-              type: "cluster",
-              id: selectedCluster ?? 0,
-              displayName: currentCluster?.name,
+        {/* Persistent Flush Left Inner Sub-Sidebar */}
+        <CollapsibleInnerSidebar className="w-52 shrink-0 border-r border-border bg-card/30 flex flex-col">
+          <ResourceSidebarViewTabs
+            aria-label="F5 CNF view mode"
+            active={view}
+            onChange={(key) => {
+              setView(key as "overview" | "dns" | "telco" | "network-graph");
+              if (!selectedCluster && visibleClusters.length > 0) {
+                const firstId = visibleClusters[0].id;
+                setSelectedCluster(firstId);
+                localStorage.setItem(STORAGE_KEYS.CNF_CLUSTER, String(firstId));
+              }
             }}
-          >
-            {view === "overview" && (
-              <CNFOverview
-                clusterName={currentCluster?.name}
-                crdsCount={0}
-                dnsCachesCount={dnsCaches.length}
-                dnsAppsCount={dnsApps.length}
-                dnsZonesCount={dnsZones.length}
-                cnatCount={cgnatInstances.length}
-                diameterCount={diameterInstances.length}
-                ipsCount={ipamInstances.length}
-                onNavigateTab={(tab) => setView(tab)}
-              />
-            )}
+            tabs={[
+              {
+                key: "overview",
+                label: "Overview",
+                icon: LayoutDashboard,
+                title: "Executive summary, telco KPIs, and functional status",
+              },
+              {
+                key: "dns",
+                label: "DNS Services",
+                icon: Radio,
+                title:
+                  "DNS Express resolution metrics, resolver caches, and listener status",
+              },
+              {
+                key: "telco",
+                label: "Network Functions",
+                icon: Cpu,
+                title:
+                  "Carrier-Grade NAT (CGNAT) and Diameter signaling router",
+              },
+              {
+                key: "network-graph",
+                label: "Network Graph",
+                icon: Network,
+                title: "Data plane packet pipeline and telco topology",
+              },
+            ]}
+          />
+        </CollapsibleInnerSidebar>
 
-            {view === "dns" && (
-              <CNFDnsPanel
-                caches={dnsCaches}
-                apps={dnsApps}
-                zones={dnsZones}
-                isLoading={
-                  dnsAppsLoading || dnsCachesLoading || dnsZonesLoading
+        {!selectedCluster ? (
+          <ResourceExplorerLayout.Content className="p-6 space-y-6 w-full overflow-y-auto">
+            {allClustersError ? (
+              <ErrorState
+                error={allClustersError}
+                title="Failed to load clusters"
+                onRetry={handleRefresh}
+              />
+            ) : (
+              <ClusterScopePickerCard
+                title="CNF by Cluster"
+                description="Network functions installed per cluster. Select one to inspect DNS, CGNAT and Diameter."
+                clusters={visibleClusters}
+                isLoading={allClustersLoading}
+                onSelectCluster={(id) => {
+                  setSelectedCluster(id);
+                  localStorage.setItem(STORAGE_KEYS.CNF_CLUSTER, String(id));
+                }}
+                actionLabel="Inspect CNF"
+                showStatusColumn={false}
+                extraColumnCount={1}
+                extraHeaders={
+                  <TableHead className="text-xs font-semibold">
+                    CNF Functions
+                  </TableHead>
                 }
-                selectedResource={selectedResource}
-                onSelectResource={setSelectedResource}
-                onDescribe={handleDescribe}
-                searchQuery={searchQuery}
-                onSearchChange={setSearchQuery}
-                borderDefault="border-border"
+                renderRow={(cluster, onSelect) => (
+                  <CNFClusterRow
+                    key={cluster.id}
+                    cluster={cluster}
+                    onInspect={() => onSelect(cluster.id)}
+                  />
+                )}
               />
             )}
+          </ResourceExplorerLayout.Content>
+        ) : (
+          <>
+            <ResourceExplorerLayout.Content className="flex flex-col overflow-y-auto">
+              <ConnectivityGate
+                target={{
+                  type: "cluster",
+                  id: selectedCluster ?? 0,
+                  displayName: currentCluster?.name,
+                }}
+              >
+                {view === "overview" && (
+                  <CNFOverview
+                    clusterName={currentCluster?.name}
+                    crdsCount={0}
+                    dnsCachesCount={dnsCaches.length}
+                    dnsAppsCount={dnsApps.length}
+                    dnsZonesCount={dnsZones.length}
+                    cnatCount={cgnatInstances.length}
+                    diameterCount={diameterInstances.length}
+                    ipsCount={ipamInstances.length}
+                    onNavigateTab={(tab) => setView(tab)}
+                  />
+                )}
 
-            {view === "telco" && (
-              <CNFTelcoPanel
-                cnatPolicies={cgnatInstances}
-                diameterEndpoints={diameterInstances}
-                ipsPolicies={ipamInstances}
-                isLoading={cnatLoading || diameterLoading || ipsLoading}
-                selectedResource={selectedResource}
-                onSelectResource={setSelectedResource}
-                onDescribe={handleDescribe}
-                searchQuery={searchQuery}
-                onSearchChange={setSearchQuery}
-                borderDefault="border-border"
-              />
-            )}
+                {view === "dns" && (
+                  <CNFDnsPanel
+                    caches={dnsCaches}
+                    apps={dnsApps}
+                    zones={dnsZones}
+                    isLoading={
+                      dnsAppsLoading || dnsCachesLoading || dnsZonesLoading
+                    }
+                    selectedResource={selectedResource}
+                    onSelectResource={setSelectedResource}
+                    onDescribe={handleDescribe}
+                    searchQuery={searchQuery}
+                    onSearchChange={setSearchQuery}
+                    borderDefault="border-border"
+                  />
+                )}
 
-            {view === "network-graph" && (
-              <CNFNetworkGraph
-                clusterId={selectedCluster}
-                dnsApps={dnsApps}
-                cgnatInstances={cgnatInstances}
-                diameterInstances={diameterInstances}
-              />
-            )}
-          </ConnectivityGate>
+                {view === "telco" && (
+                  <CNFTelcoPanel
+                    cnatPolicies={cgnatInstances}
+                    diameterEndpoints={diameterInstances}
+                    ipsPolicies={ipamInstances}
+                    isLoading={cnatLoading || diameterLoading || ipsLoading}
+                    selectedResource={selectedResource}
+                    onSelectResource={setSelectedResource}
+                    onDescribe={handleDescribe}
+                    searchQuery={searchQuery}
+                    onSearchChange={setSearchQuery}
+                    borderDefault="border-border"
+                  />
+                )}
+
+                {view === "network-graph" && (
+                  <CNFNetworkGraph
+                    clusterId={selectedCluster}
+                    dnsApps={dnsApps}
+                    cgnatInstances={cgnatInstances}
+                    diameterInstances={diameterInstances}
+                  />
+                )}
+              </ConnectivityGate>
+            </ResourceExplorerLayout.Content>
+          </>
         )}
       </ResourceExplorerLayout.Body>
 

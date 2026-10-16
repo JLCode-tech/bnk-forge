@@ -1,0 +1,317 @@
+/**
+ * Benchmark shared constants, types, and formatting/utility helpers.
+ * Separated from benchmark-utils.tsx to maintain Fast Refresh boundaries.
+ */
+import type { BenchmarkRunStatus, BenchmarkTarget } from "@/types";
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+export const PROXY_COLORS: Record<string, string> = {
+  envoy: "#8b5cf6", // violet
+  nginx: "#10b981", // emerald
+  haproxy: "#f59e0b", // amber
+  "f5-bnk": "#ef4444", // red
+  "f5-bnk-epp": "#b91c1c", // dark red
+  nodeport: "#3b82f6", // blue
+  "envoy-ai-gateway": "#ec4899", // pink
+  "llm-d-router": "#06b6d4", // cyan
+};
+
+export const PROXY_LABELS: Record<string, string> = {
+  envoy: "Envoy",
+  nginx: "Nginx",
+  haproxy: "HAProxy",
+  "f5-bnk": "F5 BNK",
+  "f5-bnk-epp": "F5 BNK + F5 EPP",
+  nodeport: "NodePort (No Proxy)",
+  "envoy-ai-gateway": "Envoy AI Gateway",
+  "llm-d-router": "llm-d Router",
+};
+
+export const STATUS_CONFIG: Record<
+  BenchmarkRunStatus,
+  {
+    label: string;
+    variant:
+      | "default"
+      | "secondary"
+      | "destructive"
+      | "outline"
+      | "success"
+      | "info"
+      | "warning"
+      | "muted";
+  }
+> = {
+  pending: { label: "Pending", variant: "muted" },
+  running: { label: "Running", variant: "info" },
+  completed: { label: "Completed", variant: "success" },
+  failed: { label: "Failed", variant: "destructive" },
+  cancelled: { label: "Cancelled", variant: "muted" },
+};
+
+export const TARGET_STATUS_CONFIG: Record<
+  string,
+  {
+    label: string;
+    variant: "default" | "secondary" | "destructive" | "outline";
+    color: string;
+  }
+> = {
+  active: { label: "Active", variant: "default", color: "#10b981" },
+  inactive: { label: "Inactive", variant: "secondary", color: "#71717a" },
+  validating: { label: "Validating", variant: "outline", color: "#f59e0b" },
+  error: { label: "Error", variant: "destructive", color: "#ef4444" },
+};
+
+export const PROXY_DEPLOY_STATUS_CONFIG: Record<
+  string,
+  {
+    label: string;
+    variant: "default" | "secondary" | "destructive" | "outline";
+    color: string;
+  }
+> = {
+  discovered: { label: "Discovered", variant: "default", color: "#3b82f6" },
+  pending: { label: "Pending", variant: "secondary", color: "#71717a" },
+  deploying: { label: "Deploying", variant: "outline", color: "#f59e0b" },
+  ready: { label: "Ready", variant: "default", color: "#10b981" },
+  failed: { label: "Failed", variant: "destructive", color: "#ef4444" },
+  uninstalling: { label: "Uninstalling", variant: "outline", color: "#f59e0b" },
+  uninstalled: { label: "Uninstalled", variant: "secondary", color: "#71717a" },
+};
+
+export const AVAILABLE_PROXY_TYPES = [
+  "envoy",
+  "nginx",
+  "haproxy",
+  "f5-bnk",
+  "f5-bnk-epp",
+  "envoy-ai-gateway",
+  "llm-d-router",
+] as const;
+
+export function getRoutingEngine(proxy: string): {
+  label: string;
+  shortLabel: string;
+  tag: string;
+  description: string;
+} {
+  if (proxy.startsWith("f5-bnk")) {
+    return {
+      label: "F5 GAIE + F5EPP",
+      shortLabel: "F5 GAIE",
+      tag: "f5",
+      description: "Hardware/BNK accelerated prefix-cache routing with F5EPP",
+    };
+  }
+  if (proxy === "envoy-ai-gateway") {
+    return {
+      label: "Envoy GAIE + EPP",
+      shortLabel: "GAIE + EPP",
+      tag: "aigw",
+      description:
+        "Envoy Gateway API Inference Extension with upstream Endpoint Picker (EPP)",
+    };
+  }
+  if (proxy === "llm-d-router") {
+    return {
+      label: "llm-d + Precise EPP",
+      shortLabel: "llm-d",
+      tag: "llmd",
+      description:
+        "llm-d router with ZMQ KV-event driven prefix-cache awareness",
+    };
+  }
+  if (proxy === "haproxy") {
+    return {
+      label: "Standard L7 (Least-Conn)",
+      shortLabel: "L7 least-conn",
+      tag: "l7",
+      description:
+        "HAProxy Layer 7 proxy with least-connections load balancing",
+    };
+  }
+  if (proxy === "nodeport") {
+    return {
+      label: "Raw K8s L4 (Direct)",
+      shortLabel: "L4 direct",
+      tag: "l4",
+      description: "Direct Kubernetes Service NodePort access without L7 proxy",
+    };
+  }
+  return {
+    label: "Standard L7 (Round-Robin)",
+    shortLabel: "L7 round-robin",
+    tag: "l7",
+    description:
+      "Standard HTTP Layer 7 reverse proxy with round-robin balancing",
+  };
+}
+
+export function isInferenceX(
+  scenarioKey?: string | null,
+  configSnapshot?: Record<string, unknown> | null,
+  tags?: Record<string, string> | string[] | null,
+): boolean {
+  const key = (
+    scenarioKey ||
+    (configSnapshot?.scenario as string) ||
+    (configSnapshot?._scenario_key as string) ||
+    ""
+  ).toLowerCase();
+  const dataset = (
+    (configSnapshot?.public_dataset as string) || ""
+  ).toLowerCase();
+  if (key.includes("inferencex") || key.includes("agentx")) return true;
+  if (
+    dataset.includes("traces") ||
+    dataset.includes("semianalysis") ||
+    dataset.includes("subagents")
+  )
+    return true;
+
+  if (Array.isArray(tags)) {
+    if (
+      tags.some((t) =>
+        ["inferencex", "agentx", "trace", "subagents"].includes(
+          t.toLowerCase(),
+        ),
+      )
+    )
+      return true;
+  } else if (tags && typeof tags === "object") {
+    const vals = Object.values(tags).map((v) => String(v).toLowerCase());
+    const keys = Object.keys(tags).map((k) => k.toLowerCase());
+    if (
+      keys.some((k) =>
+        ["inferencex", "agentx", "trace", "subagents"].includes(k),
+      )
+    )
+      return true;
+    if (
+      vals.some((v) =>
+        ["inferencex", "agentx", "trace", "subagents"].includes(v),
+      )
+    )
+      return true;
+  }
+  return false;
+}
+
+// ============================================================================
+// Baseline / Regression — shared threshold + pure classifier
+// ============================================================================
+
+/** A run regresses when latency_p99 is this much WORSE, or overall_rps this much
+ * LOWER, than its context's baseline. Shared between Runs list, Run Detail, and
+ * the vitest coverage in benchmark-utils.test.ts. */
+export const REGRESSION_THRESHOLD_PCT = 10;
+
+export type RegressionStatus =
+  | "baseline"
+  | "regression"
+  | "improvement"
+  | "neutral"
+  | null;
+
+export interface RegressionInput {
+  is_baseline?: boolean;
+  latency_p99?: number | null;
+  overall_rps?: number | null;
+  baseline_latency_p99?: number | null;
+  baseline_overall_rps?: number | null;
+}
+
+/**
+ * Classify a completed run against its (target, scenario/config) baseline.
+ * Returns null when the run has no baseline context to compare against —
+ * callers must render no badge in that case (never a false "neutral").
+ */
+export function getRegressionStatus(run: RegressionInput): RegressionStatus {
+  if (run.is_baseline) return "baseline";
+
+  const hasLatency =
+    run.baseline_latency_p99 != null && run.latency_p99 != null;
+  const hasRps = run.baseline_overall_rps != null && run.overall_rps != null;
+  if (!hasLatency && !hasRps) return null;
+
+  const factor = REGRESSION_THRESHOLD_PCT / 100;
+  const latencyWorse =
+    hasLatency && run.latency_p99! > run.baseline_latency_p99! * (1 + factor);
+  const rpsWorse =
+    hasRps && run.overall_rps! < run.baseline_overall_rps! * (1 - factor);
+  if (latencyWorse || rpsWorse) return "regression";
+
+  const latencyBetter =
+    hasLatency && run.latency_p99! < run.baseline_latency_p99! * (1 - factor);
+  const rpsBetter =
+    hasRps && run.overall_rps! > run.baseline_overall_rps! * (1 + factor);
+  if (latencyBetter || rpsBetter) return "improvement";
+
+  return "neutral";
+}
+
+// ============================================================================
+// Format Helpers
+// ============================================================================
+
+export function fmtDuration(s: number | null | undefined): string {
+  if (!s) return "—";
+  if (s < 60) return `${s.toFixed(1)}s`;
+  return `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
+}
+
+export function fmtLatency(s: number | null | undefined): string {
+  if (s == null) return "—";
+  if (s < 0.001) return `${(s * 1_000_000).toFixed(0)}µs`;
+  if (s < 1) return `${(s * 1000).toFixed(1)}ms`;
+  return `${s.toFixed(2)}s`;
+}
+
+export function fmtNum(n: number | null | undefined, decimals = 1): string {
+  if (n == null) return "—";
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return n.toFixed(decimals);
+}
+
+export function fmtTokens(n: number | null | undefined): string {
+  if (n == null) return "—";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return n.toLocaleString();
+}
+
+export function fmtPct(n: number | null | undefined): string {
+  if (n == null) return "—";
+  return `${n.toFixed(1)}%`;
+}
+
+// ============================================================================
+// Utility Helpers
+// ============================================================================
+
+/**
+ * Target picker label. Target names are unique per cluster and cluster names
+ * only per project, so the cluster id disambiguates across projects.
+ */
+export function targetOptionLabel(
+  t: Pick<BenchmarkTarget, "name" | "cluster_id" | "cluster_name">,
+): string {
+  return `${t.name} (${t.cluster_name ? `${t.cluster_name} ` : "cluster "}#${t.cluster_id})`;
+}
+
+/** Download helper — creates a Blob and triggers download */
+export function downloadJson(data: object, filename: string) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}

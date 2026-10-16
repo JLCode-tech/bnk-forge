@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Form,
   FormControl,
@@ -9,8 +9,8 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from '@/components/ui/form';
-import { blueprintSourceSchema, type BlueprintSourceFormData } from '@/schemas';
+} from "@/components/ui/form";
+import { blueprintSourceSchema, type BlueprintSourceFormData } from "@/schemas";
 import {
   CheckCircle2,
   ChevronDown,
@@ -32,7 +32,7 @@ import {
   Tag,
   Trash2,
   XCircle,
-} from 'lucide-react';
+} from "lucide-react";
 
 import {
   AlertDialog,
@@ -43,11 +43,11 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
+} from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -55,14 +55,31 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { SectionCard } from '@/components/ui/section-card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ImportedBlueprintDeployDialog } from '@/components/stacks/ImportedBlueprintDeployDialog';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { SectionCard } from "@/components/ui/section-card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { ImportedBlueprintDeployDialog } from "@/components/stacks/ImportedBlueprintDeployDialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   useBlueprintReleases,
   useBlueprintSources,
@@ -74,55 +91,60 @@ import {
   useSyncBlueprintSource,
   useUnimportBlueprintRelease,
   useUpdateBlueprintSource,
-} from '@/hooks/useBlueprintCatalog';
-import { notify } from '@/lib/notify';
-import { queryKeys } from '@/lib/queryKeys';
-import { formatAge } from '@/lib/time-utils';
-import { cn } from '@/lib/utils';
-import { sortVersionsDesc } from './blueprintVersionUtils';
-import type { BlueprintRelease, BlueprintSource, BlueprintSourceCreate, BlueprintSourceUpdate } from '@/types';
+} from "@/hooks/useBlueprintCatalog";
+import { notify } from "@/lib/notify";
+import { queryKeys } from "@/lib/queryKeys";
+import { formatAge } from "@/lib/time-utils";
+import { cn } from "@/lib/utils";
+import { sortVersionsDesc } from "./blueprintVersionUtils";
+import type {
+  BlueprintRelease,
+  BlueprintSource,
+  BlueprintSourceCreate,
+  BlueprintSourceUpdate,
+} from "@/types";
 
 const PLATFORM_OPTIONS = [
-  { value: 'all', label: 'All Platforms' },
-  { value: 'aws', label: 'AWS' },
-  { value: 'azure', label: 'Azure' },
-  { value: 'gcp', label: 'GCP' },
-  { value: 'ibm', label: 'IBM' },
-  { value: 'kubernetes', label: 'Kubernetes' },
-  { value: 'docker', label: 'Docker / Local' },
-  { value: 'other', label: 'Other' },
+  { value: "all", label: "All Platforms" },
+  { value: "aws", label: "AWS" },
+  { value: "azure", label: "Azure" },
+  { value: "gcp", label: "GCP" },
+  { value: "ibm", label: "IBM" },
+  { value: "kubernetes", label: "Kubernetes" },
+  { value: "docker", label: "Docker / Local" },
+  { value: "other", label: "Other" },
 ];
 
 const VALIDATION_OPTIONS = [
-  { value: 'all', label: 'Any Validation' },
-  { value: 'valid', label: 'Valid' },
-  { value: 'invalid', label: 'Invalid' },
-  { value: 'unknown', label: 'Unknown' },
+  { value: "all", label: "Any Validation" },
+  { value: "valid", label: "Valid" },
+  { value: "invalid", label: "Invalid" },
+  { value: "unknown", label: "Unknown" },
 ];
 
 const RELEASE_STATE_OPTIONS = [
-  { value: 'all', label: 'Any State' },
-  { value: 'discovered', label: 'Discovered' },
-  { value: 'imported', label: 'Imported' },
-  { value: 'approved', label: 'Approved' },
-  { value: 'deprecated', label: 'Deprecated' },
+  { value: "all", label: "Any State" },
+  { value: "discovered", label: "Discovered" },
+  { value: "imported", label: "Imported" },
+  { value: "approved", label: "Approved" },
+  { value: "deprecated", label: "Deprecated" },
 ];
 
 /** A release counts as "removed from deployable catalog" when discovered + removed reason. */
 function isRemovedRelease(release: BlueprintRelease): boolean {
   return (
-    release.release_state === 'discovered' &&
-    release.state_reason === 'Removed from deployable catalog'
+    release.release_state === "discovered" &&
+    release.state_reason === "Removed from deployable catalog"
   );
 }
 
 function statusIcon(status: string) {
   switch (status) {
-    case 'success':
+    case "success":
       return <CheckCircle2 className="h-4 w-4 text-success" />;
-    case 'failed':
+    case "failed":
       return <XCircle className="h-4 w-4 text-destructive" />;
-    case 'syncing':
+    case "syncing":
       return <Loader2 className="h-4 w-4 animate-spin text-info" />;
     default:
       return <Clock className="h-4 w-4 text-muted-foreground" />;
@@ -130,31 +152,34 @@ function statusIcon(status: string) {
 }
 
 function statusBadge(status: string) {
-  const variants: Record<string, 'success' | 'destructive' | 'info' | 'muted' | 'outline'> = {
-    success: 'success',
-    failed: 'destructive',
-    syncing: 'info',
-    pending: 'muted',
+  const variants: Record<
+    string,
+    "success" | "destructive" | "info" | "muted" | "outline"
+  > = {
+    success: "success",
+    failed: "destructive",
+    syncing: "info",
+    pending: "muted",
   };
-  return <Badge variant={variants[status] || 'outline'}>{status}</Badge>;
+  return <Badge variant={variants[status] || "outline"}>{status}</Badge>;
 }
 
-function sourceTypeIcon(sourceType: BlueprintSource['source_type']) {
-  if (sourceType === 'git') {
+function sourceTypeIcon(sourceType: BlueprintSource["source_type"]) {
+  if (sourceType === "git") {
     return <GitBranch className="h-4 w-4 text-info" />;
   }
   return <Layers className="h-4 w-4 text-muted-foreground" />;
 }
 
 function releaseStateBadge(state: string) {
-  const variant: 'success' | 'muted' | 'destructive' | 'info' | 'outline' =
-    state === 'approved'
-      ? 'success'
-      : state === 'deprecated'
-        ? 'destructive'
-        : state === 'imported'
-          ? 'info'
-          : 'muted';
+  const variant: "success" | "muted" | "destructive" | "info" | "outline" =
+    state === "approved"
+      ? "success"
+      : state === "deprecated"
+        ? "destructive"
+        : state === "imported"
+          ? "info"
+          : "muted";
   return <Badge variant={variant}>{state}</Badge>;
 }
 
@@ -170,18 +195,22 @@ interface BlueprintGroup {
 }
 
 export default function BlueprintCatalogPanel() {
-  const [search, setSearch] = useState('');
-  const [platformFilter, setPlatformFilter] = useState('all');
-  const [sourceFilter, setSourceFilter] = useState('all');
-  const [validationFilter, setValidationFilter] = useState('all');
-  const [releaseStateFilter, setReleaseStateFilter] = useState('all');
+  const [search, setSearch] = useState("");
+  const [platformFilter, setPlatformFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [validationFilter, setValidationFilter] = useState("all");
+  const [releaseStateFilter, setReleaseStateFilter] = useState("all");
   const [showRemoved, setShowRemoved] = useState(false);
   const [latestOnly, setLatestOnly] = useState(false);
   const [isSourcesOpen, setIsSourcesOpen] = useState(false);
-  const [sourceToDelete, setSourceToDelete] = useState<{ id: number; name: string } | null>(null);
-  const [releaseToDelete, setReleaseToDelete] = useState<BlueprintRelease | null>(null);
+  const [sourceToDelete, setSourceToDelete] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
+  const [releaseToDelete, setReleaseToDelete] =
+    useState<BlueprintRelease | null>(null);
   const [isSyncingAll, setIsSyncingAll] = useState(false);
-  const [deployReleaseSlug, setDeployReleaseSlug] = useState<string>('');
+  const [deployReleaseSlug, setDeployReleaseSlug] = useState<string>("");
   const [deployDialogOpen, setDeployDialogOpen] = useState(false);
 
   const { data: sources, isLoading: sourcesLoading } = useBlueprintSources();
@@ -194,7 +223,8 @@ export default function BlueprintCatalogPanel() {
   const deleteReleaseMutation = useDeleteBlueprintRelease();
   const unimportMutation = useUnimportBlueprintRelease();
   const visibilityMutation = useSetBlueprintReleaseVisibility();
-  const [releaseToUnimport, setReleaseToUnimport] = useState<BlueprintRelease | null>(null);
+  const [releaseToUnimport, setReleaseToUnimport] =
+    useState<BlueprintRelease | null>(null);
   const queryClient = useQueryClient();
 
   const sourceMap = useMemo(() => {
@@ -207,24 +237,52 @@ export default function BlueprintCatalogPanel() {
 
     return (releases || []).filter((release) => {
       const source = sourceMap.get(release.blueprint_source_id);
-      const matchesSearch = !normalizedSearch || [
-        release.blueprint_name,
-        release.blueprint_id,
-        release.blueprint_description,
-        release.source_name,
-        release.source_path,
-        ...(release.tags || []),
-      ].some((value) => String(value || '').toLowerCase().includes(normalizedSearch));
+      const matchesSearch =
+        !normalizedSearch ||
+        [
+          release.blueprint_name,
+          release.blueprint_id,
+          release.blueprint_description,
+          release.source_name,
+          release.source_path,
+          ...(release.tags || []),
+        ].some((value) =>
+          String(value || "")
+            .toLowerCase()
+            .includes(normalizedSearch),
+        );
 
-      const releaseProvider = (release.cloud_provider || 'other').toLowerCase();
-      const matchesPlatform = platformFilter === 'all' || releaseProvider === platformFilter;
-      const matchesSource = sourceFilter === 'all' || String(release.blueprint_source_id) === sourceFilter;
-      const matchesValidation = validationFilter === 'all' || release.validation_state === validationFilter;
-      const matchesReleaseState = releaseStateFilter === 'all' || release.release_state === releaseStateFilter;
+      const releaseProvider = (release.cloud_provider || "other").toLowerCase();
+      const matchesPlatform =
+        platformFilter === "all" || releaseProvider === platformFilter;
+      const matchesSource =
+        sourceFilter === "all" ||
+        String(release.blueprint_source_id) === sourceFilter;
+      const matchesValidation =
+        validationFilter === "all" ||
+        release.validation_state === validationFilter;
+      const matchesReleaseState =
+        releaseStateFilter === "all" ||
+        release.release_state === releaseStateFilter;
 
-      return matchesSearch && matchesPlatform && matchesSource && matchesValidation && matchesReleaseState && !!source;
+      return (
+        matchesSearch &&
+        matchesPlatform &&
+        matchesSource &&
+        matchesValidation &&
+        matchesReleaseState &&
+        !!source
+      );
     });
-  }, [releases, search, platformFilter, sourceFilter, validationFilter, releaseStateFilter, sourceMap]);
+  }, [
+    releases,
+    search,
+    platformFilter,
+    sourceFilter,
+    validationFilter,
+    releaseStateFilter,
+    sourceMap,
+  ]);
 
   // Step 2: Group by blueprint_id × blueprint_source_id, sorted newest-first per group.
   //         D-033 (#438): removed (unimported) releases stay visible as version
@@ -264,12 +322,14 @@ export default function BlueprintCatalogPanel() {
 
   const summary = useMemo(() => {
     const total = blueprintGroups.length;
-    const valid = blueprintGroups.filter((g) => g.latest.validation_state === 'valid').length;
+    const valid = blueprintGroups.filter(
+      (g) => g.latest.validation_state === "valid",
+    ).length;
     const imported = blueprintGroups.filter((g) =>
-      g.versions.some((r) => r.release_state === 'imported')
+      g.versions.some((r) => r.release_state === "imported"),
     ).length;
     const approved = blueprintGroups.filter((g) =>
-      g.versions.some((r) => r.release_state === 'approved')
+      g.versions.some((r) => r.release_state === "approved"),
     ).length;
     return { total, valid, imported, approved };
   }, [blueprintGroups]);
@@ -303,10 +363,12 @@ export default function BlueprintCatalogPanel() {
 
   const handleSyncAll = async () => {
     const syncableSources = (sources || []).filter(
-      (source) => source.source_type === 'git' && source.is_active
+      (source) => source.source_type === "git" && source.is_active,
     );
     if (syncableSources.length === 0) {
-      notify.info('No active git blueprint sources to sync', undefined, { category: 'system' });
+      notify.info("No active git blueprint sources to sync", undefined, {
+        category: "system",
+      });
       return;
     }
 
@@ -315,7 +377,11 @@ export default function BlueprintCatalogPanel() {
       for (const source of syncableSources) {
         await syncMutation.mutateAsync(source.id);
       }
-      notify.success(`Synced ${syncableSources.length} blueprint source${syncableSources.length === 1 ? '' : 's'}`, undefined, { category: 'system' });
+      notify.success(
+        `Synced ${syncableSources.length} blueprint source${syncableSources.length === 1 ? "" : "s"}`,
+        undefined,
+        { category: "system" },
+      );
     } finally {
       setIsSyncingAll(false);
     }
@@ -335,20 +401,27 @@ export default function BlueprintCatalogPanel() {
               Blueprints
             </h3>
             <p className="text-sm text-muted-foreground mt-1">
-              Browse discovered blueprints first, then manage sources from a dedicated dialog.
+              Browse discovered blueprints first, then manage sources from a
+              dedicated dialog.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <Button variant="outline" size="sm" onClick={() => setIsSourcesOpen(true)}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsSourcesOpen(true)}
+            >
               <Settings className="mr-1.5 h-4 w-4" />
               Sources
             </Button>
             <Button
-              variant="outline"
+              variant="default"
               size="sm"
               onClick={handleSyncAll}
-              disabled={isSyncingAll || syncMutation.isPending || !sources?.length}
+              disabled={
+                isSyncingAll || syncMutation.isPending || !sources?.length
+              }
             >
               {isSyncingAll ? (
                 <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
@@ -399,7 +472,10 @@ export default function BlueprintCatalogPanel() {
               </SelectContent>
             </Select>
 
-            <Select value={validationFilter} onValueChange={setValidationFilter}>
+            <Select
+              value={validationFilter}
+              onValueChange={setValidationFilter}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Validation" />
               </SelectTrigger>
@@ -412,7 +488,10 @@ export default function BlueprintCatalogPanel() {
               </SelectContent>
             </Select>
 
-            <Select value={releaseStateFilter} onValueChange={setReleaseStateFilter}>
+            <Select
+              value={releaseStateFilter}
+              onValueChange={setReleaseStateFilter}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="State" />
               </SelectTrigger>
@@ -432,25 +511,29 @@ export default function BlueprintCatalogPanel() {
               type="button"
               onClick={() => setShowRemoved((v) => !v)}
               className={cn(
-                'inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm transition-colors',
+                "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm transition-colors",
                 showRemoved
-                  ? 'bg-foreground text-background border-foreground'
-                  : 'bg-card text-muted-foreground border-border hover:text-foreground',
+                  ? "bg-foreground text-background border-foreground"
+                  : "bg-card text-muted-foreground border-border hover:text-foreground",
               )}
               aria-pressed={showRemoved}
             >
-              {showRemoved ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-              {showRemoved ? 'Removed visible' : 'Show removed'}
+              {showRemoved ? (
+                <Eye className="h-3.5 w-3.5" />
+              ) : (
+                <EyeOff className="h-3.5 w-3.5" />
+              )}
+              {showRemoved ? "Removed visible" : "Show removed"}
             </button>
 
             <button
               type="button"
               onClick={() => setLatestOnly((v) => !v)}
               className={cn(
-                'inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm transition-colors',
+                "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm transition-colors",
                 latestOnly
-                  ? 'bg-foreground text-background border-foreground'
-                  : 'bg-card text-muted-foreground border-border hover:text-foreground',
+                  ? "bg-foreground text-background border-foreground"
+                  : "bg-card text-muted-foreground border-border hover:text-foreground",
               )}
               aria-pressed={latestOnly}
             >
@@ -462,9 +545,21 @@ export default function BlueprintCatalogPanel() {
 
         <div className="mt-6 space-y-6">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <SummaryTile label="Visible Blueprints" value={summary.total} icon={Layers} />
-            <SummaryTile label="Valid" value={summary.valid} icon={CheckCircle2} />
-            <SummaryTile label="Imported" value={summary.imported} icon={Download} />
+            <SummaryTile
+              label="Visible Blueprints"
+              value={summary.total}
+              icon={Layers}
+            />
+            <SummaryTile
+              label="Valid"
+              value={summary.valid}
+              icon={CheckCircle2}
+            />
+            <SummaryTile
+              label="Imported"
+              value={summary.imported}
+              icon={Download}
+            />
             <SummaryTile label="Approved" value={summary.approved} icon={Tag} />
           </div>
 
@@ -476,7 +571,8 @@ export default function BlueprintCatalogPanel() {
             <Alert>
               <Filter className="h-4 w-4" />
               <AlertDescription>
-                No blueprints match the current filters. Try clearing a filter or sync your sources again.
+                No blueprints match the current filters. Try clearing a filter
+                or sync your sources again.
               </AlertDescription>
             </Alert>
           ) : (
@@ -488,7 +584,7 @@ export default function BlueprintCatalogPanel() {
               onImport={(release) =>
                 importMutation.mutate({
                   releaseId: release.id,
-                  stateReason: 'Imported from Blueprint Catalog UI',
+                  stateReason: "Imported from Blueprint Catalog UI",
                 })
               }
               onDiscard={(release) => setReleaseToDelete(release)}
@@ -509,7 +605,11 @@ export default function BlueprintCatalogPanel() {
         open={isSourcesOpen}
         onOpenChange={setIsSourcesOpen}
         sources={sources || []}
-        releasesBySource={new Map((sources || []).map((source) => [source.id, source.release_count]))}
+        releasesBySource={
+          new Map(
+            (sources || []).map((source) => [source.id, source.release_count]),
+          )
+        }
         syncMutation={syncMutation}
         createMutation={createMutation}
         updateMutation={updateMutation}
@@ -526,66 +626,98 @@ export default function BlueprintCatalogPanel() {
             // Refresh the catalog so each card's deployed_project_count
             // reflects the new project, and refresh project lists so the
             // new project appears elsewhere in the app.
-            queryClient.invalidateQueries({ queryKey: queryKeys.blueprintCatalog.releases() });
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.blueprintCatalog.releases(),
+            });
             queryClient.invalidateQueries({ queryKey: queryKeys.projects.all });
           }}
         />
       ) : null}
 
-      <AlertDialog open={sourceToDelete !== null} onOpenChange={(open) => !open && setSourceToDelete(null)}>
+      <AlertDialog
+        open={sourceToDelete !== null}
+        onOpenChange={(open) => !open && setSourceToDelete(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete blueprint source?</AlertDialogTitle>
             <AlertDialogDescription>
               {sourceToDelete
                 ? `Remove blueprint source "${sourceToDelete.name}" from the catalog. Imported releases remain until removed separately.`
-                : 'Remove this blueprint source from the catalog.'}
+                : "Remove this blueprint source from the catalog."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteSourceMutation.isPending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteSource} disabled={deleteSourceMutation.isPending}>
-              {deleteSourceMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            <AlertDialogCancel disabled={deleteSourceMutation.isPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteSource}
+              disabled={deleteSourceMutation.isPending}
+            >
+              {deleteSourceMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
               Delete Source
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={releaseToDelete !== null} onOpenChange={(open) => !open && setReleaseToDelete(null)}>
+      <AlertDialog
+        open={releaseToDelete !== null}
+        onOpenChange={(open) => !open && setReleaseToDelete(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Discard discovered release?</AlertDialogTitle>
             <AlertDialogDescription>
               {releaseToDelete
                 ? `${releaseToDelete.blueprint_name} ${releaseToDelete.blueprint_version} will be removed from the catalog. It will reappear on the next sync if it still exists in the source.`
-                : 'This release will be removed from the catalog.'}
+                : "This release will be removed from the catalog."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteReleaseMutation.isPending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteRelease} disabled={deleteReleaseMutation.isPending}>
-              {deleteReleaseMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            <AlertDialogCancel disabled={deleteReleaseMutation.isPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteRelease}
+              disabled={deleteReleaseMutation.isPending}
+            >
+              {deleteReleaseMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
               Discard
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={releaseToUnimport !== null} onOpenChange={(open) => !open && setReleaseToUnimport(null)}>
+      <AlertDialog
+        open={releaseToUnimport !== null}
+        onOpenChange={(open) => !open && setReleaseToUnimport(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove from deployable catalog?</AlertDialogTitle>
             <AlertDialogDescription>
               {releaseToUnimport
                 ? `${releaseToUnimport.blueprint_name} ${releaseToUnimport.blueprint_version} will move back to the discovered state and will no longer be deployable. The catalog entry stays — re-import it later to make it deployable again. Blocked if any project was created from this release.`
-                : 'This release will move back to the discovered state.'}
+                : "This release will move back to the discovered state."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={unimportMutation.isPending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleUnimportRelease} disabled={unimportMutation.isPending}>
-              {unimportMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            <AlertDialogCancel disabled={unimportMutation.isPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleUnimportRelease}
+              disabled={unimportMutation.isPending}
+            >
+              {unimportMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
               Remove
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -595,12 +727,22 @@ export default function BlueprintCatalogPanel() {
   );
 }
 
-function SummaryTile({ label, value, icon: Icon }: { label: string; value: number; icon: typeof Layers }) {
+function SummaryTile({
+  label,
+  value,
+  icon: Icon,
+}: {
+  label: string;
+  value: number;
+  icon: typeof Layers;
+}) {
   return (
     <div className="rounded-lg border border-border bg-card px-4 py-3">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+            {label}
+          </p>
           <p className="mt-1 text-2xl font-semibold">{value}</p>
         </div>
         <div className="rounded-md bg-muted p-2">
@@ -634,11 +776,11 @@ function BlueprintTable({
   onImport,
   onDiscard,
   onRemove,
-  onSetVisibility,
+  onSetVisibility: _onSetVisibility,
   importPending,
   discardPending,
   removePending,
-  visibilityPending,
+  visibilityPending: _visibilityPending,
 }: BlueprintTableProps) {
   // Per-group expanded state for the "other versions" disclosure.
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -671,9 +813,6 @@ function BlueprintTable({
             <TableHead className="text-xs uppercase tracking-wider text-muted-foreground">
               State
             </TableHead>
-            <TableHead className="text-xs uppercase tracking-wider text-muted-foreground">
-              Visible
-            </TableHead>
             <TableHead className="text-xs uppercase tracking-wider text-muted-foreground text-right w-48">
               {/* actions */}
             </TableHead>
@@ -688,14 +827,16 @@ function BlueprintTable({
               : group.versions.filter((r) => r.id !== latest.id);
             const isExpanded = expanded.has(group.key);
             const canDeploy =
-              latest.release_state === 'imported' || latest.release_state === 'approved';
+              latest.release_state === "imported" ||
+              latest.release_state === "approved";
             const isImported =
-              latest.release_state === 'imported' || latest.release_state === 'approved';
-            const isDiscoveredOnly = latest.release_state === 'discovered';
+              latest.release_state === "imported" ||
+              latest.release_state === "approved";
+            const isDiscoveredOnly = latest.release_state === "discovered";
             const deployedCount = latest.deployed_project_count ?? 0;
             const removeDisabled = removePending || deployedCount > 0;
             const validationErrors = latest.validation_errors?.length ?? 0;
-            const isBuiltin = source?.source_type === 'builtin';
+            const isBuiltin = source?.source_type === "builtin";
 
             return (
               <>
@@ -707,12 +848,18 @@ function BlueprintTable({
                           {latest.blueprint_name}
                         </span>
                         {isBuiltin ? (
-                          <Badge variant="outline" className="border-info/60 bg-info/10 text-info text-[10px]">
+                          <Badge
+                            variant="outline"
+                            className="border-info/60 bg-info/10 text-info text-2xs"
+                          >
                             Built-in
                           </Badge>
                         ) : null}
                         {latest.is_featured ? (
-                          <Badge variant="outline" className="border-warning/60 bg-warning/10 text-warning text-[10px]">
+                          <Badge
+                            variant="outline"
+                            className="border-warning/60 bg-warning/10 text-warning text-2xs"
+                          >
                             Featured
                           </Badge>
                         ) : null}
@@ -726,7 +873,7 @@ function BlueprintTable({
                               </TooltipTrigger>
                               <TooltipContent>
                                 {validationErrors} validation issue
-                                {validationErrors === 1 ? '' : 's'}
+                                {validationErrors === 1 ? "" : "s"}
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
@@ -750,19 +897,21 @@ function BlueprintTable({
                             <ChevronDown className="h-3 w-3" />
                           )}
                           {group.versions.length - 1} other version
-                          {group.versions.length - 1 === 1 ? '' : 's'}
+                          {group.versions.length - 1 === 1 ? "" : "s"}
                         </button>
                       )}
                     </div>
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline" className="text-xs">
-                      {latest.cloud_provider || 'other'}
+                      {latest.cloud_provider || "other"}
                     </Badge>
                   </TableCell>
                   <TableCell>
                     {source ? (
-                      <span className="text-xs text-muted-foreground">{source.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {source.name}
+                      </span>
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
@@ -772,18 +921,8 @@ function BlueprintTable({
                       v{latest.blueprint_version}
                     </span>
                   </TableCell>
-                  <TableCell>{releaseStateBadge(latest.release_state)}</TableCell>
                   <TableCell>
-                    {isImported ? (
-                      <Switch
-                        checked={latest.is_active}
-                        onCheckedChange={(checked) => onSetVisibility(latest, checked)}
-                        disabled={visibilityPending}
-                        aria-label="Visible on Blueprints page"
-                      />
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
+                    {releaseStateBadge(latest.release_state)}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
@@ -791,26 +930,32 @@ function BlueprintTable({
                         size="sm"
                         onClick={() => onDeploy(latest)}
                         disabled={!canDeploy}
-                        title={!canDeploy ? 'Import this release first to deploy it' : undefined}
+                        title={
+                          !canDeploy
+                            ? "Import this release first to deploy it"
+                            : undefined
+                        }
                       >
                         <Rocket className="mr-1.5 h-3.5 w-3.5" />
                         Deploy
                       </Button>
-                      {!isBuiltin && isDiscoveredOnly && latest.validation_state === 'valid' && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => onImport(latest)}
-                          disabled={importPending}
-                        >
-                          {importPending ? (
-                            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Download className="mr-1.5 h-3.5 w-3.5" />
-                          )}
-                          Import
-                        </Button>
-                      )}
+                      {!isBuiltin &&
+                        isDiscoveredOnly &&
+                        latest.validation_state === "valid" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onImport(latest)}
+                            disabled={importPending}
+                          >
+                            {importPending ? (
+                              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Download className="mr-1.5 h-3.5 w-3.5" />
+                            )}
+                            Import
+                          </Button>
+                        )}
                       {!isBuiltin && isImported ? (
                         <Button
                           size="sm"
@@ -820,7 +965,7 @@ function BlueprintTable({
                           title={
                             deployedCount > 0
                               ? `Cannot remove: ${deployedCount} project${
-                                  deployedCount === 1 ? '' : 's'
+                                  deployedCount === 1 ? "" : "s"
                                 } deployed from this blueprint`
                               : undefined
                           }
@@ -851,9 +996,10 @@ function BlueprintTable({
                 {isExpanded &&
                   otherVersions.map((release) => {
                     const rIsImported =
-                      release.release_state === 'imported' ||
-                      release.release_state === 'approved';
-                    const rIsDiscoveredOnly = release.release_state === 'discovered';
+                      release.release_state === "imported" ||
+                      release.release_state === "approved";
+                    const rIsDiscoveredOnly =
+                      release.release_state === "discovered";
                     return (
                       <TableRow key={release.id} className="bg-muted/30">
                         <TableCell>
@@ -862,8 +1008,8 @@ function BlueprintTable({
                           </span>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="text-[10px]">
-                            {release.cloud_provider || 'other'}
+                          <Badge variant="outline" className="text-2xs">
+                            {release.cloud_provider || "other"}
                           </Badge>
                         </TableCell>
                         <TableCell />
@@ -872,36 +1018,27 @@ function BlueprintTable({
                             v{release.blueprint_version}
                           </span>
                         </TableCell>
-                        <TableCell>{releaseStateBadge(release.release_state)}</TableCell>
                         <TableCell>
-                          {rIsImported ? (
-                            <Switch
-                              checked={release.is_active}
-                              onCheckedChange={(checked) => onSetVisibility(release, checked)}
-                              disabled={visibilityPending}
-                              aria-label="Visible on Blueprints page"
-                            />
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
+                          {releaseStateBadge(release.release_state)}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
-                            {rIsDiscoveredOnly && release.validation_state === 'valid' && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => onImport(release)}
-                                disabled={importPending}
-                              >
-                                {importPending ? (
-                                  <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-                                ) : (
-                                  <Download className="mr-1.5 h-3 w-3" />
-                                )}
-                                Import
-                              </Button>
-                            )}
+                            {rIsDiscoveredOnly &&
+                              release.validation_state === "valid" && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => onImport(release)}
+                                  disabled={importPending}
+                                >
+                                  {importPending ? (
+                                    <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <Download className="mr-1.5 h-3 w-3" />
+                                  )}
+                                  Import
+                                </Button>
+                              )}
                             {rIsImported ? (
                               <Button
                                 size="sm"
@@ -962,7 +1099,9 @@ function BlueprintSourcesDialog({
   deleteSourceMutation,
   onDelete,
 }: BlueprintSourcesDialogProps) {
-  const [editingSource, setEditingSource] = useState<BlueprintSource | null>(null);
+  const [editingSource, setEditingSource] = useState<BlueprintSource | null>(
+    null,
+  );
   const [isEditorOpen, setIsEditorOpen] = useState(false);
 
   const handleAdd = () => {
@@ -981,14 +1120,17 @@ function BlueprintSourcesDialog({
         <DialogHeader>
           <DialogTitle>Blueprint Sources</DialogTitle>
           <DialogDescription>
-            Manage the Git repositories that feed the Blueprint Catalog. Set one as default and sync them independently when needed.
+            Manage the Git repositories that feed the Blueprint Catalog. Set one
+            as default and sync them independently when needed.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
           {sources.length === 0 ? (
             <Alert>
-              <AlertDescription>No blueprint sources configured yet.</AlertDescription>
+              <AlertDescription>
+                No blueprint sources configured yet.
+              </AlertDescription>
             </Alert>
           ) : (
             <Table>
@@ -1009,27 +1151,42 @@ function BlueprintSourcesDialog({
                       <div className="flex items-center gap-2">
                         {sourceTypeIcon(source.source_type)}
                         <span>{source.name}</span>
-                        {source.is_default ? <Badge variant="muted">Default</Badge> : null}
+                        {source.is_default ? (
+                          <Badge variant="muted">Default</Badge>
+                        ) : null}
                       </div>
                     </TableCell>
-                    <TableCell className="max-w-xs truncate text-sm text-muted-foreground">{source.url}</TableCell>
+                    <TableCell className="max-w-xs truncate text-sm text-muted-foreground">
+                      {source.url}
+                    </TableCell>
                     <TableCell>
-                      <Badge variant="outline">{releasesBySource.get(source.id) || 0}</Badge>
+                      <Badge variant="outline">
+                        {releasesBySource.get(source.id) || 0}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         {statusIcon(source.sync_status)}
                         {statusBadge(source.sync_status)}
                       </div>
-                      {source.sync_status === 'success' && source.sync_error === 'No forge-blueprint.json manifests found' ? (
-                        <p className="mt-1 text-xs text-warning">Synced successfully, but no forge-blueprint.json manifests were found.</p>
+                      {source.sync_status === "success" &&
+                      source.sync_error ===
+                        "No forge-blueprint.json manifests found" ? (
+                        <p className="mt-1 text-xs text-warning">
+                          Synced successfully, but no forge-blueprint.json
+                          manifests were found.
+                        </p>
                       ) : null}
                       {source.sync_error ? (
-                        <p className="mt-1 text-xs text-destructive line-clamp-2">{source.sync_error}</p>
+                        <p className="mt-1 text-xs text-destructive line-clamp-2">
+                          {source.sync_error}
+                        </p>
                       ) : null}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {source.last_synced_at ? formatAge(source.last_synced_at) : 'Never'}
+                      {source.last_synced_at
+                        ? formatAge(source.last_synced_at)
+                        : "Never"}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
@@ -1040,29 +1197,47 @@ function BlueprintSourcesDialog({
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => syncMutation.mutate(source.id)}
-                                disabled={syncMutation.isPending || source.sync_status === 'syncing'}
+                                disabled={
+                                  syncMutation.isPending ||
+                                  source.sync_status === "syncing"
+                                }
                                 aria-label={`Sync ${source.name}`}
                               >
-                                <RefreshCw className={cn('h-4 w-4', syncMutation.isPending && 'animate-spin')} />
+                                <RefreshCw
+                                  className={cn(
+                                    "h-4 w-4",
+                                    syncMutation.isPending && "animate-spin",
+                                  )}
+                                />
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent side="left">
                               <p className="text-xs">
                                 Sync {source.name}
-                                {source.last_synced_at ? <span className="text-muted-foreground ml-1">(last: {formatAge(source.last_synced_at)})</span> : null}
+                                {source.last_synced_at ? (
+                                  <span className="text-muted-foreground ml-1">
+                                    (last: {formatAge(source.last_synced_at)})
+                                  </span>
+                                ) : null}
                               </p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
-                        {source.source_type !== 'builtin' ? (
+                        {source.source_type !== "builtin" ? (
                           <>
-                            <Button variant="ghost" size="sm" onClick={() => handleEdit(source)}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEdit(source)}
+                            >
                               <Edit2 className="h-4 w-4" />
                             </Button>
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => onDelete({ id: source.id, name: source.name })}
+                              onClick={() =>
+                                onDelete({ id: source.id, name: source.name })
+                              }
                               disabled={deleteSourceMutation.isPending}
                               aria-label="Delete Source"
                             >
@@ -1100,7 +1275,7 @@ function BlueprintSourcesDialog({
                       setIsEditorOpen(false);
                       setEditingSource(null);
                     },
-                  }
+                  },
                 );
               } else {
                 createMutation.mutate(data as BlueprintSourceCreate, {
@@ -1127,30 +1302,36 @@ interface AddEditBlueprintSourceDialogProps {
   isSubmitting: boolean;
 }
 
-function AddEditBlueprintSourceDialog({ open, onOpenChange, source, onSubmit, isSubmitting }: AddEditBlueprintSourceDialogProps) {
+function AddEditBlueprintSourceDialog({
+  open,
+  onOpenChange,
+  source,
+  onSubmit,
+  isSubmitting,
+}: AddEditBlueprintSourceDialogProps) {
   const form = useForm<BlueprintSourceFormData>({
     resolver: zodResolver(blueprintSourceSchema),
     defaultValues: {
-      name: '',
-      source_type: 'git',
-      url: '',
-      branch: 'main',
-      git_ref: '',
+      name: "",
+      source_type: "git",
+      url: "",
+      branch: "main",
+      git_ref: "",
       is_active: true,
-      description: '',
+      description: "",
       make_default: false,
     },
   });
 
   useEffect(() => {
     form.reset({
-      name: source?.name || '',
-      source_type: source?.source_type || 'git',
-      url: source?.url || '',
-      branch: source?.branch || 'main',
-      git_ref: source?.git_ref || '',
+      name: source?.name || "",
+      source_type: source?.source_type || "git",
+      url: source?.url || "",
+      branch: source?.branch || "main",
+      git_ref: source?.git_ref || "",
       is_active: source?.is_active ?? true,
-      description: source?.description || '',
+      description: source?.description || "",
       make_default: source?.is_default || false,
     });
   }, [source, open, form]);
@@ -1165,9 +1346,12 @@ function AddEditBlueprintSourceDialog({ open, onOpenChange, source, onSubmit, is
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleValid)} noValidate>
             <DialogHeader>
-              <DialogTitle>{source ? 'Edit Blueprint Source' : 'Add Blueprint Source'}</DialogTitle>
+              <DialogTitle>
+                {source ? "Edit Blueprint Source" : "Add Blueprint Source"}
+              </DialogTitle>
               <DialogDescription>
-                Register a Git repository that contains BNK `forge-blueprint.json` manifests.
+                Register a Git repository that contains BNK
+                `forge-blueprint.json` manifests.
               </DialogDescription>
             </DialogHeader>
 
@@ -1192,7 +1376,10 @@ function AddEditBlueprintSourceDialog({ open, onOpenChange, source, onSubmit, is
                   <FormItem>
                     <FormLabel>Repository URL</FormLabel>
                     <FormControl>
-                      <Input placeholder="https://github.com/org/repo" {...field} />
+                      <Input
+                        placeholder="https://github.com/org/repo"
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -1206,7 +1393,7 @@ function AddEditBlueprintSourceDialog({ open, onOpenChange, source, onSubmit, is
                     <FormItem>
                       <FormLabel>Branch</FormLabel>
                       <FormControl>
-                        <Input {...field} value={field.value ?? ''} />
+                        <Input {...field} value={field.value ?? ""} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -1219,7 +1406,7 @@ function AddEditBlueprintSourceDialog({ open, onOpenChange, source, onSubmit, is
                     <FormItem>
                       <FormLabel>Git Ref</FormLabel>
                       <FormControl>
-                        <Input {...field} value={field.value ?? ''} />
+                        <Input {...field} value={field.value ?? ""} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -1233,7 +1420,7 @@ function AddEditBlueprintSourceDialog({ open, onOpenChange, source, onSubmit, is
                   <FormItem>
                     <FormLabel>Description</FormLabel>
                     <FormControl>
-                      <Input {...field} value={field.value ?? ''} />
+                      <Input {...field} value={field.value ?? ""} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -1247,21 +1434,31 @@ function AddEditBlueprintSourceDialog({ open, onOpenChange, source, onSubmit, is
                     <FormControl>
                       <Checkbox
                         checked={!!field.value}
-                        onCheckedChange={(checked) => field.onChange(checked === true)}
+                        onCheckedChange={(checked) =>
+                          field.onChange(checked === true)
+                        }
                       />
                     </FormControl>
-                    <FormLabel className="cursor-pointer">Make Default</FormLabel>
+                    <FormLabel className="cursor-pointer">
+                      Make Default
+                    </FormLabel>
                   </FormItem>
                 )}
               />
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+              >
                 Cancel
               </Button>
               <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {isSubmitting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
                 Save
               </Button>
             </DialogFooter>

@@ -8,14 +8,14 @@
  * Reuses the diff display pattern from DriftDetailPanel (colored <pre> blocks).
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
-} from '@/components/ui/dialog';
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,11 +25,18 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
-import { usePromoteConfig } from '@/hooks/useConfigPromotion';
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import { usePromoteConfig } from "@/hooks/useConfigPromotion";
 import {
   ArrowRight,
   ArrowLeft,
@@ -42,14 +49,14 @@ import {
   Loader2,
   Upload,
   Check,
-} from 'lucide-react';
-import { SectionCard } from '@/components/ui/section-card';
-import type { FleetOperatorHealth } from '@/types/fleet';
+} from "lucide-react";
+import { SectionCard } from "@/components/ui/section-card";
+import type { FleetOperatorHealth } from "@/types/fleet";
 import type {
   PromotionChange,
   PromoteResponse,
   PromotionAction,
-} from '@/types/config-promotion';
+} from "@/types/config-promotion";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -66,26 +73,30 @@ interface ConfigPromotionWizardProps {
 // Constants
 // ---------------------------------------------------------------------------
 
-type WizardStep = 'select' | 'review' | 'result';
+type WizardStep = "select" | "review" | "result";
 
 const ACTION_CONFIG: Record<
   PromotionAction,
-  { label: string; badgeVariant: 'success' | 'warning' | 'destructive'; icon: string }
+  {
+    label: string;
+    badgeVariant: "success" | "warning" | "destructive";
+    icon: string;
+  }
 > = {
   add: {
-    label: 'ADD',
-    badgeVariant: 'success',
-    icon: '+',
+    label: "ADD",
+    badgeVariant: "success",
+    icon: "+",
   },
   modify: {
-    label: 'MODIFY',
-    badgeVariant: 'warning',
-    icon: '~',
+    label: "MODIFY",
+    badgeVariant: "warning",
+    icon: "~",
   },
   remove: {
-    label: 'REMOVE',
-    badgeVariant: 'destructive',
-    icon: '-',
+    label: "REMOVE",
+    badgeVariant: "destructive",
+    icon: "-",
   },
 };
 
@@ -96,9 +107,9 @@ const ACTION_CONFIG: Record<
 /** Step indicator bar */
 function StepIndicator({ currentStep }: { currentStep: WizardStep }) {
   const steps: Array<{ key: WizardStep; label: string }> = [
-    { key: 'select', label: 'Select Clusters' },
-    { key: 'review', label: 'Review Changes' },
-    { key: 'result', label: 'Apply' },
+    { key: "select", label: "Select Clusters" },
+    { key: "review", label: "Review Changes" },
+    { key: "result", label: "Apply" },
   ];
 
   const stepIndex = steps.findIndex((s) => s.key === currentStep);
@@ -112,18 +123,20 @@ function StepIndicator({ currentStep }: { currentStep: WizardStep }) {
           <div
             key={step.key}
             className={cn(
-              'flex items-center gap-2 text-xs',
-              isActive ? 'text-foreground font-medium' : 'text-muted-foreground',
+              "flex items-center gap-2 text-xs",
+              isActive
+                ? "text-foreground font-medium"
+                : "text-muted-foreground",
             )}
           >
             <span
               className={cn(
-                'flex h-5 w-5 items-center justify-center rounded-full border text-[10px] font-semibold',
+                "flex h-5 w-5 items-center justify-center rounded-full border text-2xs font-semibold",
                 isActive
-                  ? 'border-primary bg-primary text-primary-foreground'
+                  ? "border-primary bg-primary text-primary-foreground"
                   : isDone
-                    ? 'border-primary/40 text-primary'
-                    : 'border-border text-muted-foreground',
+                    ? "border-primary/40 text-primary"
+                    : "border-border text-muted-foreground",
               )}
             >
               {isDone ? <Check className="h-3 w-3" /> : idx + 1}
@@ -152,12 +165,12 @@ function ChangeRow({ change }: { change: PromotionChange }) {
         <div className="flex items-center gap-2 min-w-0">
           <Badge
             variant={cfg.badgeVariant}
-            className="text-[10px] font-bold px-1.5 py-0 flex-shrink-0"
+            className="text-2xs font-bold px-1.5 py-0 flex-shrink-0"
           >
             {cfg.label}
           </Badge>
           <code className="font-mono text-xs truncate text-foreground/80">
-            {change.kind}/{change.namespace ? `${change.namespace}/` : ''}
+            {change.kind}/{change.namespace ? `${change.namespace}/` : ""}
             {change.name}
           </code>
         </div>
@@ -186,22 +199,22 @@ function ChangeRow({ change }: { change: PromotionChange }) {
  * Lines starting with + are success, - are destructive, ~ are warning.
  */
 function DiffBlock({ diff }: { diff: string }) {
-  const lines = diff.split('\n');
+  const lines = diff.split("\n");
 
   return (
     <pre className="rounded-md border border-border bg-muted/50 p-3 overflow-x-auto text-xs font-mono leading-relaxed">
       {lines.map((line, idx) => {
-        let lineClass = 'text-muted-foreground';
-        if (line.startsWith('+')) {
-          lineClass = 'text-success bg-success/10';
-        } else if (line.startsWith('-')) {
-          lineClass = 'text-destructive bg-destructive/10';
-        } else if (line.startsWith('~')) {
-          lineClass = 'text-warning bg-warning/10';
+        let lineClass = "text-muted-foreground";
+        if (line.startsWith("+")) {
+          lineClass = "text-success bg-success/10";
+        } else if (line.startsWith("-")) {
+          lineClass = "text-destructive bg-destructive/10";
+        } else if (line.startsWith("~")) {
+          lineClass = "text-warning bg-warning/10";
         }
         return (
-          <div key={idx} className={cn('px-2 -mx-2 rounded', lineClass)}>
-            {line || ' '}
+          <div key={idx} className={cn("px-2 -mx-2 rounded", lineClass)}>
+            {line || " "}
           </div>
         );
       })}
@@ -232,12 +245,9 @@ function SelectStep({
   isComparing: boolean;
 }) {
   // Only connected (non-offline) operators can be promoted from/to
-  const available = operators.filter((op) => op.status !== 'offline');
+  const available = operators.filter((op) => op.status !== "offline");
   const canCompare =
     sourceId > 0 && targetId > 0 && sourceId !== targetId && !isComparing;
-
-  const selectClass =
-    'w-full rounded-md border border-border bg-card text-foreground px-3 py-2.5 text-sm';
 
   return (
     <SectionCard title="Cluster Selection">
@@ -251,23 +261,26 @@ function SelectStep({
           <label className="block text-xs font-medium mb-1.5 text-muted-foreground">
             Source Cluster (copy from)
           </label>
-          <select
-            value={sourceId}
-            onChange={(e) => onSourceChange(Number(e.target.value))}
-            className={selectClass}
+          <Select
+            value={sourceId ? String(sourceId) : ""}
+            onValueChange={(val) => onSourceChange(Number(val))}
           >
-            <option value={0}>Select source cluster...</option>
-            {available.map((op) => (
-              <option
-                key={op.operator_id}
-                value={op.operator_id}
-                disabled={op.operator_id === targetId}
-              >
-                {op.cluster_name}
-                {op.bnk_version ? ` (BNK ${op.bnk_version})` : ''}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="w-full h-8 text-xs bg-card">
+              <SelectValue placeholder="Select source cluster..." />
+            </SelectTrigger>
+            <SelectContent>
+              {available.map((op) => (
+                <SelectItem
+                  key={op.operator_id}
+                  value={String(op.operator_id)}
+                  disabled={op.operator_id === targetId}
+                >
+                  {op.cluster_name}
+                  {op.bnk_version ? ` (BNK ${op.bnk_version})` : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="flex justify-center">
@@ -278,23 +291,26 @@ function SelectStep({
           <label className="block text-xs font-medium mb-1.5 text-muted-foreground">
             Target Cluster (apply to)
           </label>
-          <select
-            value={targetId}
-            onChange={(e) => onTargetChange(Number(e.target.value))}
-            className={selectClass}
+          <Select
+            value={targetId ? String(targetId) : ""}
+            onValueChange={(val) => onTargetChange(Number(val))}
           >
-            <option value={0}>Select target cluster...</option>
-            {available.map((op) => (
-              <option
-                key={op.operator_id}
-                value={op.operator_id}
-                disabled={op.operator_id === sourceId}
-              >
-                {op.cluster_name}
-                {op.bnk_version ? ` (BNK ${op.bnk_version})` : ''}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="w-full h-8 text-xs bg-card">
+              <SelectValue placeholder="Select target cluster..." />
+            </SelectTrigger>
+            <SelectContent>
+              {available.map((op) => (
+                <SelectItem
+                  key={op.operator_id}
+                  value={String(op.operator_id)}
+                  disabled={op.operator_id === sourceId}
+                >
+                  {op.cluster_name}
+                  {op.bnk_version ? ` (BNK ${op.bnk_version})` : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -336,12 +352,12 @@ function ReviewStep({
   onBack: () => void;
   onApply: () => void;
 }) {
-  const addCount = result.changes.filter((c) => c.action === 'add').length;
+  const addCount = result.changes.filter((c) => c.action === "add").length;
   const modifyCount = result.changes.filter(
-    (c) => c.action === 'modify'
+    (c) => c.action === "modify",
   ).length;
   const removeCount = result.changes.filter(
-    (c) => c.action === 'remove'
+    (c) => c.action === "remove",
   ).length;
 
   // Zero changes = in sync
@@ -354,8 +370,8 @@ function ReviewStep({
             Clusters are in sync
           </h3>
           <p className="text-sm text-muted-foreground mt-1">
-            No changes needed between{' '}
-            <strong>{result.source_cluster.name}</strong> and{' '}
+            No changes needed between{" "}
+            <strong>{result.source_cluster.name}</strong> and{" "}
             <strong>{result.target_cluster.name}</strong>.
           </p>
         </div>
@@ -372,19 +388,16 @@ function ReviewStep({
       {/* Summary bar */}
       <div className="flex items-center gap-3 p-3 rounded-lg border border-border bg-muted/50">
         <span className="text-sm font-medium text-foreground/80">
-          {result.total_changes} change{result.total_changes !== 1 ? 's' : ''}{' '}
-          to apply from{' '}
-          <strong>{result.source_cluster.name}</strong>{' '}
-          <ArrowRight className="w-3.5 h-3.5 inline" />{' '}
+          {result.total_changes} change{result.total_changes !== 1 ? "s" : ""}{" "}
+          to apply from <strong>{result.source_cluster.name}</strong>{" "}
+          <ArrowRight className="w-3.5 h-3.5 inline" />{" "}
           <strong>{result.target_cluster.name}</strong>
         </span>
       </div>
 
       {/* Change count badges */}
       <div className="flex items-center gap-2">
-        {addCount > 0 && (
-          <Badge variant="success">+{addCount} add</Badge>
-        )}
+        {addCount > 0 && <Badge variant="success">+{addCount} add</Badge>}
         {modifyCount > 0 && (
           <Badge variant="warning">~{modifyCount} modify</Badge>
         )}
@@ -443,10 +456,10 @@ function ResultStep({
       {/* Success/Failure banner */}
       <div
         className={cn(
-          'rounded-lg border px-4 py-6 text-center',
+          "rounded-lg border px-4 py-6 text-center",
           isSuccess
-            ? 'border-success/20 bg-success/5'
-            : 'border-destructive/20 bg-destructive/5'
+            ? "border-success/20 bg-success/5"
+            : "border-destructive/20 bg-destructive/5",
         )}
       >
         {isSuccess ? (
@@ -455,7 +468,7 @@ function ResultStep({
           <XCircle className="w-10 h-10 mx-auto mb-3 text-destructive" />
         )}
         <h3 className="text-lg font-semibold text-foreground">
-          {isSuccess ? 'Changes Applied Successfully' : 'Some Changes Failed'}
+          {isSuccess ? "Changes Applied Successfully" : "Some Changes Failed"}
         </h3>
         <p className="text-sm text-muted-foreground mt-1">
           {result.source_cluster.name} → {result.target_cluster.name}
@@ -465,18 +478,20 @@ function ResultStep({
       {/* Result summary */}
       <div className="grid grid-cols-3 gap-2 text-center">
         <div className="rounded-lg border border-border bg-muted/50 px-3 py-2">
-          <div className="text-lg font-bold text-success">
-            {appliedCount}
+          <div className="text-lg font-bold text-success">{appliedCount}</div>
+          <div className="text-2xs text-muted-foreground">Applied</div>
+        </div>
+        <div className="rounded-lg border border-border bg-muted/50 px-3 py-2">
+          <div className="text-lg font-bold text-destructive">
+            {failedCount}
           </div>
-          <div className="text-[10px] text-muted-foreground">Applied</div>
+          <div className="text-2xs text-muted-foreground">Failed</div>
         </div>
         <div className="rounded-lg border border-border bg-muted/50 px-3 py-2">
-          <div className="text-lg font-bold text-destructive">{failedCount}</div>
-          <div className="text-[10px] text-muted-foreground">Failed</div>
-        </div>
-        <div className="rounded-lg border border-border bg-muted/50 px-3 py-2">
-          <div className="text-lg font-bold text-muted-foreground">{skippedCount}</div>
-          <div className="text-[10px] text-muted-foreground">Skipped</div>
+          <div className="text-lg font-bold text-muted-foreground">
+            {skippedCount}
+          </div>
+          <div className="text-2xs text-muted-foreground">Skipped</div>
         </div>
       </div>
 
@@ -492,7 +507,7 @@ function ResultStep({
               className="rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs"
             >
               <code className="text-destructive">
-                {f.kind}/{f.namespace ? `${f.namespace}/` : ''}
+                {f.kind}/{f.namespace ? `${f.namespace}/` : ""}
                 {f.name}
               </code>
               <div className="text-muted-foreground mt-0.5">{f.error}</div>
@@ -520,25 +535,25 @@ export function ConfigPromotionWizard({
   const promoteMutation = usePromoteConfig();
 
   // Wizard state
-  const [step, setStep] = useState<WizardStep>('select');
+  const [step, setStep] = useState<WizardStep>("select");
   const [sourceId, setSourceId] = useState<number>(0);
   const [targetId, setTargetId] = useState<number>(0);
   const [dryRunResult, setDryRunResult] = useState<PromoteResponse | null>(
-    null
+    null,
   );
   const [applyResult, setApplyResult] = useState<PromoteResponse | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
 
   // Cluster name for display in confirmation/applying states
   const targetName = useMemo(
-    () => operators.find((o) => o.operator_id === targetId)?.cluster_name ?? '',
-    [operators, targetId]
+    () => operators.find((o) => o.operator_id === targetId)?.cluster_name ?? "",
+    [operators, targetId],
   );
 
   // Actionable change count (excludes removals which are skipped)
   const actionableCount = useMemo(() => {
     if (!dryRunResult) return 0;
-    return dryRunResult.changes.filter((c) => c.action !== 'remove').length;
+    return dryRunResult.changes.filter((c) => c.action !== "remove").length;
   }, [dryRunResult]);
 
   const handleCompare = () => {
@@ -551,9 +566,9 @@ export function ConfigPromotionWizard({
       {
         onSuccess: (data) => {
           setDryRunResult(data);
-          setStep('review');
+          setStep("review");
         },
-      }
+      },
     );
   };
 
@@ -572,15 +587,15 @@ export function ConfigPromotionWizard({
       {
         onSuccess: (data) => {
           setApplyResult(data);
-          setStep('result');
+          setStep("result");
         },
-      }
+      },
     );
   };
 
   const handleClose = () => {
     // Reset state
-    setStep('select');
+    setStep("select");
     setSourceId(0);
     setTargetId(0);
     setDryRunResult(null);
@@ -592,7 +607,7 @@ export function ConfigPromotionWizard({
 
   const handleBack = () => {
     setDryRunResult(null);
-    setStep('select');
+    setStep("select");
     promoteMutation.reset();
   };
 
@@ -612,7 +627,7 @@ export function ConfigPromotionWizard({
           <StepIndicator currentStep={step} />
 
           {/* Step 1: Select */}
-          {step === 'select' && (
+          {step === "select" && (
             <SelectStep
               operators={operators}
               sourceId={sourceId}
@@ -625,7 +640,7 @@ export function ConfigPromotionWizard({
           )}
 
           {/* Step 2: Review */}
-          {step === 'review' && dryRunResult && (
+          {step === "review" && dryRunResult && (
             <ReviewStep
               result={dryRunResult}
               onBack={handleBack}
@@ -634,7 +649,7 @@ export function ConfigPromotionWizard({
           )}
 
           {/* Applying spinner */}
-          {step === 'review' && promoteMutation.isPending && (
+          {step === "review" && promoteMutation.isPending && (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="w-6 h-6 animate-spin text-primary mr-2" />
               <span className="text-sm text-muted-foreground">
@@ -644,18 +659,15 @@ export function ConfigPromotionWizard({
           )}
 
           {/* Step 3: Result */}
-          {step === 'result' && applyResult && (
-            <ResultStep
-              result={applyResult}
-              onClose={handleClose}
-            />
+          {step === "result" && applyResult && (
+            <ResultStep result={applyResult} onClose={handleClose} />
           )}
 
           {/* Error state */}
-          {promoteMutation.isError && step !== 'result' && (
+          {promoteMutation.isError && step !== "result" && (
             <div className="rounded-md border border-destructive/30 bg-destructive/10 text-destructive px-3 py-2.5 text-sm">
               <XCircle className="w-4 h-4 inline mr-1.5" />
-              {promoteMutation.error?.message || 'An error occurred'}
+              {promoteMutation.error?.message || "An error occurred"}
             </div>
           )}
         </DialogContent>
@@ -667,11 +679,11 @@ export function ConfigPromotionWizard({
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm Config Promotion</AlertDialogTitle>
             <AlertDialogDescription>
-              This will apply{' '}
-              <strong className="text-foreground">{actionableCount}</strong>{' '}
-              change{actionableCount !== 1 ? 's' : ''} to{' '}
-              <strong className="text-foreground">{targetName}</strong>.
-              This action cannot be undone (but a snapshot will be created
+              This will apply{" "}
+              <strong className="text-foreground">{actionableCount}</strong>{" "}
+              change{actionableCount !== 1 ? "s" : ""} to{" "}
+              <strong className="text-foreground">{targetName}</strong>. This
+              action cannot be undone (but a snapshot will be created
               automatically before apply operations).
             </AlertDialogDescription>
           </AlertDialogHeader>

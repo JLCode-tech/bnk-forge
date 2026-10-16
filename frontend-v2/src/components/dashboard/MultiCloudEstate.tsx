@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useMemo } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Server,
   FolderGit2,
@@ -11,21 +11,24 @@ import {
   LayoutGrid,
   ChevronDown,
   ChevronRight,
-} from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { EmptyState } from '@/components/ui/empty-state';
-import { ClusterStatusBadge } from '@/components/ui/ClusterStatusBadge';
-import { reachabilityKey, type ReachabilityState } from '@/lib/api/connectivity';
-import { cn } from '@/lib/utils';
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ClusterStatusBadge } from "@/components/ui/StatusBadge";
+import {
+  reachabilityKey,
+  type ReachabilityState,
+} from "@/lib/api/connectivity";
+import { cn } from "@/lib/utils";
 import {
   getCloudProviderBadgeInfo,
   getClusterLocationInfo,
   normalizeProvider,
   cleanNameForMatching,
-} from '@/lib/cloud-providers';
-import type { Project, K8sCluster } from '@/types';
-import type { FleetOperatorHealth } from '@/types/fleet';
+} from "@/lib/cloud-providers";
+import type { Project, K8sCluster } from "@/types";
+import type { FleetOperatorHealth } from "@/types/fleet";
 
 export interface EnvironmentNode {
   id: string;
@@ -48,18 +51,17 @@ interface MultiCloudEstateProps {
   className?: string;
 }
 
-type ProviderKey = 'all' | 'aws' | 'azure' | 'gke' | 'metal' | 'ibm';
-type ViewLayout = 'grouped' | 'flat';
+type ProviderKey = "all" | "aws" | "azure" | "gke" | "metal" | "ibm";
+type ViewLayout = "grouped" | "flat";
 
 interface ProviderGroup {
   id: string;
   name: string;
   shortLabel: string;
   badgeClass: string;
-  badgeVariant: 'default' | 'secondary' | 'outline' | 'destructive';
+  badgeVariant: "default" | "secondary" | "outline" | "destructive";
   environments: EnvironmentNode[];
 }
-
 
 export function MultiCloudEstate({
   projects = [],
@@ -73,15 +75,20 @@ export function MultiCloudEstate({
   className,
 }: MultiCloudEstateProps) {
   const navigate = useNavigate();
-  const [selectedProvider, setSelectedProvider] = useState<ProviderKey>('all');
-  const [viewLayout, setViewLayout] = useState<ViewLayout>('grouped');
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [selectedProvider, setSelectedProvider] = useState<ProviderKey>("all");
+  const [viewLayout, setViewLayout] = useState<ViewLayout>("grouped");
+  const [collapsedGroups, setCollapsedGroups] = useState<
+    Record<string, boolean>
+  >({});
 
   const toggleGroup = (groupId: string) => {
-    setCollapsedGroups((prev) => ({
-      ...prev,
-      [groupId]: !prev[groupId],
-    }));
+    setCollapsedGroups((prev) => {
+      const current = prev[groupId] ?? true;
+      return {
+        ...prev,
+        [groupId]: !current,
+      };
+    });
   };
 
   // Build unified environment nodes by pairing clusters with their managing OpenTofu projects
@@ -108,9 +115,15 @@ export function MultiCloudEstate({
         matchedProject = projects.find((p) => {
           if (pairedProjectIds.has(p.id)) return false;
           const pCleanName = cleanNameForMatching(p.name);
-          const pNormProv = normalizeProvider(p.cloud_provider || p.project_type);
+          const pNormProv = normalizeProvider(
+            p.cloud_provider || p.project_type,
+          );
 
-          if (pNormProv !== cNormProv && pNormProv !== 'other' && cNormProv !== 'other') {
+          if (
+            pNormProv !== cNormProv &&
+            pNormProv !== "other" &&
+            cNormProv !== "other"
+          ) {
             return false;
           }
 
@@ -140,9 +153,10 @@ export function MultiCloudEstate({
       }
 
       envNodes.push({
-        id: `env-${cluster.id}-${matchedProject?.id || 'none'}`,
+        id: `env-${cluster.id}-${matchedProject?.id || "none"}`,
         name: cluster.name,
-        cloud_provider: cluster.cloud_provider || matchedProject?.cloud_provider,
+        cloud_provider:
+          cluster.cloud_provider || matchedProject?.cloud_provider,
         region: cluster.region || matchedProject?.region,
         cluster,
         project: matchedProject,
@@ -173,55 +187,60 @@ export function MultiCloudEstate({
       shortLabel: string;
       matchKey: string;
       badgeClass: string;
-      badgeVariant: 'default' | 'secondary' | 'outline' | 'destructive';
+      badgeVariant: "default" | "secondary" | "outline" | "destructive";
     }> = [
       {
-        id: 'aws',
-        name: 'Amazon Web Services (EKS)',
-        shortLabel: 'AWS',
-        matchKey: 'aws',
-        badgeClass: 'border-warning/40 text-warning bg-warning/10 font-semibold text-[10px] px-1.5 py-0.5',
-        badgeVariant: 'outline',
+        id: "aws",
+        name: "Amazon Web Services (EKS)",
+        shortLabel: "AWS",
+        matchKey: "aws",
+        badgeClass:
+          "border-warning/40 text-warning bg-warning/10 font-medium text-xs px-2 py-0.5",
+        badgeVariant: "outline",
       },
       {
-        id: 'azure',
-        name: 'Microsoft Azure (AKS)',
-        shortLabel: 'AZR',
-        matchKey: 'azure',
-        badgeClass: 'border-accent/40 text-accent bg-accent/10 font-semibold text-[10px] px-1.5 py-0.5',
-        badgeVariant: 'outline',
+        id: "azure",
+        name: "Microsoft Azure (AKS)",
+        shortLabel: "AZR",
+        matchKey: "azure",
+        badgeClass:
+          "border-info/40 text-info bg-info/10 font-medium text-xs px-2 py-0.5",
+        badgeVariant: "outline",
       },
       {
-        id: 'gke',
-        name: 'Google Cloud Platform (GKE)',
-        shortLabel: 'GKE',
-        matchKey: 'gke',
-        badgeClass: 'border-primary/40 text-primary bg-primary/10 font-semibold text-[10px] px-1.5 py-0.5',
-        badgeVariant: 'outline',
+        id: "gke",
+        name: "Google Cloud Platform (GKE)",
+        shortLabel: "GKE",
+        matchKey: "gke",
+        badgeClass:
+          "border-primary/40 text-primary bg-primary/10 font-medium text-xs px-2 py-0.5",
+        badgeVariant: "outline",
       },
       {
-        id: 'metal',
-        name: 'Bare-Metal & On-Premises',
-        shortLabel: 'METAL',
-        matchKey: 'metal',
-        badgeClass: 'border-success/40 text-success bg-success/10 font-semibold text-[10px] px-1.5 py-0.5',
-        badgeVariant: 'outline',
+        id: "metal",
+        name: "Bare-Metal & On-Premises",
+        shortLabel: "METAL",
+        matchKey: "metal",
+        badgeClass:
+          "border-success/40 text-success bg-success/10 font-medium text-xs px-2 py-0.5",
+        badgeVariant: "outline",
       },
       {
-        id: 'ibm',
-        name: 'IBM Cloud (ROKS)',
-        shortLabel: 'IBM',
-        matchKey: 'ibm',
-        badgeClass: 'border-secondary text-secondary-foreground bg-secondary/30 font-semibold text-[10px] px-1.5 py-0.5',
-        badgeVariant: 'outline',
+        id: "ibm",
+        name: "IBM Cloud (ROKS)",
+        shortLabel: "IBM",
+        matchKey: "ibm",
+        badgeClass:
+          "border-secondary text-secondary-foreground bg-secondary/30 font-medium text-xs px-2 py-0.5",
+        badgeVariant: "outline",
       },
       {
-        id: 'other',
-        name: 'Other Kubernetes Infrastructure',
-        shortLabel: 'K8S',
-        matchKey: 'other',
-        badgeClass: 'font-semibold text-[10px] px-1.5 py-0.5',
-        badgeVariant: 'secondary',
+        id: "other",
+        name: "Other Kubernetes Infrastructure",
+        shortLabel: "K8S",
+        matchKey: "other",
+        badgeClass: "font-medium text-xs px-2 py-0.5",
+        badgeVariant: "secondary",
       },
     ];
 
@@ -229,10 +248,15 @@ export function MultiCloudEstate({
 
     for (const def of providerDefs) {
       const groupEnvs = environments.filter(
-        (e) => normalizeProvider(e.cloud_provider) === def.matchKey
+        (e) => normalizeProvider(e.cloud_provider) === def.matchKey,
       );
 
-      if (groupEnvs.length > 0 || def.id === 'aws' || def.id === 'azure' || def.id === 'gke') {
+      if (
+        groupEnvs.length > 0 ||
+        def.id === "aws" ||
+        def.id === "azure" ||
+        def.id === "gke"
+      ) {
         result.push({
           id: def.id,
           name: def.name,
@@ -248,13 +272,28 @@ export function MultiCloudEstate({
   }, [environments]);
 
   const filteredGroups = useMemo(() => {
-    if (selectedProvider === 'all') return groups;
+    if (selectedProvider === "all") return groups;
     return groups.filter((g) => g.id === selectedProvider);
   }, [groups, selectedProvider]);
 
+  const allCollapsed = useMemo(() => {
+    return filteredGroups.every((g) => collapsedGroups[g.id] ?? true);
+  }, [filteredGroups, collapsedGroups]);
+
+  const toggleAllGroups = () => {
+    const nextState = !allCollapsed;
+    const updated: Record<string, boolean> = {};
+    for (const g of filteredGroups) {
+      updated[g.id] = nextState;
+    }
+    setCollapsedGroups(updated);
+  };
+
   const filteredEnvironments = useMemo(() => {
-    if (selectedProvider === 'all') return environments;
-    return environments.filter((e) => normalizeProvider(e.cloud_provider) === selectedProvider);
+    if (selectedProvider === "all") return environments;
+    return environments.filter(
+      (e) => normalizeProvider(e.cloud_provider) === selectedProvider,
+    );
   }, [environments, selectedProvider]);
 
   const totalClusters = clusters.length;
@@ -265,29 +304,40 @@ export function MultiCloudEstate({
     const cluster = env.cluster;
     const project = env.project;
     const fleetInfo = cluster ? fleetByCluster[cluster.name] : undefined;
-    const conn = cluster ? connectivityStates[reachabilityKey('cluster', cluster.id)] : undefined;
+    const conn = cluster
+      ? connectivityStates[reachabilityKey("cluster", cluster.id)]
+      : undefined;
 
-    const isReachUnreachable = conn?.state === 'unreachable';
-    const isReachUnknown = conn?.state === 'unknown';
-    const isReachable = conn?.state === 'reachable' || (cluster && cluster.status === 'active' && !isReachUnreachable);
+    const isReachUnreachable = conn?.state === "unreachable";
+    const isReachUnknown = conn?.state === "unknown";
+    const isReachable =
+      conn?.state === "reachable" ||
+      (cluster && cluster.status === "active" && !isReachUnreachable);
 
     const statusDot = isReachUnreachable
-      ? 'bg-destructive'
+      ? "bg-destructive"
       : isReachUnknown
-        ? 'bg-warning animate-pulse'
+        ? "bg-warning animate-pulse"
         : isReachable || (project && project.deployed_count > 0)
-          ? 'bg-success'
-          : 'bg-muted-foreground';
+          ? "bg-success"
+          : "bg-muted-foreground";
 
     const locationInfo = getClusterLocationInfo(
       env.cloud_provider || cluster?.cloud_provider || project?.cloud_provider,
-      env.region || cluster?.region || project?.region
+      env.region || cluster?.region || project?.region,
     );
 
-    const providerBadge = getCloudProviderBadgeInfo(env.cloud_provider || cluster?.cloud_provider || project?.cloud_provider);
+    const providerBadge = getCloudProviderBadgeInfo(
+      env.cloud_provider || cluster?.cloud_provider || project?.cloud_provider,
+    );
 
-    const hasBnkAlerts = fleetInfo && fleetInfo.status !== 'healthy' && fleetInfo.status !== 'offline';
-    const bnkIssueText = fleetInfo?.health_issues?.[0]?.message || (fleetInfo?.status === 'critical' ? 'Data plane alerts' : undefined);
+    const hasBnkAlerts =
+      fleetInfo &&
+      fleetInfo.status !== "healthy" &&
+      fleetInfo.status !== "offline";
+    const bnkIssueText =
+      fleetInfo?.health_issues?.[0]?.message ||
+      (fleetInfo?.status === "critical" ? "Data plane alerts" : undefined);
 
     return (
       <div
@@ -297,13 +347,18 @@ export function MultiCloudEstate({
         <div>
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
-              <div className={cn('h-2.5 w-2.5 rounded-full shrink-0', statusDot)} />
+              <div
+                className={cn("h-2.5 w-2.5 rounded-full shrink-0", statusDot)}
+              />
               <h4 className="font-semibold text-sm text-foreground truncate group-hover:text-primary transition-colors">
                 {env.name}
               </h4>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              <Badge className={providerBadge.badgeClass} variant={providerBadge.badgeVariant}>
+              <Badge
+                className={providerBadge.badgeClass}
+                variant={providerBadge.badgeVariant}
+              >
                 {providerBadge.shortLabel}
               </Badge>
               {cluster && <ClusterStatusBadge cluster={cluster} />}
@@ -323,7 +378,7 @@ export function MultiCloudEstate({
               </span>
             )}
             {cluster?.detected_platform_profile && (
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">
+              <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">
                 {cluster.detected_platform_profile}
               </span>
             )}
@@ -334,18 +389,20 @@ export function MultiCloudEstate({
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground flex items-center gap-1">
                   <Server className="w-3.5 h-3.5 text-primary" />
-                  <span className="font-mono text-[11px] truncate max-w-[130px]">
-                    {cluster.status === 'active' ? 'Connected' : (cluster.status || 'Active')}
+                  <span className="text-xs truncate max-w-[130px]">
+                    {cluster.status === "active"
+                      ? "Connected"
+                      : cluster.status || "Active"}
                   </span>
                 </span>
                 <div className="flex items-center gap-1">
                   {fleetInfo?.bnk_version && (
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-info/10 text-info font-medium">
+                    <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-info/10 text-info font-medium">
                       BNK {fleetInfo.bnk_version}
                     </span>
                   )}
                   {fleetInfo && fleetInfo.tmm_count > 0 && (
-                    <span className="text-[10px] text-muted-foreground font-mono">
+                    <span className="text-xs text-muted-foreground font-mono">
                       {fleetInfo.tmm_count} TMM
                     </span>
                   )}
@@ -354,12 +411,15 @@ export function MultiCloudEstate({
 
               {hasBnkAlerts && (
                 <div
-                  className="flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-md bg-warning/10 text-warning border border-warning/20 font-medium"
-                  title={fleetInfo.health_issues?.map((i) => i.message).join('; ') || 'BNK data plane alerts detected'}
+                  className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-md bg-warning/10 text-warning border border-warning/20 font-medium"
+                  title={
+                    fleetInfo.health_issues?.map((i) => i.message).join("; ") ||
+                    "BNK data plane alerts detected"
+                  }
                 >
                   <span className="shrink-0">⚠️</span>
                   <span className="truncate">
-                    {bnkIssueText || 'Data plane alerts'}
+                    {bnkIssueText || "Data plane alerts"}
                   </span>
                 </div>
               )}
@@ -371,18 +431,22 @@ export function MultiCloudEstate({
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground flex items-center gap-1 min-w-0">
                   <FolderGit2 className="w-3.5 h-3.5 text-primary shrink-0" />
-                  <span className="font-mono text-[11px] truncate max-w-[140px]" title={project.name}>
+                  <span
+                    className="text-xs truncate max-w-[140px]"
+                    title={project.name}
+                  >
                     {project.name}
                   </span>
                 </span>
                 <div className="flex items-center gap-1 shrink-0">
-                  <span className="font-mono text-[11px] text-muted-foreground">
-                    {project.deployed_count || 0}/{project.module_count || 0} deployed
+                  <span className="text-xs text-muted-foreground">
+                    {project.deployed_count || 0}/{project.module_count || 0}{" "}
+                    deployed
                   </span>
                   {projectDriftCounts[project.id] > 0 && (
                     <span
-                      className="px-1.5 py-0.5 text-[10px] font-semibold rounded-full flex items-center gap-0.5 bg-warning/10 text-warning"
-                      title={`${projectDriftCounts[project.id]} drifted module${projectDriftCounts[project.id] > 1 ? 's' : ''}`}
+                      className="px-1.5 py-0.5 text-xs font-medium rounded-full flex items-center gap-0.5 bg-warning/10 text-warning"
+                      title={`${projectDriftCounts[project.id]} drifted module${projectDriftCounts[project.id] > 1 ? "s" : ""}`}
                     >
                       <GitCompare className="h-2.5 w-2.5" />
                       {projectDriftCounts[project.id]}
@@ -397,7 +461,7 @@ export function MultiCloudEstate({
         <div className="flex items-center justify-between text-xs text-muted-foreground mt-3 pt-2.5 border-t border-border/50">
           {cluster ? (
             <Link
-              to={`/kubernetes?cluster=${cluster.id}${cluster.project_id ? `&project=${cluster.project_id}` : ''}&view=advanced`}
+              to={`/kubernetes?cluster=${cluster.id}${cluster.project_id ? `&project=${cluster.project_id}` : ""}&view=advanced`}
               className="flex items-center text-primary font-medium hover:underline gap-1"
             >
               <span>Explore K8s</span>
@@ -410,7 +474,7 @@ export function MultiCloudEstate({
           {project && (
             <Link
               to={`/projects/${project.id}`}
-              className="flex items-center text-muted-foreground hover:text-foreground font-medium hover:underline gap-1 text-[11px]"
+              className="flex items-center text-muted-foreground hover:text-foreground font-medium hover:underline gap-1 text-2xs"
             >
               <span>IaC Project</span>
               <ArrowUpRight className="w-3 h-3" />
@@ -422,18 +486,24 @@ export function MultiCloudEstate({
   }
 
   return (
-    <div className={cn('space-y-6', className)}>
+    <div className={cn("space-y-6", className)}>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/60 pb-4">
         <div>
           <div className="flex items-center gap-2">
             <Layers className="w-5 h-5 text-primary" />
-            <h2 className="text-lg font-bold tracking-tight text-foreground">Multi-Cloud Estate</h2>
+            <h2 className="text-lg font-bold tracking-tight text-foreground">
+              Multi-Cloud Estate
+            </h2>
             <Badge variant="secondary" className="font-mono text-xs">
-              {totalEnvironments} Environment{totalEnvironments !== 1 ? 's' : ''} · {totalClusters} Cluster{totalClusters !== 1 ? 's' : ''} · {totalProjects} Project{totalProjects !== 1 ? 's' : ''}
+              {totalEnvironments} Environment
+              {totalEnvironments !== 1 ? "s" : ""} · {totalClusters} Cluster
+              {totalClusters !== 1 ? "s" : ""} · {totalProjects} Project
+              {totalProjects !== 1 ? "s" : ""}
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Unified multi-cloud clusters, live telemetry, and OpenTofu module projects.
+            Unified multi-cloud clusters, live telemetry, and OpenTofu module
+            projects.
           </p>
         </div>
 
@@ -441,89 +511,99 @@ export function MultiCloudEstate({
           <div className="flex items-center bg-muted/60 p-1 rounded-lg text-xs">
             <button
               type="button"
-              onClick={() => setSelectedProvider('all')}
+              onClick={() => setSelectedProvider("all")}
               className={cn(
-                'px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer text-xs',
-                selectedProvider === 'all'
-                  ? 'bg-card text-foreground shadow-xs font-semibold'
-                  : 'text-muted-foreground hover:text-foreground'
+                "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer text-xs",
+                selectedProvider === "all"
+                  ? "bg-card text-foreground shadow-xs font-semibold"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               All ({totalEnvironments})
             </button>
             <button
               type="button"
-              onClick={() => setSelectedProvider('aws')}
+              onClick={() => setSelectedProvider("aws")}
               className={cn(
-                'px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer text-xs',
-                selectedProvider === 'aws'
-                  ? 'bg-card text-foreground shadow-xs font-semibold'
-                  : 'text-muted-foreground hover:text-foreground'
+                "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer text-xs",
+                selectedProvider === "aws"
+                  ? "bg-card text-foreground shadow-xs font-semibold"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               AWS
             </button>
             <button
               type="button"
-              onClick={() => setSelectedProvider('azure')}
+              onClick={() => setSelectedProvider("azure")}
               className={cn(
-                'px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer text-xs',
-                selectedProvider === 'azure'
-                  ? 'bg-card text-foreground shadow-xs font-semibold'
-                  : 'text-muted-foreground hover:text-foreground'
+                "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer text-xs",
+                selectedProvider === "azure"
+                  ? "bg-card text-foreground shadow-xs font-semibold"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               Azure
             </button>
             <button
               type="button"
-              onClick={() => setSelectedProvider('gke')}
+              onClick={() => setSelectedProvider("gke")}
               className={cn(
-                'px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer text-xs',
-                selectedProvider === 'gke'
-                  ? 'bg-card text-foreground shadow-xs font-semibold'
-                  : 'text-muted-foreground hover:text-foreground'
+                "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer text-xs",
+                selectedProvider === "gke"
+                  ? "bg-card text-foreground shadow-xs font-semibold"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               GKE
             </button>
             <button
               type="button"
-              onClick={() => setSelectedProvider('metal')}
+              onClick={() => setSelectedProvider("metal")}
               className={cn(
-                'px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer text-xs',
-                selectedProvider === 'metal'
-                  ? 'bg-card text-foreground shadow-xs font-semibold'
-                  : 'text-muted-foreground hover:text-foreground'
+                "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer text-xs",
+                selectedProvider === "metal"
+                  ? "bg-card text-foreground shadow-xs font-semibold"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               Metal
             </button>
           </div>
 
+          {viewLayout === "grouped" && filteredGroups.length > 0 && (
+            <button
+              type="button"
+              onClick={toggleAllGroups}
+              className="px-2.5 py-1 rounded-lg text-xs text-muted-foreground hover:text-foreground font-medium transition-colors border border-border/50 bg-muted/60 hover:bg-muted cursor-pointer"
+            >
+              {allCollapsed ? "Expand All" : "Collapse All"}
+            </button>
+          )}
+
           <div className="flex items-center bg-muted/60 p-1 rounded-lg text-xs border border-border/50">
             <button
               type="button"
-              onClick={() => setViewLayout('grouped')}
+              onClick={() => setViewLayout("grouped")}
               title="Grouped by Cloud Provider"
               className={cn(
-                'p-1.5 rounded-md transition-colors cursor-pointer',
-                viewLayout === 'grouped'
-                  ? 'bg-card text-primary shadow-xs'
-                  : 'text-muted-foreground hover:text-foreground'
+                "p-1.5 rounded-md transition-colors cursor-pointer",
+                viewLayout === "grouped"
+                  ? "bg-card text-primary shadow-xs"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               <Layers className="w-3.5 h-3.5" />
             </button>
             <button
               type="button"
-              onClick={() => setViewLayout('flat')}
+              onClick={() => setViewLayout("flat")}
               title="Flat Grid View"
               className={cn(
-                'p-1.5 rounded-md transition-colors cursor-pointer',
-                viewLayout === 'flat'
-                  ? 'bg-card text-primary shadow-xs'
-                  : 'text-muted-foreground hover:text-foreground'
+                "p-1.5 rounded-md transition-colors cursor-pointer",
+                viewLayout === "flat"
+                  ? "bg-card text-primary shadow-xs"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               <LayoutGrid className="w-3.5 h-3.5" />
@@ -535,7 +615,10 @@ export function MultiCloudEstate({
       {(projectsLoading || clustersLoading) && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div key={i} className="p-4 rounded-xl border border-border bg-card space-y-3">
+            <div
+              key={i}
+              className="p-4 rounded-xl border border-border bg-card space-y-3"
+            >
               <div className="flex items-center justify-between">
                 <Skeleton className="h-5 w-32" />
                 <Skeleton className="h-4 w-12" />
@@ -556,94 +639,112 @@ export function MultiCloudEstate({
           title="No multi-cloud infrastructure detected"
           description="Connect an existing Kubernetes cluster or launch a new OpenTofu project blueprint to populate your estate."
           action={{
-            label: 'Add Cluster',
-            onClick: () => (onAddCluster ? onAddCluster() : navigate('/kubernetes')),
+            label: "Add Cluster",
+            onClick: () =>
+              onAddCluster ? onAddCluster() : navigate("/kubernetes"),
           }}
           secondaryAction={{
-            label: 'Create Project',
-            onClick: () => navigate('/projects?action=create'),
+            label: "Create Project",
+            onClick: () => navigate("/projects?action=create"),
           }}
           illustration={false}
         />
       )}
 
-      {!projectsLoading && !clustersLoading && totalEnvironments > 0 && viewLayout === 'grouped' && (
-        <div className="space-y-6">
-          {filteredGroups.map((group) => {
-            const isCollapsed = collapsedGroups[group.id] ?? false;
-            const groupEnvCount = group.environments.length;
+      {!projectsLoading &&
+        !clustersLoading &&
+        totalEnvironments > 0 &&
+        viewLayout === "grouped" && (
+          <div className="space-y-6">
+            {filteredGroups.map((group) => {
+              const isCollapsed = collapsedGroups[group.id] ?? true;
+              const groupEnvCount = group.environments.length;
 
-            return (
-              <div
-                key={group.id}
-                className="rounded-xl border border-border/80 bg-card/40 overflow-hidden shadow-xs transition-all"
-              >
+              return (
                 <div
-                  onClick={() => toggleGroup(group.id)}
-                  className="flex items-center justify-between px-4 py-3 bg-muted/40 hover:bg-muted/60 cursor-pointer border-b border-border/60 select-none transition-colors"
+                  key={group.id}
+                  className="rounded-xl border border-border/80 bg-card/40 overflow-hidden shadow-xs transition-all"
                 >
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      className="text-muted-foreground hover:text-foreground transition-colors p-0.5"
-                    >
-                      {isCollapsed ? (
-                        <ChevronRight className="w-4 h-4" />
-                      ) : (
-                        <ChevronDown className="w-4 h-4" />
-                      )}
-                    </button>
-                    <Badge variant={group.badgeVariant} className={group.badgeClass}>
-                      {group.shortLabel}
-                    </Badge>
-                    <div>
-                      <h3 className="font-semibold text-sm text-foreground">{group.name}</h3>
-                      <p className="text-xs text-muted-foreground font-mono">
-                        {groupEnvCount} Environment{groupEnvCount !== 1 ? 's' : ''}
-                      </p>
+                  <div
+                    onClick={() => toggleGroup(group.id)}
+                    className="flex items-center justify-between px-4 py-3 bg-muted/40 hover:bg-muted/60 cursor-pointer border-b border-border/60 select-none transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground transition-colors p-0.5"
+                      >
+                        {isCollapsed ? (
+                          <ChevronRight className="w-4 h-4" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4" />
+                        )}
+                      </button>
+                      <Badge
+                        variant={group.badgeVariant}
+                        className={group.badgeClass}
+                      >
+                        {group.shortLabel}
+                      </Badge>
+                      <div>
+                        <h3 className="font-semibold text-sm text-foreground">
+                          {group.name}
+                        </h3>
+                        <p className="text-xs text-muted-foreground font-mono">
+                          {groupEnvCount} Environment
+                          {groupEnvCount !== 1 ? "s" : ""}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">
+                        {isCollapsed ? "Expand" : "Collapse"}
+                      </span>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">
-                      {isCollapsed ? 'Expand' : 'Collapse'}
-                    </span>
-                  </div>
+                  {!isCollapsed && (
+                    <div className="p-4">
+                      {groupEnvCount === 0 ? (
+                        <div className="p-4 rounded-lg border border-dashed border-border/60 text-center text-xs text-muted-foreground">
+                          No {group.shortLabel} environments connected yet.{" "}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onAddCluster
+                                ? onAddCluster()
+                                : navigate("/kubernetes")
+                            }
+                            className="text-primary font-medium hover:underline cursor-pointer"
+                          >
+                            Add a cluster
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                          {group.environments.map((env) =>
+                            renderEnvironmentCard(env),
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-
-                {!isCollapsed && (
-                  <div className="p-4">
-                    {groupEnvCount === 0 ? (
-                      <div className="p-4 rounded-lg border border-dashed border-border/60 text-center text-xs text-muted-foreground">
-                        No {group.shortLabel} environments connected yet.{' '}
-                        <button
-                          type="button"
-                          onClick={() => (onAddCluster ? onAddCluster() : navigate('/kubernetes'))}
-                          className="text-primary font-medium hover:underline cursor-pointer"
-                        >
-                          Add a cluster
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {group.environments.map((env) => renderEnvironmentCard(env))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        )}
 
       {/* View Mode 2: Flat Grid View */}
-      {!projectsLoading && !clustersLoading && totalEnvironments > 0 && viewLayout === 'flat' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filteredEnvironments.map((env) => renderEnvironmentCard(env))}
-        </div>
-      )}
+      {!projectsLoading &&
+        !clustersLoading &&
+        totalEnvironments > 0 &&
+        viewLayout === "flat" && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filteredEnvironments.map((env) => renderEnvironmentCard(env))}
+          </div>
+        )}
     </div>
   );
 }
-

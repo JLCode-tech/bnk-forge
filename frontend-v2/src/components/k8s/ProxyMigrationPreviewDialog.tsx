@@ -114,17 +114,17 @@ function UnmappedList({ unmapped }: { unmapped: ProxyTranslateUnmapped[] }) {
                 <AlertTriangle className="h-3.5 w-3.5 text-warning flex-shrink-0 mt-0.5" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                    <Badge variant="outline" className="text-[10px] font-mono h-4">
+                    <Badge variant="outline" className="text-2xs font-mono h-4">
                       {u.construct_type}
                     </Badge>
                     <span className="font-mono truncate text-muted-foreground">
                       {u.source_kind}/{u.source_namespace}/{u.source_name}
                     </span>
                   </div>
-                  <p className="font-mono text-[11px] mb-1 text-warning">
+                  <p className="font-mono text-2xs mb-1 text-warning">
                     {u.detail}
                   </p>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-2xs text-muted-foreground">
                     {u.reason}
                   </p>
                 </div>
@@ -212,7 +212,7 @@ export function ProxyMigrationPreviewDialog({
 
             {/* Source metadata footer */}
             {result.source && Object.keys(result.source).length > 0 && (
-              <p className="text-[11px] font-mono text-muted-foreground">
+              <p className="text-2xs font-mono text-muted-foreground">
                 Source: {result.proxy_type} · {result.source_kind}/{result.class_name}
                 {(result.source.ingress_count !== undefined) && ` · ${result.source.ingress_count as number} Ingress(es)`}
                 {(result.source.httproute_count !== undefined) && ` · ${result.source.httproute_count as number} HTTPRoute(s)`}

@@ -5,21 +5,29 @@
  * with a single registry lookup.
  */
 
-import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { getResourceStatusColor } from '@/lib/status-colors';
-import { formatAge } from '@/lib/time-utils';
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { formatAge } from "@/lib/time-utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Eye, Edit, Trash2, MoreVertical } from 'lucide-react';
-import { getContextActions } from './resource-registry';
-import type { K8sResource, K8sCondition } from '@/types/kubernetes';
+} from "@/components/ui/dropdown-menu";
+import { Eye, Edit, Trash2, MoreVertical } from "lucide-react";
+import { getContextActions } from "./resource-registry";
+import type { K8sResource, K8sCondition } from "@/types/kubernetes";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,21 +52,23 @@ interface F5BNKResourceTableProps {
 // ---------------------------------------------------------------------------
 
 function getStatusBadge(resource: K8sResource) {
-  const conditions = (resource.status?.conditions as K8sCondition[] | undefined) || [];
+  const conditions =
+    (resource.status?.conditions as K8sCondition[] | undefined) || [];
   const ready = conditions.find(
-    (c) => c.type === 'Ready' || c.type === 'Programmed' || c.type === 'Accepted'
+    (c) =>
+      c.type === "Ready" || c.type === "Programmed" || c.type === "Accepted",
   );
 
-  let statusText = 'N/A';
-  if (ready?.status === 'True') {
-    statusText = 'Ready';
-  } else if (ready?.status === 'False') {
-    statusText = 'Failed';
-  } else if (ready?.status === 'Unknown') {
-    statusText = 'Unknown';
+  let statusText = "N/A";
+  if (ready?.status === "True") {
+    statusText = "Ready";
+  } else if (ready?.status === "False") {
+    statusText = "Failed";
+  } else if (ready?.status === "Unknown") {
+    statusText = "Unknown";
   }
 
-  return <Badge className={cn('text-xs', getResourceStatusColor(statusText))}>{statusText}</Badge>;
+  return <StatusBadge status={statusText} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -77,68 +87,98 @@ export function F5BNKResourceTable({
   borderDefault,
 }: F5BNKResourceTableProps) {
   return (
-    <table className="w-full">
-      <thead className="sticky top-0 z-10 bg-card">
-        <tr className={cn('text-xs border-b text-muted-foreground', borderDefault)}>
-          <th scope="col" className="text-left py-3 px-4 font-medium">Name</th>
-          <th scope="col" className="text-left py-3 px-4 font-medium">Namespace</th>
-          <th scope="col" className="text-left py-3 px-4 font-medium">Status</th>
-          <th scope="col" className="text-left py-3 px-4 font-medium">Age</th>
-          <th scope="col" className="text-right py-3 px-4 font-medium w-32">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
+    <Table className="w-full">
+      <TableHeader className="sticky top-0 z-10 bg-card">
+        <TableRow
+          className={cn(
+            "text-xs border-b text-muted-foreground",
+            borderDefault,
+          )}
+        >
+          <TableHead className="py-3 px-4 font-medium text-muted-foreground">
+            Name
+          </TableHead>
+          <TableHead className="py-3 px-4 font-medium text-muted-foreground">
+            Namespace
+          </TableHead>
+          <TableHead className="py-3 px-4 font-medium text-muted-foreground">
+            Status
+          </TableHead>
+          <TableHead className="py-3 px-4 font-medium text-muted-foreground">
+            Age
+          </TableHead>
+          <TableHead className="text-right py-3 px-4 font-medium w-32 text-muted-foreground">
+            Actions
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {resources.map((resource) => {
           const contextActions = getContextActions(resource.kind);
 
           return (
-            <tr
+            <TableRow
               key={resource.metadata?.uid}
               className={cn(
-                'border-b cursor-pointer transition-colors hover:bg-muted/50',
+                "border-b cursor-pointer transition-colors hover:bg-muted/50",
                 borderDefault,
-                selectedResource?.metadata?.uid === resource.metadata?.uid && 'bg-primary/10'
+                selectedResource?.metadata?.uid === resource.metadata?.uid &&
+                  "bg-primary/10",
               )}
               onClick={() => onSelectResource(resource)}
             >
-              <td className="py-3 px-4">
+              <TableCell className="py-3 px-4">
                 <div className="flex items-center gap-2">
                   <code className="text-sm font-mono text-foreground">
                     {resource.metadata?.name}
                   </code>
                 </div>
-              </td>
-              <td className="py-3 px-4">
+              </TableCell>
+              <TableCell className="py-3 px-4">
                 <Badge variant="outline" className="text-xs">
-                  {resource.metadata?.namespace || 'cluster-wide'}
+                  {resource.metadata?.namespace || "cluster-wide"}
                 </Badge>
-              </td>
-              <td className="py-3 px-4">{getStatusBadge(resource)}</td>
-              <td className="py-3 px-4">
+              </TableCell>
+              <TableCell className="py-3 px-4">
+                {getStatusBadge(resource)}
+              </TableCell>
+              <TableCell className="py-3 px-4">
                 <span className="text-xs text-muted-foreground">
                   {formatAge(resource.metadata?.creationTimestamp)}
                 </span>
-              </td>
-              <td className="py-3 px-4 text-right">
+              </TableCell>
+              <TableCell className="py-3 px-4 text-right">
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                    <Button variant="outline" size="sm" className="h-7 w-7 p-0" aria-label="Instance actions">
+                  <DropdownMenuTrigger
+                    asChild
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      aria-label="Instance actions"
+                    >
                       <MoreVertical className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     {/* Standard actions */}
-                    <DropdownMenuItem onClick={(e) => {
-                      e.stopPropagation();
-                      onDescribe(resource);
-                    }}>
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDescribe(resource);
+                      }}
+                    >
                       <Eye className="h-4 w-4 mr-2" />
                       Describe
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={(e) => {
-                      e.stopPropagation();
-                      onEdit(resource);
-                    }}>
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEdit(resource);
+                      }}
+                    >
                       <Edit className="h-4 w-4 mr-2" />
                       Edit YAML
                     </DropdownMenuItem>
@@ -151,11 +191,17 @@ export function F5BNKResourceTable({
                           key={action.label}
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (action.type === 'navigate' && action.targetView) {
+                            if (
+                              action.type === "navigate" &&
+                              action.targetView
+                            ) {
                               onNavigateView(action.targetView);
-                            } else if (action.type === 'dialog' && action.dialogKey) {
+                            } else if (
+                              action.type === "dialog" &&
+                              action.dialogKey
+                            ) {
                               onOpenDialog(action.dialogKey, resource);
-                            } else if (action.type === 'select') {
+                            } else if (action.type === "select") {
                               onSelectResource(resource);
                             }
                           }}
@@ -179,11 +225,11 @@ export function F5BNKResourceTable({
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           );
         })}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   );
 }

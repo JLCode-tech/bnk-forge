@@ -13,23 +13,12 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { TableCell, TableHead } from "@/components/ui/table";
+import { ClusterScopePickerCard } from "@/components/k8s/ClusterScopePickerCard";
 import { ResourcePageHeader } from "@/components/layout/ResourcePageHeader";
 import { ResourceExplorerLayout } from "@/components/layout/ResourceExplorerLayout";
+import { ResourceSidebarViewTabs } from "@/components/layout/ResourceCategorySidebar";
+import { CollapsibleInnerSidebar } from "@/components/layout/InnerSidebar";
 import { ResourceViewTabs } from "@/components/layout/ResourceViewTabs";
 import {
   DropdownMenu,
@@ -50,7 +39,6 @@ import {
   Code,
   Download,
   Network,
-  ArrowRight,
 } from "lucide-react";
 import { useQuery, useQueryClient, useIsFetching } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -71,7 +59,6 @@ import { ResourceDescribeViewer } from "@/components/k8s/ResourceDescribeViewer"
 import { ResourceDeleteDialog } from "@/components/k8s/ResourceDeleteDialog";
 import { ResourceEditDialog } from "@/components/k8s/ResourceEditDialog";
 import { ResourceCreateDialog } from "@/components/k8s/ResourceCreateDialog";
-import { F5AIAnalyzerViewer } from "@/components/k8s/F5AIAnalyzerViewer";
 import { F5iRuleViewer } from "@/components/k8s/F5iRuleViewer";
 import { BackendsCollection } from "@/components/k8s/BackendsCollection";
 import { PolicyBuilder } from "@/components/k8s/PolicyBuilder";
@@ -90,17 +77,15 @@ import { QKViewPanel } from "@/components/k8s/QKViewPanel";
 import { LicensingPanel } from "@/components/k8s/LicensingPanel";
 import { TMMDebugPanel } from "@/components/k8s/TMMDebugPanel";
 import { RecoveryPanel } from "@/components/k8s/RecoveryPanel";
-import { A2AAgentDiscovery } from "@/components/k8s/A2AAgentDiscovery";
-import { A2ATemplates } from "@/components/k8s/A2ATemplates";
-import { A2AIRuleLibrary } from "@/components/k8s/A2AIRuleLibrary";
-import { A2AProtocolReference } from "@/components/k8s/A2AProtocolReference";
 // DPFInfrastructurePanel moved to Fleet page (/fleet?tab=dpf)
 import { DEBOUNCE_MS } from "@/lib/constants";
 import { notify } from "@/lib/notify";
 import { STORAGE_KEYS } from "@/lib/storage-keys";
 import { ConnectivityGate } from "@/components/ConnectivityGate";
 import { useClusterReachable } from "@/hooks/useConnectivity";
-import type { K8sResource } from "@/types/kubernetes";
+import type { K8sResource, K8sCluster } from "@/types/kubernetes";
+
+const EMPTY_CLUSTERS: K8sCluster[] = [];
 
 import {
   VIEW_HEALTH,
@@ -145,17 +130,9 @@ function DiagnosticsView({
     "licensing" | "tmm-debug" | "qkview" | "runbooks" | "recovery"
   >("licensing");
 
-  const tabBtn = (active: boolean) =>
-    cn(
-      "flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors",
-      active
-        ? "bg-card text-foreground shadow-sm"
-        : "text-muted-foreground hover:text-foreground",
-    );
-
   return (
     <div className="p-6 overflow-y-auto">
-      <div className="max-w-5xl mx-auto">
+      <div className="w-full">
         <div className="mb-6">
           <h2 className="text-xl font-semibold mb-2">Diagnostics</h2>
           <p className={descClass}>
@@ -175,37 +152,29 @@ function DiagnosticsView({
         </div>
 
         {/* Tab Buttons */}
-        <div className="flex gap-1 p-1 rounded-lg border border-border mb-6 bg-muted/50">
-          <button
-            onClick={() => setActiveTab("licensing")}
-            className={tabBtn(activeTab === "licensing")}
-          >
-            Licensing
-          </button>
-          <button
-            onClick={() => setActiveTab("tmm-debug")}
-            className={tabBtn(activeTab === "tmm-debug")}
-          >
-            TMM Debug
-          </button>
-          <button
-            onClick={() => setActiveTab("qkview")}
-            className={tabBtn(activeTab === "qkview")}
-          >
-            QKView
-          </button>
-          <button
-            onClick={() => setActiveTab("runbooks")}
-            className={tabBtn(activeTab === "runbooks")}
-          >
-            Runbooks
-          </button>
-          <button
-            onClick={() => setActiveTab("recovery")}
-            className={tabBtn(activeTab === "recovery")}
-          >
-            Recovery
-          </button>
+        <div className="mb-6">
+          <ResourceViewTabs
+            variant="inline"
+            aria-label="Diagnostics views"
+            active={activeTab}
+            onChange={(tab) =>
+              setActiveTab(
+                tab as
+                  | "licensing"
+                  | "tmm-debug"
+                  | "qkview"
+                  | "runbooks"
+                  | "recovery",
+              )
+            }
+            tabs={[
+              { key: "licensing", label: "Licensing" },
+              { key: "tmm-debug", label: "TMM Debug" },
+              { key: "qkview", label: "QKView" },
+              { key: "runbooks", label: "Runbooks" },
+              { key: "recovery", label: "Recovery" },
+            ]}
+          />
         </div>
 
         {/* Tab Content */}
@@ -233,13 +202,21 @@ interface SpecialViewProps {
   onRedirectToFleetDpf?: (clusterId: number) => void;
 }
 
+function isA2AView(viewType: string): boolean {
+  return (
+    viewType === VIEW_A2A_DISCOVERY ||
+    viewType === VIEW_A2A_TEMPLATES ||
+    viewType === VIEW_A2A_IRULE_LIBRARY ||
+    viewType === VIEW_A2A_REFERENCE
+  );
+}
+
 function renderSpecialView(
   viewType: string,
   {
     clusterId,
     namespace,
     searchQuery,
-    selectedResourceName,
     onTopologySelect,
     onNavigateView,
     onRedirectToFleetDpf,
@@ -314,9 +291,10 @@ function renderSpecialView(
       return (
         <div className="p-6 overflow-y-auto">
           <div className="mb-6">
-            <h2 className="text-xl font-semibold mb-2">BNK Health Dashboard</h2>
+            <h2 className="text-xl font-semibold mb-2">F5 BNK Overview</h2>
             <p className={descClass}>
-              Real-time health status for all F5 BNK platform components —
+              Overview of F5 BIG-IP Next for Kubernetes platform components,
+              data-plane readiness, gateways, and recommendations —
               auto-refreshes every 30 seconds
             </p>
           </div>
@@ -324,23 +302,10 @@ function renderSpecialView(
         </div>
       );
 
-    case VIEW_AI_ANALYZERS:
-      return (
-        <div className="p-6">
-          <div className="max-w-6xl mx-auto">
-            <F5AIAnalyzerViewer
-              clusterId={clusterId}
-              namespace={namespace}
-              initialSelectedName={selectedResourceName}
-            />
-          </div>
-        </div>
-      );
-
     case VIEW_UPGRADE:
       return (
         <div className="p-6 overflow-y-auto">
-          <div className="max-w-5xl mx-auto">
+          <div className="w-full">
             <div className="mb-6">
               <h2 className="text-xl font-semibold mb-2">BNK Upgrade</h2>
               <p className={descClass}>
@@ -408,65 +373,6 @@ function renderSpecialView(
     case VIEW_DIAGNOSTICS:
       return <DiagnosticsView clusterId={clusterId} descClass={descClass} />;
 
-    // A2A Protocol views
-    case VIEW_A2A_DISCOVERY:
-      return (
-        <div className="p-6 overflow-y-auto">
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold mb-2">Agent Discovery</h2>
-            <p className={descClass}>
-              Discover A2A-capable agents running behind BNK Gateways — services
-              behind HTTPRoutes that implement the A2A protocol
-            </p>
-          </div>
-          <A2AAgentDiscovery clusterId={clusterId} namespace={namespace} />
-        </div>
-      );
-
-    case VIEW_A2A_TEMPLATES:
-      return (
-        <div className="p-6 overflow-y-auto">
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold mb-2">A2A Templates</h2>
-            <p className={descClass}>
-              Pre-built Gateway API and iRule configurations for A2A traffic
-              patterns
-            </p>
-          </div>
-          <A2ATemplates clusterId={clusterId} namespace={namespace} />
-        </div>
-      );
-
-    case VIEW_A2A_IRULE_LIBRARY:
-      return (
-        <div className="p-6 overflow-y-auto">
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold mb-2">A2A iRule Library</h2>
-            <p className={descClass}>
-              Curated iRules for A2A traffic — JSON-RPC inspection, session
-              persistence, JWT validation
-            </p>
-          </div>
-          <A2AIRuleLibrary clusterId={clusterId} namespace={namespace} />
-        </div>
-      );
-
-    case VIEW_A2A_REFERENCE:
-      return (
-        <div className="p-6 overflow-y-auto">
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold mb-2">
-              A2A Protocol Reference
-            </h2>
-            <p className={descClass}>
-              Quick reference for Google&apos;s Agent-to-Agent protocol —
-              methods, task states, agent card schema
-            </p>
-          </div>
-          <A2AProtocolReference clusterId={clusterId} namespace={namespace} />
-        </div>
-      );
-
     default:
       return null;
   }
@@ -520,6 +426,7 @@ function mapParamToViewOrResource(param?: string | null): string | null {
     return VIEW_CONFIG_BUILDER;
   if (
     p === "a2a" ||
+    p === "a2a-agents" ||
     p === "a2a-discovery" ||
     p === "view-a2a-discovery" ||
     p === "agent-discovery"
@@ -540,6 +447,7 @@ function mapParamToViewOrResource(param?: string | null): string | null {
   )
     return VIEW_A2A_REFERENCE;
   if (
+    p === "ai-analyzer" ||
     p === "ai-analyzers" ||
     p === "aianalyzers" ||
     p === "view-ai-analyzers" ||
@@ -600,7 +508,10 @@ export default function F5BNK() {
   // Project and cluster selection (persisted to localStorage)
   const { data: projects } = useProjects();
   const { data: allClustersResponse } = useAllClusters();
-  const allClusters = allClustersResponse?.clusters ?? [];
+  const allClusters = useMemo(
+    () => allClustersResponse?.clusters ?? EMPTY_CLUSTERS,
+    [allClustersResponse?.clusters],
+  );
 
   const [selectedProject, setSelectedProject] = useState<number | null>(() => {
     const fromUrl = searchParams.get("project");
@@ -683,7 +594,18 @@ export default function F5BNK() {
       );
       if (fromUrl) {
         if (fromUrl === VIEW_DPF_INFRA) {
-          setTimeout(() => navigate("/infrastructure?tab=dpus"), 0);
+          setTimeout(
+            () => navigate("/infrastructure?tab=dpus", { replace: true }),
+            0,
+          );
+          return VIEW_TOPOLOGY;
+        }
+        if (fromUrl === VIEW_AI_ANALYZERS) {
+          setTimeout(() => navigate("/ai/llm-router", { replace: true }), 0);
+          return VIEW_TOPOLOGY;
+        }
+        if (isA2AView(fromUrl)) {
+          setTimeout(() => navigate("/ai/agents", { replace: true }), 0);
           return VIEW_TOPOLOGY;
         }
         return fromUrl;
@@ -694,12 +616,23 @@ export default function F5BNK() {
         localStorage.removeItem("bnk-forge-bnk-initial-view");
         // DPF moved to Infrastructure — redirect if deep-link targets it
         if (initialView === VIEW_DPF_INFRA) {
-          setTimeout(() => navigate("/infrastructure?tab=dpus"), 0);
-          return VIEW_TOPOLOGY;
+          setTimeout(
+            () => navigate("/infrastructure?tab=dpus", { replace: true }),
+            0,
+          );
+          return VIEW_HEALTH;
+        }
+        if (initialView === VIEW_AI_ANALYZERS) {
+          setTimeout(() => navigate("/ai/llm-router", { replace: true }), 0);
+          return VIEW_HEALTH;
+        }
+        if (isA2AView(initialView)) {
+          setTimeout(() => navigate("/ai/agents", { replace: true }), 0);
+          return VIEW_HEALTH;
         }
         return initialView;
       }
-      return VIEW_TOPOLOGY;
+      return VIEW_HEALTH;
     },
   );
   const [searchQuery, setSearchQuery] = useState(() => {
@@ -725,6 +658,14 @@ export default function F5BNK() {
         searchParams.get("tab"),
     );
     if (targetViewOrResource) {
+      if (targetViewOrResource === VIEW_AI_ANALYZERS) {
+        navigate("/ai/llm-router", { replace: true });
+        return;
+      }
+      if (isA2AView(targetViewOrResource)) {
+        navigate("/ai/agents", { replace: true });
+        return;
+      }
       setSelectedResourceType((prev) =>
         prev !== targetViewOrResource ? targetViewOrResource : prev,
       );
@@ -737,7 +678,7 @@ export default function F5BNK() {
     if (urlName !== null && urlName !== undefined) {
       setSearchQuery((prev) => (prev !== urlName ? urlName : prev));
     }
-  }, [searchParams]);
+  }, [searchParams, navigate]);
 
   // Selected resource for detail panel
   const [selectedResource, setSelectedResource] = useState<K8sResource | null>(
@@ -917,16 +858,25 @@ export default function F5BNK() {
   // Derived from the current selection so deep-links / programmatic nav keep
   // the right tab lit without a separate state to sync.
   const activeCategory = useMemo(() => {
+    if (selectedResourceType === VIEW_HEALTH) return "Overview";
     const found = discoveredCategories.find((c) =>
       c.items.some((i) => i.key === selectedResourceType),
     );
-    return found?.category ?? discoveredCategories[0].category;
+    return found?.category ?? "Overview";
   }, [selectedResourceType, discoveredCategories]);
 
   const handleSelectCategory = (category: string) => {
+    if (category === "Overview") {
+      handleSelectResourceType(VIEW_HEALTH);
+      return;
+    }
     const cat = discoveredCategories.find((c) => c.category === category);
     if (cat && cat.items.length > 0) {
-      handleSelectResourceType(cat.items[0].key);
+      const firstNonOverviewItem =
+        category === "Health & Diagnostics"
+          ? (cat.items.find((i) => i.key !== VIEW_HEALTH) ?? cat.items[0])
+          : cat.items[0];
+      handleSelectResourceType(firstNonOverviewItem.key);
     }
   };
 
@@ -968,6 +918,19 @@ export default function F5BNK() {
 
   const handleNavigateView = (viewKey: string) => {
     const normalizedKey = viewKey.replace(/^view:/, "view-");
+    if (normalizedKey === VIEW_AI_ANALYZERS) {
+      navigate("/ai/llm-router");
+      return;
+    }
+    if (
+      normalizedKey === VIEW_A2A_DISCOVERY ||
+      normalizedKey === VIEW_A2A_TEMPLATES ||
+      normalizedKey === VIEW_A2A_IRULE_LIBRARY ||
+      normalizedKey === VIEW_A2A_REFERENCE
+    ) {
+      navigate("/ai/agents");
+      return;
+    }
     setSelectedResourceType(normalizedKey);
     setSelectedResource(null);
   };
@@ -1328,181 +1291,104 @@ export default function F5BNK() {
         )}
       </ResourcePageHeader>
 
-      {/* Category tab strip — one tab per top-level category (D-020). Shared
-          ResourceViewTabs idiom, identical to the Kubernetes/CNF strips. */}
-      {selectedCluster && (
-        <ResourceViewTabs
-          aria-label="F5 BNK category"
-          active={activeCategory}
-          onChange={handleSelectCategory}
-          tabs={discoveredCategories.map((c) => ({
-            key: c.category,
-            label: c.category,
-            icon: c.icon,
-          }))}
-        />
-      )}
-
       {/* Main Content */}
       <ResourceExplorerLayout.Body>
-        {/* Sidebar — items of the active category */}
-        {selectedCluster && (
-          <F5BNKSidebar
-            activeCategory={activeCategory}
-            selectedResourceType={selectedResourceType}
-            onSelectResourceType={handleSelectResourceType}
-            categories={discoveredCategories}
+        {/* Persistent Flush Left Inner Sub-Sidebar */}
+        <CollapsibleInnerSidebar className="w-52 shrink-0 border-r border-border bg-card/30 flex flex-col">
+          <ResourceSidebarViewTabs
+            aria-label="F5 BNK category"
+            active={activeCategory}
+            onChange={(cat) => {
+              handleSelectCategory(cat);
+              if (!selectedCluster && visibleClusters.length > 0) {
+                setSelectedCluster(visibleClusters[0].id);
+              }
+            }}
+            tabs={[
+              { key: "Overview", label: "Overview", icon: Activity },
+              ...discoveredCategories.map((c) => ({
+                key: c.category,
+                label: c.category,
+                icon: c.icon,
+              })),
+            ]}
           />
-        )}
+          {activeCategory !== "Overview" && (
+            <F5BNKSidebar
+              activeCategory={activeCategory}
+              selectedResourceType={selectedResourceType}
+              onSelectResourceType={(type) => {
+                handleSelectResourceType(type);
+                if (!selectedCluster && visibleClusters.length > 0) {
+                  setSelectedCluster(visibleClusters[0].id);
+                }
+              }}
+              categories={discoveredCategories}
+            />
+          )}
+        </CollapsibleInnerSidebar>
 
         {/* Center + Detail Panel */}
         {!selectedCluster ? (
           <ResourceExplorerLayout.Content className="p-6 overflow-y-auto">
-            <div className="max-w-5xl mx-auto space-y-4">
-              <Card className="border-border bg-card">
-                <CardHeader className="pb-3 border-b border-border/60">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="text-base font-semibold flex items-center gap-2">
-                        <Activity className="h-4 w-4 text-primary" />
-                        BNK by Cluster
-                      </CardTitle>
-                      <CardDescription className="text-xs">
-                        Select a cluster to open its gateways, policies and
-                        topology.
-                      </CardDescription>
-                    </div>
-                    <Badge variant="outline" className="text-xs">
-                      {bnkConsumption
-                        ? `BNK on ${visibleClusters.filter((c) => bnkByCluster.get(c.id)?.bnk_installed).length} of ${visibleClusters.length}`
-                        : `${visibleClusters.length} clusters`}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="hover:bg-transparent bg-muted/40">
-                        <TableHead className="text-xs font-semibold">
-                          Cluster Name
-                        </TableHead>
-                        <TableHead className="text-xs font-semibold">
-                          Cloud Provider
-                        </TableHead>
-                        <TableHead className="text-xs font-semibold">
-                          Status
-                        </TableHead>
-                        <TableHead className="text-xs font-semibold">
-                          BNK
-                        </TableHead>
-                        <TableHead className="text-xs font-semibold text-right">
-                          Pods (CP / DP)
-                        </TableHead>
-                        <TableHead className="text-xs font-semibold text-right">
-                          Nodes
-                        </TableHead>
-                        <TableHead className="text-xs font-semibold text-right">
-                          Actions
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {visibleClusters.length === 0 ? (
-                        <TableRow>
-                          <TableCell
-                            colSpan={7}
-                            className="h-24 text-center text-xs text-muted-foreground"
-                          >
-                            No clusters found in this project.
-                          </TableCell>
-                        </TableRow>
+            <ClusterScopePickerCard
+              title="BNK by Cluster"
+              description="Select a cluster to open its gateways, policies and topology."
+              clusters={visibleClusters}
+              onSelectCluster={(id) => setSelectedCluster(id)}
+              actionLabel="Open BNK"
+              badgeText={
+                bnkConsumption
+                  ? `BNK on ${visibleClusters.filter((c) => bnkByCluster.get(c.id)?.bnk_installed).length} of ${visibleClusters.length}`
+                  : undefined
+              }
+              extraColumnCount={3}
+              extraHeaders={
+                <>
+                  <TableHead className="text-xs font-semibold">BNK</TableHead>
+                  <TableHead className="text-xs font-semibold text-right">
+                    Pods (CP / DP)
+                  </TableHead>
+                  <TableHead className="text-xs font-semibold text-right">
+                    Nodes
+                  </TableHead>
+                </>
+              }
+              renderExtraCells={(cluster) => {
+                const bnk = bnkByCluster.get(cluster.id);
+                const pending = bnkConsumptionLoading ? "…" : "—";
+                return (
+                  <>
+                    <TableCell className="text-xs">
+                      {!bnk ? (
+                        <span className="text-muted-foreground">{pending}</span>
+                      ) : bnk.bnk_installed ? (
+                        <Badge
+                          variant="outline"
+                          className="text-2xs bg-success/10 text-success border-success/30"
+                        >
+                          {bnk.bnk_version
+                            ? `v${bnk.bnk_version}`
+                            : "Installed"}
+                        </Badge>
                       ) : (
-                        visibleClusters.map((cluster) => (
-                          <TableRow
-                            key={cluster.id}
-                            className="hover:bg-muted/30"
-                          >
-                            <TableCell className="font-medium text-xs">
-                              {cluster.name}
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant="outline"
-                                className="text-[10px] capitalize"
-                              >
-                                {cluster.cloud_provider || "Kubernetes"}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  "text-[10px]",
-                                  cluster.status === "active"
-                                    ? "bg-success/10 text-success border-success/30"
-                                    : "bg-muted/50 text-muted-foreground",
-                                )}
-                              >
-                                {cluster.status === "active"
-                                  ? "Reachable"
-                                  : cluster.status}
-                              </Badge>
-                            </TableCell>
-                            {(() => {
-                              const bnk = bnkByCluster.get(cluster.id);
-                              const pending = bnkConsumptionLoading ? "…" : "—";
-                              return (
-                                <>
-                                  <TableCell className="text-xs">
-                                    {!bnk ? (
-                                      <span className="text-muted-foreground">
-                                        {pending}
-                                      </span>
-                                    ) : bnk.bnk_installed ? (
-                                      <Badge
-                                        variant="outline"
-                                        className="text-[10px] bg-success/10 text-success border-success/30"
-                                      >
-                                        {bnk.bnk_version
-                                          ? `v${bnk.bnk_version}`
-                                          : "Installed"}
-                                      </Badge>
-                                    ) : (
-                                      <span className="text-muted-foreground">
-                                        Not installed
-                                      </span>
-                                    )}
-                                  </TableCell>
-                                  <TableCell className="text-xs text-right tabular-nums">
-                                    {bnk?.bnk_installed
-                                      ? `${bnk.control_plane.count} / ${bnk.data_plane.count}`
-                                      : pending}
-                                  </TableCell>
-                                  <TableCell className="text-xs text-right tabular-nums">
-                                    {bnk?.node_count ?? pending}
-                                  </TableCell>
-                                </>
-                              );
-                            })()}
-                            <TableCell className="text-right">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs gap-1"
-                                onClick={() => setSelectedCluster(cluster.id)}
-                              >
-                                Open BNK
-                                <ArrowRight className="h-3 w-3" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))
+                        <span className="text-muted-foreground">
+                          Not installed
+                        </span>
                       )}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            </div>
+                    </TableCell>
+                    <TableCell className="text-xs text-right tabular-nums">
+                      {bnk?.bnk_installed
+                        ? `${bnk.control_plane.count} / ${bnk.data_plane.count}`
+                        : pending}
+                    </TableCell>
+                    <TableCell className="text-xs text-right tabular-nums">
+                      {bnk?.node_count ?? pending}
+                    </TableCell>
+                  </>
+                );
+              }}
+            />
           </ResourceExplorerLayout.Content>
         ) : (
           <>

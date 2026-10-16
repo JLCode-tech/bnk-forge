@@ -1,8 +1,8 @@
-import { SectionCard } from '@/components/ui/section-card';
-import { Badge } from '@/components/ui/badge';
-import { useSystemHealth } from '@/hooks/useSystem';
-import { Activity, Database, HardDrive, Server } from 'lucide-react';
-import type { ServiceStatus } from '@/types/system';
+import { SectionCard } from "@/components/ui/section-card";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { useSystemHealth } from "@/hooks/useSystem";
+import { Activity, Database, HardDrive, Server } from "lucide-react";
+import type { ServiceStatus } from "@/types/system";
 
 interface ServiceItemProps {
   name: string;
@@ -11,32 +11,6 @@ interface ServiceItemProps {
 }
 
 function ServiceItem({ name, status, icon }: ServiceItemProps) {
-  const getStatusColor = (s: ServiceStatus['status']) => {
-    switch (s) {
-      case 'healthy':
-        return 'bg-success';
-      case 'degraded':
-        return 'bg-warning';
-      case 'offline':
-        return 'bg-destructive';
-      default:
-        return 'bg-muted-foreground';
-    }
-  };
-
-  const getStatusBadge = (s: ServiceStatus['status']) => {
-    switch (s) {
-      case 'healthy':
-        return <Badge variant="success">Online</Badge>;
-      case 'degraded':
-        return <Badge variant="warning">Degraded</Badge>;
-      case 'offline':
-        return <Badge variant="destructive">Offline</Badge>;
-      default:
-        return <Badge variant="secondary">Unknown</Badge>;
-    }
-  };
-
   return (
     <div className="flex items-center justify-between py-3 border-b border-border last:border-0">
       <div className="flex items-center gap-3">
@@ -56,11 +30,21 @@ function ServiceItem({ name, status, icon }: ServiceItemProps) {
         )}
         {status.workers !== undefined && (
           <span className="text-sm text-muted-foreground">
-            {status.workers} {status.workers === 1 ? 'worker' : 'workers'}
+            {status.workers} {status.workers === 1 ? "worker" : "workers"}
           </span>
         )}
-        {getStatusBadge(status.status)}
-        <div className={`w-2 h-2 rounded-full ${getStatusColor(status.status)}`} />
+        <StatusBadge
+          status={status.status}
+          label={
+            status.status === "healthy"
+              ? "Online"
+              : status.status === "offline"
+                ? "Offline"
+                : status.status === "degraded"
+                  ? "Degraded"
+                  : "Unknown"
+          }
+        />
       </div>
     </div>
   );
@@ -72,7 +56,9 @@ export function SystemHealthPanel() {
   if (isLoading) {
     return (
       <SectionCard title="Service Health">
-        <p className="text-sm text-muted-foreground">Loading system status...</p>
+        <p className="text-sm text-muted-foreground">
+          Loading system status...
+        </p>
       </SectionCard>
     );
   }

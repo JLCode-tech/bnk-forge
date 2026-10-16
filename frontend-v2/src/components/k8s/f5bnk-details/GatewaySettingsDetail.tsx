@@ -30,10 +30,10 @@ export function GatewaySettingsDetail({ resource }: DetailPanelProps) {
               <InfoRow label="SNAT Pool" value={listenerNetwork.sourceNATConfig?.sourceNATPoolRef?.name} mono />
               {listenerNetwork.networkRefs && (
                 <div className="space-y-1 pt-1">
-                  <span className="text-muted-foreground block text-[11px]">Network References:</span>
+                  <span className="text-muted-foreground block text-2xs">Network References:</span>
                   <div className="flex flex-wrap gap-1.5 pl-2">
                     {listenerNetwork.networkRefs.map((net, idx) => (
-                      <Badge key={idx} variant="outline" className="text-[10px] font-mono flex items-center gap-1">
+                      <Badge key={idx} variant="outline" className="text-2xs font-mono flex items-center gap-1">
                         <Network className="h-2.5 w-2.5 text-info" />
                         {net.name}
                       </Badge>
@@ -43,10 +43,10 @@ export function GatewaySettingsDetail({ resource }: DetailPanelProps) {
               )}
               {listenerNetwork.ipamRefs && (
                 <div className="space-y-1 pt-1">
-                  <span className="text-muted-foreground block text-[11px]">IPAM References:</span>
+                  <span className="text-muted-foreground block text-2xs">IPAM References:</span>
                   <div className="flex flex-wrap gap-1.5 pl-2">
                     {listenerNetwork.ipamRefs.map((ipam, idx) => (
-                      <Badge key={idx} variant="secondary" className="text-[10px] font-mono flex items-center gap-1">
+                      <Badge key={idx} variant="secondary" className="text-2xs font-mono flex items-center gap-1">
                         <Globe className="h-2.5 w-2.5 text-success" />
                         {ipam.name}
                       </Badge>
@@ -67,7 +67,7 @@ export function GatewaySettingsDetail({ resource }: DetailPanelProps) {
                     <code className="font-mono font-medium text-foreground/80">{pool.name}</code>
                   </div>
                   {pool.ipamRefs && pool.ipamRefs.length > 0 && (
-                    <div className="text-[11px] text-muted-foreground pl-5">
+                    <div className="text-2xs text-muted-foreground pl-5">
                       IPAM: <code className="font-mono">{pool.ipamRefs.map((r) => r.name).join(', ')}</code>
                     </div>
                   )}
@@ -87,12 +87,12 @@ export function GatewaySettingsDetail({ resource }: DetailPanelProps) {
                       <code className="font-mono font-medium text-foreground/80">{eg.name}</code>
                     </div>
                     {eg.sourceNATConfig?.type && (
-                      <Badge variant="secondary" className="text-[10px] font-mono">
+                      <Badge variant="secondary" className="text-2xs font-mono">
                         {eg.sourceNATConfig.type}
                       </Badge>
                     )}
                   </div>
-                  <div className="text-[11px] text-muted-foreground pl-5 flex flex-wrap gap-3">
+                  <div className="text-2xs text-muted-foreground pl-5 flex flex-wrap gap-3">
                     {eg.networkRef?.name && (
                       <span>Network: <code className="font-mono">{eg.networkRef.name}</code></span>
                     )}

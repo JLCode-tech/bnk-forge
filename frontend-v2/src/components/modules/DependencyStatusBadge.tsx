@@ -28,7 +28,7 @@ export function DependencyStatusBadge({ dependencyModule }: DependencyStatusBadg
     return (
       <Popover>
         <PopoverTrigger asChild>
-          <Badge variant="destructive" className="text-[10px] cursor-help">
+          <Badge variant="destructive" className="text-2xs cursor-help">
             <XCircle className="h-3 w-3 mr-1" />
             Unknown
           </Badge>
@@ -78,7 +78,7 @@ export function DependencyStatusBadge({ dependencyModule }: DependencyStatusBadg
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Badge variant={variant} className="text-[10px] cursor-help">
+        <Badge variant={variant} className="text-2xs cursor-help">
           {icon}
           {dependencyModule.module_name}
         </Badge>

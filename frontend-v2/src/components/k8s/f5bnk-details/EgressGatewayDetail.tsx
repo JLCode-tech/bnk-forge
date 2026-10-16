@@ -36,7 +36,7 @@ export function EgressGatewayDetail({ resource }: DetailPanelProps) {
                   <Settings className="h-3 w-3 text-muted-foreground" />
                   <code className="font-mono text-foreground/80">{parametersRef.name}</code>
                   {parametersRef.sectionName && (
-                    <Badge variant="outline" className="text-[10px] font-mono">{parametersRef.sectionName}</Badge>
+                    <Badge variant="outline" className="text-2xs font-mono">{parametersRef.sectionName}</Badge>
                   )}
                 </div>
               </div>
@@ -47,10 +47,10 @@ export function EgressGatewayDetail({ resource }: DetailPanelProps) {
           <Section title="Source Traffic Capture">
             {matchNamespaces.length > 0 && (
               <div className="space-y-1">
-                <span className="text-muted-foreground block text-[11px]">Matched Namespaces:</span>
+                <span className="text-muted-foreground block text-2xs">Matched Namespaces:</span>
                 <div className="flex flex-wrap gap-1.5 pl-2">
                   {matchNamespaces.map((ns: string) => (
-                    <Badge key={ns} variant="secondary" className="text-[10px] font-mono">
+                    <Badge key={ns} variant="secondary" className="text-2xs font-mono">
                       {ns}
                     </Badge>
                   ))}
@@ -60,10 +60,10 @@ export function EgressGatewayDetail({ resource }: DetailPanelProps) {
 
             {Object.keys(matchLabels).length > 0 && (
               <div className="space-y-1 pt-1">
-                <span className="text-muted-foreground block text-[11px]">Match Labels:</span>
+                <span className="text-muted-foreground block text-2xs">Match Labels:</span>
                 <div className="flex flex-wrap gap-1.5 pl-2">
                   {Object.entries(matchLabels).map(([k, v]) => (
-                    <Badge key={k} variant="outline" className="text-[10px] font-mono flex items-center gap-1">
+                    <Badge key={k} variant="outline" className="text-2xs font-mono flex items-center gap-1">
                       <Filter className="h-2.5 w-2.5 text-muted-foreground" />
                       {k}={v}
                     </Badge>

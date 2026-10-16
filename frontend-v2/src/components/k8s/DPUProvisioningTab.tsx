@@ -101,7 +101,7 @@ function SectionHeader({
       <h3 className="text-sm font-semibold text-foreground">
         {title}
       </h3>
-      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+      <Badge variant="outline" className="text-2xs px-1.5 py-0">
         {count}
       </Badge>
     </div>
@@ -144,12 +144,12 @@ function DPUSetCard({
         </span>
 
         {bfbName && (
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+          <Badge variant="outline" className="text-2xs px-1.5 py-0">
             BFB: {bfbName}
           </Badge>
         )}
         {flavorName && (
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+          <Badge variant="outline" className="text-2xs px-1.5 py-0">
             Flavor: {flavorName}
           </Badge>
         )}
@@ -163,7 +163,7 @@ function DPUSetCard({
           </span>
           <span className="text-muted-foreground">ready</span>
           {(stats['Error'] ?? 0) > 0 && (
-            <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+            <Badge variant="destructive" className="text-2xs px-1.5 py-0">
               {stats['Error']} error
             </Badge>
           )}
@@ -210,7 +210,7 @@ function DPUSetCard({
                         </span>
                       )}
                       <div className="flex-1" />
-                      <Badge variant={variant} className="text-[10px] px-2 py-0">
+                      <Badge variant={variant} className="text-2xs px-2 py-0">
                         {phase}
                       </Badge>
                     </div>
@@ -245,7 +245,7 @@ function BFBCard({ bfb }: { bfb: DpfBfb }) {
           {bfb.metadata.name}
         </span>
         <div className="flex-1" />
-        <Badge variant={variant} className="text-[10px] px-2 py-0">
+        <Badge variant={variant} className="text-2xs px-2 py-0">
           {phase === 'Downloading' && <Download className="h-3 w-3 mr-1 animate-pulse" />}
           {phase}
         </Badge>
@@ -301,7 +301,7 @@ function FlavorCard({ flavor }: { flavor: DpfDpuFlavor }) {
         </span>
         <div className="flex-1" />
         {spec?.dpuMode && (
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+          <Badge variant="outline" className="text-2xs px-1.5 py-0">
             {spec.dpuMode}
           </Badge>
         )}
@@ -316,7 +316,7 @@ function FlavorCard({ flavor }: { flavor: DpfDpuFlavor }) {
         <div className="px-4 pb-4 pl-12 space-y-3 border-t border-border bg-muted/50">
           {spec?.dpuMode && (
             <ConfigSection title="DPU Mode">
-              <code className="text-[11px] font-mono text-muted-foreground">
+              <code className="text-2xs font-mono text-muted-foreground">
                 {spec.dpuMode}
               </code>
             </ConfigSection>
@@ -324,7 +324,7 @@ function FlavorCard({ flavor }: { flavor: DpfDpuFlavor }) {
           {hasGrub && (
             <ConfigSection title="Kernel Parameters">
               {spec!.grub!.kernelParameters!.map((p, i) => (
-                <code key={i} className="block text-[11px] font-mono text-muted-foreground">
+                <code key={i} className="block text-2xs font-mono text-muted-foreground">
                   {p}
                 </code>
               ))}
@@ -333,7 +333,7 @@ function FlavorCard({ flavor }: { flavor: DpfDpuFlavor }) {
           {hasSysctl && (
             <ConfigSection title="Sysctl Parameters">
               {spec!.sysctl!.parameters!.map((p, i) => (
-                <code key={i} className="block text-[11px] font-mono text-muted-foreground">
+                <code key={i} className="block text-2xs font-mono text-muted-foreground">
                   {p}
                 </code>
               ))}
@@ -343,11 +343,11 @@ function FlavorCard({ flavor }: { flavor: DpfDpuFlavor }) {
             <ConfigSection title="NVConfig (Firmware)">
               {spec!.nvconfig!.map((nv, i) => (
                 <div key={i} className="mb-1">
-                  <span className="text-[10px] font-medium text-muted-foreground">
+                  <span className="text-2xs font-medium text-muted-foreground">
                     device: {nv.device ?? '*'}
                   </span>
                   {(nv.parameters ?? []).map((p, j) => (
-                    <code key={j} className="block text-[11px] font-mono pl-2 text-muted-foreground">
+                    <code key={j} className="block text-2xs font-mono pl-2 text-muted-foreground">
                       {p}
                     </code>
                   ))}
@@ -357,7 +357,7 @@ function FlavorCard({ flavor }: { flavor: DpfDpuFlavor }) {
           )}
           {hasOvs && (
             <ConfigSection title="OVS Config">
-              <pre className="text-[11px] font-mono whitespace-pre-wrap text-muted-foreground">
+              <pre className="text-2xs font-mono whitespace-pre-wrap text-muted-foreground">
                 {spec!.ovs!.rawConfigScript}
               </pre>
             </ConfigSection>
@@ -365,7 +365,7 @@ function FlavorCard({ flavor }: { flavor: DpfDpuFlavor }) {
           {hasBfCfg && (
             <ConfigSection title="BF Config Parameters">
               {spec!.bfcfgParameters!.map((p, i) => (
-                <code key={i} className="block text-[11px] font-mono text-muted-foreground">
+                <code key={i} className="block text-2xs font-mono text-muted-foreground">
                   {p}
                 </code>
               ))}
@@ -375,7 +375,7 @@ function FlavorCard({ flavor }: { flavor: DpfDpuFlavor }) {
             <ConfigSection title="Config Files">
               {spec!.configFiles!.map((f, i) => (
                 <div key={i} className="mb-1">
-                  <code className="text-[11px] font-mono text-foreground/80">
+                  <code className="text-2xs font-mono text-foreground/80">
                     {f.path} {f.operation && `(${f.operation})`} {f.permissions && `[${f.permissions}]`}
                   </code>
                 </div>
@@ -384,7 +384,7 @@ function FlavorCard({ flavor }: { flavor: DpfDpuFlavor }) {
           )}
           {hasContainerd && (
             <ConfigSection title="Container Registry">
-              <code className="text-[11px] font-mono text-muted-foreground">
+              <code className="text-2xs font-mono text-muted-foreground">
                 {spec!.containerdConfig!.registryEndpoint}
               </code>
             </ConfigSection>
@@ -392,7 +392,7 @@ function FlavorCard({ flavor }: { flavor: DpfDpuFlavor }) {
           {hasDpuResources && (
             <ConfigSection title="DPU Resources">
               {Object.entries(spec!.dpuResources!).map(([k, v]) => (
-                <code key={k} className="block text-[11px] font-mono text-muted-foreground">
+                <code key={k} className="block text-2xs font-mono text-muted-foreground">
                   {k}: {v}
                 </code>
               ))}
@@ -420,7 +420,7 @@ function ConfigSection({
 }) {
   return (
     <div className="pt-2">
-      <h5 className="text-[10px] uppercase tracking-wider mb-1 text-muted-foreground">
+      <h5 className="text-2xs uppercase tracking-wider mb-1 text-muted-foreground">
         {title}
       </h5>
       <div className="rounded px-3 py-2 bg-card">
@@ -479,7 +479,7 @@ function DetailField({
   if (!value) return null;
   return (
     <div>
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+      <span className="text-2xs uppercase tracking-wider text-muted-foreground">
         {label}
       </span>
       <p className="mt-0.5 text-foreground/80">
@@ -574,7 +574,7 @@ export function DPUProvisioningTab({ dpuSets, dpus, bfbs, flavors, isLoading }: 
                     <span className="text-muted-foreground">→ {dpu.spec.dpuDevice}</span>
                   )}
                   <div className="flex-1" />
-                  <Badge variant={variant} className="text-[10px] px-2 py-0">
+                  <Badge variant={variant} className="text-2xs px-2 py-0">
                     {phase}
                   </Badge>
                 </div>

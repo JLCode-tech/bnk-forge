@@ -60,7 +60,7 @@ describe("Navigation Integration", () => {
   // 1. Sidebar renders all navigation sections
   // -------------------------------------------------------------------------
   describe("Sidebar renders all navigation sections", () => {
-    it("shows OBSERVE, BUILD, OPERATE, and SETTINGS section headings with key nav items for admin", async () => {
+    it("shows Build, Clusters, AI Service Plane, and Settings & Access section headings with key nav items for admin", async () => {
       act(() => {
         useAuthStore.getState().login("mock-jwt-token", mockUser);
       });
@@ -69,33 +69,42 @@ describe("Navigation Integration", () => {
 
       // Wait for async data (badge counts) to settle
       await waitFor(() => {
-        expect(screen.getByText("OBSERVE")).toBeInTheDocument();
+        expect(screen.getByText("Build")).toBeInTheDocument();
       });
 
       // Section headings
-      expect(screen.getByText("BUILD")).toBeInTheDocument();
-      expect(screen.getByText("OPERATE")).toBeInTheDocument();
-      expect(screen.getByText("SETTINGS")).toBeInTheDocument();
+      expect(screen.getByText("Clusters")).toBeInTheDocument();
+      expect(screen.getByText("AI Service Plane")).toBeInTheDocument();
+      expect(screen.getByText("Settings & Access")).toBeInTheDocument();
 
-      // Command Center — standalone home item above the OBSERVE section
-      expect(screen.getByText("Command Center")).toBeInTheDocument();
+      // Overview — standalone home item
+      expect(screen.getByText("Overview")).toBeInTheDocument();
 
-      // BUILD items — Catalog sits at the bottom after Operations Log.
-      expect(screen.getByText("Access Methods")).toBeInTheDocument();
-      expect(screen.getByText("Blueprints")).toBeInTheDocument();
-      expect(screen.getByText("Projects")).toBeInTheDocument();
-      expect(screen.getByText("Operations Log")).toBeInTheDocument();
-      expect(screen.getByText("Catalog")).toBeInTheDocument();
-      // K8S-UX-004: Helm Packages removed from sidebar — now integrated into Kubernetes page
+      // Build items
+      expect(screen.getByText("Workspaces")).toBeInTheDocument();
+      expect(screen.getByText("Catalog & Blueprints")).toBeInTheDocument();
+      expect(screen.getByText("Activity Log")).toBeInTheDocument();
 
-      // OPERATE items
-      expect(screen.getByText("Fleet")).toBeInTheDocument();
+      // Clusters items
+      expect(screen.getByText("Cluster Fleet")).toBeInTheDocument();
       expect(screen.getByText("Kubernetes")).toBeInTheDocument();
       expect(screen.getByText("F5 BNK")).toBeInTheDocument();
-      // K8S-UX-005: Operators merged into Fleet page — no longer a separate sidebar entry
+      expect(screen.getByText("F5 CNF")).toBeInTheDocument();
+      expect(screen.getByText("Benchmarks")).toBeInTheDocument();
 
-      // SETTINGS items (admin only)
+      // AI Service Plane items
+      expect(screen.getByText("Agent Fleet")).toBeInTheDocument();
+      expect(
+        screen.getByText("Token Governance and Intelligence"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Intelligent Inference")).toBeInTheDocument();
+      expect(screen.getByText("AI Traffic Logs")).toBeInTheDocument();
+
+      // Settings & Access items
+      expect(screen.getByText("Credentials & Registries")).toBeInTheDocument();
+      expect(screen.getByText("Users")).toBeInTheDocument();
       expect(screen.getByText("System")).toBeInTheDocument();
+      expect(screen.queryByText("Auth & SSO")).not.toBeInTheDocument();
     });
   });
 
@@ -103,7 +112,7 @@ describe("Navigation Integration", () => {
   // 2. Sidebar nav links have correct hrefs
   // -------------------------------------------------------------------------
   describe("Sidebar nav links have correct hrefs", () => {
-    it('renders Projects with href="/projects", Activity with href="/tasks", Blueprints with href="/stacks"', async () => {
+    it('renders Workspaces with href="/projects", Activity Log with href="/tasks", Catalog & Blueprints with href="/catalog"', async () => {
       act(() => {
         useAuthStore.getState().login("mock-jwt-token", mockUser);
       });
@@ -111,18 +120,18 @@ describe("Navigation Integration", () => {
       render(<Sidebar />);
 
       await waitFor(() => {
-        expect(screen.getByText("Projects")).toBeInTheDocument();
+        expect(screen.getByText("Workspaces")).toBeInTheDocument();
       });
 
       // NavLink renders an <a> tag — find the link by its text content
-      const projectsLink = screen.getByText("Projects").closest("a");
+      const projectsLink = screen.getByText("Workspaces").closest("a");
       expect(projectsLink).toHaveAttribute("href", "/projects");
 
-      const opsLogLink = screen.getByText("Operations Log").closest("a");
+      const opsLogLink = screen.getByText("Activity Log").closest("a");
       expect(opsLogLink).toHaveAttribute("href", "/tasks");
 
-      const blueprintsLink = screen.getByText("Blueprints").closest("a");
-      expect(blueprintsLink).toHaveAttribute("href", "/stacks");
+      const catalogLink = screen.getByText("Catalog & Blueprints").closest("a");
+      expect(catalogLink).toHaveAttribute("href", "/catalog");
     });
   });
 
@@ -130,7 +139,7 @@ describe("Navigation Integration", () => {
   // 3. Header renders breadcrumbs for route
   // -------------------------------------------------------------------------
   describe("Header renders breadcrumbs for route", () => {
-    it('shows "Build" breadcrumb and "Projects" page title when at /projects', async () => {
+    it('shows "Build" breadcrumb and "Workspaces" page title when at /projects', async () => {
       act(() => {
         useAuthStore.getState().login("mock-jwt-token", mockUser);
       });
@@ -141,7 +150,7 @@ describe("Navigation Integration", () => {
         expect(screen.getByText("Build")).toBeInTheDocument();
       });
 
-      expect(screen.getByText("Projects")).toBeInTheDocument();
+      expect(screen.getByText("Workspaces")).toBeInTheDocument();
     });
 
     it('never shows "Infrastructure Management" for any application route', async () => {
@@ -155,6 +164,7 @@ describe("Navigation Integration", () => {
         "/projects/29",
         "/catalog",
         "/stacks",
+        "/access-methods",
         "/auth-templates",
         "/tasks",
         "/fleet",
@@ -164,8 +174,8 @@ describe("Navigation Integration", () => {
         "/bnk",
         "/cnf",
         "/ai/agents",
-        "/ai/governance",
-        "/ai/routing",
+        "/ai/mcp-gateway",
+        "/ai/llm-router",
         "/ai/logs",
         "/observability/ai-gateway",
         "/observability/ai-gateway/logs",
@@ -183,21 +193,34 @@ describe("Navigation Integration", () => {
       }
     });
 
-    it("renders correct titles and breadcrumbs for Phase 0 routes", async () => {
+    it("renders correct titles and breadcrumbs for application routes", async () => {
       act(() => {
         useAuthStore.getState().login("mock-jwt-token", mockUser);
       });
 
       const routeExpectations: { route: string; title: string }[] = [
-        { route: "/fleet", title: "Fleet" },
+        { route: "/fleet", title: "Cluster Fleet" },
         { route: "/infrastructure", title: "Infrastructure" },
-        { route: "/catalog", title: "Catalog" },
+        { route: "/catalog", title: "Catalog & Blueprints" },
         { route: "/stacks", title: "Blueprints" },
-        { route: "/auth-templates", title: "Access Methods" },
+        { route: "/access-methods", title: "Credentials & Registries" },
+        { route: "/auth-templates", title: "Auth & SSO" },
         { route: "/users", title: "Users" },
-        { route: "/projects/42", title: "Projects" },
+        { route: "/projects/42", title: "Workspaces" },
         { route: "/benchmarks", title: "Benchmarks" },
         { route: "/system", title: "System" },
+        { route: "/tasks", title: "Activity Log" },
+        { route: "/kubernetes", title: "Kubernetes" },
+        { route: "/crds", title: "CR Explorer" },
+        { route: "/bnk", title: "F5 BNK" },
+        { route: "/cnf", title: "F5 CNF" },
+        { route: "/ai/agents", title: "Agent Fleet" },
+        {
+          route: "/ai/mcp-gateway",
+          title: "Token Governance and Intelligence",
+        },
+        { route: "/ai/llm-router", title: "Intelligent Inference" },
+        { route: "/ai/logs", title: "AI Traffic Logs" },
       ];
 
       for (const { route, title } of routeExpectations) {

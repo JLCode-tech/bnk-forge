@@ -32,7 +32,7 @@ export function IpamRangeDetail({ resource }: DetailPanelProps) {
               {Object.entries(status.allocatedAddresses as Record<string, unknown>).map(([ip, owner]) => (
                 <div key={ip} className="flex items-center justify-between">
                   <code className="font-mono text-foreground/80">{ip}</code>
-                  <Badge variant="outline" className="text-[10px]">{String(owner)}</Badge>
+                  <Badge variant="outline" className="text-2xs">{String(owner)}</Badge>
                 </div>
               ))}
             </Section>

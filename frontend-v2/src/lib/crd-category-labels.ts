@@ -16,6 +16,7 @@ const CRD_CATEGORY_LABELS: Record<string, string> = {
   'gateway-api': 'Gateway API',
   'cert-manager': 'cert-manager',
   networking: 'Networking',
+  'f5-cnf': 'F5 CNF',
 };
 
 export function crdCategoryLabel(slug: string | null | undefined): string | undefined {

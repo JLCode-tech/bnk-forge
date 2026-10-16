@@ -5,10 +5,10 @@
  * Shows modules that will execute in parallel and their estimated times.
  */
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import type { ExecutionLayer, LayerProgress } from '@/types';
-import { Layers, Clock, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import type { ExecutionLayer, LayerProgress } from "@/types";
+import { Layers, Clock, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 
 /** LayerCard accepts both old ExecutionLayer and new LayerProgress shapes.
  *  Cast to ExecutionLayer internally — fields absent in LayerProgress
@@ -22,17 +22,20 @@ interface LayerCardProps {
   showStatus?: boolean;
 }
 
-export function LayerCard({ layer: layerProp, showStatus = false }: LayerCardProps) {
+export function LayerCard({
+  layer: layerProp,
+  showStatus = false,
+}: LayerCardProps) {
   // Cast to ExecutionLayer — fields absent in LayerProgress are optional and
   // will be undefined/falsy at runtime, which the guards below handle safely.
   const layer = layerProp as ExecutionLayer;
   const getStatusIcon = (status?: string) => {
     switch (status) {
-      case 'completed':
+      case "completed":
         return <CheckCircle2 className="h-4 w-4 text-success" />;
-      case 'failed':
+      case "failed":
         return <XCircle className="h-4 w-4 text-destructive" />;
-      case 'in_progress':
+      case "in_progress":
         return <Loader2 className="h-4 w-4 text-primary animate-spin" />;
       default:
         return null;
@@ -41,24 +44,24 @@ export function LayerCard({ layer: layerProp, showStatus = false }: LayerCardPro
 
   const getStatusBorder = (status?: string) => {
     switch (status) {
-      case 'completed':
-        return 'border-success/40 bg-success/5';
-      case 'failed':
-        return 'border-destructive/40 bg-destructive/5';
-      case 'in_progress':
-        return 'border-primary/40 bg-primary/5';
+      case "completed":
+        return "border-success/40 bg-success/5";
+      case "failed":
+        return "border-destructive/40 bg-destructive/5";
+      case "in_progress":
+        return "border-primary/40 bg-primary/5";
       default:
-        return 'border-border';
+        return "border-border";
     }
   };
 
   return (
-    <Card className={`${showStatus ? getStatusBorder(layer.status) : ''}`}>
+    <Card className={`${showStatus ? getStatusBorder(layer.status) : ""}`}>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Layers className="h-5 w-5 text-muted-foreground" />
-            <CardTitle className="text-base">
+            <CardTitle>
               Layer {layer.layer_index}
               {showStatus && layer.status && (
                 <span className="ml-2">{getStatusIcon(layer.status)}</span>
@@ -92,18 +95,22 @@ export function LayerCard({ layer: layerProp, showStatus = false }: LayerCardPro
                     <span className="text-sm font-medium text-foreground">
                       {module.name}
                     </span>
-                    <span className="text-xs text-muted-foreground">{module.path}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {module.path}
+                    </span>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   {showStatus && module.status && (
                     <Badge
                       variant={
-                        module.status === 'applied' || module.status === 'completed'
-                          ? 'success'
-                          : module.status === 'failed' || module.status === 'apply_failed'
-                          ? 'destructive'
-                          : 'secondary'
+                        module.status === "applied" ||
+                        module.status === "completed"
+                          ? "success"
+                          : module.status === "failed" ||
+                              module.status === "apply_failed"
+                            ? "destructive"
+                            : "secondary"
                       }
                       className="text-xs"
                     >
@@ -121,11 +128,18 @@ export function LayerCard({ layer: layerProp, showStatus = false }: LayerCardPro
               const moduleId = layer.module_ids?.[idx];
               // results may be keyed by number (ExecutionLayer) or string (LayerProgress JSON).
               // Try both to handle either backend serialization.
-              const results = layer.results as Record<string | number, { success: boolean } | undefined> | undefined;
-              const result = moduleId !== undefined && results
-                ? (results[moduleId] ?? results[String(moduleId)])
+              const results = layer.results as
+                | Record<string | number, { success: boolean } | undefined>
+                | undefined;
+              const result =
+                moduleId !== undefined && results
+                  ? (results[moduleId] ?? results[String(moduleId)])
+                  : undefined;
+              const moduleStatus = result
+                ? result.success
+                  ? "completed"
+                  : "failed"
                 : undefined;
-              const moduleStatus = result ? (result.success ? 'completed' : 'failed') : undefined;
 
               return (
                 <div
@@ -133,29 +147,39 @@ export function LayerCard({ layer: layerProp, showStatus = false }: LayerCardPro
                   className="flex items-center justify-between p-2 rounded-md bg-muted/50 hover:bg-muted transition-colors"
                 >
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-foreground">{name}</span>
+                    <span className="text-sm font-medium text-foreground">
+                      {name}
+                    </span>
                   </div>
                   <div className="flex items-center gap-3">
                     {showStatus && moduleStatus && (
                       <Badge
-                        variant={moduleStatus === 'completed' ? 'success' : 'destructive'}
+                        variant={
+                          moduleStatus === "completed"
+                            ? "success"
+                            : "destructive"
+                        }
                         className="text-xs"
                       >
                         {moduleStatus}
                       </Badge>
                     )}
-                    {showStatus && !moduleStatus && layer.status === 'in_progress' && (
-                      <Badge variant="secondary" className="text-xs">
-                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                        running
-                      </Badge>
-                    )}
+                    {showStatus &&
+                      !moduleStatus &&
+                      layer.status === "in_progress" && (
+                        <Badge variant="secondary" className="text-xs">
+                          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                          running
+                        </Badge>
+                      )}
                   </div>
                 </div>
               );
             })
           ) : (
-            <div className="text-sm text-muted-foreground">No modules in this layer</div>
+            <div className="text-sm text-muted-foreground">
+              No modules in this layer
+            </div>
           )}
         </div>
       </CardContent>

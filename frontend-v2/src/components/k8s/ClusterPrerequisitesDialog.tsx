@@ -118,7 +118,7 @@ export function ClusterPrerequisitesDialog({ open, cluster, onOpenChange }: Clus
                   <Label htmlFor={`prereq-${p.id}`} className="cursor-pointer">
                     {p.label}
                     {isLocked && (
-                      <span className="ml-2 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      <span className="ml-2 text-2xs uppercase tracking-wide text-muted-foreground">
                         always required
                       </span>
                     )}

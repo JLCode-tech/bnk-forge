@@ -35,7 +35,7 @@ export function InferencePoolDetail({ resource }: DetailPanelProps) {
                   <Cpu className="h-3 w-3 text-primary" />
                   <code className="font-mono text-foreground/80">{endpointPickerRef.name}</code>
                   {endpointPickerRef.kind && (
-                    <Badge variant="outline" className="text-[10px] font-mono">{endpointPickerRef.kind}</Badge>
+                    <Badge variant="outline" className="text-2xs font-mono">{endpointPickerRef.kind}</Badge>
                   )}
                 </div>
               </div>
@@ -47,7 +47,7 @@ export function InferencePoolDetail({ resource }: DetailPanelProps) {
             <Section title="Target Pod Selectors">
               <div className="flex flex-wrap gap-1.5">
                 {Object.entries(selector).map(([k, v]) => (
-                  <Badge key={k} variant="outline" className="text-[10px] font-mono flex items-center gap-1">
+                  <Badge key={k} variant="outline" className="text-2xs font-mono flex items-center gap-1">
                     <Filter className="h-2.5 w-2.5 text-muted-foreground" />
                     {k}={v}
                   </Badge>

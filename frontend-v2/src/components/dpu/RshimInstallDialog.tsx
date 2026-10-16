@@ -322,7 +322,7 @@ export function RshimInstallDialog({ open, onOpenChange, projectId, dpu }: Rshim
                       />
                     </div>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-2xs text-muted-foreground">
                     Username/port come from the DPU row. Edit them on the DPU first if wrong.
                   </p>
 

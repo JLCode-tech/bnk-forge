@@ -150,4 +150,81 @@ describe('F5AIAnalyzerViewer', () => {
     });
     expect(screen.queryByText('Active')).not.toBeInTheDocument();
   });
+
+  it('renders EPP Real-Time Dashboard when F5EPP resource is present', async () => {
+    server.use(
+      http.get('*/api/k8s/clusters/:id/resources/:type', ({ params }) => {
+        if (params.type === 'f5epp') {
+          return HttpResponse.json({
+            resources: [
+              {
+                apiVersion: 'inference.k8s.f5.com/v1alpha1',
+                kind: 'F5EPP',
+                metadata: { name: 'vllm-pool-epp', namespace: 'default' },
+                spec: {
+                  engine: 'vllm',
+                  poolRef: 'vllm-pool',
+                  blockSize: 64,
+                  mode: 'aggregated',
+                  tokenizer: 'unsloth/Llama-3.3-70B-Instruct',
+                },
+                status: {
+                  conditions: [{ type: 'Ready', status: 'True' }],
+                },
+              },
+            ],
+          });
+        }
+        return HttpResponse.json({ resources: [] });
+      }),
+      http.get('*/api/k8s/clusters/:id/analyzers/:ns/:name/runtime-metrics', () => {
+        return HttpResponse.json({
+          available: true,
+          kind: 'F5EPP',
+          name: 'vllm-pool-epp',
+          namespace: 'default',
+          summary: {
+            cache_hit_rate_pct: 68.4,
+            ttft_p50_ms: 1517.5,
+            ttft_p95_ms: 2405.0,
+            itl_p50_ms: 28.3,
+            itl_p95_ms: 48.2,
+            e2e_p95_ms: 3820.0,
+            output_tps: 12915.2,
+            prompt_tps: 452100.0,
+            total_tps: 465015.2,
+            num_requests_running: 4,
+            num_requests_waiting: 0,
+            kv_cache_usage_pct: 42.1,
+            num_pods: 4,
+          },
+          endpoints: [
+            {
+              pod_name: 'vllm-deployment-64d5c94fc4-22b64',
+              address: '10.0.1.40:8000',
+              status: 'Healthy',
+              traffic_share_pct: 27.2,
+              kv_cache_usage_pct: 41.5,
+              running_requests: 1,
+              waiting_requests: 0,
+              itl_p95_ms: 47.8,
+              ttft_p95_ms: 2390.0,
+              total_tokens: 182000,
+            },
+          ],
+        });
+      })
+    );
+
+    render(<F5AIAnalyzerViewer clusterId={1} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('F5 EPP Real-Time AI Analyzer')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Prefix Cache')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('68.4%')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Output TPS')).toBeInTheDocument();
+  });
 });

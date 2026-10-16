@@ -38,8 +38,8 @@ export function ServiceDetail({ resource }: DetailPanelProps) {
                     {port.targetPort !== undefined && ` → ${port.targetPort}`}
                     {port.nodePort !== undefined && ` (node:${port.nodePort})`}
                   </code>
-                  {port.name && <Badge variant="outline" className="text-[10px]">{port.name}</Badge>}
-                  {port.protocol && <Badge variant="secondary" className="text-[10px]">{port.protocol}</Badge>}
+                  {port.name && <Badge variant="outline" className="text-2xs">{port.name}</Badge>}
+                  {port.protocol && <Badge variant="secondary" className="text-2xs">{port.protocol}</Badge>}
                 </div>
               ))}
             </Section>

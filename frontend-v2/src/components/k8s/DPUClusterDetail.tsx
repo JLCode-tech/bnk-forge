@@ -74,7 +74,7 @@ function DetailField({
   if (value == null) return null;
   return (
     <div>
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+      <span className="text-2xs uppercase tracking-wider text-muted-foreground">
         {label}
       </span>
       <p className={cn('mt-0.5 text-xs text-foreground/80', mono && 'font-mono')}>
@@ -113,7 +113,7 @@ function ClusterCard({ cluster }: { cluster: DpfDpuCluster }) {
             <span className="font-semibold text-sm text-foreground">
               {cluster.metadata.name}
             </span>
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+            <Badge variant="outline" className="text-2xs px-1.5 py-0">
               {clusterType}
             </Badge>
           </div>
@@ -154,7 +154,7 @@ function ClusterCard({ cluster }: { cluster: DpfDpuCluster }) {
             <div className="flex items-center gap-2 rounded-lg px-4 py-3 text-xs bg-card">
               <Network className="h-4 w-4 shrink-0 text-muted-foreground" />
               <div>
-                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                <span className="text-2xs uppercase tracking-wider text-muted-foreground">
                   Control Plane VIP
                 </span>
                 <p className="font-mono text-foreground/80">
@@ -179,7 +179,7 @@ function ClusterCard({ cluster }: { cluster: DpfDpuCluster }) {
             <div className="flex items-center gap-2 rounded-lg px-4 py-3 text-xs bg-card">
               <Key className="h-4 w-4 shrink-0 text-muted-foreground" />
               <div>
-                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                <span className="text-2xs uppercase tracking-wider text-muted-foreground">
                   Kubeconfig Secret
                 </span>
                 <p className="font-mono text-foreground/80">

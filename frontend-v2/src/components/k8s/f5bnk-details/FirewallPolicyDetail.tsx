@@ -66,7 +66,7 @@ export function FirewallPolicyDetail({ resource }: DetailPanelProps) {
                 >
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-medium text-sm">{rule.name || `Rule ${idx + 1}`}</span>
-                    <Badge variant={getActionVariant(rule.action || '')} className="text-[10px]">
+                    <Badge variant={getActionVariant(rule.action || '')} className="text-2xs">
                       {rule.action || 'N/A'}
                     </Badge>
                   </div>

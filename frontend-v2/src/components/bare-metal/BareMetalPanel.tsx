@@ -3,9 +3,9 @@
  *
  * Visual template: NodeDiscoveryPanel (discovery tab) — expandable rows with status badges.
  */
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   AlertTriangle,
@@ -28,25 +28,40 @@ import {
   Save,
   Trash2,
   XCircle,
-} from 'lucide-react';
-import { api } from '@/lib/api';
-import { bareMetalDeploymentsApi } from '@/lib/api/bare-metal';
-import { sshCredentialsApi } from '@/lib/api/ssh-credentials';
-import { stacksApi } from '@/lib/api/stacks';
-import { StackDetailDialog } from '@/components/stacks/StackDetailDialog';
-import { queryKeys } from '@/lib/queryKeys';
-import { useProject } from '@/hooks/useProjects';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+} from "lucide-react";
+import { api } from "@/lib/api";
+import { bareMetalDeploymentsApi } from "@/lib/api/bare-metal";
+import { sshCredentialsApi } from "@/lib/api/ssh-credentials";
+import { stacksApi } from "@/lib/api/stacks";
+import { StackDetailDialog } from "@/components/stacks/StackDetailDialog";
+import { queryKeys } from "@/lib/queryKeys";
+import { useProject } from "@/hooks/useProjects";
+import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from '@/components/ui/collapsible';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Skeleton } from '@/components/ui/skeleton';
+} from "@/components/ui/collapsible";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   useBareMetalHostsWithPolling,
   useCreateBareMetalHost,
@@ -59,13 +74,10 @@ import {
   useBareMetalDeployment,
   useCancelBareMetalDeployment,
   useDeployableReleases,
-} from '@/hooks/useBareMetal';
-import { notify, notifyError } from '@/lib/notify';
-import { cn } from '@/lib/utils';
-import {
-  TOPOLOGY_LABELS,
-  DEPLOYMENT_PHASE_LABELS,
-} from '@/types/bare-metal';
+} from "@/hooks/useBareMetal";
+import { notify, notifyError } from "@/lib/notify";
+import { cn } from "@/lib/utils";
+import { TOPOLOGY_LABELS, DEPLOYMENT_PHASE_LABELS } from "@/types/bare-metal";
 import type {
   ActionableAssessmentSection,
   BareMetalHost,
@@ -76,14 +88,14 @@ import type {
   BareMetalDeploymentCreate,
   DeploymentStep,
   DeploymentPlanPreview,
-} from '@/types/bare-metal';
+} from "@/types/bare-metal";
 
 /** Payload passed from MultiHostDeployModal to handleMultiHostDeploy.
  *  Extends BareMetalDeploymentCreate with modal-routing and blueprint-only extras.
  *  The blueprint_* fields are passed to createStackInstance variables and are
  *  never forwarded to the deployment API. */
 interface MultiHostDeployPayload extends BareMetalDeploymentCreate {
-  deploy_engine?: 'blueprint' | 'orchestrator';
+  deploy_engine?: "blueprint" | "orchestrator";
   template_id?: number;
   /** Blueprint-only: slug of the selected template — used to resolve module paths
    *  so variables are stored in the same module-path-keyed nested shape as
@@ -96,7 +108,7 @@ interface MultiHostDeployPayload extends BareMetalDeploymentCreate {
   /** Blueprint-only: topology string for stack instance variables. */
   blueprint_topology?: string;
 }
-import { DocaStatusCard } from './DocaStatusCard';
+import { DocaStatusCard } from "./DocaStatusCard";
 
 interface BareMetalPanelProps {
   projectId: number;
@@ -109,23 +121,35 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showMultiHostModal, setShowMultiHostModal] = useState(false);
   const [selectedHostId, setSelectedHostId] = useState<number | null>(null);
-  const [activeDeploymentId, setActiveDeploymentId] = useState<number | null>(null);
-  const [deployPreview, setDeployPreview] = useState<{ hostId: number; plan: DeploymentPlanPreview } | null>(null);
+  const [activeDeploymentId, setActiveDeploymentId] = useState<number | null>(
+    null,
+  );
+  const [deployPreview, setDeployPreview] = useState<{
+    hostId: number;
+    plan: DeploymentPlanPreview;
+  } | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
 
   const [previewSlug, setPreviewSlug] = useState<string | null>(null);
-  const [previewVariables, setPreviewVariables] = useState<Record<string, unknown> | null>(null);
+  const [previewVariables, setPreviewVariables] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
 
-  const handlePreviewInBlueprintDialog = useCallback((templateSlug: string, variables: Record<string, unknown>) => {
-    setShowMultiHostModal(false);
-    setPreviewSlug(templateSlug);
-    setPreviewVariables(variables);
-  }, []);
+  const handlePreviewInBlueprintDialog = useCallback(
+    (templateSlug: string, variables: Record<string, unknown>) => {
+      setShowMultiHostModal(false);
+      setPreviewSlug(templateSlug);
+      setPreviewVariables(variables);
+    },
+    [],
+  );
 
   const { data: project } = useProject(projectId);
   const projectSshCredentialId = project?.ssh_credential_id;
 
-  const { data: hosts, isLoading: hostsLoading } = useBareMetalHostsWithPolling(projectId);
+  const { data: hosts, isLoading: hostsLoading } =
+    useBareMetalHostsWithPolling(projectId);
   const { data: releases } = useDeployableReleases();
 
   // Track previous discovery statuses to detect transitions
@@ -139,25 +163,30 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
       // Detect completion transition
       if (
         prevStatus &&
-        prevStatus !== 'completed' &&
-        prevStatus !== 'failed' &&
-        curStatus === 'completed'
+        prevStatus !== "completed" &&
+        prevStatus !== "failed" &&
+        curStatus === "completed"
       ) {
-        notify.success('Discovery complete', `${host.name} (${host.host_ip})`, { category: 'deployment' });
+        notify.success("Discovery complete", `${host.name} (${host.host_ip})`, {
+          category: "deployment",
+        });
         // Invalidate discovery result so it reloads
         queryClient.invalidateQueries({
-          queryKey: queryKeys.bareMetal.hosts.discoveryResult(projectId, host.id),
+          queryKey: queryKeys.bareMetal.hosts.discoveryResult(
+            projectId,
+            host.id,
+          ),
         });
       }
       // Detect failure transition
       if (
         prevStatus &&
-        prevStatus !== 'completed' &&
-        prevStatus !== 'failed' &&
-        curStatus === 'failed'
+        prevStatus !== "completed" &&
+        prevStatus !== "failed" &&
+        curStatus === "failed"
       ) {
         notifyError(
-          host.last_discovery_error || 'Unknown error',
+          host.last_discovery_error || "Unknown error",
           `Discovery failed: ${host.name}`,
         );
       }
@@ -173,7 +202,10 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
   const createDeployment = useCreateBareMetalDeployment(projectId);
 
   // Load persisted discovery result for the selected host
-  const { data: persistedDiscovery } = useBareMetalDiscoveryResult(projectId, selectedHostId);
+  const { data: persistedDiscovery } = useBareMetalDiscoveryResult(
+    projectId,
+    selectedHostId,
+  );
   const effectiveDiscoveryResult = persistedDiscovery ?? null;
 
   // Fetch SSH credentials for the dropdown
@@ -184,23 +216,43 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
 
   // --- Add Host Form ---
   const [newHost, setNewHost] = useState<Partial<BareMetalHostCreate>>({
-    name: '',
-    host_ip: '',
+    name: "",
+    host_ip: "",
     ssh_port: 22,
   });
 
   // Inline SSH credential creation state
-  const [hostCredMode, setHostCredMode] = useState<'existing' | 'new'>('existing');
-  const [newHostCred, setNewHostCred] = useState({ name: '', username: 'root', auth_type: 'key' as 'key' | 'password', password: '', private_key: '' });
+  const [hostCredMode, setHostCredMode] = useState<"existing" | "new">(
+    "existing",
+  );
+  const [newHostCred, setNewHostCred] = useState({
+    name: "",
+    username: "root",
+    auth_type: "key" as "key" | "password",
+    password: "",
+    private_key: "",
+  });
 
-  const [jumpCredMode, setJumpCredMode] = useState<'existing' | 'new'>('existing');
-  const [newJumpCred, setNewJumpCred] = useState({ name: '', host: '', username: '', auth_type: 'password' as 'key' | 'password', password: '', private_key: '' });
+  const [jumpCredMode, setJumpCredMode] = useState<"existing" | "new">(
+    "existing",
+  );
+  const [newJumpCred, setNewJumpCred] = useState({
+    name: "",
+    host: "",
+    username: "",
+    auth_type: "password" as "key" | "password",
+    password: "",
+    private_key: "",
+  });
   // Default 'new' preserves the pre-ADR-424 behavior: a <host>-dpu SSH
   // credential is auto-created from the ubuntu/password defaults on host
   // registration. The 'existing' picker is an additive opt-in; ADR-424 does
   // not require changing this default, so keep the prior behavior.
-  const [dpuCredMode, setDpuCredMode] = useState<'existing' | 'new'>('new');
-  const [dpuCred, setDpuCred] = useState({ username: 'ubuntu', password: 'password' });
+  const [dpuCredMode, setDpuCredMode] = useState<"existing" | "new">("new");
+  const [dpuCred, setDpuCred] = useState({
+    username: "ubuntu",
+    password: "password",
+  });
 
   const handleCreateHost = useCallback(async () => {
     if (!newHost.name || !newHost.host_ip) return;
@@ -208,104 +260,182 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
       const hostData = { ...newHost } as BareMetalHostCreate;
 
       // Step 1: Create inline SSH credential for host if needed
-      if (hostCredMode === 'new' && newHostCred.username) {
+      if (hostCredMode === "new" && newHostCred.username) {
         const credName = newHostCred.name || `${newHost.name}-ssh`;
         const cred = await sshCredentialsApi.createSSHCredential({
           name: credName,
-          host: newHost.host_ip || '',
+          host: newHost.host_ip || "",
           port: newHost.ssh_port || 22,
           username: newHostCred.username,
           auth_type: newHostCred.auth_type,
-          password: newHostCred.auth_type === 'password' ? newHostCred.password : undefined,
-          private_key: newHostCred.auth_type === 'key' ? newHostCred.private_key : undefined,
+          password:
+            newHostCred.auth_type === "password"
+              ? newHostCred.password
+              : undefined,
+          private_key:
+            newHostCred.auth_type === "key"
+              ? newHostCred.private_key
+              : undefined,
         });
         hostData.ssh_credential_id = cred.id;
-        queryClient.invalidateQueries({ queryKey: queryKeys.sshCredentials.all });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.sshCredentials.all,
+        });
       }
 
       // Step 2: Create inline SSH credential for jumphost if needed
-      if (jumpCredMode === 'new' && newJumpCred.username) {
+      if (jumpCredMode === "new" && newJumpCred.username) {
         const credName = newJumpCred.name || `${newHost.name}-jumphost`;
         const jumpCred = await sshCredentialsApi.createSSHCredential({
           name: credName,
-          host: newJumpCred.host || 'jumphost',
+          host: newJumpCred.host || "jumphost",
           port: 22,
           username: newJumpCred.username,
           auth_type: newJumpCred.auth_type,
-          password: newJumpCred.auth_type === 'password' ? newJumpCred.password : undefined,
-          private_key: newJumpCred.auth_type === 'key' ? newJumpCred.private_key : undefined,
+          password:
+            newJumpCred.auth_type === "password"
+              ? newJumpCred.password
+              : undefined,
+          private_key:
+            newJumpCred.auth_type === "key"
+              ? newJumpCred.private_key
+              : undefined,
         });
         hostData.jumphost_chain = [{ ssh_credential_id: jumpCred.id }];
-        queryClient.invalidateQueries({ queryKey: queryKeys.sshCredentials.all });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.sshCredentials.all,
+        });
       }
 
       // Step 2.5: Create DPU SSH credential if new mode selected
-      if (dpuCredMode === 'new' && dpuCred.username && dpuCred.password) {
-        const credName = `${newHost.name || 'host'}-dpu`;
+      if (dpuCredMode === "new" && dpuCred.username && dpuCred.password) {
+        const credName = `${newHost.name || "host"}-dpu`;
         const dpuCredResult = await sshCredentialsApi.createSSHCredential({
           name: credName,
-          host: newHost.dpu_mgmt_ip || '192.168.100.2',
+          host: newHost.dpu_mgmt_ip || "192.168.100.2",
           port: 22,
           username: dpuCred.username,
-          auth_type: 'password',
+          auth_type: "password",
           password: dpuCred.password,
         });
         hostData.dpu_credential_id = dpuCredResult.id;
-        queryClient.invalidateQueries({ queryKey: queryKeys.sshCredentials.all });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.sshCredentials.all,
+        });
       }
 
       // Step 3: Create the host
       const host = await createHost.mutateAsync(hostData);
       setShowAddForm(false);
-      setNewHost({ name: '', host_ip: '', ssh_port: 22, ssh_credential_id: undefined, jumphost_chain: undefined, bmc_ip: '', bmc_username: '', bmc_password: '', dpu_credential_id: undefined, dpu_mgmt_ip: '' });
-      setHostCredMode('existing');
-      setNewHostCred({ name: '', username: 'root', auth_type: 'key', password: '', private_key: '' });
-      setJumpCredMode('existing');
-      setNewJumpCred({ name: '', host: '', username: '', auth_type: 'password', password: '', private_key: '' });
-      setDpuCredMode('new');
-      setDpuCred({ username: 'ubuntu', password: 'password' });
+      setNewHost({
+        name: "",
+        host_ip: "",
+        ssh_port: 22,
+        ssh_credential_id: undefined,
+        jumphost_chain: undefined,
+        bmc_ip: "",
+        bmc_username: "",
+        bmc_password: "",
+        dpu_credential_id: undefined,
+        dpu_mgmt_ip: "",
+      });
+      setHostCredMode("existing");
+      setNewHostCred({
+        name: "",
+        username: "root",
+        auth_type: "key",
+        password: "",
+        private_key: "",
+      });
+      setJumpCredMode("existing");
+      setNewJumpCred({
+        name: "",
+        host: "",
+        username: "",
+        auth_type: "password",
+        password: "",
+        private_key: "",
+      });
+      setDpuCredMode("new");
+      setDpuCred({ username: "ubuntu", password: "password" });
       setSelectedHostId(host.id);
     } catch (err) {
-      notifyError(err, 'Failed to register host');
+      notifyError(err, "Failed to register host");
     }
-  }, [newHost, hostCredMode, newHostCred, jumpCredMode, newJumpCred, dpuCredMode, dpuCred, createHost, queryClient]);
+  }, [
+    newHost,
+    hostCredMode,
+    newHostCred,
+    jumpCredMode,
+    newJumpCred,
+    dpuCredMode,
+    dpuCred,
+    createHost,
+    queryClient,
+  ]);
 
-  const handleDeleteHost = useCallback(async (hostId: number, hostName: string) => {
-    if (!confirm(`Delete host "${hostName}"? This removes all discovery data and deployments.`)) return;
-    try {
-      await deleteHost.mutateAsync(hostId);
-      notify.success('Host deleted', hostName, { category: 'fleet' });
-      if (selectedHostId === hostId) {
-        setSelectedHostId(null);
+  const handleDeleteHost = useCallback(
+    async (hostId: number, hostName: string) => {
+      if (
+        !confirm(
+          `Delete host "${hostName}"? This removes all discovery data and deployments.`,
+        )
+      )
+        return;
+      try {
+        await deleteHost.mutateAsync(hostId);
+        notify.success("Host deleted", hostName, { category: "fleet" });
+        if (selectedHostId === hostId) {
+          setSelectedHostId(null);
+        }
+      } catch (err) {
+        notifyError(err, "Failed to delete host");
       }
-    } catch (err) {
-      notifyError(err, 'Failed to delete host');
-    }
-  }, [deleteHost, selectedHostId]);
+    },
+    [deleteHost, selectedHostId],
+  );
 
-  const handleDiscover = useCallback(async (hostId: number, hostName: string) => {
-    try {
-      await triggerDiscovery.mutateAsync({
-        hostId,
-        data: { probe_bmc: true, probe_ipmi: true, probe_dpu: true, probe_vlan: false },
-      });
-      notify.success('Discovery queued', `${hostName} — polling for progress…`, { category: 'deployment' });
-    } catch (err) {
-      notifyError(err, 'Failed to trigger discovery');
-    }
-  }, [triggerDiscovery]);
+  const handleDiscover = useCallback(
+    async (hostId: number, hostName: string) => {
+      try {
+        await triggerDiscovery.mutateAsync({
+          hostId,
+          data: {
+            probe_bmc: true,
+            probe_ipmi: true,
+            probe_dpu: true,
+            probe_vlan: false,
+          },
+        });
+        notify.success(
+          "Discovery queued",
+          `${hostName} — polling for progress…`,
+          { category: "deployment" },
+        );
+      } catch (err) {
+        notifyError(err, "Failed to trigger discovery");
+      }
+    },
+    [triggerDiscovery],
+  );
 
-  const handleDeploy = useCallback(async (hostId: number) => {
-    try {
-      setIsLoadingPreview(true);
-      const plan = await bareMetalDeploymentsApi.previewDeployment(projectId, { host_id: hostId });
-      setDeployPreview({ hostId, plan });
-    } catch (err) {
-      notifyError(err, 'Failed to load deployment plan');
-    } finally {
-      setIsLoadingPreview(false);
-    }
-  }, [projectId]);
+  const handleDeploy = useCallback(
+    async (hostId: number) => {
+      try {
+        setIsLoadingPreview(true);
+        const plan = await bareMetalDeploymentsApi.previewDeployment(
+          projectId,
+          { host_id: hostId },
+        );
+        setDeployPreview({ hostId, plan });
+      } catch (err) {
+        notifyError(err, "Failed to load deployment plan");
+      } finally {
+        setIsLoadingPreview(false);
+      }
+    },
+    [projectId],
+  );
 
   const handleConfirmDeploy = useCallback(async () => {
     if (!deployPreview) return;
@@ -315,102 +445,120 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
       });
       setActiveDeploymentId(deployment.id);
       setDeployPreview(null);
-      notify.success('Deployment started', `Deployment #${deployment.id}`, { category: 'deployment' });
+      notify.success("Deployment started", `Deployment #${deployment.id}`, {
+        category: "deployment",
+      });
     } catch (err) {
-      notifyError(err, 'Failed to start deployment');
+      notifyError(err, "Failed to start deployment");
     }
   }, [deployPreview, createDeployment]);
 
-  const handleMultiHostDeploy = useCallback(async (payload: MultiHostDeployPayload) => {
-    try {
-      if (payload.deploy_engine === 'blueprint' && payload.template_id) {
-        const cpHost = hosts?.find(h => h.id === (payload.control_plane_host_id ?? payload.host_id));
-        const instanceName = `Multi-Host Cluster (${cpHost?.name || 'CP'})`;
-
-        // Store variables in the SAME module-path-keyed nested shape that
-        // StackDetailDialog uses. The backend keys per-module variables by path
-        // (StackDeploymentService._build_stack_module_variables) and
-        // _stamp_host_release only finds bare_metal_host_id inside a nested
-        // dict — a flat object would break release stamping. Object/array
-        // values are JSON-stringified so they survive as strings, not raw
-        // values, when the flattener persists project-level defaults.
-        const flatVars: Record<string, unknown> = {
-          bare_metal_host_id: String(payload.host_id ?? payload.control_plane_host_id ?? ''),
-          control_plane_host_id: payload.control_plane_host_id ?? null,
-          worker_host_ids: payload.worker_host_ids ?? [],
-          dpu_selections: payload.blueprint_dpu_selections ?? {},
-          tmfifo_pool_cidr: payload.blueprint_tmfifo_pool_cidr ?? null,
-          topology: payload.blueprint_topology ?? null,
-        };
-        const template = payload.template_slug
-          ? await stacksApi.fetchStackTemplate(payload.template_slug)
-          : null;
-        const bareMetalModulePaths = (template?.modules || [])
-          .filter((m: { path: string }) => m.path.startsWith('bare-metal/'))
-          .map((m: { path: string }) => m.path);
-
-        // Guard: a template with no bare-metal/ modules produces an empty
-        // variables dict — creating the instance would silently discard every
-        // worker/DPU/CIDR selection (ADR-424 finding E).
-        if (bareMetalModulePaths.length === 0 || !payload.template_slug) {
-          notify.error(
-            'Template has no bare-metal modules',
-            'The selected template contains no bare-metal/ modules. Select a template that includes BNK bare-metal modules, or use the Orchestrator engine.',
-            { category: 'deployment' }
+  const handleMultiHostDeploy = useCallback(
+    async (payload: MultiHostDeployPayload) => {
+      try {
+        if (payload.deploy_engine === "blueprint" && payload.template_id) {
+          const cpHost = hosts?.find(
+            (h) => h.id === (payload.control_plane_host_id ?? payload.host_id),
           );
-          return;
-        }
+          const instanceName = `Multi-Host Cluster (${cpHost?.name || "CP"})`;
 
-        const variables: Record<string, Record<string, string>> = {};
-        for (const modPath of bareMetalModulePaths) {
-          variables[modPath] = {};
-          for (const [k, v] of Object.entries(flatVars)) {
-            variables[modPath][k] =
-              typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v ?? '');
+          // Store variables in the SAME module-path-keyed nested shape that
+          // StackDetailDialog uses. The backend keys per-module variables by path
+          // (StackDeploymentService._build_stack_module_variables) and
+          // _stamp_host_release only finds bare_metal_host_id inside a nested
+          // dict — a flat object would break release stamping. Object/array
+          // values are JSON-stringified so they survive as strings, not raw
+          // values, when the flattener persists project-level defaults.
+          const flatVars: Record<string, unknown> = {
+            bare_metal_host_id: String(
+              payload.host_id ?? payload.control_plane_host_id ?? "",
+            ),
+            control_plane_host_id: payload.control_plane_host_id ?? null,
+            worker_host_ids: payload.worker_host_ids ?? [],
+            dpu_selections: payload.blueprint_dpu_selections ?? {},
+            tmfifo_pool_cidr: payload.blueprint_tmfifo_pool_cidr ?? null,
+            topology: payload.blueprint_topology ?? null,
+          };
+          const template = payload.template_slug
+            ? await stacksApi.fetchStackTemplate(payload.template_slug)
+            : null;
+          const bareMetalModulePaths = (template?.modules || [])
+            .filter((m: { path: string }) => m.path.startsWith("bare-metal/"))
+            .map((m: { path: string }) => m.path);
+
+          // Guard: a template with no bare-metal/ modules produces an empty
+          // variables dict — creating the instance would silently discard every
+          // worker/DPU/CIDR selection (ADR-424 finding E).
+          if (bareMetalModulePaths.length === 0 || !payload.template_slug) {
+            notify.error(
+              "Template has no bare-metal modules",
+              "The selected template contains no bare-metal/ modules. Select a template that includes BNK bare-metal modules, or use the Orchestrator engine.",
+              { category: "deployment" },
+            );
+            return;
           }
+
+          const variables: Record<string, Record<string, string>> = {};
+          for (const modPath of bareMetalModulePaths) {
+            variables[modPath] = {};
+            for (const [k, v] of Object.entries(flatVars)) {
+              variables[modPath][k] =
+                typeof v === "object" && v !== null
+                  ? JSON.stringify(v)
+                  : String(v ?? "");
+            }
+          }
+          const instance = await stacksApi.createStackInstance(projectId, {
+            template_id: payload.template_id,
+            name: instanceName,
+            variables,
+          });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.stacks.instances.byProject(projectId),
+          });
+          setShowMultiHostModal(false);
+          notify.success(
+            "Blueprint Stack Instance created",
+            `Added "${instanceName}" (#${instance.id}) to project. Navigating to Blueprints / Modules tab to review inputs…`,
+            { category: "deployment" },
+          );
+          // Navigate to modules/blueprints tab so user can see and review the stack instance
+          navigate(`/projects/${projectId}?tab=modules`);
+        } else {
+          // Orchestrator path: worker_host_ids is not forwarded — the conflict check
+          // (widened to host_id + worker_host_ids in ADR-424) would block the deploy if any
+          // unrelated host is busy, and nothing on this path consumes worker selections.
+          const deployment = await createDeployment.mutateAsync({
+            host_id: payload.host_id,
+            control_plane_host_id: payload.control_plane_host_id,
+            resume_from_step: payload.resume_from_step,
+            skip_discovery: payload.skip_discovery,
+            selected_phases: payload.selected_phases,
+            selected_steps: payload.selected_steps,
+            deployable_release_id: payload.deployable_release_id,
+          });
+          setActiveDeploymentId(deployment.id);
+          setShowMultiHostModal(false);
+          notify.success(
+            "Multi-host deployment started",
+            `Deployment #${deployment.id}`,
+            { category: "deployment" },
+          );
         }
-        const instance = await stacksApi.createStackInstance(projectId, {
-          template_id: payload.template_id,
-          name: instanceName,
-          variables,
-        });
-        queryClient.invalidateQueries({ queryKey: queryKeys.stacks.instances.byProject(projectId) });
-        setShowMultiHostModal(false);
-        notify.success(
-          'Blueprint Stack Instance created',
-          `Added "${instanceName}" (#${instance.id}) to project. Navigating to Blueprints / Modules tab to review inputs…`,
-          { category: 'deployment' }
-        );
-        // Navigate to modules/blueprints tab so user can see and review the stack instance
-        navigate(`/projects/${projectId}?tab=modules`);
-      } else {
-        // Orchestrator path: worker_host_ids is not forwarded — the conflict check
-        // (widened to host_id + worker_host_ids in ADR-424) would block the deploy if any
-        // unrelated host is busy, and nothing on this path consumes worker selections.
-        const deployment = await createDeployment.mutateAsync({
-          host_id: payload.host_id,
-          control_plane_host_id: payload.control_plane_host_id,
-          resume_from_step: payload.resume_from_step,
-          skip_discovery: payload.skip_discovery,
-          selected_phases: payload.selected_phases,
-          selected_steps: payload.selected_steps,
-          deployable_release_id: payload.deployable_release_id,
-        });
-        setActiveDeploymentId(deployment.id);
-        setShowMultiHostModal(false);
-        notify.success('Multi-host deployment started', `Deployment #${deployment.id}`, { category: 'deployment' });
+      } catch (err) {
+        notifyError(err, "Failed to create multi-host blueprint stack");
+        throw err;
       }
-    } catch (err) {
-      notifyError(err, 'Failed to create multi-host blueprint stack');
-      throw err;
-    }
-  }, [createDeployment, projectId, hosts, queryClient, navigate]);
+    },
+    [createDeployment, projectId, hosts, queryClient, navigate],
+  );
 
   // If previewing a deployment plan, show confirmation
   if (deployPreview) {
     const { plan, hostId } = deployPreview;
-    const host = hosts?.find(h => h.id === hostId);
-    const formatDuration = (s: number) => s >= 60 ? `${Math.round(s / 60)}m` : `${s}s`;
+    const host = hosts?.find((h) => h.id === hostId);
+    const formatDuration = (s: number) =>
+      s >= 60 ? `${Math.round(s / 60)}m` : `${s}s`;
 
     return (
       <div className="space-y-6">
@@ -421,10 +569,15 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
               Deployment Plan
             </h2>
             <p className="text-sm text-muted-foreground mt-1">
-              {host?.name} ({host?.host_ip}) — topology: <strong>{plan.topology}</strong>
+              {host?.name} ({host?.host_ip}) — topology:{" "}
+              <strong>{plan.topology}</strong>
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => setDeployPreview(null)}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setDeployPreview(null)}
+          >
             Back
           </Button>
         </div>
@@ -433,16 +586,25 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
         <Card className="p-4">
           <div className="grid grid-cols-3 gap-4 text-sm">
             <div>
-              <span className="text-muted-foreground">Steps:</span>{' '}
+              <span className="text-muted-foreground">Steps:</span>{" "}
               <strong>{plan.selected_steps}</strong> of {plan.total_steps}
             </div>
             <div>
-              <span className="text-muted-foreground">Estimated time:</span>{' '}
-              <strong>{formatDuration(plan.estimated_total_duration_seconds)}</strong>
+              <span className="text-muted-foreground">Estimated time:</span>{" "}
+              <strong>
+                {formatDuration(plan.estimated_total_duration_seconds)}
+              </strong>
             </div>
             <div>
-              <span className="text-muted-foreground">Connectivity risk steps:</span>{' '}
-              <strong>{plan.steps.filter(s => s.selected && s.connectivity_risk).length}</strong>
+              <span className="text-muted-foreground">
+                Connectivity risk steps:
+              </span>{" "}
+              <strong>
+                {
+                  plan.steps.filter((s) => s.selected && s.connectivity_risk)
+                    .length
+                }
+              </strong>
             </div>
           </div>
         </Card>
@@ -451,7 +613,10 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
         {plan.prerequisite_warnings.length > 0 && (
           <div className="space-y-2">
             {plan.prerequisite_warnings.map((w, i) => (
-              <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-md bg-warning/10 border border-warning/20 text-sm text-warning">
+              <div
+                key={i}
+                className="flex items-start gap-2 px-3 py-2 rounded-md bg-warning/10 border border-warning/20 text-sm text-warning"
+              >
                 <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                 <span>{w}</span>
               </div>
@@ -476,12 +641,18 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
               </span>
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate">{step.name}</div>
-                <div className="text-xs text-muted-foreground truncate">{step.description}</div>
+                <div className="text-xs text-muted-foreground truncate">
+                  {step.description}
+                </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {step.connectivity_risk && (
-                  <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20 text-xs">
-                    <AlertTriangle className="h-3 w-3 mr-1" />connectivity risk
+                  <Badge
+                    variant="outline"
+                    className="bg-destructive/10 text-destructive border-destructive/20 text-xs"
+                  >
+                    <AlertTriangle className="h-3 w-3 mr-1" />
+                    connectivity risk
                   </Badge>
                 )}
                 <span className="text-xs text-muted-foreground">
@@ -538,7 +709,8 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
             Bare Metal Hosts
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Register servers, run discovery, and deploy BNK with DPU acceleration
+            Register servers, run discovery, and deploy BNK with DPU
+            acceleration
           </p>
         </div>
         {isOwner && (
@@ -548,13 +720,22 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
               size="sm"
               onClick={() => setShowMultiHostModal(true)}
               disabled={!hosts || hosts.length === 0}
-              title={!hosts || hosts.length === 0 ? 'Add at least one host to deploy a cluster' : 'Deploy cluster across bare metal hosts'}
+              title={
+                !hosts || hosts.length === 0
+                  ? "Add at least one host to deploy a cluster"
+                  : "Deploy cluster across bare metal hosts"
+              }
             >
               <Rocket className="h-4 w-4 mr-1" />
               Deploy Cluster (Multi-Host)
             </Button>
-            <Button onClick={() => setShowAddForm(!showAddForm)} size="sm" variant="outline">
-              <Plus className="h-4 w-4 mr-1" />Add Host
+            <Button
+              onClick={() => setShowAddForm(!showAddForm)}
+              size="sm"
+              variant="outline"
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Add Host
             </Button>
           </div>
         )}
@@ -603,8 +784,10 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
               <Label htmlFor="host-name">Host Name *</Label>
               <Input
                 id="host-name"
-                value={newHost.name || ''}
-                onChange={(e) => setNewHost(prev => ({ ...prev, name: e.target.value }))}
+                value={newHost.name || ""}
+                onChange={(e) =>
+                  setNewHost((prev) => ({ ...prev, name: e.target.value }))
+                }
                 placeholder="dpu-server-01"
               />
             </div>
@@ -612,8 +795,10 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
               <Label htmlFor="host-ip">Host IP *</Label>
               <Input
                 id="host-ip"
-                value={newHost.host_ip || ''}
-                onChange={(e) => setNewHost(prev => ({ ...prev, host_ip: e.target.value }))}
+                value={newHost.host_ip || ""}
+                onChange={(e) =>
+                  setNewHost((prev) => ({ ...prev, host_ip: e.target.value }))
+                }
                 placeholder="10.176.11.91"
               />
             </div>
@@ -628,29 +813,52 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label htmlFor="ssh-credential">SSH Credential</Label>
-                {hostCredMode === 'existing' ? (
+                {hostCredMode === "existing" ? (
                   <>
-                    <select
-                      id="ssh-credential"
-                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
-                      value={newHost.ssh_credential_id || ''}
-                      onChange={(e) => {
-                        if (e.target.value === '__new__') {
-                          setHostCredMode('new');
-                          setNewHost(prev => ({ ...prev, ssh_credential_id: undefined }));
+                    <Select
+                      value={
+                        newHost.ssh_credential_id
+                          ? String(newHost.ssh_credential_id)
+                          : "none"
+                      }
+                      onValueChange={(val) => {
+                        if (val === "__new__") {
+                          setHostCredMode("new");
+                          setNewHost((prev) => ({
+                            ...prev,
+                            ssh_credential_id: undefined,
+                          }));
+                        } else if (val === "none") {
+                          setNewHost((prev) => ({
+                            ...prev,
+                            ssh_credential_id: undefined,
+                          }));
                         } else {
-                          setNewHost(prev => ({ ...prev, ssh_credential_id: e.target.value ? parseInt(e.target.value) : undefined }));
+                          setNewHost((prev) => ({
+                            ...prev,
+                            ssh_credential_id: parseInt(val),
+                          }));
                         }
                       }}
                     >
-                      <option value="">None (use ssh-agent)</option>
-                      {sshCredentials?.map(cred => (
-                        <option key={cred.id} value={cred.id}>
-                          {cred.name} ({cred.username}@{cred.host}:{cred.port})
-                        </option>
-                      ))}
-                      <option value="__new__">+ Create new credential...</option>
-                    </select>
+                      <SelectTrigger id="ssh-credential" className="h-9 w-full">
+                        <SelectValue placeholder="None (use ssh-agent)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">
+                          None (use ssh-agent)
+                        </SelectItem>
+                        {sshCredentials?.map((cred) => (
+                          <SelectItem key={cred.id} value={String(cred.id)}>
+                            {cred.name} ({cred.username}@{cred.host}:{cred.port}
+                            )
+                          </SelectItem>
+                        ))}
+                        <SelectItem value="__new__">
+                          + Create new credential...
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
                     <p className="text-xs text-muted-foreground mt-1">
                       Select existing or create a new credential inline
                     </p>
@@ -658,11 +866,15 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
                 ) : (
                   <div className="space-y-2 rounded border p-2 bg-background">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-primary">New credential for host</span>
+                      <span className="text-xs font-medium text-primary">
+                        New credential for host
+                      </span>
                       <button
                         type="button"
                         className="text-xs text-muted-foreground hover:text-foreground underline"
-                        onClick={() => { setHostCredMode('existing'); }}
+                        onClick={() => {
+                          setHostCredMode("existing");
+                        }}
                       >
                         Cancel
                       </button>
@@ -672,7 +884,12 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
                         <Label className="text-xs">Username *</Label>
                         <Input
                           value={newHostCred.username}
-                          onChange={(e) => setNewHostCred(prev => ({ ...prev, username: e.target.value }))}
+                          onChange={(e) =>
+                            setNewHostCred((prev) => ({
+                              ...prev,
+                              username: e.target.value,
+                            }))
+                          }
                           placeholder="root"
                           className="h-8 text-sm"
                         />
@@ -681,8 +898,13 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
                         <Label className="text-xs">Credential Name</Label>
                         <Input
                           value={newHostCred.name}
-                          onChange={(e) => setNewHostCred(prev => ({ ...prev, name: e.target.value }))}
-                          placeholder={`${newHost.name || 'host'}-ssh`}
+                          onChange={(e) =>
+                            setNewHostCred((prev) => ({
+                              ...prev,
+                              name: e.target.value,
+                            }))
+                          }
+                          placeholder={`${newHost.name || "host"}-ssh`}
                           className="h-8 text-sm"
                         />
                       </div>
@@ -691,31 +913,61 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
                       <div className="flex gap-2 mb-1">
                         <button
                           type="button"
-                          className={cn('text-xs px-2 py-0.5 rounded', newHostCred.auth_type === 'key' ? 'bg-primary text-primary-foreground' : 'bg-muted')}
-                          onClick={() => setNewHostCred(prev => ({ ...prev, auth_type: 'key' }))}
+                          className={cn(
+                            "text-xs px-2 py-0.5 rounded",
+                            newHostCred.auth_type === "key"
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted",
+                          )}
+                          onClick={() =>
+                            setNewHostCred((prev) => ({
+                              ...prev,
+                              auth_type: "key",
+                            }))
+                          }
                         >
                           SSH Key
                         </button>
                         <button
                           type="button"
-                          className={cn('text-xs px-2 py-0.5 rounded', newHostCred.auth_type === 'password' ? 'bg-primary text-primary-foreground' : 'bg-muted')}
-                          onClick={() => setNewHostCred(prev => ({ ...prev, auth_type: 'password' }))}
+                          className={cn(
+                            "text-xs px-2 py-0.5 rounded",
+                            newHostCred.auth_type === "password"
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted",
+                          )}
+                          onClick={() =>
+                            setNewHostCred((prev) => ({
+                              ...prev,
+                              auth_type: "password",
+                            }))
+                          }
                         >
                           Password
                         </button>
                       </div>
-                      {newHostCred.auth_type === 'password' ? (
+                      {newHostCred.auth_type === "password" ? (
                         <Input
                           type="password"
                           value={newHostCred.password}
-                          onChange={(e) => setNewHostCred(prev => ({ ...prev, password: e.target.value }))}
+                          onChange={(e) =>
+                            setNewHostCred((prev) => ({
+                              ...prev,
+                              password: e.target.value,
+                            }))
+                          }
                           placeholder="Password"
                           className="h-8 text-sm"
                         />
                       ) : (
                         <textarea
                           value={newHostCred.private_key}
-                          onChange={(e) => setNewHostCred(prev => ({ ...prev, private_key: e.target.value }))}
+                          onChange={(e) =>
+                            setNewHostCred((prev) => ({
+                              ...prev,
+                              private_key: e.target.value,
+                            }))
+                          }
                           placeholder="Paste private key (PEM format)"
                           className="flex w-full rounded-md border border-input bg-transparent px-3 py-1 text-xs font-mono h-20 resize-none"
                         />
@@ -728,63 +980,105 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
                 <div className="flex items-center gap-2">
                   <Label htmlFor="jumphost-credential">
                     {projectSshCredentialId
-                      ? 'Jumphost (optional — project default will be used)'
-                      : 'Jumphost / Bastion'}
+                      ? "Jumphost (optional — project default will be used)"
+                      : "Jumphost / Bastion"}
                   </Label>
                   {projectSshCredentialId && (
-                    <Badge variant="outline" className="text-xs bg-info/10 text-info border-info/20">
+                    <Badge
+                      variant="outline"
+                      className="text-xs bg-info/10 text-info border-info/20"
+                    >
                       <Link className="h-3 w-3 mr-1" />
                       Project jumphost configured
                     </Badge>
                   )}
                 </div>
-                {jumpCredMode === 'existing' ? (
+                {jumpCredMode === "existing" ? (
                   <>
-                    <select
-                      id="jumphost-credential"
-                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                    <Select
                       value={
-                        newHost.jumphost_chain && newHost.jumphost_chain.length > 0
-                          ? String((newHost.jumphost_chain[0] as Record<string, unknown>).ssh_credential_id || '')
-                          : ''
+                        newHost.jumphost_chain &&
+                        newHost.jumphost_chain.length > 0
+                          ? String(
+                              (
+                                newHost.jumphost_chain[0] as Record<
+                                  string,
+                                  unknown
+                                >
+                              ).ssh_credential_id || "default",
+                            )
+                          : "default"
                       }
-                      onChange={(e) => {
-                        if (e.target.value === '__new__') {
-                          setJumpCredMode('new');
-                          setNewHost(prev => ({ ...prev, jumphost_chain: undefined }));
-                        } else {
-                          const credId = e.target.value ? parseInt(e.target.value) : null;
-                          setNewHost(prev => ({
+                      onValueChange={(val) => {
+                        if (val === "__new__") {
+                          setJumpCredMode("new");
+                          setNewHost((prev) => ({
                             ...prev,
-                            jumphost_chain: credId ? [{ ssh_credential_id: credId }] : undefined,
+                            jumphost_chain: undefined,
+                          }));
+                        } else if (val === "default") {
+                          setNewHost((prev) => ({
+                            ...prev,
+                            jumphost_chain: undefined,
+                          }));
+                        } else {
+                          const credId = parseInt(val);
+                          setNewHost((prev) => ({
+                            ...prev,
+                            jumphost_chain: credId
+                              ? [{ ssh_credential_id: credId }]
+                              : undefined,
                           }));
                         }
                       }}
                     >
-                      <option value="">
-                        {projectSshCredentialId ? 'Use project default' : 'None (direct connection)'}
-                      </option>
-                      {sshCredentials?.map(cred => (
-                        <option key={cred.id} value={cred.id}>
-                          {cred.name} ({cred.username}@{cred.host}:{cred.port})
-                        </option>
-                      ))}
-                      <option value="__new__">+ Create new jumphost credential...</option>
-                    </select>
+                      <SelectTrigger
+                        id="jumphost-credential"
+                        className="h-9 w-full"
+                      >
+                        <SelectValue
+                          placeholder={
+                            projectSshCredentialId
+                              ? "Use project default"
+                              : "None (direct connection)"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="default">
+                          {projectSshCredentialId
+                            ? "Use project default"
+                            : "None (direct connection)"}
+                        </SelectItem>
+                        {sshCredentials?.map((cred) => (
+                          <SelectItem key={cred.id} value={String(cred.id)}>
+                            {cred.name} ({cred.username}@{cred.host}:{cred.port}
+                            )
+                          </SelectItem>
+                        ))}
+                        <SelectItem value="__new__">
+                          + Create new jumphost credential...
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
                     <p className="text-xs text-muted-foreground mt-1">
                       {projectSshCredentialId
-                        ? 'Leave empty to inherit the project jumphost, or select one to override'
-                        : 'SSH through a bastion/jump host to reach the target'}
+                        ? "Leave empty to inherit the project jumphost, or select one to override"
+                        : "SSH through a bastion/jump host to reach the target"}
                     </p>
                   </>
                 ) : (
                   <div className="space-y-2 rounded border p-2 bg-background">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-primary">New jumphost credential</span>
+                      <span className="text-xs font-medium text-primary">
+                        New jumphost credential
+                      </span>
                       <button
                         type="button"
                         className="text-xs text-muted-foreground hover:text-foreground underline"
-                        onClick={() => { setJumpCredMode('existing'); }}
+                        onClick={() => {
+                          setJumpCredMode("existing");
+                        }}
                       >
                         Cancel
                       </button>
@@ -794,7 +1088,12 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
                         <Label className="text-xs">Jumphost IP *</Label>
                         <Input
                           value={newJumpCred.host}
-                          onChange={(e) => setNewJumpCred(prev => ({ ...prev, host: e.target.value }))}
+                          onChange={(e) =>
+                            setNewJumpCred((prev) => ({
+                              ...prev,
+                              host: e.target.value,
+                            }))
+                          }
                           placeholder="10.0.0.1"
                           className="h-8 text-sm"
                         />
@@ -803,7 +1102,12 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
                         <Label className="text-xs">Username *</Label>
                         <Input
                           value={newJumpCred.username}
-                          onChange={(e) => setNewJumpCred(prev => ({ ...prev, username: e.target.value }))}
+                          onChange={(e) =>
+                            setNewJumpCred((prev) => ({
+                              ...prev,
+                              username: e.target.value,
+                            }))
+                          }
                           placeholder="jumpuser"
                           className="h-8 text-sm"
                         />
@@ -812,8 +1116,13 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
                         <Label className="text-xs">Credential Name</Label>
                         <Input
                           value={newJumpCred.name}
-                          onChange={(e) => setNewJumpCred(prev => ({ ...prev, name: e.target.value }))}
-                          placeholder={`${newHost.name || 'host'}-jumphost`}
+                          onChange={(e) =>
+                            setNewJumpCred((prev) => ({
+                              ...prev,
+                              name: e.target.value,
+                            }))
+                          }
+                          placeholder={`${newHost.name || "host"}-jumphost`}
                           className="h-8 text-sm"
                         />
                       </div>
@@ -822,31 +1131,61 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
                       <div className="flex gap-2 mb-1">
                         <button
                           type="button"
-                          className={cn('text-xs px-2 py-0.5 rounded', newJumpCred.auth_type === 'password' ? 'bg-primary text-primary-foreground' : 'bg-muted')}
-                          onClick={() => setNewJumpCred(prev => ({ ...prev, auth_type: 'password' }))}
+                          className={cn(
+                            "text-xs px-2 py-0.5 rounded",
+                            newJumpCred.auth_type === "password"
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted",
+                          )}
+                          onClick={() =>
+                            setNewJumpCred((prev) => ({
+                              ...prev,
+                              auth_type: "password",
+                            }))
+                          }
                         >
                           Password
                         </button>
                         <button
                           type="button"
-                          className={cn('text-xs px-2 py-0.5 rounded', newJumpCred.auth_type === 'key' ? 'bg-primary text-primary-foreground' : 'bg-muted')}
-                          onClick={() => setNewJumpCred(prev => ({ ...prev, auth_type: 'key' }))}
+                          className={cn(
+                            "text-xs px-2 py-0.5 rounded",
+                            newJumpCred.auth_type === "key"
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted",
+                          )}
+                          onClick={() =>
+                            setNewJumpCred((prev) => ({
+                              ...prev,
+                              auth_type: "key",
+                            }))
+                          }
                         >
                           SSH Key
                         </button>
                       </div>
-                      {newJumpCred.auth_type === 'password' ? (
+                      {newJumpCred.auth_type === "password" ? (
                         <Input
                           type="password"
                           value={newJumpCred.password}
-                          onChange={(e) => setNewJumpCred(prev => ({ ...prev, password: e.target.value }))}
+                          onChange={(e) =>
+                            setNewJumpCred((prev) => ({
+                              ...prev,
+                              password: e.target.value,
+                            }))
+                          }
                           placeholder="Password"
                           className="h-8 text-sm"
                         />
                       ) : (
                         <textarea
                           value={newJumpCred.private_key}
-                          onChange={(e) => setNewJumpCred(prev => ({ ...prev, private_key: e.target.value }))}
+                          onChange={(e) =>
+                            setNewJumpCred((prev) => ({
+                              ...prev,
+                              private_key: e.target.value,
+                            }))
+                          }
                           placeholder="Paste private key (PEM format)"
                           className="flex w-full rounded-md border border-input bg-transparent px-3 py-1 text-xs font-mono h-20 resize-none"
                         />
@@ -863,7 +1202,12 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
                   id="ssh-port"
                   type="number"
                   value={newHost.ssh_port || 22}
-                  onChange={(e) => setNewHost(prev => ({ ...prev, ssh_port: parseInt(e.target.value) || 22 }))}
+                  onChange={(e) =>
+                    setNewHost((prev) => ({
+                      ...prev,
+                      ssh_port: parseInt(e.target.value) || 22,
+                    }))
+                  }
                 />
               </div>
             </div>
@@ -874,15 +1218,19 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
             <div className="flex items-center gap-2 text-sm font-medium">
               <Network className="h-4 w-4" />
               BMC / IPMI Access
-              <span className="text-xs text-muted-foreground font-normal">(optional)</span>
+              <span className="text-xs text-muted-foreground font-normal">
+                (optional)
+              </span>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <Label htmlFor="bmc-ip">BMC/IPMI IP</Label>
                 <Input
                   id="bmc-ip"
-                  value={newHost.bmc_ip || ''}
-                  onChange={(e) => setNewHost(prev => ({ ...prev, bmc_ip: e.target.value }))}
+                  value={newHost.bmc_ip || ""}
+                  onChange={(e) =>
+                    setNewHost((prev) => ({ ...prev, bmc_ip: e.target.value }))
+                  }
                   placeholder="10.176.11.92"
                 />
               </div>
@@ -890,8 +1238,13 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
                 <Label htmlFor="bmc-username">BMC Username</Label>
                 <Input
                   id="bmc-username"
-                  value={newHost.bmc_username || ''}
-                  onChange={(e) => setNewHost(prev => ({ ...prev, bmc_username: e.target.value }))}
+                  value={newHost.bmc_username || ""}
+                  onChange={(e) =>
+                    setNewHost((prev) => ({
+                      ...prev,
+                      bmc_username: e.target.value,
+                    }))
+                  }
                   placeholder="admin"
                 />
               </div>
@@ -900,8 +1253,13 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
                 <Input
                   id="bmc-password"
                   type="password"
-                  value={newHost.bmc_password || ''}
-                  onChange={(e) => setNewHost(prev => ({ ...prev, bmc_password: e.target.value }))}
+                  value={newHost.bmc_password || ""}
+                  onChange={(e) =>
+                    setNewHost((prev) => ({
+                      ...prev,
+                      bmc_password: e.target.value,
+                    }))
+                  }
                   placeholder="••••••••"
                 />
               </div>
@@ -914,52 +1272,81 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
               <div className="flex items-center gap-2 text-sm font-medium">
                 <Cpu className="h-4 w-4" />
                 DPU Access
-                <span className="text-xs text-muted-foreground font-normal">(rshim SSH — default BFB: ubuntu / password)</span>
+                <span className="text-xs text-muted-foreground font-normal">
+                  (rshim SSH — default BFB: ubuntu / password)
+                </span>
               </div>
-              {dpuCredMode === 'new' && (
+              {dpuCredMode === "new" && (
                 <button
                   type="button"
                   className="text-xs text-muted-foreground hover:text-foreground underline"
-                  onClick={() => setDpuCredMode('existing')}
+                  onClick={() => setDpuCredMode("existing")}
                 >
                   Use existing credential
                 </button>
               )}
             </div>
 
-            {dpuCredMode === 'existing' ? (
+            {dpuCredMode === "existing" ? (
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label htmlFor="dpu-credential">DPU SSH Credential</Label>
-                  <select
-                    id="dpu-credential"
-                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
-                    value={newHost.dpu_credential_id || ''}
-                    onChange={(e) => {
-                      if (e.target.value === '__new__') {
-                        setDpuCredMode('new');
-                        setNewHost(prev => ({ ...prev, dpu_credential_id: undefined }));
+                  <Select
+                    value={
+                      newHost.dpu_credential_id
+                        ? String(newHost.dpu_credential_id)
+                        : "default"
+                    }
+                    onValueChange={(val) => {
+                      if (val === "__new__") {
+                        setDpuCredMode("new");
+                        setNewHost((prev) => ({
+                          ...prev,
+                          dpu_credential_id: undefined,
+                        }));
+                      } else if (val === "default") {
+                        setNewHost((prev) => ({
+                          ...prev,
+                          dpu_credential_id: undefined,
+                        }));
                       } else {
-                        const credId = e.target.value ? parseInt(e.target.value) : undefined;
-                        setNewHost(prev => ({ ...prev, dpu_credential_id: credId }));
+                        const credId = parseInt(val);
+                        setNewHost((prev) => ({
+                          ...prev,
+                          dpu_credential_id: credId,
+                        }));
                       }
                     }}
                   >
-                    <option value="">Default / In-band (ubuntu / password)</option>
-                    {sshCredentials?.map(cred => (
-                      <option key={cred.id} value={cred.id}>
-                        {cred.name} ({cred.username}@{cred.host}:{cred.port})
-                      </option>
-                    ))}
-                    <option value="__new__">+ Create new DPU credential...</option>
-                  </select>
+                    <SelectTrigger id="dpu-credential" className="h-9 w-full">
+                      <SelectValue placeholder="Default / In-band (ubuntu / password)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">
+                        Default / In-band (ubuntu / password)
+                      </SelectItem>
+                      {sshCredentials?.map((cred) => (
+                        <SelectItem key={cred.id} value={String(cred.id)}>
+                          {cred.name} ({cred.username}@{cred.host}:{cred.port})
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="__new__">
+                        + Create new DPU credential...
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <Label htmlFor="dpu-mgmt-ip">DPU IP</Label>
                   <Input
                     id="dpu-mgmt-ip"
-                    value={newHost.dpu_mgmt_ip || ''}
-                    onChange={(e) => setNewHost(prev => ({ ...prev, dpu_mgmt_ip: e.target.value }))}
+                    value={newHost.dpu_mgmt_ip || ""}
+                    onChange={(e) =>
+                      setNewHost((prev) => ({
+                        ...prev,
+                        dpu_mgmt_ip: e.target.value,
+                      }))
+                    }
                     placeholder="192.168.100.2"
                     className="h-9"
                   />
@@ -972,7 +1359,12 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
                   <Input
                     id="dpu-username"
                     value={dpuCred.username}
-                    onChange={(e) => setDpuCred(prev => ({ ...prev, username: e.target.value }))}
+                    onChange={(e) =>
+                      setDpuCred((prev) => ({
+                        ...prev,
+                        username: e.target.value,
+                      }))
+                    }
                     placeholder="ubuntu"
                     className="h-9"
                   />
@@ -983,7 +1375,12 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
                     id="dpu-password"
                     type="password"
                     value={dpuCred.password}
-                    onChange={(e) => setDpuCred(prev => ({ ...prev, password: e.target.value }))}
+                    onChange={(e) =>
+                      setDpuCred((prev) => ({
+                        ...prev,
+                        password: e.target.value,
+                      }))
+                    }
                     placeholder="password"
                     className="h-9"
                   />
@@ -992,8 +1389,13 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
                   <Label htmlFor="dpu-mgmt-ip">DPU IP</Label>
                   <Input
                     id="dpu-mgmt-ip"
-                    value={newHost.dpu_mgmt_ip || ''}
-                    onChange={(e) => setNewHost(prev => ({ ...prev, dpu_mgmt_ip: e.target.value }))}
+                    value={newHost.dpu_mgmt_ip || ""}
+                    onChange={(e) =>
+                      setNewHost((prev) => ({
+                        ...prev,
+                        dpu_mgmt_ip: e.target.value,
+                      }))
+                    }
                     placeholder="192.168.100.2"
                     className="h-9"
                   />
@@ -1016,34 +1418,64 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
           <div className="grid grid-cols-3 gap-3">
             <div>
               <Label htmlFor="version-profile">BNK Release</Label>
-              <select
-                id="version-profile"
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
-                value={newHost.version_profile_id || ''}
-                onChange={(e) => setNewHost(prev => ({ ...prev, version_profile_id: e.target.value ? parseInt(e.target.value) : undefined }))}
+              <Select
+                value={
+                  newHost.version_profile_id
+                    ? String(newHost.version_profile_id)
+                    : "auto"
+                }
+                onValueChange={(val) =>
+                  setNewHost((prev) => ({
+                    ...prev,
+                    version_profile_id:
+                      val === "auto" ? undefined : parseInt(val),
+                  }))
+                }
               >
-                <option value="">Auto (default)</option>
-                {releases?.filter(r => r.is_active).map(r => (
-                  <option key={r.id} value={r.id}>{r.display_name}{r.is_default ? ' (default)' : ''}</option>
-                ))}
-              </select>
+                <SelectTrigger id="version-profile" className="h-9 w-full">
+                  <SelectValue placeholder="Auto (default)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">Auto (default)</SelectItem>
+                  {releases
+                    ?.filter((r) => r.is_active)
+                    .map((r) => (
+                      <SelectItem key={r.id} value={String(r.id)}>
+                        {r.display_name}
+                        {r.is_default ? " (default)" : ""}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
           {/* Actions */}
           <div className="flex gap-2 justify-end">
-            <Button variant="outline" size="sm" onClick={() => {
-              setShowAddForm(false);
-              setHostCredMode('existing');
-              setJumpCredMode('existing');
-              setDpuCred({ username: 'ubuntu', password: 'password' });
-            }}>Cancel</Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setShowAddForm(false);
+                setHostCredMode("existing");
+                setJumpCredMode("existing");
+                setDpuCred({ username: "ubuntu", password: "password" });
+              }}
+            >
+              Cancel
+            </Button>
             <Button
               size="sm"
               onClick={handleCreateHost}
-              disabled={!newHost.name || !newHost.host_ip || createHost.isPending}
+              disabled={
+                !newHost.name || !newHost.host_ip || createHost.isPending
+              }
             >
-              {createHost.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
+              {createHost.isPending ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4 mr-1" />
+              )}
               Register Host
             </Button>
           </div>
@@ -1058,13 +1490,15 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
         </div>
       ) : hosts && hosts.length > 0 ? (
         <div className="space-y-2">
-          {hosts.map(host => (
+          {hosts.map((host) => (
             <HostRow
               key={host.id}
               host={host}
               projectId={projectId}
               isSelected={selectedHostId === host.id}
-              onSelect={() => setSelectedHostId(selectedHostId === host.id ? null : host.id)}
+              onSelect={() =>
+                setSelectedHostId(selectedHostId === host.id ? null : host.id)
+              }
               onDiscover={() => handleDiscover(host.id, host.name)}
               onDeploy={() => handleDeploy(host.id)}
               onDelete={() => handleDeleteHost(host.id, host.name)}
@@ -1073,8 +1507,10 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
               isLoadingPreview={isLoadingPreview}
               sshCredentials={sshCredentials}
               projectSshCredentialId={projectSshCredentialId}
-              discoveryResult={selectedHostId === host.id ? effectiveDiscoveryResult : null}
-              deployments={deployments?.filter(d => d.host_id === host.id)}
+              discoveryResult={
+                selectedHostId === host.id ? effectiveDiscoveryResult : null
+              }
+              deployments={deployments?.filter((d) => d.host_id === host.id)}
               onViewDeployment={(id) => setActiveDeploymentId(id)}
             />
           ))}
@@ -1084,20 +1520,20 @@ export function BareMetalPanel({ projectId, isOwner }: BareMetalPanelProps) {
           <Server className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
           <h3 className="text-lg font-medium mb-2">No hosts registered</h3>
           <p className="text-sm text-muted-foreground mb-4">
-            Register a bare-metal server to start. You'll need the server's IP address and SSH access.
+            Register a bare-metal server to start. You'll need the server's IP
+            address and SSH access.
           </p>
           {isOwner && (
             <Button onClick={() => setShowAddForm(true)}>
-              <Plus className="h-4 w-4 mr-1" />Register First Host
+              <Plus className="h-4 w-4 mr-1" />
+              Register First Host
             </Button>
           )}
         </Card>
       )}
-
     </div>
   );
 }
-
 
 // ============================================================================
 // DiscoveryStatusBadge — shows current discovery stage with spinner
@@ -1108,52 +1544,34 @@ function DiscoveryStatusBadge({ host }: { host: BareMetalHost }) {
 
   if (!status) {
     if (host.last_discovery_at) {
-      return (
-        <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-xs">
-          <CheckCircle2 className="h-3 w-3 mr-1" />Discovered
-        </Badge>
-      );
+      return <StatusBadge status="completed" label="Discovered" />;
     }
     return (
-      <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20 text-xs">
-        <AlertCircle className="h-3 w-3 mr-1" />Registered
-      </Badge>
+      <StatusBadge status="registered" tone="warning" label="Registered" />
     );
   }
 
-  if (status === 'completed') {
-    return (
-      <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-xs">
-        <CheckCircle2 className="h-3 w-3 mr-1" />Discovered
-      </Badge>
-    );
+  if (status === "completed") {
+    return <StatusBadge status="completed" label="Discovered" />;
   }
 
-  if (status === 'failed') {
-    return (
-      <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20 text-xs">
-        <XCircle className="h-3 w-3 mr-1" />Failed
-      </Badge>
-    );
+  if (status === "failed") {
+    return <StatusBadge status="failed" label="Failed" />;
   }
 
   // Active discovery — show spinner with stage label
   const stageLabels: Record<string, string> = {
-    pending: 'Queued…',
-    ssh_probe: 'SSH Probe…',
-    bmc_probe: 'BMC Probe…',
-    dpu_probe: 'DPU Probe…',
-    assessment: 'Assessment…',
+    pending: "Queued…",
+    ssh_probe: "SSH Probe…",
+    bmc_probe: "BMC Probe…",
+    dpu_probe: "DPU Probe…",
+    assessment: "Assessment…",
   };
 
   return (
-    <Badge variant="outline" className="bg-info/10 text-info border-info/20 text-xs">
-      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-      {stageLabels[status] || status}
-    </Badge>
+    <StatusBadge status="running" pulse label={stageLabels[status] || status} />
   );
 }
-
 
 // ============================================================================
 // Host Row — expandable card showing host info + discovery results
@@ -1186,7 +1604,13 @@ function HostRow({
   isOwner: boolean;
   isDiscovering: boolean;
   isLoadingPreview?: boolean;
-  sshCredentials?: Array<{ id: number; name: string; username: string; host: string; port: number }>;
+  sshCredentials?: Array<{
+    id: number;
+    name: string;
+    username: string;
+    host: string;
+    port: number;
+  }>;
   projectSshCredentialId?: number | null;
   discoveryResult: BareMetalDiscoveryResponse | null;
   deployments?: BareMetalDeployment[];
@@ -1199,13 +1623,22 @@ function HostRow({
         className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/50 transition-colors"
         onClick={onSelect}
       >
-        <button className="text-muted-foreground" aria-label={`toggle-host-${host.id}`}>
-          {isSelected ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        <button
+          className="text-muted-foreground"
+          aria-label={`toggle-host-${host.id}`}
+        >
+          {isSelected ? (
+            <ChevronDown className="h-4 w-4" />
+          ) : (
+            <ChevronRight className="h-4 w-4" />
+          )}
         </button>
 
         <Server className="h-4 w-4 text-muted-foreground flex-shrink-0" />
         <span className="font-medium text-sm">{host.name}</span>
-        <span className="font-mono text-sm text-muted-foreground">{host.host_ip}</span>
+        <span className="font-mono text-sm text-muted-foreground">
+          {host.host_ip}
+        </span>
 
         <div className="flex items-center gap-2 ml-auto flex-shrink-0">
           {/* Topology badge */}
@@ -1218,27 +1651,40 @@ function HostRow({
           {/* OS info */}
           {host.os_info && (
             <Badge variant="outline" className="text-xs">
-              {(host.os_info as Record<string, string>).os_type} {(host.os_info as Record<string, string>).os_version}
+              {(host.os_info as Record<string, string>).os_type}{" "}
+              {(host.os_info as Record<string, string>).os_version}
             </Badge>
           )}
 
           {/* DPU info */}
           {host.dpu_info && host.dpu_info.length > 0 && (
-            <Badge variant="outline" className="bg-info/10 text-info border-info/20 text-xs">
-              <Cpu className="h-3 w-3 mr-1" />{host.dpu_info.length > 1 ? `${host.dpu_info.length} DPUs` : 'DPU'}
+            <Badge
+              variant="outline"
+              className="bg-info/10 text-info border-info/20 text-xs"
+            >
+              <Cpu className="h-3 w-3 mr-1" />
+              {host.dpu_info.length > 1
+                ? `${host.dpu_info.length} DPUs`
+                : "DPU"}
             </Badge>
           )}
 
           {/* rshim source for dual_dpu_obmc */}
-          {host.topology === 'dual_dpu_obmc' && host.rshim_source === 'bmc' && (
-            <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20 text-xs">
+          {host.topology === "dual_dpu_obmc" && host.rshim_source === "bmc" && (
+            <Badge
+              variant="outline"
+              className="bg-warning/10 text-warning border-warning/20 text-xs"
+            >
               rshim via OpenBMC
             </Badge>
           )}
 
           {/* BMC tier */}
-          {host.bmc_access_tier && host.bmc_access_tier !== 'none' && (
-            <Badge variant="outline" className="bg-info/10 text-info border-info/20 text-xs">
+          {host.bmc_access_tier && host.bmc_access_tier !== "none" && (
+            <Badge
+              variant="outline"
+              className="bg-info/10 text-info border-info/20 text-xs"
+            >
               <Network className="h-3 w-3 mr-1" />
               {host.bmc_access_tier.toUpperCase()}
             </Badge>
@@ -1246,8 +1692,12 @@ function HostRow({
 
           {/* Jumphost badges */}
           {host.uses_project_jumphost && !host.has_jumphost_chain && (
-            <Badge variant="outline" className="bg-info/10 text-info border-info/20 text-xs">
-              <Link className="h-3 w-3 mr-1" />Using project jumphost
+            <Badge
+              variant="outline"
+              className="bg-info/10 text-info border-info/20 text-xs"
+            >
+              <Link className="h-3 w-3 mr-1" />
+              Using project jumphost
             </Badge>
           )}
 
@@ -1265,25 +1715,46 @@ function HostRow({
               <Button
                 size="sm"
                 variant="outline"
-                onClick={(e) => { e.stopPropagation(); onDiscover(); }}
-                disabled={isDiscovering || (host.last_discovery_status !== null && host.last_discovery_status !== 'completed' && host.last_discovery_status !== 'failed')}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDiscover();
+                }}
+                disabled={
+                  isDiscovering ||
+                  (host.last_discovery_status !== null &&
+                    host.last_discovery_status !== "completed" &&
+                    host.last_discovery_status !== "failed")
+                }
               >
-                {(host.last_discovery_status !== null && host.last_discovery_status !== 'completed' && host.last_discovery_status !== 'failed') ? (
+                {host.last_discovery_status !== null &&
+                host.last_discovery_status !== "completed" &&
+                host.last_discovery_status !== "failed" ? (
                   <Loader2 className="h-4 w-4 mr-1 animate-spin" />
                 ) : (
                   <Search className="h-4 w-4 mr-1" />
                 )}
-                {(host.last_discovery_status !== null && host.last_discovery_status !== 'completed' && host.last_discovery_status !== 'failed') ? 'Discovering…' : 'Run Discovery'}
+                {host.last_discovery_status !== null &&
+                host.last_discovery_status !== "completed" &&
+                host.last_discovery_status !== "failed"
+                  ? "Discovering…"
+                  : "Run Discovery"}
               </Button>
 
               <Button
                 size="sm"
                 variant="default"
-                onClick={(e) => { e.stopPropagation(); onDeploy(); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeploy();
+                }}
                 disabled={isLoadingPreview}
                 title="Deploy cluster using this bare metal host"
               >
-                {isLoadingPreview ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Rocket className="h-4 w-4 mr-1" />}
+                {isLoadingPreview ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <Rocket className="h-4 w-4 mr-1" />
+                )}
                 Deploy Cluster
               </Button>
 
@@ -1292,56 +1763,88 @@ function HostRow({
                   size="sm"
                   variant="ghost"
                   className="text-destructive hover:text-destructive"
-                  onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete();
+                  }}
                 >
-                  <Trash2 className="h-4 w-4 mr-1" />Delete
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Delete
                 </Button>
               </div>
             </div>
           )}
 
           {/* SSH access info */}
-          {(host.ssh_credential_id || host.has_jumphost_chain || (host.uses_project_jumphost && projectSshCredentialId)) && (
+          {(host.ssh_credential_id ||
+            host.has_jumphost_chain ||
+            (host.uses_project_jumphost && projectSshCredentialId)) && (
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
               <Key className="h-3.5 w-3.5" />
-              {host.ssh_credential_id && (() => {
-                const cred = sshCredentials?.find(c => c.id === host.ssh_credential_id);
-                return <span>{cred ? `${cred.name} (${cred.username}@${cred.host})` : `SSH credential #${host.ssh_credential_id}`}</span>;
-              })()}
+              {host.ssh_credential_id &&
+                (() => {
+                  const cred = sshCredentials?.find(
+                    (c) => c.id === host.ssh_credential_id,
+                  );
+                  return (
+                    <span>
+                      {cred
+                        ? `${cred.name} (${cred.username}@${cred.host})`
+                        : `SSH credential #${host.ssh_credential_id}`}
+                    </span>
+                  );
+                })()}
               {host.has_jumphost_chain && (
                 <Badge variant="outline" className="text-xs">
                   via jumphost
                 </Badge>
               )}
-              {host.uses_project_jumphost && !host.has_jumphost_chain && projectSshCredentialId && (
-                <Badge variant="outline" className="text-xs bg-info/10 text-info border-info/20">
-                  <Link className="h-3 w-3 mr-1" />
-                  using project jumphost
-                </Badge>
-              )}
+              {host.uses_project_jumphost &&
+                !host.has_jumphost_chain &&
+                projectSshCredentialId && (
+                  <Badge
+                    variant="outline"
+                    className="text-xs bg-info/10 text-info border-info/20"
+                  >
+                    <Link className="h-3 w-3 mr-1" />
+                    using project jumphost
+                  </Badge>
+                )}
             </div>
           )}
 
           {/* dual_dpu_obmc topology settings */}
-          {host.topology === 'dual_dpu_obmc' && (
-            <DualDpuObmcSettings host={host} projectId={projectId} isOwner={isOwner} />
+          {host.topology === "dual_dpu_obmc" && (
+            <DualDpuObmcSettings
+              host={host}
+              projectId={projectId}
+              isOwner={isOwner}
+            />
           )}
 
           {/* Advanced DPU flash settings — tmfifo MAC base override, all topologies */}
-          <RshimMacBaseSettings host={host} projectId={projectId} isOwner={isOwner} />
+          <RshimMacBaseSettings
+            host={host}
+            projectId={projectId}
+            isOwner={isOwner}
+          />
 
           {/* Discovery results */}
           {(() => {
             // Check if discovery data is stale (a deployment happened after last discovery)
             const latestDeployment = deployments?.length
               ? deployments.reduce((latest, d) =>
-                  (d.started_at && (!latest.started_at || d.started_at > latest.started_at)) ? d : latest
+                  d.started_at &&
+                  (!latest.started_at || d.started_at > latest.started_at)
+                    ? d
+                    : latest,
                 )
               : null;
             const isStale = !!(
               host.last_discovery_at &&
               latestDeployment?.started_at &&
-              new Date(latestDeployment.started_at) > new Date(host.last_discovery_at)
+              new Date(latestDeployment.started_at) >
+                new Date(host.last_discovery_at)
             );
 
             return (
@@ -1349,40 +1852,55 @@ function HostRow({
                 {isStale && (
                   <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-warning/10 border border-warning/20 text-sm text-warning">
                     <AlertTriangle className="h-4 w-4 shrink-0" />
-                    <span>Discovery data is from before the last deployment — re-run discovery to see current state</span>
+                    <span>
+                      Discovery data is from before the last deployment — re-run
+                      discovery to see current state
+                    </span>
                   </div>
                 )}
                 {discoveryResult && (
-                  <div className={isStale ? 'opacity-50' : ''}>
+                  <div className={isStale ? "opacity-50" : ""}>
                     <DiscoveryResults result={discoveryResult} />
                   </div>
                 )}
 
                 {/* Host details (from cached discovery) */}
                 {!discoveryResult && host.last_discovery_at && (
-                  <div className={cn("grid grid-cols-2 gap-4 text-sm", isStale && "opacity-50")}>
+                  <div
+                    className={cn(
+                      "grid grid-cols-2 gap-4 text-sm",
+                      isStale && "opacity-50",
+                    )}
+                  >
                     {host.os_info && (
                       <div>
-                        <span className="text-muted-foreground">OS:</span>{' '}
-                        {(host.os_info as Record<string, string>).os_pretty_name || 'Unknown'}
+                        <span className="text-muted-foreground">OS:</span>{" "}
+                        {(host.os_info as Record<string, string>)
+                          .os_pretty_name || "Unknown"}
                       </div>
                     )}
                     {host.os_info && (
                       <div>
-                        <span className="text-muted-foreground">Kernel:</span>{' '}
-                        {(host.os_info as Record<string, string>).kernel || 'Unknown'}
+                        <span className="text-muted-foreground">Kernel:</span>{" "}
+                        {(host.os_info as Record<string, string>).kernel ||
+                          "Unknown"}
                       </div>
                     )}
                     {host.k8s_info && (
                       <div>
-                        <span className="text-muted-foreground">K8s:</span>{' '}
-                        {(host.k8s_info as Record<string, string>).running === 'true' || (host.k8s_info as Record<string, boolean>).running === true
+                        <span className="text-muted-foreground">K8s:</span>{" "}
+                        {(host.k8s_info as Record<string, string>).running ===
+                          "true" ||
+                        (host.k8s_info as Record<string, boolean>).running ===
+                          true
                           ? `Running (${(host.k8s_info as Record<string, string>).version})`
-                          : 'Not running'}
+                          : "Not running"}
                       </div>
                     )}
                     <div>
-                      <span className="text-muted-foreground">Last discovered:</span>{' '}
+                      <span className="text-muted-foreground">
+                        Last discovered:
+                      </span>{" "}
                       {new Date(host.last_discovery_at).toLocaleString()}
                     </div>
                   </div>
@@ -1395,7 +1913,7 @@ function HostRow({
           {deployments && deployments.length > 0 && (
             <div className="space-y-2">
               <h4 className="text-sm font-medium">Deployments</h4>
-              {deployments.slice(0, 3).map(d => (
+              {deployments.slice(0, 3).map((d) => (
                 <div
                   key={d.id}
                   className="flex items-center gap-3 p-2 border rounded text-sm cursor-pointer hover:bg-muted/50"
@@ -1416,7 +1934,6 @@ function HostRow({
     </div>
   );
 }
-
 
 // ============================================================================
 // DualDpuObmcSettings — topology-specific config for dual_dpu_obmc hosts
@@ -1439,19 +1956,22 @@ function DualDpuObmcSettings({
   const [editBmcPassword, setEditBmcPassword] = useState<string | null>(null);
 
   const isDirty =
-    (editPci !== null && editPci !== (host.deploy_dpu_pci_address ?? '')) ||
-    (editBondMode !== null && editBondMode !== (host.bond_mode ?? 'independent')) ||
-    (editBmcIp !== null && editBmcIp !== (host.bmc_ip ?? '')) ||
-    (editBmcUsername !== null && editBmcUsername !== '') ||
-    (editBmcPassword !== null && editBmcPassword !== '');
+    (editPci !== null && editPci !== (host.deploy_dpu_pci_address ?? "")) ||
+    (editBondMode !== null &&
+      editBondMode !== (host.bond_mode ?? "independent")) ||
+    (editBmcIp !== null && editBmcIp !== (host.bmc_ip ?? "")) ||
+    (editBmcUsername !== null && editBmcUsername !== "") ||
+    (editBmcPassword !== null && editBmcPassword !== "");
 
   const handleSave = async () => {
     const data: BareMetalHostUpdate = {};
     if (editPci !== null) data.deploy_dpu_pci_address = editPci;
     if (editBondMode !== null) data.bond_mode = editBondMode;
     if (editBmcIp !== null) data.bmc_ip = editBmcIp;
-    if (editBmcUsername !== null && editBmcUsername !== '') data.bmc_username = editBmcUsername;
-    if (editBmcPassword !== null && editBmcPassword !== '') data.bmc_password = editBmcPassword;
+    if (editBmcUsername !== null && editBmcUsername !== "")
+      data.bmc_username = editBmcUsername;
+    if (editBmcPassword !== null && editBmcPassword !== "")
+      data.bmc_password = editBmcPassword;
     try {
       await updateHost.mutateAsync({ hostId: host.id, data });
       setEditPci(null);
@@ -1460,12 +1980,12 @@ function DualDpuObmcSettings({
       setEditBmcUsername(null);
       setEditBmcPassword(null);
     } catch (err) {
-      notifyError(err, 'Failed to update host');
+      notifyError(err, "Failed to update host");
     }
   };
 
-  const pciValue = editPci ?? host.deploy_dpu_pci_address ?? '';
-  const bondValue = editBondMode ?? host.bond_mode ?? 'independent';
+  const pciValue = editPci ?? host.deploy_dpu_pci_address ?? "";
+  const bondValue = editBondMode ?? host.bond_mode ?? "independent";
   const missingBmc = !(editBmcIp ?? host.bmc_ip);
   const missingPci = !pciValue;
 
@@ -1474,8 +1994,11 @@ function DualDpuObmcSettings({
       <div className="flex items-center gap-2 text-sm font-medium">
         <Cpu className="h-4 w-4" />
         Dual DPU (OpenBMC) Settings
-        {host.rshim_source === 'bmc' && (
-          <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20 text-xs">
+        {host.rshim_source === "bmc" && (
+          <Badge
+            variant="outline"
+            className="bg-warning/10 text-warning border-warning/20 text-xs"
+          >
             rshim via DPU OpenBMC
           </Badge>
         )}
@@ -1487,14 +2010,20 @@ function DualDpuObmcSettings({
           <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
           <div>
             <span className="font-medium">BMC IP needed for deployment</span>
-            <span className="text-warning"> — DPU OpenBMC rshim access needs a BMC IP address. Enter it below.</span>
+            <span className="text-warning">
+              {" "}
+              — DPU OpenBMC rshim access needs a BMC IP address. Enter it below.
+            </span>
           </div>
         </div>
       )}
       {missingPci && (
         <div className="flex items-start gap-2 px-3 py-2 rounded-md bg-warning/10 border border-warning/20 text-sm text-warning">
           <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-          <span>Deployment DPU PCI address not set. Run discovery to auto-detect, or enter manually below.</span>
+          <span>
+            Deployment DPU PCI address not set. Run discovery to auto-detect, or
+            enter manually below.
+          </span>
         </div>
       )}
 
@@ -1518,25 +2047,34 @@ function DualDpuObmcSettings({
           </div>
           <p className="text-xs text-muted-foreground">
             {host.deploy_dpu_pci_address
-              ? 'Auto-detected by discovery. Override if needed.'
-              : 'Will be set by discovery, or enter manually.'}
+              ? "Auto-detected by discovery. Override if needed."
+              : "Will be set by discovery, or enter manually."}
           </p>
         </div>
 
         {/* Bond Mode */}
         <div className="space-y-1.5">
           <Label className="text-xs">Bond Mode</Label>
-          <select
-            className="flex h-8 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+          <Select
             value={bondValue}
-            onChange={(e) => setEditBondMode(e.target.value)}
+            onValueChange={(val) => setEditBondMode(val)}
             disabled={!isOwner}
           >
-            <option value="independent">Independent (SF-based networking)</option>
-            <option value="lag">LAG (802.3ad bonded interfaces)</option>
-          </select>
+            <SelectTrigger className="h-8 w-full text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="independent">
+                Independent (SF-based networking)
+              </SelectItem>
+              <SelectItem value="lag">
+                LAG (802.3ad bonded interfaces)
+              </SelectItem>
+            </SelectContent>
+          </Select>
           <p className="text-xs text-muted-foreground">
-            Controls how DPU physical functions are bonded for data plane traffic.
+            Controls how DPU physical functions are bonded for data plane
+            traffic.
           </p>
         </div>
       </div>
@@ -1544,10 +2082,11 @@ function DualDpuObmcSettings({
       {/* BMC IP — editable */}
       <div className="space-y-1.5">
         <Label className="text-xs flex items-center gap-1.5">
-          <Network className="h-3 w-3" />BMC IP
+          <Network className="h-3 w-3" />
+          BMC IP
         </Label>
         <Input
-          value={editBmcIp ?? host.bmc_ip ?? ''}
+          value={editBmcIp ?? host.bmc_ip ?? ""}
           onChange={(e) => setEditBmcIp(e.target.value)}
           placeholder="192.168.1.100"
           className="h-8 text-sm font-mono"
@@ -1561,9 +2100,9 @@ function DualDpuObmcSettings({
           <div className="space-y-1.5">
             <Label className="text-xs">BMC Username</Label>
             <Input
-              value={editBmcUsername ?? ''}
+              value={editBmcUsername ?? ""}
               onChange={(e) => setEditBmcUsername(e.target.value)}
-              placeholder={host.has_bmc_credentials ? '(unchanged)' : 'root'}
+              placeholder={host.has_bmc_credentials ? "(unchanged)" : "root"}
               className="h-8 text-sm"
               disabled={!isOwner}
             />
@@ -1572,9 +2111,9 @@ function DualDpuObmcSettings({
             <Label className="text-xs">BMC Password</Label>
             <Input
               type="password"
-              value={editBmcPassword ?? ''}
+              value={editBmcPassword ?? ""}
               onChange={(e) => setEditBmcPassword(e.target.value)}
-              placeholder={host.has_bmc_credentials ? '(unchanged)' : ''}
+              placeholder={host.has_bmc_credentials ? "(unchanged)" : ""}
               className="h-8 text-sm"
               disabled={!isOwner}
             />
@@ -1586,12 +2125,20 @@ function DualDpuObmcSettings({
       {host.bmc_ip && (
         <div className="flex items-center gap-2">
           {host.has_bmc_credentials ? (
-            <Badge variant="outline" className="bg-success/10 text-success border-success/20 text-xs">
-              <CheckCircle2 className="h-3 w-3 mr-1" />Credentials set
+            <Badge
+              variant="outline"
+              className="bg-success/10 text-success border-success/20 text-xs"
+            >
+              <CheckCircle2 className="h-3 w-3 mr-1" />
+              Credentials set
             </Badge>
           ) : (
-            <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20 text-xs">
-              <AlertTriangle className="h-3 w-3 mr-1" />No credentials
+            <Badge
+              variant="outline"
+              className="bg-warning/10 text-warning border-warning/20 text-xs"
+            >
+              <AlertTriangle className="h-3 w-3 mr-1" />
+              No credentials
             </Badge>
           )}
         </div>
@@ -1618,7 +2165,6 @@ function DualDpuObmcSettings({
   );
 }
 
-
 // ============================================================================
 // RshimMacBaseSettings — advanced tmfifo MAC base override for any DPU host
 // Rendered for all topologies so regular/SSH hosts can reach it too (ADR-478).
@@ -1636,7 +2182,7 @@ function RshimMacBaseSettings({
   const updateHost = useUpdateBareMetalHost(projectId);
   const [editValue, setEditValue] = useState<string | null>(null);
 
-  const currentValue = host.net_rshim_mac_base ?? '';
+  const currentValue = host.net_rshim_mac_base ?? "";
   const isDirty = editValue !== null && editValue !== currentValue;
 
   const handleSave = async () => {
@@ -1647,7 +2193,7 @@ function RshimMacBaseSettings({
       });
       setEditValue(null);
     } catch (err) {
-      notifyError(err, 'Failed to update host');
+      notifyError(err, "Failed to update host");
     }
   };
 
@@ -1668,8 +2214,9 @@ function RshimMacBaseSettings({
           disabled={!isOwner}
         />
         <p className="text-xs text-muted-foreground">
-          Override the base used for <code>NET_RSHIM_MAC</code> enumeration when flashing this host.
-          Leave blank to use the default. The rshim index is appended as a single digit.
+          Override the base used for <code>NET_RSHIM_MAC</code> enumeration when
+          flashing this host. Leave blank to use the default. The rshim index is
+          appended as a single digit.
         </p>
       </div>
 
@@ -1693,7 +2240,6 @@ function RshimMacBaseSettings({
   );
 }
 
-
 // ============================================================================
 // Discovery Results — assessment checks with pass/warn/fail
 // ============================================================================
@@ -1710,7 +2256,9 @@ function DiscoveryResults({ result }: { result: BareMetalDiscoveryResponse }) {
         <div className="flex items-center gap-2 p-2 rounded bg-info/10 border border-info/20">
           <CircuitBoard className="h-4 w-4 text-info" />
           <span className="text-sm font-medium">
-            Recommended topology: {TOPOLOGY_LABELS[result.topology_recommendation] || result.topology_recommendation}
+            Recommended topology:{" "}
+            {TOPOLOGY_LABELS[result.topology_recommendation] ||
+              result.topology_recommendation}
           </span>
         </div>
       )}
@@ -1719,7 +2267,8 @@ function DiscoveryResults({ result }: { result: BareMetalDiscoveryResponse }) {
       {host && (
         <div className="space-y-2">
           <h4 className="text-sm font-semibold flex items-center gap-1.5">
-            <Server className="h-3.5 w-3.5" />Host
+            <Server className="h-3.5 w-3.5" />
+            Host
           </h4>
           <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm pl-5">
             {!!host.os_pretty_name && (
@@ -1729,19 +2278,26 @@ function DiscoveryResults({ result }: { result: BareMetalDiscoveryResponse }) {
               <ProbeRow label="Kernel" value={host.kernel_version as string} />
             )}
             {!!host.architecture && (
-              <ProbeRow label="Architecture" value={host.architecture as string} />
+              <ProbeRow
+                label="Architecture"
+                value={host.architecture as string}
+              />
             )}
             {!!host.nic_mode && (
               <ProbeRow
                 label="NIC Mode"
                 value={host.nic_mode as string}
                 badge={
-                  (host.nic_mode as string).includes('EMBEDDED') ? 'SuperNIC' :
-                  (host.nic_mode as string).includes('SEPARATED') ? 'DPU' : undefined
+                  (host.nic_mode as string).includes("EMBEDDED")
+                    ? "SuperNIC"
+                    : (host.nic_mode as string).includes("SEPARATED")
+                      ? "DPU"
+                      : undefined
                 }
                 badgeColor={
-                  (host.nic_mode as string).includes('EMBEDDED') ? 'bg-warning/10 text-warning border-warning/20' :
-                  'bg-success/10 text-success border-success/20'
+                  (host.nic_mode as string).includes("EMBEDDED")
+                    ? "bg-warning/10 text-warning border-warning/20"
+                    : "bg-success/10 text-success border-success/20"
                 }
               />
             )}
@@ -1754,25 +2310,40 @@ function DiscoveryResults({ result }: { result: BareMetalDiscoveryResponse }) {
             {(host.pf_interfaces as unknown[])?.length > 0 && (
               <ProbeRow
                 label="Interfaces"
-                value={(host.pf_interfaces as Array<Record<string, string>>).map(pf => pf.name).join(', ')}
+                value={(host.pf_interfaces as Array<Record<string, string>>)
+                  .map((pf) => pf.name)
+                  .join(", ")}
               />
             )}
             <ProbeRow label="VF Count" value={String(host.vf_count ?? 0)} />
-            <ProbeRow label="Hugepages" value={`${host.hugepages_gb ?? 0} GB`} />
+            <ProbeRow
+              label="Hugepages"
+              value={`${host.hugepages_gb ?? 0} GB`}
+            />
             <ProbeRow
               label="rshim"
-              value={host.rshim_present ? 'Available (BF3 DPU detected)' : 'Not found'}
-              status={host.rshim_present ? 'pass' : 'warn'}
+              value={
+                host.rshim_present
+                  ? "Available (BF3 DPU detected)"
+                  : "Not found"
+              }
+              status={host.rshim_present ? "pass" : "warn"}
             />
             {host.k8s_installed != null && (
               <ProbeRow
                 label="K8s"
                 value={
                   host.k8s_installed
-                    ? `Installed${host.k8s_version ? ` (${host.k8s_version})` : ''}${host.k8s_running ? ' — cluster running' : ' — not running'}`
-                    : 'Not installed'
+                    ? `Installed${host.k8s_version ? ` (${host.k8s_version})` : ""}${host.k8s_running ? " — cluster running" : " — not running"}`
+                    : "Not installed"
                 }
-                status={host.k8s_running ? 'pass' : host.k8s_installed ? 'warn' : undefined}
+                status={
+                  host.k8s_running
+                    ? "pass"
+                    : host.k8s_installed
+                      ? "warn"
+                      : undefined
+                }
               />
             )}
           </div>
@@ -1783,31 +2354,54 @@ function DiscoveryResults({ result }: { result: BareMetalDiscoveryResponse }) {
       {dpu && (
         <div className="space-y-2">
           <h4 className="text-sm font-semibold flex items-center gap-1.5">
-            <Cpu className="h-3.5 w-3.5" />DPU
+            <Cpu className="h-3.5 w-3.5" />
+            DPU
           </h4>
           <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm pl-5">
             <ProbeRow
               label="SSH"
-              value={dpu.ssh_reachable ? 'Reachable' : `Unreachable${dpu.error ? `: ${dpu.error}` : ''}`}
-              status={dpu.ssh_reachable ? 'pass' : 'fail'}
+              value={
+                dpu.ssh_reachable
+                  ? "Reachable"
+                  : `Unreachable${dpu.error ? `: ${dpu.error}` : ""}`
+              }
+              status={dpu.ssh_reachable ? "pass" : "fail"}
             />
             {!!dpu.ssh_reachable && (
               <>
-                {!!dpu.doca_version && <ProbeRow label="DOCA" value={dpu.doca_version as string} />}
-                {!!dpu.containerd_version && <ProbeRow label="containerd" value={dpu.containerd_version as string} />}
-                {!!dpu.runc_version && <ProbeRow label="runc" value={dpu.runc_version as string} />}
-                {!!dpu.k8s_version && <ProbeRow label="K8s" value={dpu.k8s_version as string} />}
+                {!!dpu.doca_version && (
+                  <ProbeRow label="DOCA" value={dpu.doca_version as string} />
+                )}
+                {!!dpu.containerd_version && (
+                  <ProbeRow
+                    label="containerd"
+                    value={dpu.containerd_version as string}
+                  />
+                )}
+                {!!dpu.runc_version && (
+                  <ProbeRow label="runc" value={dpu.runc_version as string} />
+                )}
+                {!!dpu.k8s_version && (
+                  <ProbeRow label="K8s" value={dpu.k8s_version as string} />
+                )}
                 <ProbeRow
                   label="OVS"
-                  value={dpu.ovs_installed ? `Installed${(dpu.ovs_bridge_ports as string[])?.length ? ` (bridge ports: ${(dpu.ovs_bridge_ports as string[]).join(', ')})` : ''}` : 'Not installed'}
+                  value={
+                    dpu.ovs_installed
+                      ? `Installed${(dpu.ovs_bridge_ports as string[])?.length ? ` (bridge ports: ${(dpu.ovs_bridge_ports as string[]).join(", ")})` : ""}`
+                      : "Not installed"
+                  }
                 />
                 {(dpu.vf_representors as string[])?.length > 0 && (
-                  <ProbeRow label="VF Representors" value={(dpu.vf_representors as string[]).join(', ')} />
+                  <ProbeRow
+                    label="VF Representors"
+                    value={(dpu.vf_representors as string[]).join(", ")}
+                  />
                 )}
                 <ProbeRow
                   label="Hugepages"
                   value={`${dpu.hugepages_gb ?? 0} GB`}
-                  status={(dpu.hugepages_gb as number) >= 16 ? 'pass' : 'warn'}
+                  status={(dpu.hugepages_gb as number) >= 16 ? "pass" : "warn"}
                 />
               </>
             )}
@@ -1819,29 +2413,48 @@ function DiscoveryResults({ result }: { result: BareMetalDiscoveryResponse }) {
       {bmc && (
         <div className="space-y-2">
           <h4 className="text-sm font-semibold flex items-center gap-1.5">
-            <Network className="h-3.5 w-3.5" />BMC / IPMI
+            <Network className="h-3.5 w-3.5" />
+            BMC / IPMI
           </h4>
           <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm pl-5">
             <ProbeRow
               label="Redfish"
-              value={bmc.redfish_reachable ? `Reachable${bmc.vendor ? ` (${bmc.vendor})` : ''}` : 'Not reachable'}
-              status={bmc.redfish_reachable ? 'pass' : undefined}
+              value={
+                bmc.redfish_reachable
+                  ? `Reachable${bmc.vendor ? ` (${bmc.vendor})` : ""}`
+                  : "Not reachable"
+              }
+              status={bmc.redfish_reachable ? "pass" : undefined}
             />
             <ProbeRow
               label="IPMI"
-              value={bmc.ipmi_reachable ? 'Reachable' : 'Not reachable'}
-              status={bmc.ipmi_reachable ? 'pass' : undefined}
+              value={bmc.ipmi_reachable ? "Reachable" : "Not reachable"}
+              status={bmc.ipmi_reachable ? "pass" : undefined}
             />
-            {!!bmc.power_state && <ProbeRow label="Power" value={bmc.power_state as string} />}
-            {!!bmc.system_manufacturer && <ProbeRow label="Manufacturer" value={bmc.system_manufacturer as string} />}
-            {!!bmc.system_model && <ProbeRow label="Model" value={bmc.system_model as string} />}
+            {!!bmc.power_state && (
+              <ProbeRow label="Power" value={bmc.power_state as string} />
+            )}
+            {!!bmc.system_manufacturer && (
+              <ProbeRow
+                label="Manufacturer"
+                value={bmc.system_manufacturer as string}
+              />
+            )}
+            {!!bmc.system_model && (
+              <ProbeRow label="Model" value={bmc.system_model as string} />
+            )}
           </div>
         </div>
       )}
 
       {/* DOCA Host Package Status */}
       {result.probes.doca && (
-        <DocaStatusCard doca={result.probes.doca as unknown as import('./DocaStatusCard').DocaStatus} />
+        <DocaStatusCard
+          doca={
+            result.probes
+              .doca as unknown as import("./DocaStatusCard").DocaStatus
+          }
+        />
       )}
 
       {/* Assessment checks */}
@@ -1849,9 +2462,15 @@ function DiscoveryResults({ result }: { result: BareMetalDiscoveryResponse }) {
         <h4 className="text-sm font-semibold mb-2">Assessment</h4>
         {result.assessment.map((check, i) => (
           <div key={i} className="flex items-center gap-2 text-sm py-1">
-            {check.status === 'pass' && <CheckCircle2 className="h-4 w-4 text-success flex-shrink-0" />}
-            {check.status === 'warn' && <AlertTriangle className="h-4 w-4 text-warning flex-shrink-0" />}
-            {check.status === 'fail' && <XCircle className="h-4 w-4 text-destructive flex-shrink-0" />}
+            {check.status === "pass" && (
+              <CheckCircle2 className="h-4 w-4 text-success flex-shrink-0" />
+            )}
+            {check.status === "warn" && (
+              <AlertTriangle className="h-4 w-4 text-warning flex-shrink-0" />
+            )}
+            {check.status === "fail" && (
+              <XCircle className="h-4 w-4 text-destructive flex-shrink-0" />
+            )}
             <span>{check.message}</span>
           </div>
         ))}
@@ -1860,12 +2479,15 @@ function DiscoveryResults({ result }: { result: BareMetalDiscoveryResponse }) {
       {/* Version drift */}
       {result.version_drift && result.version_drift.length > 0 && (
         <div className="space-y-1">
-          <h4 className="text-sm font-semibold mb-2 text-warning">Version Drift</h4>
+          <h4 className="text-sm font-semibold mb-2 text-warning">
+            Version Drift
+          </h4>
           {result.version_drift.map((drift, i) => (
             <div key={i} className="flex items-center gap-2 text-sm py-1">
               <AlertTriangle className="h-4 w-4 text-warning flex-shrink-0" />
               <span>
-                <span className="font-medium">{drift.component}</span>: installed {drift.installed}, expected {drift.expected}
+                <span className="font-medium">{drift.component}</span>:
+                installed {drift.installed}, expected {drift.expected}
               </span>
             </div>
           ))}
@@ -1877,15 +2499,18 @@ function DiscoveryResults({ result }: { result: BareMetalDiscoveryResponse }) {
         <div className="space-y-1">
           <h4 className="text-sm font-semibold mb-2">Recommendations</h4>
           {result.recommendations.map((rec, i) => (
-            <p key={i} className="text-sm text-muted-foreground">• {rec}</p>
+            <p key={i} className="text-sm text-muted-foreground">
+              • {rec}
+            </p>
           ))}
         </div>
       )}
 
       {/* Actionable Assessment */}
-      {result.actionable_assessment && result.actionable_assessment.length > 0 && (
-        <ActionableAssessment sections={result.actionable_assessment} />
-      )}
+      {result.actionable_assessment &&
+        result.actionable_assessment.length > 0 && (
+          <ActionableAssessment sections={result.actionable_assessment} />
+        )}
     </div>
   );
 }
@@ -1894,11 +2519,15 @@ function DiscoveryResults({ result }: { result: BareMetalDiscoveryResponse }) {
 // ActionableAssessment — Collapsible sections with commands and copy buttons
 // ============================================================================
 
-function ActionableAssessment({ sections }: { sections: ActionableAssessmentSection[] }) {
+function ActionableAssessment({
+  sections,
+}: {
+  sections: ActionableAssessmentSection[];
+}) {
   const [openSections, setOpenSections] = useState<Set<string>>(new Set());
 
   const toggleSection = (topic: string) => {
-    setOpenSections(prev => {
+    setOpenSections((prev) => {
       const next = new Set(prev);
       if (next.has(topic)) {
         next.delete(topic);
@@ -1912,19 +2541,19 @@ function ActionableAssessment({ sections }: { sections: ActionableAssessmentSect
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      notify({ title: 'Copied to clipboard', severity: 'success' });
+      notify({ title: "Copied to clipboard", severity: "success" });
     } catch (err) {
-      notifyError(err, 'Failed to copy to clipboard');
+      notifyError(err, "Failed to copy to clipboard");
     }
   };
 
   const getSeverityIcon = (severity: string) => {
     switch (severity) {
-      case 'info':
+      case "info":
         return <Info className="h-4 w-4 text-info" />;
-      case 'warning':
+      case "warning":
         return <AlertTriangle className="h-4 w-4 text-warning" />;
-      case 'action_required':
+      case "action_required":
         return <AlertCircle className="h-4 w-4 text-destructive" />;
       default:
         return <Info className="h-4 w-4 text-muted-foreground" />;
@@ -1933,14 +2562,14 @@ function ActionableAssessment({ sections }: { sections: ActionableAssessmentSect
 
   const getSeverityBgClass = (severity: string) => {
     switch (severity) {
-      case 'info':
-        return 'bg-info/5 border-info/20';
-      case 'warning':
-        return 'bg-warning/5 border-warning/20';
-      case 'action_required':
-        return 'bg-destructive/5 border-destructive/20';
+      case "info":
+        return "bg-info/5 border-info/20";
+      case "warning":
+        return "bg-warning/5 border-warning/20";
+      case "action_required":
+        return "bg-destructive/5 border-destructive/20";
       default:
-        return 'bg-muted/30 border-border';
+        return "bg-muted/30 border-border";
     }
   };
 
@@ -1950,14 +2579,19 @@ function ActionableAssessment({ sections }: { sections: ActionableAssessmentSect
       {sections.map((section) => {
         const isOpen = openSections.has(section.topic);
         const hasCommands = section.commands && section.commands.length > 0;
-        
+
         return (
           <Collapsible
             key={section.topic}
             open={isOpen}
             onOpenChange={() => toggleSection(section.topic)}
           >
-            <div className={cn('border rounded-lg', getSeverityBgClass(section.severity))}>
+            <div
+              className={cn(
+                "border rounded-lg",
+                getSeverityBgClass(section.severity),
+              )}
+            >
               <CollapsibleTrigger asChild>
                 <button
                   type="button"
@@ -1979,7 +2613,7 @@ function ActionableAssessment({ sections }: { sections: ActionableAssessmentSect
                 <div className="px-3 pb-3 space-y-3">
                   {/* Body text — preserve markdown-ish formatting */}
                   <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
-                    {section.body.split('\n').map((line, i) => {
+                    {section.body.split("\n").map((line, i) => {
                       // Bold text handling: **text**
                       const boldRegex = /\*\*([^*]+)\*\*/g;
                       const parts: (string | JSX.Element)[] = [];
@@ -1990,7 +2624,9 @@ function ActionableAssessment({ sections }: { sections: ActionableAssessmentSect
                         if (match.index > lastIndex) {
                           parts.push(line.substring(lastIndex, match.index));
                         }
-                        parts.push(<strong key={match.index}>{match[1]}</strong>);
+                        parts.push(
+                          <strong key={match.index}>{match[1]}</strong>,
+                        );
                         lastIndex = match.index + match[0].length;
                       }
                       if (lastIndex < line.length) {
@@ -2000,7 +2636,7 @@ function ActionableAssessment({ sections }: { sections: ActionableAssessmentSect
                       return (
                         <span key={i}>
                           {parts.length > 0 ? parts : line}
-                          {i < section.body.split('\n').length - 1 && <br />}
+                          {i < section.body.split("\n").length - 1 && <br />}
                         </span>
                       );
                     })}
@@ -2014,7 +2650,9 @@ function ActionableAssessment({ sections }: { sections: ActionableAssessmentSect
                           key={idx}
                           className="relative group bg-card border border-border text-success rounded px-3 py-2 font-mono text-xs overflow-x-auto"
                         >
-                          <pre className="whitespace-pre-wrap break-all">{cmd}</pre>
+                          <pre className="whitespace-pre-wrap break-all">
+                            {cmd}
+                          </pre>
                           <Button
                             size="sm"
                             variant="ghost"
@@ -2033,14 +2671,17 @@ function ActionableAssessment({ sections }: { sections: ActionableAssessmentSect
                   )}
 
                   {/* Warning banner for connectivity risk */}
-                  {section.severity === 'action_required' && section.body.includes('connectivity loss') && (
-                    <div className="flex items-start gap-2 p-2 rounded bg-destructive/5 border border-destructive/20 text-xs">
-                      <AlertTriangle className="h-3.5 w-3.5 text-destructive mt-0.5 flex-shrink-0" />
-                      <span className="text-destructive">
-                        <strong>Connectivity Risk:</strong> This operation may cause network disruption. Ensure out-of-band access before proceeding.
-                      </span>
-                    </div>
-                  )}
+                  {section.severity === "action_required" &&
+                    section.body.includes("connectivity loss") && (
+                      <div className="flex items-start gap-2 p-2 rounded bg-destructive/5 border border-destructive/20 text-xs">
+                        <AlertTriangle className="h-3.5 w-3.5 text-destructive mt-0.5 flex-shrink-0" />
+                        <span className="text-destructive">
+                          <strong>Connectivity Risk:</strong> This operation may
+                          cause network disruption. Ensure out-of-band access
+                          before proceeding.
+                        </span>
+                      </div>
+                    )}
                 </div>
               </CollapsibleContent>
             </div>
@@ -2050,7 +2691,6 @@ function ActionableAssessment({ sections }: { sections: ActionableAssessmentSect
     </div>
   );
 }
-
 
 // ============================================================================
 // ProbeRow — single key/value row with optional status indicator and badge
@@ -2065,27 +2705,35 @@ function ProbeRow({
 }: {
   label: string;
   value: string;
-  status?: 'pass' | 'warn' | 'fail';
+  status?: "pass" | "warn" | "fail";
   badge?: string;
   badgeColor?: string;
 }) {
   return (
     <div className="flex items-center gap-2 py-0.5">
-      {status === 'pass' && <CheckCircle2 className="h-3 w-3 text-success flex-shrink-0" />}
-      {status === 'warn' && <AlertTriangle className="h-3 w-3 text-warning flex-shrink-0" />}
-      {status === 'fail' && <XCircle className="h-3 w-3 text-destructive flex-shrink-0" />}
+      {status === "pass" && (
+        <CheckCircle2 className="h-3 w-3 text-success flex-shrink-0" />
+      )}
+      {status === "warn" && (
+        <AlertTriangle className="h-3 w-3 text-warning flex-shrink-0" />
+      )}
+      {status === "fail" && (
+        <XCircle className="h-3 w-3 text-destructive flex-shrink-0" />
+      )}
       {!status && <div className="w-3 flex-shrink-0" />}
       <span className="text-muted-foreground w-24 flex-shrink-0">{label}:</span>
       <span className="font-mono text-xs">{value}</span>
       {badge && (
-        <Badge variant="outline" className={cn('text-[10px] px-1.5 py-0 h-4', badgeColor)}>
+        <Badge
+          variant="outline"
+          className={cn("text-2xs px-1.5 py-0 h-4", badgeColor)}
+        >
           {badge}
         </Badge>
       )}
     </div>
   );
 }
-
 
 // ============================================================================
 // Deployment Progress View — step-by-step with phase grouping
@@ -2102,7 +2750,10 @@ function DeploymentProgressView({
   onBack: () => void;
   isOwner: boolean;
 }) {
-  const { data: deployment, isLoading } = useBareMetalDeployment(projectId, deploymentId);
+  const { data: deployment, isLoading } = useBareMetalDeployment(
+    projectId,
+    deploymentId,
+  );
   const cancelDeployment = useCancelBareMetalDeployment(projectId);
   const [expandedStep, setExpandedStep] = useState<number | null>(null);
 
@@ -2115,8 +2766,13 @@ function DeploymentProgressView({
     );
   }
 
-  const isActive = ['pending', 'discovering', 'planning', 'in_progress'].includes(deployment.status);
-  const isFailed = deployment.status === 'failed';
+  const isActive = [
+    "pending",
+    "discovering",
+    "planning",
+    "in_progress",
+  ].includes(deployment.status);
+  const isFailed = deployment.status === "failed";
 
   // Group steps by phase
   const phases = new Map<string, DeploymentStep[]>();
@@ -2126,9 +2782,12 @@ function DeploymentProgressView({
     phases.set(step.phase, existing);
   }
 
-  const completedSteps = deployment.steps.filter(s => s.status === 'completed' || s.status === 'skipped').length;
+  const completedSteps = deployment.steps.filter(
+    (s) => s.status === "completed" || s.status === "skipped",
+  ).length;
   const totalSteps = deployment.steps.length;
-  const progressPct = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
+  const progressPct =
+    totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
 
   return (
     <div className="space-y-4">
@@ -2155,14 +2814,20 @@ function DeploymentProgressView({
       {/* Progress bar */}
       <div className="space-y-1">
         <div className="flex justify-between text-sm text-muted-foreground">
-          <span>{completedSteps} of {totalSteps} steps</span>
+          <span>
+            {completedSteps} of {totalSteps} steps
+          </span>
           <span>{progressPct}%</span>
         </div>
         <div className="h-2 bg-muted rounded-full overflow-hidden">
           <div
             className={cn(
-              'h-full rounded-full transition-all duration-500',
-              isFailed ? 'bg-destructive' : deployment.status === 'completed' ? 'bg-success' : 'bg-primary'
+              "h-full rounded-full transition-all duration-500",
+              isFailed
+                ? "bg-destructive"
+                : deployment.status === "completed"
+                  ? "bg-success"
+                  : "bg-primary",
             )}
             style={{ width: `${progressPct}%` }}
           />
@@ -2174,7 +2839,8 @@ function DeploymentProgressView({
         <div className="p-3 rounded border border-destructive/30 bg-destructive/5 text-sm">
           <div className="flex items-center gap-2 text-destructive font-medium">
             <XCircle className="h-4 w-4" />
-            Failed at step {deployment.error_step_index}: {deployment.error_message}
+            Failed at step {deployment.error_step_index}:{" "}
+            {deployment.error_message}
           </div>
         </div>
       )}
@@ -2187,12 +2853,16 @@ function DeploymentProgressView({
               {DEPLOYMENT_PHASE_LABELS[phase] || phase}
             </h3>
             <div className="space-y-0.5">
-              {steps.map(step => (
+              {steps.map((step) => (
                 <StepRow
                   key={step.id}
                   step={step}
                   isExpanded={expandedStep === step.step_index}
-                  onToggle={() => setExpandedStep(expandedStep === step.step_index ? null : step.step_index)}
+                  onToggle={() =>
+                    setExpandedStep(
+                      expandedStep === step.step_index ? null : step.step_index,
+                    )
+                  }
                   projectId={projectId}
                   deploymentId={deploymentId}
                 />
@@ -2211,7 +2881,6 @@ function DeploymentProgressView({
     </div>
   );
 }
-
 
 // ============================================================================
 // Step Row — individual step with status icon + expandable log
@@ -2232,12 +2901,17 @@ function StepRow({
 }) {
   // Lazy-load logs only when expanded
   const { data: logs } = useQuery({
-    queryKey: ['bare-metal', 'step-logs', deploymentId, step.step_index],
+    queryKey: ["bare-metal", "step-logs", deploymentId, step.step_index],
     queryFn: async () => {
-      const { bareMetalDeploymentsApi } = await import('@/lib/api/bare-metal');
-      return bareMetalDeploymentsApi.getStepLogs(projectId, deploymentId, step.step_index);
+      const { bareMetalDeploymentsApi } = await import("@/lib/api/bare-metal");
+      return bareMetalDeploymentsApi.getStepLogs(
+        projectId,
+        deploymentId,
+        step.step_index,
+      );
     },
-    enabled: isExpanded && (step.status === 'completed' || step.status === 'failed'),
+    enabled:
+      isExpanded && (step.status === "completed" || step.status === "failed"),
   });
 
   return (
@@ -2247,33 +2921,50 @@ function StepRow({
         onClick={onToggle}
       >
         <StepStatusIcon status={step.status} />
-        <span className={cn('flex-1', step.status === 'skipped' && 'text-muted-foreground line-through')}>
+        <span
+          className={cn(
+            "flex-1",
+            step.status === "skipped" && "text-muted-foreground line-through",
+          )}
+        >
           {step.description || step.name}
         </span>
         {step.connectivity_risk && (
-          <Badge variant="warning" className="text-xs">⚡ Risk</Badge>
+          <Badge variant="warning" className="text-xs">
+            ⚡ Risk
+          </Badge>
         )}
         {step.duration_seconds != null && (
-          <span className="text-xs text-muted-foreground">{formatDuration(step.duration_seconds)}</span>
+          <span className="text-xs text-muted-foreground">
+            {formatDuration(step.duration_seconds)}
+          </span>
         )}
-        {(step.status === 'completed' || step.status === 'failed') && (
-          <ChevronDown className={cn('h-3 w-3 text-muted-foreground transition-transform', !isExpanded && '-rotate-90')} />
+        {(step.status === "completed" || step.status === "failed") && (
+          <ChevronDown
+            className={cn(
+              "h-3 w-3 text-muted-foreground transition-transform",
+              !isExpanded && "-rotate-90",
+            )}
+          />
         )}
       </div>
       {isExpanded && logs && (logs.output_log || logs.error_message) && (
         <div className="border-t px-3 py-2 bg-muted/20">
           {logs.output_log && (
-            <pre className="text-xs font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">{logs.output_log}</pre>
+            <pre className="text-xs font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">
+              {logs.output_log}
+            </pre>
           )}
           {logs.error_message && (
-            <p className="text-xs text-destructive mt-1">{logs.error_message}</p>
+            <p className="text-xs text-destructive mt-1">
+              {logs.error_message}
+            </p>
           )}
         </div>
       )}
     </div>
   );
 }
-
 
 // ============================================================================
 // MultiHostDeployModal — Realize multi-host cluster deployment
@@ -2285,7 +2976,10 @@ interface MultiHostDeployModalProps {
   hosts: BareMetalHost[];
   projectId: number;
   onStartDeployment: (payload: MultiHostDeployPayload) => Promise<void>;
-  onPreviewInBlueprintDialog: (templateSlug: string, variables: Record<string, unknown>) => void;
+  onPreviewInBlueprintDialog: (
+    templateSlug: string,
+    variables: Record<string, unknown>,
+  ) => void;
   isPending: boolean;
 }
 
@@ -2297,34 +2991,41 @@ export function MultiHostDeployModal({
   onPreviewInBlueprintDialog,
   isPending,
 }: MultiHostDeployModalProps) {
-  const [deployEngine, setDeployEngine] = useState<'blueprint' | 'orchestrator'>('blueprint');
-  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
+  const [deployEngine, setDeployEngine] = useState<
+    "blueprint" | "orchestrator"
+  >("blueprint");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(
+    null,
+  );
   const [controlPlaneHostId, setControlPlaneHostId] = useState<number | null>(
-    hosts.length > 0 ? hosts[0].id : null
+    hosts.length > 0 ? hosts[0].id : null,
   );
   const [workerHostIds, setWorkerHostIds] = useState<number[]>(
-    hosts.map(h => h.id)
+    hosts.map((h) => h.id),
   );
   const [selectedDpus, setSelectedDpus] = useState<Record<number, string>>({});
-  const [tmfifoPoolCidr, setTmfifoPoolCidr] = useState('192.168.100.0/22');
+  const [tmfifoPoolCidr, setTmfifoPoolCidr] = useState("192.168.100.0/22");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const { data: templates } = useQuery({
-    queryKey: ['stackTemplates', 'bare-metal'],
-    queryFn: () => stacksApi.fetchStackTemplates({ category: 'bare-metal' }),
+    queryKey: ["stackTemplates", "bare-metal"],
+    queryFn: () => stacksApi.fetchStackTemplates({ category: "bare-metal" }),
     enabled: isOpen,
   });
 
   const bareMetalTemplates = useMemo(() => {
     if (!templates) return [];
-    return templates.filter(t => t.is_active);
+    return templates.filter((t) => t.is_active);
   }, [templates]);
 
   useEffect(() => {
     if (bareMetalTemplates.length > 0 && !selectedTemplateId) {
-      const preferred = bareMetalTemplates.find(t => t.slug === 'bnk-bare-metal-full-poc-ssh') || bareMetalTemplates[0];
+      const preferred =
+        bareMetalTemplates.find(
+          (t) => t.slug === "bnk-bare-metal-full-poc-ssh",
+        ) || bareMetalTemplates[0];
       setSelectedTemplateId(preferred.id);
     }
   }, [bareMetalTemplates, selectedTemplateId]);
@@ -2336,25 +3037,29 @@ export function MultiHostDeployModal({
   // (the same default the <select> displays) and prune hosts that are
   // unchecked or have no DPU.
   useEffect(() => {
-    setSelectedDpus(prev => {
+    setSelectedDpus((prev) => {
       const next: Record<number, string> = { ...prev };
       let changed = false;
       for (const h of hosts) {
         const dpuList = h.dpu_info || [];
         const checked = workerHostIds.includes(h.id);
         if (checked && dpuList.length > 0 && !next[h.id]) {
-          next[h.id] = String(dpuList[0]?.pci_address || 'rshim0');
+          next[h.id] = String(dpuList[0]?.pci_address || "rshim0");
           changed = true;
         }
       }
       for (const key of Object.keys(next)) {
         const id = Number(key);
-        const h = hosts.find(hh => hh.id === id);
+        const h = hosts.find((hh) => hh.id === id);
         // Preserve the CP host's DPU selection even when it's not in workerHostIds
         // — handleSubmit/assign_members re-add the CP host to host_ids regardless,
         // so pruning its DPU selection here would silently drop it (ADR-424 minor).
         const isCp = id === controlPlaneHostId;
-        if (!h || (!workerHostIds.includes(id) && !isCp) || (h.dpu_info || []).length === 0) {
+        if (
+          !h ||
+          (!workerHostIds.includes(id) && !isCp) ||
+          (h.dpu_info || []).length === 0
+        ) {
           delete next[id];
           changed = true;
         }
@@ -2364,27 +3069,29 @@ export function MultiHostDeployModal({
   }, [hosts, workerHostIds, controlPlaneHostId]);
 
   const derivedTopology = useMemo(() => {
-    const cpHost = hosts.find(h => h.id === controlPlaneHostId);
+    const cpHost = hosts.find((h) => h.id === controlPlaneHostId);
     if (cpHost?.topology) return cpHost.topology;
-    const hasBf3 = hosts.some(h =>
-      (h.dpu_info || []).some(d => {
-        const model = String(d.model || '').toLowerCase();
-        return model.includes('bluefield-3') || model.includes('bf3');
-      })
+    const hasBf3 = hosts.some((h) =>
+      (h.dpu_info || []).some((d) => {
+        const model = String(d.model || "").toLowerCase();
+        return model.includes("bluefield-3") || model.includes("bf3");
+      }),
     );
-    return hasBf3 ? 'bf3' : 'regular';
+    return hasBf3 ? "bf3" : "regular";
   }, [hosts, controlPlaneHostId]);
 
   if (!isOpen) return null;
 
   const handleToggleWorker = (hostId: number) => {
-    setWorkerHostIds(prev =>
-      prev.includes(hostId) ? prev.filter(id => id !== hostId) : [...prev, hostId]
+    setWorkerHostIds((prev) =>
+      prev.includes(hostId)
+        ? prev.filter((id) => id !== hostId)
+        : [...prev, hostId],
     );
   };
 
   const handleSelectDpu = (hostId: number, dpuPci: string) => {
-    setSelectedDpus(prev => ({ ...prev, [hostId]: dpuPci }));
+    setSelectedDpus((prev) => ({ ...prev, [hostId]: dpuPci }));
   };
 
   const handleSubmit = async () => {
@@ -2392,7 +3099,9 @@ export function MultiHostDeployModal({
     setIsSubmitting(true);
     setSubmitError(null);
     try {
-      const selectedTemplate = bareMetalTemplates.find(t => t.id === selectedTemplateId);
+      const selectedTemplate = bareMetalTemplates.find(
+        (t) => t.id === selectedTemplateId,
+      );
       await onStartDeployment({
         host_id: controlPlaneHostId,
         control_plane_host_id: controlPlaneHostId,
@@ -2405,7 +3114,10 @@ export function MultiHostDeployModal({
         template_slug: selectedTemplate?.slug,
       });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to create multi-host deployment';
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "Failed to create multi-host deployment";
       setSubmitError(msg);
     } finally {
       setIsSubmitting(false);
@@ -2415,20 +3127,21 @@ export function MultiHostDeployModal({
   const isBusy = isPending || isSubmitting;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
-      <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 space-y-6 border shadow-xl">
-        <div className="flex items-center justify-between border-b pb-3">
-          <div>
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              <Rocket className="h-5 w-5 text-primary" />
-              Deploy Multi-Host Cluster (F5 BNK)
-            </h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Select control plane & worker hosts (regular hosts and DPU hosts) to realize cluster deployment.
-            </p>
-          </div>
-          <Button variant="ghost" size="sm" onClick={onClose} disabled={isBusy}>✕</Button>
-        </div>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => !open && !isBusy && onClose()}
+    >
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto space-y-6">
+        <DialogHeader>
+          <DialogTitle className="text-lg font-semibold flex items-center gap-2">
+            <Rocket className="h-5 w-5 text-primary" />
+            Deploy Multi-Host Cluster (F5 BNK)
+          </DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+            Select control plane & worker hosts (regular hosts and DPU hosts) to
+            realize cluster deployment.
+          </DialogDescription>
+        </DialogHeader>
 
         {submitError && (
           <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-xs text-destructive flex items-center gap-2">
@@ -2440,48 +3153,58 @@ export function MultiHostDeployModal({
         {/* Engine Selection: Blueprint Stack Engine vs Orchestrator */}
         <div className="rounded-lg border bg-muted/30 p-3.5 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase text-muted-foreground">Deployment Engine</span>
+            <span className="text-xs font-semibold uppercase text-muted-foreground">
+              Deployment Engine
+            </span>
             <div className="flex gap-2">
               <Button
-                variant={deployEngine === 'blueprint' ? 'default' : 'outline'}
+                variant={deployEngine === "blueprint" ? "default" : "outline"}
                 size="sm"
                 className="h-7 text-xs"
-                onClick={() => setDeployEngine('blueprint')}
+                onClick={() => setDeployEngine("blueprint")}
               >
                 Blueprint Stack Engine
               </Button>
               <Button
-                variant={deployEngine === 'orchestrator' ? 'default' : 'outline'}
+                variant={
+                  deployEngine === "orchestrator" ? "default" : "outline"
+                }
                 size="sm"
                 className="h-7 text-xs"
-                onClick={() => setDeployEngine('orchestrator')}
+                onClick={() => setDeployEngine("orchestrator")}
               >
                 Multi-Phase Orchestrator
               </Button>
             </div>
           </div>
 
-          {deployEngine === 'blueprint' && (
+          {deployEngine === "blueprint" && (
             <div className="space-y-1.5 pt-1">
-              <Label className="text-xs font-medium">Select Bare-Metal Blueprint Template</Label>
-              <select
-                className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs"
-                value={selectedTemplateId || ''}
-                onChange={(e) => setSelectedTemplateId(Number(e.target.value))}
+              <Label className="text-xs font-medium">
+                Select Bare-Metal Blueprint Template
+              </Label>
+              <Select
+                value={selectedTemplateId ? String(selectedTemplateId) : ""}
+                onValueChange={(val) => setSelectedTemplateId(Number(val))}
               >
-                {bareMetalTemplates.map(t => (
-                  <option key={t.id} value={t.id}>
-                    {t.name} ({t.slug})
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="h-8 w-full text-xs bg-background">
+                  <SelectValue placeholder="Select template..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {bareMetalTemplates.map((t) => (
+                    <SelectItem key={t.id} value={String(t.id)}>
+                      {t.name} ({t.slug})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           )}
-          {deployEngine === 'orchestrator' && (
+          {deployEngine === "orchestrator" && (
             <p className="text-xs text-muted-foreground border border-warning/30 bg-warning/10 rounded px-2 py-1.5">
-              Phase 1: only the selected control-plane host is deployed. Worker/DPU
-              selections are not persisted in this path — use the Blueprint engine to record
-              them on the stack (ADR-424).
+              Phase 1: only the selected control-plane host is deployed.
+              Worker/DPU selections are not persisted in this path — use the
+              Blueprint engine to record them on the stack (ADR-424).
             </p>
           )}
         </div>
@@ -2489,41 +3212,57 @@ export function MultiHostDeployModal({
         {/* Derived Topology Banner */}
         <div className="rounded-lg border bg-muted/40 p-3 space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase text-muted-foreground">Blueprint & Topology</span>
-            <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
+            <span className="text-xs font-semibold uppercase text-muted-foreground">
+              Blueprint & Topology
+            </span>
+            <Badge
+              variant="outline"
+              className="text-xs bg-primary/10 text-primary border-primary/20"
+            >
               Derived Topology: {derivedTopology.toUpperCase()}
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground">
-            Unified SSH Deployment Pipeline — auto-derives rshim & network properties from host discovery data.
+            Unified SSH Deployment Pipeline — auto-derives rshim & network
+            properties from host discovery data.
           </p>
         </div>
 
         {/* Control Plane Host Selection */}
         <div className="space-y-2">
           <Label className="text-sm font-medium">1. Control Plane Host *</Label>
-          <select
-            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
-            value={controlPlaneHostId || ''}
-            onChange={(e) => setControlPlaneHostId(Number(e.target.value))}
+          <Select
+            value={controlPlaneHostId ? String(controlPlaneHostId) : ""}
+            onValueChange={(val) => setControlPlaneHostId(Number(val))}
           >
-            {hosts.map(h => {
-              const dpuCount = (h.dpu_info || []).length;
-              const dpuLabel = dpuCount > 0 ? ` (${dpuCount} DPU${dpuCount > 1 ? 's' : ''})` : ' (No DPU)';
-              return (
-                <option key={h.id} value={h.id}>
-                  {h.name} ({h.host_ip}){dpuLabel} — {h.topology || 'discovered'}
-                </option>
-              );
-            })}
-          </select>
+            <SelectTrigger className="h-9 w-full text-sm">
+              <SelectValue placeholder="Select control plane host..." />
+            </SelectTrigger>
+            <SelectContent>
+              {hosts.map((h) => {
+                const dpuCount = (h.dpu_info || []).length;
+                const dpuLabel =
+                  dpuCount > 0
+                    ? ` (${dpuCount} DPU${dpuCount > 1 ? "s" : ""})`
+                    : " (No DPU)";
+                return (
+                  <SelectItem key={h.id} value={String(h.id)}>
+                    {h.name} ({h.host_ip}){dpuLabel} —{" "}
+                    {h.topology || "discovered"}
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Worker Hosts & DPU Selection */}
         <div className="space-y-2">
-          <Label className="text-sm font-medium">2. Member Worker Nodes & DPU Acceleration</Label>
+          <Label className="text-sm font-medium">
+            2. Member Worker Nodes & DPU Acceleration
+          </Label>
           <div className="rounded-lg border divide-y max-h-56 overflow-y-auto">
-            {hosts.map(h => {
+            {hosts.map((h) => {
               const isChecked = workerHostIds.includes(h.id);
               const isCp = h.id === controlPlaneHostId;
               const dpuList = h.dpu_info || [];
@@ -2538,38 +3277,67 @@ export function MultiHostDeployModal({
                         onChange={() => handleToggleWorker(h.id)}
                         className="rounded border-input text-primary focus:ring-primary h-4 w-4"
                       />
-                      <span>{h.name} ({h.host_ip})</span>
+                      <span>
+                        {h.name} ({h.host_ip})
+                      </span>
                       {isCp && (
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary border-primary/20">
+                        <Badge
+                          variant="secondary"
+                          className="text-2xs px-1.5 py-0 h-4 bg-primary/10 text-primary border-primary/20"
+                        >
                           Control Plane Host
                         </Badge>
                       )}
                     </label>
-                    <Badge variant="outline" className={`text-xs ${hasDpu ? 'bg-success/10 text-success border-success/20' : 'bg-muted text-muted-foreground'}`}>
-                      {hasDpu ? `${dpuList.length} DPU${dpuList.length !== 1 ? 's' : ''} detected` : 'Regular Host (No DPU)'}
+                    <Badge
+                      variant="outline"
+                      className={`text-xs ${hasDpu ? "bg-success/10 text-success border-success/20" : "bg-muted text-muted-foreground"}`}
+                    >
+                      {hasDpu
+                        ? `${dpuList.length} DPU${dpuList.length !== 1 ? "s" : ""} detected`
+                        : "Regular Host (No DPU)"}
                     </Badge>
                   </div>
 
                   {/* DPU selection if host has DPUs */}
                   {isChecked && hasDpu && (
                     <div className="pl-6 pt-1 flex items-center gap-2">
-                      <Label className="text-xs text-muted-foreground">DPU Worker Node:</Label>
+                      <Label className="text-xs text-muted-foreground">
+                        DPU Worker Node:
+                      </Label>
                       {dpuList.length === 1 ? (
                         <span className="text-xs font-mono bg-muted/60 px-2 py-0.5 rounded border">
-                          DPU #0 ({String(dpuList[0]?.pci_address || 'rshim0')}) — {String(dpuList[0]?.model || 'BlueField')}
+                          DPU #0 ({String(dpuList[0]?.pci_address || "rshim0")})
+                          — {String(dpuList[0]?.model || "BlueField")}
                         </span>
                       ) : (
-                        <select
-                          className="h-7 rounded border text-xs px-2 bg-background"
-                          value={selectedDpus[h.id] || String(dpuList[0]?.pci_address || '')}
-                          onChange={(e) => handleSelectDpu(h.id, e.target.value)}
+                        <Select
+                          value={
+                            selectedDpus[h.id] ||
+                            String(dpuList[0]?.pci_address || "rshim0")
+                          }
+                          onValueChange={(val) => handleSelectDpu(h.id, val)}
                         >
-                          {dpuList.map((dpu: Record<string, unknown>, idx: number) => (
-                            <option key={String(dpu.pci_address || idx)} value={String(dpu.pci_address || `rshim${idx}`)}>
-                              DPU #{idx} ({String(dpu.pci_address || `rshim${idx}`)}) — {String(dpu.model || 'BlueField')}
-                            </option>
-                          ))}
-                        </select>
+                          <SelectTrigger className="h-7 text-xs px-2 bg-background w-[240px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {dpuList.map(
+                              (dpu: Record<string, unknown>, idx: number) => (
+                                <SelectItem
+                                  key={String(dpu.pci_address || idx)}
+                                  value={String(
+                                    dpu.pci_address || `rshim${idx}`,
+                                  )}
+                                >
+                                  DPU #{idx} (
+                                  {String(dpu.pci_address || `rshim${idx}`)}) —{" "}
+                                  {String(dpu.model || "BlueField")}
+                                </SelectItem>
+                              ),
+                            )}
+                          </SelectContent>
+                        </Select>
                       )}
                     </div>
                   )}
@@ -2586,7 +3354,9 @@ export function MultiHostDeployModal({
 
         {/* Network & IPAM CIDR */}
         <div className="space-y-2">
-          <Label className="text-sm font-medium">3. tmfifo Pool CIDR (IPAM)</Label>
+          <Label className="text-sm font-medium">
+            3. tmfifo Pool CIDR (IPAM)
+          </Label>
           <Input
             value={tmfifoPoolCidr}
             onChange={(e) => setTmfifoPoolCidr(e.target.value)}
@@ -2594,7 +3364,8 @@ export function MultiHostDeployModal({
             className="h-9 font-mono text-sm"
           />
           <p className="text-xs text-muted-foreground">
-            Point-to-point tmfifo interface pool allocated across member hosts & DPUs.
+            Point-to-point tmfifo interface pool allocated across member hosts &
+            DPUs.
           </p>
         </div>
 
@@ -2610,8 +3381,11 @@ export function MultiHostDeployModal({
               size="sm"
               disabled={!controlPlaneHostId || isBusy}
               onClick={() => {
-                const selectedTemplate = bareMetalTemplates.find(t => t.id === selectedTemplateId) || bareMetalTemplates[0];
-                const slug = selectedTemplate?.slug || 'bnk-bare-metal-full-poc-ssh';
+                const selectedTemplate =
+                  bareMetalTemplates.find((t) => t.id === selectedTemplateId) ||
+                  bareMetalTemplates[0];
+                const slug =
+                  selectedTemplate?.slug || "bnk-bare-metal-full-poc-ssh";
                 onPreviewInBlueprintDialog(slug, {
                   bare_metal_host_id: String(controlPlaneHostId),
                   control_plane_host_id: controlPlaneHostId,
@@ -2633,24 +3407,25 @@ export function MultiHostDeployModal({
               {isBusy ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                  {deployEngine === 'orchestrator' ? 'Deploying...' : 'Saving Draft...'}
+                  {deployEngine === "orchestrator"
+                    ? "Deploying..."
+                    : "Saving Draft..."}
                 </>
               ) : (
                 <>
                   <Rocket className="h-4 w-4 mr-1.5" />
-                  {deployEngine === 'orchestrator'
-                    ? 'Deploy Control-Plane Host'
-                    : 'Save Draft & View in Blueprints'}
+                  {deployEngine === "orchestrator"
+                    ? "Deploy Control-Plane Host"
+                    : "Save Draft & View in Blueprints"}
                 </>
               )}
             </Button>
           </div>
         </div>
-      </Card>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
-
 
 // ============================================================================
 // Shared helpers
@@ -2658,36 +3433,32 @@ export function MultiHostDeployModal({
 
 function StepStatusIcon({ status }: { status: string }) {
   switch (status) {
-    case 'completed': return <CheckCircle2 className="h-4 w-4 text-success flex-shrink-0" />;
-    case 'failed': return <XCircle className="h-4 w-4 text-destructive flex-shrink-0" />;
-    case 'running': return <Loader2 className="h-4 w-4 text-primary animate-spin flex-shrink-0" />;
-    case 'skipped': return <CheckCircle2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />;
-    default: return <div className="h-4 w-4 rounded-full border-2 border-border flex-shrink-0" />;
+    case "completed":
+      return <CheckCircle2 className="h-4 w-4 text-success flex-shrink-0" />;
+    case "failed":
+      return <XCircle className="h-4 w-4 text-destructive flex-shrink-0" />;
+    case "running":
+      return (
+        <Loader2 className="h-4 w-4 text-primary animate-spin flex-shrink-0" />
+      );
+    case "skipped":
+      return (
+        <CheckCircle2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+      );
+    default:
+      return (
+        <div className="h-4 w-4 rounded-full border-2 border-border flex-shrink-0" />
+      );
   }
 }
 
 function DeploymentStatusBadge({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    pending: 'bg-muted text-muted-foreground border-border',
-    in_progress: 'bg-primary/10 text-primary border-primary/20',
-    completed: 'bg-success/10 text-success border-success/20',
-    failed: 'bg-destructive/10 text-destructive border-destructive/20',
-    cancelled: 'bg-muted text-muted-foreground border-border',
-    paused: 'bg-warning/10 text-warning border-warning/20',
-  };
-
-  return (
-    <Badge variant="outline" className={cn('text-xs', colors[status] || '')}>
-      {status === 'in_progress' && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
-      {status === 'completed' && <CheckCircle2 className="h-3 w-3 mr-1" />}
-      {status === 'failed' && <XCircle className="h-3 w-3 mr-1" />}
-      {status.replace(/_/g, ' ')}
-    </Badge>
-  );
+  return <StatusBadge status={status} />;
 }
 
 function formatDuration(seconds: number): string {
   if (seconds < 60) return `${Math.round(seconds)}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+  if (seconds < 3600)
+    return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
   return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
 }

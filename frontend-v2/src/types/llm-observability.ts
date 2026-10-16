@@ -19,6 +19,7 @@ export interface LlmEnvelope {
   available: boolean;
   endpoint: string | null;
   updated_at: string;
+  reason?: string | null;
   errors: Record<string, string>;
 }
 

@@ -13,14 +13,18 @@
  *                                short-lived registry token is exchanged at
  *                                pull time.
  */
-import { useState } from 'react';
-import { SectionCard } from '@/components/ui/section-card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useState } from "react";
+import { SectionCard } from "@/components/ui/section-card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -28,14 +32,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -43,13 +47,13 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from "@/components/ui/table";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from "@/components/ui/dropdown-menu";
 import {
   Boxes,
   Container,
@@ -63,12 +67,12 @@ import {
   TestTube2,
   Trash2,
   Upload,
-} from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { cn } from '@/lib/utils';
-import { notify } from '@/lib/notify';
-import { api } from '@/lib/api';
-import type { CloudCredentialTemplate } from '@/types';
+} from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { cn } from "@/lib/utils";
+import { notify } from "@/lib/notify";
+import { api } from "@/lib/api";
+import type { CloudCredentialTemplate } from "@/types";
 import {
   useContainerRegistries,
   useCreateContainerRegistry,
@@ -76,48 +80,48 @@ import {
   useTestContainerRegistry,
   useUpdateContainerRegistry,
   type ContainerRegistry,
-} from '@/hooks/useContainerRegistries';
+} from "@/hooks/useContainerRegistries";
 
 // ============================================================================
 // Registry type metadata
 // ============================================================================
 
 type RegistryType =
-  | 'ghcr'
-  | 'quay'
-  | 'dockerhub'
-  | 'far'
-  | 'artifactory'
-  | 'harbor'
-  | 'distribution'
-  | 'oci'
-  | 'ecr'
-  | 'icr';
+  | "ghcr"
+  | "quay"
+  | "dockerhub"
+  | "far"
+  | "artifactory"
+  | "harbor"
+  | "distribution"
+  | "oci"
+  | "ecr"
+  | "icr";
 
 const STANDALONE_TYPES: RegistryType[] = [
-  'ghcr',
-  'quay',
-  'dockerhub',
-  'far',
-  'artifactory',
-  'harbor',
-  'distribution',
-  'oci',
+  "ghcr",
+  "quay",
+  "dockerhub",
+  "far",
+  "artifactory",
+  "harbor",
+  "distribution",
+  "oci",
 ];
 // Only derived types with a real cloud token exchange (ecr → AWS, icr → IBM IAM).
-const DERIVED_TYPES: RegistryType[] = ['ecr', 'icr'];
+const DERIVED_TYPES: RegistryType[] = ["ecr", "icr"];
 
 const TYPE_LABELS: Record<RegistryType, string> = {
-  ghcr: 'GitHub Container Registry',
-  quay: 'Quay',
-  dockerhub: 'Docker Hub',
-  far: 'F5 Artifact Registry',
-  artifactory: 'JFrog Artifactory',
-  harbor: 'Harbor',
-  distribution: 'Docker Distribution',
-  oci: 'OCI Compliant Registry',
-  ecr: 'Amazon ECR',
-  icr: 'IBM Cloud ICR',
+  ghcr: "GitHub Container Registry",
+  quay: "Quay",
+  dockerhub: "Docker Hub",
+  far: "F5 Artifact Registry",
+  artifactory: "JFrog Artifactory",
+  harbor: "Harbor",
+  distribution: "Docker Distribution",
+  oci: "OCI Compliant Registry",
+  ecr: "Amazon ECR",
+  icr: "IBM Cloud ICR",
 };
 
 // Default Registry Host per type, applied when the type is selected. SaaS types
@@ -125,16 +129,16 @@ const TYPE_LABELS: Record<RegistryType, string> = {
 // editable canonical value. Self-hostable registries (artifactory/harbor/
 // distribution/oci) have no canonical host, so their suggestion is left blank.
 const DEFAULT_HOSTS: Record<RegistryType, string> = {
-  ghcr: 'ghcr.io',
-  quay: 'quay.io',
-  dockerhub: 'docker.io',
-  far: 'repo.f5.com',
-  artifactory: '',
-  harbor: '',
-  distribution: '',
-  oci: '',
-  icr: 'icr.io',
-  ecr: 'public.ecr.aws',
+  ghcr: "ghcr.io",
+  quay: "quay.io",
+  dockerhub: "docker.io",
+  far: "repo.f5.com",
+  artifactory: "",
+  harbor: "",
+  distribution: "",
+  oci: "",
+  icr: "icr.io",
+  ecr: "public.ecr.aws",
 };
 
 // Per-type guidance on creating the right pull credential. credential = what to
@@ -148,110 +152,112 @@ interface RegistryHelpInfo {
 
 const REGISTRY_HELP: Record<RegistryType, RegistryHelpInfo> = {
   ghcr: {
-    credential: 'Personal Access Token (classic)',
+    credential: "Personal Access Token (classic)",
     steps: [
-      'GitHub → Settings → Developer settings → Personal access tokens (classic).',
-      'Generate a token with the read:packages scope.',
-      'Use your GitHub username + the token below.',
+      "GitHub → Settings → Developer settings → Personal access tokens (classic).",
+      "Generate a token with the read:packages scope.",
+      "Use your GitHub username + the token below.",
     ],
-    scope: 'read:packages',
-    docUrl: 'https://github.com/settings/tokens',
+    scope: "read:packages",
+    docUrl: "https://github.com/settings/tokens",
   },
   quay: {
-    credential: 'Robot account',
+    credential: "Robot account",
     steps: [
-      'Quay → your org or user → Robot Accounts → Create.',
-      'Grant the robot Read on the target repositories.',
-      'Use the robot name + token below.',
+      "Quay → your org or user → Robot Accounts → Create.",
+      "Grant the robot Read on the target repositories.",
+      "Use the robot name + token below.",
     ],
-    scope: 'Read (pull)',
-    docUrl: 'https://docs.quay.io/',
+    scope: "Read (pull)",
+    docUrl: "https://docs.quay.io/",
   },
   dockerhub: {
-    credential: 'Access Token (PAT)',
+    credential: "Access Token (PAT)",
     steps: [
-      'Docker Hub → Account Settings → Security → Personal access tokens.',
-      'Create a token with Read-only access.',
-      'Use your Docker ID + the token below.',
+      "Docker Hub → Account Settings → Security → Personal access tokens.",
+      "Create a token with Read-only access.",
+      "Use your Docker ID + the token below.",
     ],
-    scope: 'Read-only',
-    docUrl: 'https://docs.docker.com/security/for-developers/access-tokens/',
+    scope: "Read-only",
+    docUrl: "https://docs.docker.com/security/for-developers/access-tokens/",
   },
   far: {
-    credential: 'F5 CNE auth key (f5-cne-far-auth-key.tgz)',
+    credential: "F5 CNE auth key (f5-cne-far-auth-key.tgz)",
     steps: [
-      'Obtain f5-cne-far-auth-key.tgz from MyF5 / your F5 representative.',
-      'Drag & drop the .tgz (or its service-account .json) into the FAR Auth Key field.',
-      'No username needed — auth uses the _json_key_base64 scheme.',
+      "Obtain f5-cne-far-auth-key.tgz from MyF5 / your F5 representative.",
+      "Drag & drop the .tgz (or its service-account .json) into the FAR Auth Key field.",
+      "No username needed — auth uses the _json_key_base64 scheme.",
     ],
-    scope: 'Pull from the FAR host',
-    docUrl: 'https://my.f5.com/',
+    scope: "Pull from the FAR host",
+    docUrl: "https://my.f5.com/",
   },
   artifactory: {
-    credential: 'Identity / Access token (or API key)',
+    credential: "Identity / Access token (or API key)",
     steps: [
-      'Artifactory → Edit Profile → Generate an Identity Token.',
-      'Grant read on the target Docker repository.',
-      'Use your username + the token below.',
+      "Artifactory → Edit Profile → Generate an Identity Token.",
+      "Grant read on the target Docker repository.",
+      "Use your username + the token below.",
     ],
-    scope: 'Read (pull)',
-    docUrl: 'https://jfrog.com/help/',
+    scope: "Read (pull)",
+    docUrl: "https://jfrog.com/help/",
   },
   harbor: {
-    credential: 'Robot account',
+    credential: "Robot account",
     steps: [
-      'Harbor → Project → Robot Accounts → New Robot Account.',
-      'Grant Pull permission on the project.',
-      'Use robot$<name> + the secret below.',
+      "Harbor → Project → Robot Accounts → New Robot Account.",
+      "Grant Pull permission on the project.",
+      "Use robot$<name> + the secret below.",
     ],
-    scope: 'pull',
-    docUrl: 'https://goharbor.io/docs/latest/',
+    scope: "pull",
+    docUrl: "https://goharbor.io/docs/latest/",
   },
   distribution: {
-    credential: 'Basic-auth user (htpasswd)',
+    credential: "Basic-auth user (htpasswd)",
     steps: [
-      'Ask the registry operator for a username + password.',
-      'Self-hosted registry:2 typically authenticates from an htpasswd file.',
-      'Enter the host (e.g. registry.example.com:5000) + username + password.',
+      "Ask the registry operator for a username + password.",
+      "Self-hosted registry:2 typically authenticates from an htpasswd file.",
+      "Enter the host (e.g. registry.example.com:5000) + username + password.",
     ],
-    scope: 'Pull',
-    docUrl: 'https://distribution.github.io/distribution/',
+    scope: "Pull",
+    docUrl: "https://distribution.github.io/distribution/",
   },
   oci: {
-    credential: 'Registry username + token / password',
+    credential: "Registry username + token / password",
     steps: [
-      'Create a pull credential in your OCI-compliant registry.',
-      'Enter its host + username + token below.',
-      'Auth is HTTP Basic / Bearer against the /v2/ API.',
+      "Create a pull credential in your OCI-compliant registry.",
+      "Enter its host + username + token below.",
+      "Auth is HTTP Basic / Bearer against the /v2/ API.",
     ],
-    scope: 'Pull',
-    docUrl: 'https://github.com/opencontainers/distribution-spec',
+    scope: "Pull",
+    docUrl: "https://github.com/opencontainers/distribution-spec",
   },
   ecr: {
-    credential: 'AWS Cloud Credential Template (not a registry token)',
+    credential: "AWS Cloud Credential Template (not a registry token)",
     steps: [
-      'Create or select an AWS Cloud Credential Template under Access Methods.',
-      'The IAM principal needs ecr:GetAuthorizationToken + image pull (e.g. AmazonEC2ContainerRegistryReadOnly).',
-      'bnk-forge exchanges it for a short-lived ECR token at pull time.',
+      "Create or select an AWS Cloud Credential Template under Access Methods.",
+      "The IAM principal needs ecr:GetAuthorizationToken + image pull (e.g. AmazonEC2ContainerRegistryReadOnly).",
+      "bnk-forge exchanges it for a short-lived ECR token at pull time.",
     ],
-    scope: 'ecr:GetAuthorizationToken + read',
-    docUrl: 'https://docs.aws.amazon.com/AmazonECR/latest/userguide/security-iam-awsmanpol.html',
+    scope: "ecr:GetAuthorizationToken + read",
+    docUrl:
+      "https://docs.aws.amazon.com/AmazonECR/latest/userguide/security-iam-awsmanpol.html",
   },
   icr: {
-    credential: 'IBM Cloud Credential Template (not a registry token)',
+    credential: "IBM Cloud Credential Template (not a registry token)",
     steps: [
-      'Create or select an IBM Cloud Credential Template under Access Methods.',
-      'Its API key needs the Container Registry Reader role.',
-      'bnk-forge exchanges it for an IAM token at pull time.',
+      "Create or select an IBM Cloud Credential Template under Access Methods.",
+      "Its API key needs the Container Registry Reader role.",
+      "bnk-forge exchanges it for an IAM token at pull time.",
     ],
-    scope: 'Container Registry Reader',
-    docUrl: 'https://cloud.ibm.com/docs/Registry?topic=Registry-registry_access',
+    scope: "Container Registry Reader",
+    docUrl:
+      "https://cloud.ibm.com/docs/Registry?topic=Registry-registry_access",
   },
 };
 
 const isDerived = (t: string): t is RegistryType =>
   DERIVED_TYPES.includes(t as RegistryType);
-const isFar = (t: string) => t === 'far';
+const isFar = (t: string) => t === "far";
 
 // ============================================================================
 // Form state
@@ -269,13 +275,13 @@ interface FormState {
 }
 
 const emptyForm: FormState = {
-  name: '',
-  description: '',
-  type: 'ghcr',
-  registry_host: 'ghcr.io',
-  username: '',
-  token: '',
-  far_service_account: '',
+  name: "",
+  description: "",
+  type: "ghcr",
+  registry_host: "ghcr.io",
+  username: "",
+  token: "",
+  far_service_account: "",
   credential_template_id: null,
 };
 
@@ -299,13 +305,14 @@ function CredentialFileDropzone({
 
   const ingest = (file: File) => {
     const isJson =
-      file.name.toLowerCase().endsWith('.json') || file.type === 'application/json';
+      file.name.toLowerCase().endsWith(".json") ||
+      file.type === "application/json";
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result;
-      if (typeof result !== 'string') return;
+      if (typeof result !== "string") return;
       // readAsText → raw JSON text; readAsDataURL → "data:...;base64,XXXX".
-      const value = isJson ? result : (result.split(',')[1] ?? '');
+      const value = isJson ? result : (result.split(",")[1] ?? "");
       onLoad(value, file.name);
       setFilename(file.name);
     };
@@ -327,13 +334,16 @@ function CredentialFileDropzone({
         if (file) ingest(file);
       }}
       className={cn(
-        'flex flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border p-4 text-center text-xs text-muted-foreground transition-colors',
-        dragging && 'border-primary bg-primary/5 text-foreground',
+        "flex flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border p-4 text-center text-xs text-muted-foreground transition-colors",
+        dragging && "border-primary bg-primary/5 text-foreground",
       )}
     >
       <Upload className="h-4 w-4" />
       <span>{filename ? `Loaded ${filename}` : hint}</span>
-      <label htmlFor={inputId} className="cursor-pointer text-primary hover:underline">
+      <label
+        htmlFor={inputId}
+        className="cursor-pointer text-primary hover:underline"
+      >
         Choose file
       </label>
       <input
@@ -344,7 +354,7 @@ function CredentialFileDropzone({
         onChange={(e) => {
           const file = e.target.files?.[0];
           if (file) ingest(file);
-          e.target.value = '';
+          e.target.value = "";
         }}
       />
     </div>
@@ -402,15 +412,18 @@ function RegistryHelp({ type }: { type: RegistryType }) {
 export default function ContainerRegistries() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [editingRegistry, setEditingRegistry] = useState<ContainerRegistry | null>(null);
-  const [testingRegistryId, setTestingRegistryId] = useState<number | null>(null);
+  const [editingRegistry, setEditingRegistry] =
+    useState<ContainerRegistry | null>(null);
+  const [testingRegistryId, setTestingRegistryId] = useState<number | null>(
+    null,
+  );
   const [formData, setFormData] = useState<FormState>({ ...emptyForm });
 
   const { data: registries, isLoading } = useContainerRegistries();
 
   // Cloud credential templates feed the derived-type dropdown.
   const { data: templates } = useQuery({
-    queryKey: ['credential-templates'],
+    queryKey: ["credential-templates"],
     queryFn: () => api.listCredentialTemplates(),
   });
 
@@ -436,14 +449,26 @@ export default function ContainerRegistries() {
         description: formData.description || null,
         type: formData.type,
         registry_host: formData.registry_host,
-        username: isDerived(formData.type) || isFar(formData.type) ? null : formData.username || null,
-        token: isDerived(formData.type) || isFar(formData.type) ? null : formData.token || null,
-        far_service_account: isFar(formData.type) ? formData.far_service_account || null : null,
-        credential_template_id: isDerived(formData.type) ? formData.credential_template_id : null,
+        username:
+          isDerived(formData.type) || isFar(formData.type)
+            ? null
+            : formData.username || null,
+        token:
+          isDerived(formData.type) || isFar(formData.type)
+            ? null
+            : formData.token || null,
+        far_service_account: isFar(formData.type)
+          ? formData.far_service_account || null
+          : null,
+        credential_template_id: isDerived(formData.type)
+          ? formData.credential_template_id
+          : null,
       },
       {
         onSuccess: (reg) => {
-          notify.success('Container registry added', undefined, { category: 'credentials' });
+          notify.success("Container registry added", undefined, {
+            category: "credentials",
+          });
           setIsCreateDialogOpen(false);
           resetForm();
           if (reg?.id) runTest(reg.id);
@@ -456,12 +481,12 @@ export default function ContainerRegistries() {
     setEditingRegistry(registry);
     setFormData({
       name: registry.name,
-      description: registry.description || '',
+      description: registry.description || "",
       type: registry.type as RegistryType,
       registry_host: registry.registry_host,
-      username: registry.username || '',
-      token: '',
-      far_service_account: '',
+      username: registry.username || "",
+      token: "",
+      far_service_account: "",
       credential_template_id: registry.credential_template_id ?? null,
     });
     setIsEditDialogOpen(true);
@@ -469,7 +494,7 @@ export default function ContainerRegistries() {
 
   const handleUpdate = () => {
     if (!editingRegistry) return;
-    const data: Parameters<typeof updateMutation.mutate>[0]['data'] = {
+    const data: Parameters<typeof updateMutation.mutate>[0]["data"] = {
       name: formData.name,
       description: formData.description,
       type: formData.type,
@@ -490,7 +515,9 @@ export default function ContainerRegistries() {
       { id: editingRegistry.id, data },
       {
         onSuccess: (reg) => {
-          notify.success('Container registry updated', undefined, { category: 'credentials' });
+          notify.success("Container registry updated", undefined, {
+            category: "credentials",
+          });
           setIsEditDialogOpen(false);
           setEditingRegistry(null);
           resetForm();
@@ -501,10 +528,16 @@ export default function ContainerRegistries() {
   };
 
   const handleDelete = (registry: ContainerRegistry) => {
-    if (confirm(`Delete container registry "${registry.name}"? This action cannot be undone.`)) {
+    if (
+      confirm(
+        `Delete container registry "${registry.name}"? This action cannot be undone.`,
+      )
+    ) {
       deleteMutation.mutate(registry.id, {
         onSuccess: () =>
-          notify.success('Container registry deleted', undefined, { category: 'credentials' }),
+          notify.success("Container registry deleted", undefined, {
+            category: "credentials",
+          }),
       });
     }
   };
@@ -515,15 +548,20 @@ export default function ContainerRegistries() {
       onSuccess: (result) => {
         setTestingRegistryId(null);
         if (result.not_implemented) {
-          notify.warning(result.message || 'Connectivity test not yet implemented for this type.');
+          notify.warning(
+            result.message ||
+              "Connectivity test not yet implemented for this type.",
+          );
         } else if (result.success) {
           notify.success(
-            `Registry test passed${result.message ? `: ${result.message}` : ''}`,
+            `Registry test passed${result.message ? `: ${result.message}` : ""}`,
             undefined,
-            { category: 'credentials' },
+            { category: "credentials" },
           );
         } else {
-          notify.error(`Registry test failed: ${result.error || result.message || 'Unknown error'}`);
+          notify.error(
+            `Registry test failed: ${result.error || result.message || "Unknown error"}`,
+          );
         }
       },
       onError: () => setTestingRegistryId(null),
@@ -536,17 +574,23 @@ export default function ContainerRegistries() {
   // Shared form fields (used by both create + edit dialogs)
   // ==========================================================================
 
-  const renderTypeAwareFields = (mode: 'create' | 'edit') => {
-    const prefix = mode === 'edit' ? 'edit-' : '';
+  const renderTypeAwareFields = (mode: "create" | "edit") => {
+    const prefix = mode === "edit" ? "edit-" : "";
     const derived = isDerived(formData.type);
     const far = isFar(formData.type);
     return (
       <>
         {derived ? (
           <div>
-            <Label htmlFor={`${prefix}credential-template`}>Cloud Credential Template *</Label>
+            <Label htmlFor={`${prefix}credential-template`}>
+              Cloud Credential Template *
+            </Label>
             <Select
-              value={formData.credential_template_id ? String(formData.credential_template_id) : ''}
+              value={
+                formData.credential_template_id
+                  ? String(formData.credential_template_id)
+                  : ""
+              }
               onValueChange={(v) =>
                 setFormData({ ...formData, credential_template_id: Number(v) })
               }
@@ -563,7 +607,8 @@ export default function ContainerRegistries() {
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground mt-1">
-              The short-lived registry token is exchanged from this cloud credential at pull time.
+              The short-lived registry token is exchanged from this cloud
+              credential at pull time.
             </p>
           </div>
         ) : far ? (
@@ -571,24 +616,32 @@ export default function ContainerRegistries() {
             <Label htmlFor={`${prefix}far-sa`}>FAR Auth Key *</Label>
             <CredentialFileDropzone
               inputId={`${prefix}far-file`}
-              onLoad={(value) => setFormData((p) => ({ ...p, far_service_account: value }))}
+              onLoad={(value) =>
+                setFormData((p) => ({ ...p, far_service_account: value }))
+              }
               hint="Drag & drop f5-cne-far-auth-key.tgz or a service-account .json — or paste below"
             />
             <Textarea
               id={`${prefix}far-sa`}
               value={formData.far_service_account}
-              onChange={(e) => setFormData({ ...formData, far_service_account: e.target.value })}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  far_service_account: e.target.value,
+                })
+              }
               placeholder={
-                mode === 'edit'
-                  ? '(existing auth key hidden — drop a file above or paste to replace)'
-                  : 'Base64-encoded *.tgz auth key, or raw service-account JSON'
+                mode === "edit"
+                  ? "(existing auth key hidden — drop a file above or paste to replace)"
+                  : "Base64-encoded *.tgz auth key, or raw service-account JSON"
               }
               rows={4}
               className="font-mono text-xs mt-2"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Paste the base64 <code>f5-cne-far-auth-key.tgz</code> contents or the raw service-account
-              JSON. Stored encrypted; never displayed again.
+              Paste the base64 <code>f5-cne-far-auth-key.tgz</code> contents or
+              the raw service-account JSON. Stored encrypted; never displayed
+              again.
             </p>
           </div>
         ) : (
@@ -598,18 +651,28 @@ export default function ContainerRegistries() {
               <Input
                 id={`${prefix}username`}
                 value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, username: e.target.value })
+                }
                 placeholder="Registry username or robot account"
               />
             </div>
             <div>
-              <Label htmlFor={`${prefix}token`}>Token / Password {mode === 'create' ? '*' : ''}</Label>
+              <Label htmlFor={`${prefix}token`}>
+                Token / Password {mode === "create" ? "*" : ""}
+              </Label>
               <Input
                 id={`${prefix}token`}
                 type="password"
                 value={formData.token}
-                onChange={(e) => setFormData({ ...formData, token: e.target.value })}
-                placeholder={mode === 'edit' ? 'Leave blank to keep existing' : 'Personal access token'}
+                onChange={(e) =>
+                  setFormData({ ...formData, token: e.target.value })
+                }
+                placeholder={
+                  mode === "edit"
+                    ? "Leave blank to keep existing"
+                    : "Personal access token"
+                }
               />
             </div>
           </>
@@ -619,8 +682,8 @@ export default function ContainerRegistries() {
     );
   };
 
-  const renderForm = (mode: 'create' | 'edit') => {
-    const prefix = mode === 'edit' ? 'edit-' : '';
+  const renderForm = (mode: "create" | "edit") => {
+    const prefix = mode === "edit" ? "edit-" : "";
     return (
       <div className="space-y-4">
         <div>
@@ -638,7 +701,9 @@ export default function ContainerRegistries() {
           <Input
             id={`${prefix}description`}
             value={formData.description}
-            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            onChange={(e) =>
+              setFormData({ ...formData, description: e.target.value })
+            }
             placeholder="Optional description"
           />
         </div>
@@ -646,7 +711,10 @@ export default function ContainerRegistries() {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label htmlFor={`${prefix}type`}>Registry Type *</Label>
-            <Select value={formData.type} onValueChange={(v) => handleTypeChange(v as RegistryType)}>
+            <Select
+              value={formData.type}
+              onValueChange={(v) => handleTypeChange(v as RegistryType)}
+            >
               <SelectTrigger id={`${prefix}type`}>
                 <SelectValue />
               </SelectTrigger>
@@ -664,7 +732,9 @@ export default function ContainerRegistries() {
             <Input
               id={`${prefix}registry-host`}
               value={formData.registry_host}
-              onChange={(e) => setFormData({ ...formData, registry_host: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, registry_host: e.target.value })
+              }
               placeholder="ghcr.io"
             />
           </div>
@@ -682,15 +752,15 @@ export default function ContainerRegistries() {
   return (
     <SectionCard title="Container registries">
       <p className="text-sm text-muted-foreground -mt-1 mb-4">
-        OCI registry access for pulling container images, Helm charts, and manifests used by
-        container-engine deployments. Standalone types (GHCR, Quay, FAR) carry their own secret;
-        derived types (ECR, ACR, ICR, GAR) reference a cloud credential template for short-lived
-        token exchange.
+        OCI registry access for pulling container images, Helm charts, and
+        manifests used by container-engine deployments. Standalone types (GHCR,
+        Quay, FAR) carry their own secret; derived types (ECR, ACR, ICR, GAR)
+        reference a cloud credential template for short-lived token exchange.
       </p>
       <div className="space-y-6">
         <div className="flex items-center gap-2">
           <Button
-            variant="outline"
+            variant="default"
             size="sm"
             onClick={() => {
               resetForm();
@@ -736,7 +806,9 @@ export default function ContainerRegistries() {
                     <TableRow key={registry.id}>
                       <TableCell>
                         <div className="flex flex-col">
-                          <span className="font-medium text-foreground">{registry.name}</span>
+                          <span className="font-medium text-foreground">
+                            {registry.name}
+                          </span>
                           {registry.description && (
                             <span className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
                               {registry.description}
@@ -746,10 +818,13 @@ export default function ContainerRegistries() {
                       </TableCell>
                       <TableCell>
                         <Badge
-                          variant={isDerived(registry.type) ? 'info' : 'success'}
+                          variant={
+                            isDerived(registry.type) ? "info" : "success"
+                          }
                           className="text-xs"
                         >
-                          {TYPE_LABELS[registry.type as RegistryType] ?? registry.type}
+                          {TYPE_LABELS[registry.type as RegistryType] ??
+                            registry.type}
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -790,11 +865,15 @@ export default function ContainerRegistries() {
                               )}
                               Test connection
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleEdit(registry)}>
+                            <DropdownMenuItem
+                              onClick={() => handleEdit(registry)}
+                            >
                               <Edit className="h-4 w-4 mr-2" />
                               Edit
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleDelete(registry)}>
+                            <DropdownMenuItem
+                              onClick={() => handleDelete(registry)}
+                            >
                               <Trash2 className="h-4 w-4 mr-2 text-destructive" />
                               Delete
                             </DropdownMenuItem>
@@ -812,7 +891,8 @@ export default function ContainerRegistries() {
             <Boxes className="h-12 w-12 mx-auto mb-4 opacity-50" />
             <p>No container registries configured</p>
             <p className="text-xs mt-2">
-              Add a registry to pull images, charts, and manifests for container-engine deployments
+              Add a registry to pull images, charts, and manifests for
+              container-engine deployments
             </p>
           </div>
         )}
@@ -829,10 +909,11 @@ export default function ContainerRegistries() {
             <DialogHeader>
               <DialogTitle>Add Container Registry</DialogTitle>
               <DialogDescription>
-                Configure an OCI registry. Secrets are stored encrypted and never displayed again.
+                Configure an OCI registry. Secrets are stored encrypted and
+                never displayed again.
               </DialogDescription>
             </DialogHeader>
-            {renderForm('create')}
+            {renderForm("create")}
             <DialogFooter>
               <Button
                 variant="outline"
@@ -843,13 +924,16 @@ export default function ContainerRegistries() {
               >
                 Cancel
               </Button>
-              <Button onClick={handleCreate} disabled={createMutation.isPending}>
+              <Button
+                onClick={handleCreate}
+                disabled={createMutation.isPending}
+              >
                 {createMutation.isPending ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Adding...
                   </>
                 ) : (
-                  'Add Registry'
+                  "Add Registry"
                 )}
               </Button>
             </DialogFooter>
@@ -862,21 +946,29 @@ export default function ContainerRegistries() {
             <DialogHeader>
               <DialogTitle>Edit Container Registry</DialogTitle>
               <DialogDescription>
-                Update registry settings. Leave secret fields blank to keep existing values.
+                Update registry settings. Leave secret fields blank to keep
+                existing values.
               </DialogDescription>
             </DialogHeader>
-            {renderForm('edit')}
+            {renderForm("edit")}
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+              <Button
+                variant="outline"
+                onClick={() => setIsEditDialogOpen(false)}
+              >
                 Cancel
               </Button>
-              <Button onClick={handleUpdate} disabled={updateMutation.isPending}>
+              <Button
+                onClick={handleUpdate}
+                disabled={updateMutation.isPending}
+              >
                 {updateMutation.isPending ? (
                   <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Updating...
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />{" "}
+                    Updating...
                   </>
                 ) : (
-                  'Update Registry'
+                  "Update Registry"
                 )}
               </Button>
             </DialogFooter>
@@ -910,30 +1002,36 @@ function RegistryStatusIcon({
   message?: string | null;
   pending?: boolean;
 }) {
-  const ageLabel = when ? `last tested ${new Date(when).toLocaleString()}` : 'never tested';
-  const effective = pending ? 'running' : (status ?? 'unknown');
+  const ageLabel = when
+    ? `last tested ${new Date(when).toLocaleString()}`
+    : "never tested";
+  const effective = pending ? "running" : (status ?? "unknown");
   const tooltip =
-    effective === 'running'
-      ? 'Testing…'
-      : effective === 'ok'
+    effective === "running"
+      ? "Testing…"
+      : effective === "ok"
         ? `Authenticated — ${ageLabel}`
-        : effective === 'failed'
-          ? `Failed — ${ageLabel}${message ? `\n${message}` : ''}`
-          : effective === 'not_implemented'
+        : effective === "failed"
+          ? `Failed — ${ageLabel}${message ? `\n${message}` : ""}`
+          : effective === "not_implemented"
             ? `Test not yet implemented — ${ageLabel}`
             : `Not tested yet — ${ageLabel}`;
   const colour =
-    effective === 'running'
-      ? 'text-warning animate-pulse'
-      : effective === 'ok'
-        ? 'text-success'
-        : effective === 'failed'
-          ? 'text-destructive'
-          : effective === 'not_implemented'
-            ? 'text-warning'
-            : 'text-muted-foreground';
+    effective === "running"
+      ? "text-warning animate-pulse"
+      : effective === "ok"
+        ? "text-success"
+        : effective === "failed"
+          ? "text-destructive"
+          : effective === "not_implemented"
+            ? "text-warning"
+            : "text-muted-foreground";
   return (
-    <span className={`inline-flex items-center ${colour}`} title={tooltip} aria-label={tooltip}>
+    <span
+      className={`inline-flex items-center ${colour}`}
+      title={tooltip}
+      aria-label={tooltip}
+    >
       <Container className="h-4 w-4" />
     </span>
   );

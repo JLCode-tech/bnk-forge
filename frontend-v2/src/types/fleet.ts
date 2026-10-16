@@ -524,3 +524,76 @@ export function isClusterConfigComparison(
 ): result is FleetCompareClusterResult {
   return 'comparison_mode' in result && result.comparison_mode === 'cluster_config';
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Fleet Deployable Configs & Cross-Cluster Deploy
+// ──────────────────────────────────────────────────────────────────────────────
+
+export interface FleetDeployableConfig {
+  id: number;
+  fleet_id?: number | null;
+  name: string;
+  description?: string | null;
+  category: string;
+  target_namespace?: string | null;
+  config_yaml: string;
+  source_cluster_id?: number | null;
+  source_cluster_name?: string | null;
+  created_by?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface CreateFleetConfigRequest {
+  name: string;
+  config_yaml: string;
+  description?: string;
+  category?: string;
+  target_namespace?: string;
+  fleet_id?: number;
+  source_cluster_id?: number;
+  source_cluster_name?: string;
+}
+
+export interface UpdateFleetConfigRequest {
+  name?: string;
+  description?: string;
+  category?: string;
+  target_namespace?: string;
+  config_yaml?: string;
+  fleet_id?: number;
+}
+
+export interface DeployFleetConfigRequest {
+  target_cluster_ids: number[];
+  config_yaml?: string;
+  config_id?: number;
+  target_namespace?: string;
+  dry_run?: boolean;
+}
+
+export interface ClusterDeployResourceResult {
+  kind: string;
+  name: string;
+  namespace?: string;
+  status: 'valid' | 'applied' | 'error';
+  error?: string;
+}
+
+export interface ClusterDeployResult {
+  cluster_id: number;
+  cluster_name: string;
+  success: boolean;
+  status: 'ready' | 'applied' | 'error' | 'failed';
+  message: string;
+  resources: ClusterDeployResourceResult[];
+}
+
+export interface DeployFleetConfigResponse {
+  dry_run: boolean;
+  total_clusters: number;
+  successful_clusters: number;
+  failed_clusters: number;
+  cluster_results: ClusterDeployResult[];
+}
+

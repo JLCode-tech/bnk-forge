@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useContext } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -19,7 +19,13 @@ import {
   ShieldAlert,
   X,
 } from "lucide-react";
-import { useLocation, Link, useNavigate } from "react-router-dom";
+import {
+  useLocation,
+  Link,
+  useNavigate,
+  UNSAFE_DataRouterStateContext,
+  UNSAFE_LocationContext,
+} from "react-router-dom";
 import {
   useUnreadCount,
   useMarkNotificationRead,
@@ -34,6 +40,8 @@ import { ProcessMetricsBar } from "./ProcessMetricsBar";
 import { useMaintenanceStatus } from "@/hooks/useBackup";
 import { formatTimeAgo } from "@/lib/time-utils";
 import { navigationSections } from "./nav-sections";
+import { getRouteHandle, type RouteHandle } from "@/router";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 function MaintenanceBanner() {
   const { data: maintenance, isLoading } = useMaintenanceStatus();
@@ -53,126 +61,12 @@ function MaintenanceBanner() {
   );
 }
 
-// Page metadata for dynamic context
-const pageMetadata: Record<
-  string,
-  { title: string; breadcrumbs: { label: string; href?: string }[] }
-> = {
-  "/": {
-    title: "Command Center",
-    breadcrumbs: [{ label: "Observe" }],
-  },
-  "/projects": {
-    title: "Projects",
-    breadcrumbs: [{ label: "Build" }],
-  },
-  "/catalog": {
-    title: "Catalog",
-    breadcrumbs: [{ label: "Build" }],
-  },
-  "/stacks": {
-    title: "Blueprints",
-    breadcrumbs: [{ label: "Build" }],
-  },
-  "/auth-templates": {
-    title: "Access Methods",
-    breadcrumbs: [{ label: "Build" }],
-  },
-  "/tasks": {
-    title: "Operations Log",
-    breadcrumbs: [{ label: "Build" }],
-  },
-  "/fleet": {
-    title: "Fleet",
-    breadcrumbs: [{ label: "Operate" }],
-  },
-  "/infrastructure": {
-    title: "Infrastructure",
-    breadcrumbs: [{ label: "Operate" }],
-  },
-  "/kubernetes": {
-    title: "Kubernetes",
-    breadcrumbs: [{ label: "Operate" }],
-  },
-  "/crds": {
-    title: "Custom Resources",
-    breadcrumbs: [{ label: "Operate" }],
-  },
-  "/bnk": {
-    title: "F5 BNK",
-    breadcrumbs: [{ label: "Operate" }],
-  },
-  "/cnf": {
-    title: "F5 CNF",
-    breadcrumbs: [{ label: "Operate" }],
-  },
-  "/ai/agents": {
-    title: "Agent Fleet & Identity",
-    breadcrumbs: [{ label: "AI Control Plane" }],
-  },
-  "/ai/governance": {
-    title: "Token & Cost Governance",
-    breadcrumbs: [{ label: "AI Control Plane" }],
-  },
-  "/ai/routing": {
-    title: "SmartLLM Traffic Router",
-    breadcrumbs: [{ label: "AI Control Plane" }],
-  },
-  "/ai/logs": {
-    title: "Request Audit Logs",
-    breadcrumbs: [{ label: "AI Control Plane" }],
-  },
-  "/observability/ai-gateway": {
-    title: "Token & Cost Governance",
-    breadcrumbs: [{ label: "AI Control Plane" }],
-  },
-  "/observability/ai-gateway/logs": {
-    title: "Request Audit Logs",
-    breadcrumbs: [{ label: "AI Control Plane" }],
-  },
-  "/benchmarks": {
-    title: "Benchmarks",
-    breadcrumbs: [{ label: "Observe" }],
-  },
-  "/users": {
-    title: "Users",
-    breadcrumbs: [{ label: "Settings" }],
-  },
-  "/system": {
-    title: "System",
-    breadcrumbs: [{ label: "Settings" }],
-  },
-};
-
 function formatNavLabel(label: string): string {
   if (!label) return "Home";
-  return label
-    .toLowerCase()
-    .split(" ")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
+  return label;
 }
 
-function getHeaderMetadata(pathname: string): {
-  title: string;
-  breadcrumbs: { label: string; href?: string }[];
-} {
-  if (pageMetadata[pathname]) {
-    return pageMetadata[pathname];
-  }
-
-  // Prefix match: /projects/:id...
-  if (pathname.startsWith("/projects/")) {
-    return {
-      title: "Projects",
-      breadcrumbs: [
-        { label: "Build", href: "/projects" },
-        { label: "Projects", href: "/projects" },
-      ],
-    };
-  }
-
-  // Derive fallback from sidebar navigation
+function findNavMatch(pathname: string): RouteHandle | null {
   for (const section of navigationSections) {
     const matchedItem = section.items.find(
       (item) =>
@@ -186,17 +80,59 @@ function getHeaderMetadata(pathname: string): {
       };
     }
   }
+  return null;
+}
+
+function getHeaderMetadata(pathname: string): RouteHandle {
+  // Prioritize the unified navigation taxonomy first
+  const navMatch = findNavMatch(pathname);
+  if (navMatch) {
+    return navMatch;
+  }
+
+  const handleFromRoutes = getRouteHandle(pathname);
+  if (handleFromRoutes) {
+    return handleFromRoutes;
+  }
 
   // General fallback from path segment if not in sidebar
   const segment = pathname.split("/").filter(Boolean)[0];
   const fallbackTitle = segment
     ? segment.charAt(0).toUpperCase() + segment.slice(1).replace(/-/g, " ")
-    : "Command Center";
+    : "Overview";
 
   return {
     title: fallbackTitle,
     breadcrumbs: [{ label: "Home" }],
   };
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function useHeaderMetadata(): RouteHandle {
+  const dataRouterState = useContext(UNSAFE_DataRouterStateContext);
+  const locationContext = useContext(UNSAFE_LocationContext);
+  const pathname = locationContext?.location?.pathname ?? "/";
+
+  const navMatch = findNavMatch(pathname);
+  if (navMatch) {
+    return navMatch;
+  }
+
+  if (dataRouterState?.matches) {
+    const matchWithHandle = [...dataRouterState.matches]
+      .reverse()
+      .find(
+        (m) =>
+          m.route?.handle &&
+          typeof m.route.handle === "object" &&
+          "title" in m.route.handle,
+      );
+    if (matchWithHandle?.route?.handle) {
+      return matchWithHandle.route.handle as RouteHandle;
+    }
+  }
+
+  return getHeaderMetadata(pathname);
 }
 
 // ─── Severity icon + colour ────────────────────────────────────────────────
@@ -528,7 +464,12 @@ export function Header() {
   const location = useLocation();
   const { isUpgrading, upgradePhaseLabel } = useUpgradeStatus();
 
-  const currentPage = getHeaderMetadata(location.pathname);
+  const currentPage = useHeaderMetadata();
+  const parentBreadcrumbs = currentPage.breadcrumbs.filter(
+    (crumb, index) =>
+      index < currentPage.breadcrumbs.length - 1 ||
+      crumb.label !== currentPage.title,
+  );
 
   return (
     <header className="border-b bg-card">
@@ -549,9 +490,9 @@ export function Header() {
             <ShieldAlert className="h-3 w-3 mr-1" />
             Deployments locked
           </Badge>
-          {location.pathname !== "/settings" && (
+          {location.pathname !== "/system" && (
             <Link
-              to="/settings"
+              to="/system?tab=overview"
               className="ml-2 text-xs underline underline-offset-2 opacity-80 hover:opacity-100"
             >
               View progress
@@ -559,29 +500,30 @@ export function Header() {
           )}
         </div>
       )}
-      <div className="flex items-center justify-between px-6 py-4">
+      <div className="h-12 flex items-center justify-between px-6">
         {/* Left side: Page context and breadcrumbs */}
-        <div className="flex items-center gap-4">
-          <div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-              {currentPage.breadcrumbs.map((crumb, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  {index > 0 && <ChevronRight className="h-3 w-3" />}
-                  {crumb.href ? (
-                    <Link
-                      to={crumb.href}
-                      className="hover:text-foreground transition-colors"
-                    >
-                      {crumb.label}
-                    </Link>
-                  ) : (
-                    <span>{crumb.label}</span>
-                  )}
-                </div>
-              ))}
+        <div className="flex items-center gap-2 text-sm">
+          {parentBreadcrumbs.map((crumb, index) => (
+            <div
+              key={index}
+              className="flex items-center gap-2 text-muted-foreground"
+            >
+              {crumb.href ? (
+                <Link
+                  to={crumb.href}
+                  className="hover:text-foreground transition-colors"
+                >
+                  {crumb.label}
+                </Link>
+              ) : (
+                <span>{crumb.label}</span>
+              )}
+              <ChevronRight className="h-3 w-3 text-muted-foreground" />
             </div>
-            <h2 className="text-lg font-semibold">{currentPage.title}</h2>
-          </div>
+          ))}
+          <h2 className="text-sm font-semibold text-foreground">
+            {currentPage.title}
+          </h2>
         </div>
 
         {/* Right side: Actions */}
@@ -609,6 +551,9 @@ export function Header() {
               ⌘K
             </Badge>
           </Button>
+
+          {/* Theme Toggle */}
+          <ThemeToggle />
 
           {/* Notification Center */}
           <NotificationBell />

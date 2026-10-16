@@ -161,7 +161,7 @@ export function F5BNKDetailPanel({
 
         {/* Resource-specific detail panel */}
         {DetailComponent ? (
-          <DetailComponent resource={resource} />
+          <DetailComponent resource={resource} onNavigateView={onNavigateView} />
         ) : (
           <FallbackDetail resource={resource} />
         )}

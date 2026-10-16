@@ -73,11 +73,11 @@ export function ExistingProxiesCard({
                 <div className="flex items-center justify-between mb-1">
                   <span className="font-medium">{proxy.display_name}</span>
                   <div className="flex items-center gap-1.5">
-                    <Badge variant="outline" className="text-[10px] font-mono">
+                    <Badge variant="outline" className="text-2xs font-mono">
                       {proxy.kind}
                     </Badge>
                     {proxy.is_bnk && (
-                      <Badge className="text-[10px] h-4 bg-success/10 text-success border-success/30">
+                      <Badge className="text-2xs h-4 bg-success/10 text-success border-success/30">
                         BNK
                       </Badge>
                     )}
@@ -85,7 +85,7 @@ export function ExistingProxiesCard({
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-5 text-[10px] px-1.5"
+                        className="h-5 text-2xs px-1.5"
                         onClick={() => handlePreview(proxy)}
                         disabled={translateProxy.isPending && activeProxy === proxy}
                       >
@@ -98,26 +98,26 @@ export function ExistingProxiesCard({
                     )}
                   </div>
                 </div>
-                <div className="font-mono text-[10px] truncate text-muted-foreground">
+                <div className="font-mono text-2xs truncate text-muted-foreground">
                   {proxy.controller}
                 </div>
                 {proxy.namespace && (
-                  <div className="text-[10px] mt-0.5 text-muted-foreground">
+                  <div className="text-2xs mt-0.5 text-muted-foreground">
                     ns: {proxy.namespace}
                   </div>
                 )}
                 {proxy.backends.length > 0 && (
                   <div className="mt-1.5 pt-1.5 border-t border-border">
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-2xs text-muted-foreground">
                       Backends:
                     </span>
                     {proxy.backends.slice(0, 3).map((b, bi) => (
-                      <div key={bi} className="font-mono text-[10px] text-foreground/70">
+                      <div key={bi} className="font-mono text-2xs text-foreground/70">
                         {b.service}/{b.namespace}
                       </div>
                     ))}
                     {proxy.backends.length > 3 && (
-                      <div className="text-[10px] text-muted-foreground">
+                      <div className="text-2xs text-muted-foreground">
                         +{proxy.backends.length - 3} more
                       </div>
                     )}

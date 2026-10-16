@@ -20,6 +20,7 @@ export function F5EPPDetail({ resource }: DetailPanelProps) {
 
   return (
     <div className="space-y-4">
+
       <Tabs defaultValue="summary" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="summary">Summary</TabsTrigger>
@@ -31,13 +32,13 @@ export function F5EPPDetail({ resource }: DetailPanelProps) {
             <InfoRow label="Model Name" value={modelName} mono />
             <div className="flex justify-between items-center text-xs">
               <span className="text-muted-foreground">Inference Engine:</span>
-              <Badge variant="outline" className="font-mono text-[10px] uppercase">
+              <Badge variant="outline" className="font-mono text-2xs uppercase">
                 {engine}
               </Badge>
             </div>
             <div className="flex justify-between items-center text-xs">
               <span className="text-muted-foreground">Routing Mode:</span>
-              <Badge variant="secondary" className="font-mono text-[10px] capitalize">
+              <Badge variant="secondary" className="font-mono text-2xs capitalize">
                 {mode}
               </Badge>
             </div>
@@ -65,7 +66,7 @@ export function F5EPPDetail({ resource }: DetailPanelProps) {
                       <Cpu className="h-3 w-3 text-primary" />
                       <code className="font-mono">{typeof ep === 'string' ? ep : ep.address || ep.name || ''}</code>
                     </div>
-                    {typeof ep !== 'string' && ep.state && <Badge variant="outline" className="text-[10px]">{ep.state}</Badge>}
+                    {typeof ep !== 'string' && ep.state && <Badge variant="outline" className="text-2xs">{ep.state}</Badge>}
                   </div>
                 ))}
               </div>

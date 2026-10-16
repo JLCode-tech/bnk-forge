@@ -212,7 +212,7 @@ export function K8sDetailPanel({
                     ([key, value]) => (
                       <code
                         key={key}
-                        className="text-[10px] px-2 py-0.5 rounded font-mono bg-muted text-foreground/80"
+                        className="text-2xs px-2 py-0.5 rounded font-mono bg-muted text-foreground/80"
                       >
                         {key}={value as string}
                       </code>

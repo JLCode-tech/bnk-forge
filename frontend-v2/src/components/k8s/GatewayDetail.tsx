@@ -99,7 +99,7 @@ export function GatewayDetail({ resource }: GatewayDetailProps) {
               <div className="space-y-1.5">
                 {addresses.map((addr: K8sGatewayAddress, idx: number) => (
                   <div key={idx} className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-[10px]">
+                    <Badge variant="outline" className="text-2xs">
                       {addr.type || 'IP'}
                     </Badge>
                     <code className="text-xs font-mono text-foreground/80">
@@ -152,7 +152,7 @@ export function GatewayDetail({ resource }: GatewayDetailProps) {
                       <Icon className="h-4 w-4" />
                       <span className="font-medium text-sm">{listener.name}</span>
                     </div>
-                    <Badge variant={getListenerVariant(listener.protocol)} className="text-[10px]">
+                    <Badge variant={getListenerVariant(listener.protocol)} className="text-2xs">
                       {listener.protocol}
                     </Badge>
                   </div>
@@ -174,7 +174,7 @@ export function GatewayDetail({ resource }: GatewayDetailProps) {
                     {listener.tls && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">TLS:</span>
-                        <Badge variant="success" className="text-[10px]">
+                        <Badge variant="success" className="text-2xs">
                           Enabled
                         </Badge>
                       </div>
@@ -190,7 +190,7 @@ export function GatewayDetail({ resource }: GatewayDetailProps) {
                   </div>
                   {lsStatus && lsStatus.conditions.length > 0 && (
                     <div className="mt-3 pt-3 border-t border-border">
-                      <h5 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                      <h5 className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
                         Conditions
                       </h5>
                       <ConditionsList conditions={lsStatus.conditions} />

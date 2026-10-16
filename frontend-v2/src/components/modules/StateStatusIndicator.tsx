@@ -143,7 +143,7 @@ export function StateStatusIndicator({ module }: StateStatusIndicatorProps) {
               {lineage && (
                 <div>
                   <strong>Lineage:</strong>
-                  <div className="font-mono text-[10px] break-all">{lineage.substring(0, 32)}...</div>
+                  <div className="font-mono text-2xs break-all">{lineage.substring(0, 32)}...</div>
                 </div>
               )}
               {state_modified_at && (

@@ -200,7 +200,7 @@ function LargeContentInput({
             Upload File
           </Button>
           {charCount > 0 && (
-            <span className="text-[10px] text-muted-foreground text-right">
+            <span className="text-2xs text-muted-foreground text-right">
               {charCount.toLocaleString()} chars
             </span>
           )}
@@ -968,11 +968,11 @@ export function StackDetailDialog({
                     <DialogTitle className="text-xl font-bold text-foreground">
                       {template.name}
                     </DialogTitle>
-                    <Badge variant="muted" className="text-[10px] uppercase tracking-wide">
+                    <Badge variant="muted" className="text-2xs uppercase tracking-wide">
                       {categoryLabels[template.category?.toLowerCase() || 'infrastructure'] || 'Blueprint'}
                     </Badge>
                     {template.maturity && (
-                      <Badge variant="muted" className="text-[10px]">
+                      <Badge variant="muted" className="text-2xs">
                         {template.maturity === 'production-ready' ? 'Production Ready' :
                          template.maturity === 'reference' ? 'Reference' :
                          template.maturity}
@@ -984,9 +984,9 @@ export function StackDetailDialog({
                   </DialogDescription>
                   {template.platform_defaults && Object.keys(template.platform_defaults).length > 0 && (
                     <div className="flex items-center gap-1.5 mt-1.5">
-                      <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Platforms:</span>
+                      <span className="text-2xs text-muted-foreground uppercase tracking-wide">Platforms:</span>
                       {Object.keys(template.platform_defaults).map((p) => (
-                        <Badge key={p} variant="outline" className="text-[10px] px-1.5 py-0">
+                        <Badge key={p} variant="outline" className="text-2xs px-1.5 py-0">
                           {p.toUpperCase()}
                         </Badge>
                       ))}
@@ -1050,7 +1050,7 @@ export function StackDetailDialog({
                                 {isSecret && prereq.name ? prereq.name : prereq.type}
                               </p>
                               {isSecret && (
-                                <Badge variant="info" className="text-[10px] py-0">
+                                <Badge variant="info" className="text-2xs py-0">
                                   secret
                                 </Badge>
                               )}
@@ -1189,7 +1189,7 @@ export function StackDetailDialog({
                         <FolderOpen className="h-3.5 w-3.5" />
                         Existing Project
                         {hasK8sPrerequisite && (
-                          <Badge variant="outline" className="ml-1 text-[10px] py-0">Recommended</Badge>
+                          <Badge variant="outline" className="ml-1 text-2xs py-0">Recommended</Badge>
                         )}
                       </Label>
                     </div>
@@ -1350,7 +1350,7 @@ export function StackDetailDialog({
                       <span className="text-xs font-medium text-foreground">Project Secrets Status</span>
                       <Badge
                         variant={areSecretsSatisfied ? 'success' : 'warning'}
-                        className="text-[10px]"
+                        className="text-2xs"
                       >
                         {areSecretsSatisfied
                           ? 'All Configured'
@@ -1375,15 +1375,15 @@ export function StackDetailDialog({
                                 <span className="text-xs font-semibold text-foreground truncate">{secret.name}</span>
                               </div>
                               {secret.exists ? (
-                                <Badge variant="outline" className="text-[10px] text-success border-success/30 flex-shrink-0">
+                                <Badge variant="outline" className="text-2xs text-success border-success/30 flex-shrink-0">
                                   Stored in Project
                                 </Badge>
                               ) : isConfiguredInline ? (
-                                <Badge variant="outline" className="text-[10px] text-info border-info/30 flex-shrink-0">
+                                <Badge variant="outline" className="text-2xs text-info border-info/30 flex-shrink-0">
                                   Set in Blueprint
                                 </Badge>
                               ) : (
-                                <Badge variant="outline" className="text-[10px] text-destructive border-destructive/30 flex-shrink-0">
+                                <Badge variant="outline" className="text-2xs text-destructive border-destructive/30 flex-shrink-0">
                                   Missing
                                 </Badge>
                               )}
@@ -1434,7 +1434,7 @@ export function StackDetailDialog({
                                   }}
                                   className="h-7 text-xs font-mono"
                                 />
-                                <p className="text-[10px] text-muted-foreground">
+                                <p className="text-2xs text-muted-foreground">
                                   Value will be saved encrypted to Project Secrets on deploy, then referenced by name.
                                 </p>
                               </div>
@@ -1486,14 +1486,14 @@ export function StackDetailDialog({
                           <CircuitBoard className="h-4 w-4 text-primary" />
                           <span>Multi-Host Cluster Topology</span>
                         </div>
-                        <Badge variant="outline" className="text-[10px] font-mono border-primary/40 text-primary">
+                        <Badge variant="outline" className="text-2xs font-mono border-primary/40 text-primary">
                           {multiHostConfig.topology}
                         </Badge>
                       </div>
 
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         <div className="p-2 rounded border border-border bg-background space-y-1">
-                          <span className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
+                          <span className="text-2xs text-muted-foreground font-medium flex items-center gap-1">
                             <Server className="h-3 w-3 text-primary" /> Control Plane Host
                           </span>
                           <p className="font-semibold text-foreground truncate">
@@ -1502,7 +1502,7 @@ export function StackDetailDialog({
                         </div>
 
                         <div className="p-2 rounded border border-border bg-background space-y-1">
-                          <span className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
+                          <span className="text-2xs text-muted-foreground font-medium flex items-center gap-1">
                             <Cpu className="h-3 w-3 text-info" /> Worker Hosts ({multiHostConfig.workerHostIds.length})
                           </span>
                           <p className="font-semibold text-foreground truncate">
@@ -1513,12 +1513,12 @@ export function StackDetailDialog({
 
                       {Object.keys(multiHostConfig.dpuSelections).length > 0 && (
                         <div className="p-2 rounded border border-border bg-background text-xs space-y-1">
-                          <span className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
+                          <span className="text-2xs text-muted-foreground font-medium flex items-center gap-1">
                             <Network className="h-3 w-3 text-success" /> DPU Accelerator Mapping
                           </span>
                           <div className="flex flex-wrap gap-1 pt-1">
                             {Object.entries(multiHostConfig.dpuSelections).map(([hId, dpu]) => (
-                              <Badge key={hId} variant="secondary" className="text-[10px] font-mono">
+                              <Badge key={hId} variant="secondary" className="text-2xs font-mono">
                                 {getHostDisplayName(hId)}: {String(dpu)}
                               </Badge>
                             ))}
@@ -1601,7 +1601,7 @@ export function StackDetailDialog({
                   className="space-y-3"
                 >
                   <div className="flex items-center justify-end">
-                    <Badge variant={requiredInputs.total_required > 0 ? 'warning' : 'success'} className="text-[10px]">
+                    <Badge variant={requiredInputs.total_required > 0 ? 'warning' : 'success'} className="text-2xs">
                       {requiredInputs.total_required} required
                     </Badge>
                   </div>
@@ -1646,17 +1646,17 @@ export function StackDetailDialog({
                               {input.name.replace(/_/g, ' ')}
                               {input.required && <span className="text-destructive">*</span>}
                               {input.sensitive && (
-                                <Badge variant="outline" className="text-[10px] py-0">
+                                <Badge variant="outline" className="text-2xs py-0">
                                   sensitive
                                 </Badge>
                               )}
                               {isAutoPopulated && (
-                                <Badge variant="success" className="text-[10px] py-0">
+                                <Badge variant="success" className="text-2xs py-0">
                                   Auto-detected
                                 </Badge>
                               )}
                               {isInheritedFromTemplate && (
-                                <Badge variant="info" className="text-[10px] py-0">
+                                <Badge variant="info" className="text-2xs py-0">
                                   Inherited
                                 </Badge>
                               )}
@@ -1914,27 +1914,27 @@ function ModuleItem({
           )}
           <div className="mt-2 flex flex-wrap gap-1.5">
             {isMissingFromCatalog ? (
-              <Badge variant="destructive" className="text-[10px]">
+              <Badge variant="destructive" className="text-2xs">
                 Missing from catalog
               </Badge>
             ) : (
-              <Badge variant="outline" className={cn('text-[10px]', enginePresentation.className)}>
+              <Badge variant="outline" className={cn('text-2xs', enginePresentation.className)}>
                 {enginePresentation.label}
               </Badge>
             )}
             {!isMissingFromCatalog && module.lifecycle_capabilities && (
               lifecycleSummary.includes('Destroy') ? (
-                <Badge variant="muted" className="text-[10px]">
+                <Badge variant="muted" className="text-2xs">
                   Destroy supported
                 </Badge>
               ) : (
-                <Badge variant="warning" className="text-[10px]">
+                <Badge variant="warning" className="text-2xs">
                   Destroy not supported
                 </Badge>
               )
             )}
             {module.connectivity_risk && (
-              <Badge variant="warning" className="text-[10px]">
+              <Badge variant="warning" className="text-2xs">
                 SSH may drop
               </Badge>
             )}

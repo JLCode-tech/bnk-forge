@@ -8,6 +8,7 @@
  */
 
 import type { CRDInfo } from '@/hooks/useCrds';
+import { crdCategoryLabel } from '@/lib/crd-category-labels';
 import type { CnfCategory, CnfCategoryItem } from './cnf-constants';
 
 export function buildCnfCategories(crds: CRDInfo[]): CnfCategory[] {
@@ -15,7 +16,8 @@ export function buildCnfCategories(crds: CRDInfo[]): CnfCategory[] {
 
   for (const crd of crds) {
     const enriched = !!crd.category;
-    const category = crd.category ?? crd.group;
+    const rawCategory = crd.category ?? crd.group;
+    const category = crd.category ? (crdCategoryLabel(crd.category) ?? rawCategory) : rawCategory;
     const item: CnfCategoryItem = {
       key: crd.name,
       label: crd.display_name ?? crd.kind,

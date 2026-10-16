@@ -15,8 +15,8 @@
  *     the page column, replacing a shadcn <TabsList>.
  */
 
-import { type ReactNode } from 'react';
-import { cn } from '@/lib/utils';
+import { type ReactNode } from "react";
+import { cn } from "@/lib/utils";
 
 export interface ResourceViewTab {
   key: string;
@@ -32,28 +32,32 @@ interface ResourceViewTabsProps {
   tabs: ResourceViewTab[];
   active: string;
   onChange: (key: string) => void;
-  variant?: 'strip' | 'inline';
+  variant?: "strip" | "inline";
   className?: string;
-  'aria-label'?: string;
+  "aria-label"?: string;
 }
 
 export function ResourceViewTabs({
   tabs,
   active,
   onChange,
-  variant = 'strip',
+  variant = "strip",
   className,
-  'aria-label': ariaLabel = 'View mode',
+  "aria-label": ariaLabel = "View mode",
 }: ResourceViewTabsProps) {
   return (
     <div
       className={cn(
-        'border-b border-border',
-        variant === 'strip' && 'flex-shrink-0 bg-card px-6',
+        "border-b border-border overflow-x-auto",
+        variant === "strip" && "flex-shrink-0 bg-card px-6",
         className,
       )}
     >
-      <div role="tablist" aria-label={ariaLabel} className="flex w-full overflow-x-auto">
+      <div
+        role="tablist"
+        aria-label={ariaLabel}
+        className="flex w-full overflow-x-auto"
+      >
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = active === tab.key;
@@ -67,16 +71,18 @@ export function ResourceViewTabs({
               title={tab.title}
               onClick={() => !tab.disabled && onChange(tab.key)}
               className={cn(
-                'flex min-w-0 max-w-[16rem] flex-1 items-center justify-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition-colors',
+                "flex shrink-0 max-w-[16rem] flex-1 items-center justify-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition-colors",
                 tab.disabled
-                  ? 'cursor-not-allowed border-transparent text-muted-foreground/40'
+                  ? "cursor-not-allowed border-transparent text-muted-foreground/40"
                   : isActive
-                    ? 'border-primary text-foreground'
-                    : 'border-transparent text-muted-foreground hover:border-border hover:text-foreground',
+                    ? "border-primary text-foreground"
+                    : "border-transparent text-muted-foreground hover:border-border hover:text-foreground",
               )}
             >
-              {Icon && <Icon className="h-4 w-4 flex-shrink-0" aria-hidden="true" />}
-              <span className="truncate">{tab.label}</span>
+              {Icon && (
+                <Icon className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+              )}
+              <span>{tab.label}</span>
               {tab.badge && <span className="flex-shrink-0">{tab.badge}</span>}
             </button>
           );

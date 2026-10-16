@@ -12,11 +12,20 @@ import { useState, useMemo, memo, useCallback, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SectionCard } from "@/components/ui/section-card";
-import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { ErrorState } from "@/components/ui/error-state";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ResourceViewTabs } from "@/components/layout/ResourceViewTabs";
+import { CollapsibleInnerSidebar } from "@/components/layout/InnerSidebar";
 import { cn } from "@/lib/utils";
 import {
   Globe,
@@ -43,9 +52,6 @@ import {
   ChevronRight,
   ChevronDown,
   LayoutGrid,
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
   Play,
   Square,
   Gauge,
@@ -92,9 +98,11 @@ import type {
   FleetPolicy,
   FleetRollup,
   RunSelectionRequest,
-  WorstState,
 } from "@/types/fleet";
 import { useAllClusters } from "@/hooks/useK8sClusters";
+import type { K8sCluster } from "@/types/kubernetes";
+
+const EMPTY_CLUSTERS: K8sCluster[] = [];
 import {
   normalizeProvider,
   type NormalizedCloudProvider,
@@ -109,7 +117,6 @@ import {
   EstateSummaryBar,
 } from "@/components/fleet/FleetTrafficLights";
 import { AddClusterFlowDialog } from "@/components/k8s/AddClusterFlowDialog";
-import { PageHeader } from "@/components/layout/PageHeader";
 import { usePageRefresh } from "@/hooks/usePageRefresh";
 import { useBnkConsumption } from "@/hooks/useSystem";
 import { BnkResourcesPanel } from "@/components/system/BnkResourcesPanel";
@@ -119,8 +126,7 @@ import { queryKeys } from "@/lib/queryKeys";
 // Import removed — Fleet no longer owns the DPU hardware view.
 import { EmptyState } from "@/components/ui/empty-state";
 import { TimeAgo } from "@/components/ui/TimeAgo";
-import { ConnectionStatusBadge } from "@/components/ui/ConnectionStatusBadge";
-import { ClusterStatusBadge } from "@/components/ui/ClusterStatusBadge";
+import { ClusterStatusBadge, StatusBadge } from "@/components/ui/StatusBadge";
 import { useConnectivity } from "@/hooks/useConnectivity";
 import { reachabilityKey } from "@/lib/api/connectivity";
 import type {
@@ -138,6 +144,7 @@ import {
   isHealthReportComparison,
 } from "@/types/fleet";
 import { getPlatformProfileLabel } from "@/lib/platform-context";
+import { STORAGE_KEYS } from "@/lib/storage-keys";
 import { useProjects } from "@/hooks/useProjects";
 import { SSHConnectivityBadge } from "@/components/ui/SSHConnectivityBadge";
 
@@ -194,7 +201,7 @@ const PROVIDER_DEFS: Array<{
     name: "Amazon Web Services (EKS)",
     shortLabel: "AWS",
     badgeClass:
-      "border-warning/40 text-warning bg-warning/10 font-semibold text-[10px] px-1.5 py-0.5",
+      "border-warning/40 text-warning bg-warning/10 font-semibold text-2xs px-1.5 py-0.5",
     badgeVariant: "outline",
   },
   {
@@ -202,7 +209,7 @@ const PROVIDER_DEFS: Array<{
     name: "Microsoft Azure (AKS)",
     shortLabel: "AZR",
     badgeClass:
-      "border-info/40 text-info bg-info/10 font-semibold text-[10px] px-1.5 py-0.5",
+      "border-info/40 text-info bg-info/10 font-semibold text-2xs px-1.5 py-0.5",
     badgeVariant: "outline",
   },
   {
@@ -210,7 +217,7 @@ const PROVIDER_DEFS: Array<{
     name: "Google Cloud Platform (GKE)",
     shortLabel: "GKE",
     badgeClass:
-      "border-primary/40 text-primary bg-primary/10 font-semibold text-[10px] px-1.5 py-0.5",
+      "border-primary/40 text-primary bg-primary/10 font-semibold text-2xs px-1.5 py-0.5",
     badgeVariant: "outline",
   },
   {
@@ -218,7 +225,7 @@ const PROVIDER_DEFS: Array<{
     name: "Bare-Metal & On-Premises",
     shortLabel: "METAL",
     badgeClass:
-      "border-success/40 text-success bg-success/10 font-semibold text-[10px] px-1.5 py-0.5",
+      "border-success/40 text-success bg-success/10 font-semibold text-2xs px-1.5 py-0.5",
     badgeVariant: "outline",
   },
   {
@@ -226,14 +233,14 @@ const PROVIDER_DEFS: Array<{
     name: "IBM Cloud (ROKS)",
     shortLabel: "IBM",
     badgeClass:
-      "border-secondary text-secondary-foreground bg-secondary/30 font-semibold text-[10px] px-1.5 py-0.5",
+      "border-secondary text-secondary-foreground bg-secondary/30 font-semibold text-2xs px-1.5 py-0.5",
     badgeVariant: "outline",
   },
   {
     id: "other",
     name: "Other Infrastructure",
     shortLabel: "OTHER",
-    badgeClass: "font-semibold text-[10px] px-1.5 py-0.5",
+    badgeClass: "font-semibold text-2xs px-1.5 py-0.5",
     badgeVariant: "secondary",
   },
 ];
@@ -397,9 +404,13 @@ const ClusterRow = memo(function ClusterRow({
       </button>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <h4 className="text-sm font-semibold text-foreground truncate">
+          <button
+            type="button"
+            onClick={() => onViewConfig(op)}
+            className="text-sm font-semibold text-foreground hover:text-primary hover:underline truncate text-left"
+          >
             {op.cluster_name}
-          </h4>
+          </button>
           <ClusterStatusBadge
             cluster={{ id: op.cluster_id, name: op.cluster_name }}
             showStatusLabel={isOffline || isReachUnreachable}
@@ -422,10 +433,7 @@ const ClusterRow = memo(function ClusterRow({
               )}
             </span>
           ) : (
-            <ConnectionStatusBadge
-              status={bnkSeverity}
-              className="opacity-90"
-            />
+            <StatusBadge status={bnkSeverity} className="opacity-90" />
           )}
         </div>
         {isOffline && op.last_seen && (
@@ -442,7 +450,7 @@ const ClusterRow = memo(function ClusterRow({
               <span
                 key={issue.component}
                 className={cn(
-                  "inline-flex items-center gap-1 text-[11px]",
+                  "inline-flex items-center gap-1 text-2xs",
                   ["critical", "unhealthy"].includes(issue.severity)
                     ? "text-destructive"
                     : "text-warning",
@@ -459,7 +467,7 @@ const ClusterRow = memo(function ClusterRow({
         <div className="text-xs font-medium text-foreground tabular-nums">
           {op.bnk_version || "—"}
         </div>
-        <div className="text-[10px] text-muted-foreground uppercase tracking-wider">
+        <div className="text-2xs text-muted-foreground uppercase tracking-wider">
           BNK
         </div>
       </div>
@@ -512,7 +520,7 @@ const ClusterRow = memo(function ClusterRow({
             <div className="text-xs font-medium text-foreground tabular-nums">
               {op.uptime}
             </div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider">
+            <div className="text-2xs text-muted-foreground uppercase tracking-wider">
               uptime
             </div>
           </>
@@ -578,33 +586,41 @@ function ComparePanel({
       </Button>
       <div className="space-y-3">
         <div className="flex flex-col md:flex-row md:items-center gap-3">
-          <select
-            value={operatorAId}
-            onChange={(e) => setOperatorAId(Number(e.target.value))}
-            className="flex-1 rounded-md border border-border bg-card text-foreground px-3 py-2 text-sm"
+          <Select
+            value={operatorAId ? String(operatorAId) : "0"}
+            onValueChange={(val) => setOperatorAId(Number(val))}
           >
-            <option value={0}>Select cluster A…</option>
-            {operators.map((op) => (
-              <option key={op.operator_id} value={op.operator_id}>
-                {op.cluster_name}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="flex-1">
+              <SelectValue placeholder="Select cluster A…" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="0">Select cluster A…</SelectItem>
+              {operators.map((op) => (
+                <SelectItem key={op.operator_id} value={String(op.operator_id)}>
+                  {op.cluster_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
             vs
           </span>
-          <select
-            value={operatorBId}
-            onChange={(e) => setOperatorBId(Number(e.target.value))}
-            className="flex-1 rounded-md border border-border bg-card text-foreground px-3 py-2 text-sm"
+          <Select
+            value={operatorBId ? String(operatorBId) : "0"}
+            onValueChange={(val) => setOperatorBId(Number(val))}
           >
-            <option value={0}>Select cluster B…</option>
-            {operators.map((op) => (
-              <option key={op.operator_id} value={op.operator_id}>
-                {op.cluster_name}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="flex-1">
+              <SelectValue placeholder="Select cluster B…" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="0">Select cluster B…</SelectItem>
+              {operators.map((op) => (
+                <SelectItem key={op.operator_id} value={String(op.operator_id)}>
+                  {op.cluster_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             onClick={handleCompare}
             disabled={
@@ -906,7 +922,6 @@ function CompareResult({ result }: { result: FleetCompareResult }) {
 
 function OverviewView({ fleetId }: { fleetId?: number }) {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
 
   const {
     data: fleet,
@@ -914,11 +929,16 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
     isFetching,
     isError,
     error,
+    refetch,
   } = useFleetHealth();
   const { data: allClustersData } = useAllClusters();
-  const allClusters = Array.isArray(allClustersData)
-    ? allClustersData
-    : (allClustersData?.clusters ?? []);
+  const allClusters = useMemo(
+    () =>
+      Array.isArray(allClustersData)
+        ? allClustersData
+        : (allClustersData?.clusters ?? EMPTY_CLUSTERS),
+    [allClustersData],
+  );
   const clustersById = useMemo(
     () => new Map(allClusters.map((c) => [c.id, c])),
     [allClusters],
@@ -1004,19 +1024,6 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [sortField, setSortField] = useState<SortField>("status");
   const [sortAsc, setSortAsc] = useState(true);
-  const [localRefreshing, setLocalRefreshing] = useState(false);
-
-  const handleRefresh = useCallback(async () => {
-    setLocalRefreshing(true);
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["fleet"] }),
-      queryClient.invalidateQueries({
-        queryKey: ["k8s", "clusters", "connectivity"],
-      }),
-      new Promise((resolve) => setTimeout(resolve, 500)),
-    ]);
-    setLocalRefreshing(false);
-  }, [queryClient]);
 
   // When scoped to a fleet, filter operators to those in the fleet's cluster members.
   const operators = useMemo(() => {
@@ -1048,6 +1055,7 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
 
   const handleViewHealth = useCallback(
     (op: FleetOperatorHealth) => {
+      localStorage.setItem(STORAGE_KEYS.CLUSTER_SCOPE, String(op.cluster_id));
       navigate(`/bnk?cluster=${op.cluster_id}`);
     },
     [navigate],
@@ -1055,6 +1063,7 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
 
   const handleViewConfig = useCallback(
     (op: FleetOperatorHealth) => {
+      localStorage.setItem(STORAGE_KEYS.CLUSTER_SCOPE, String(op.cluster_id));
       navigate(`/kubernetes?cluster=${op.cluster_id}&view=advanced`);
     },
     [navigate],
@@ -1062,6 +1071,7 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
 
   const handleViewDpf = useCallback(
     (op: FleetOperatorHealth) => {
+      localStorage.setItem(STORAGE_KEYS.CLUSTER_SCOPE, String(op.cluster_id));
       // D-022 P6 IA: DPU hardware view moved to the Infrastructure section.
       navigate(`/infrastructure?tab=dpus&cluster=${op.cluster_id}`);
     },
@@ -1177,7 +1187,7 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
 
   return (
     <div className="space-y-6">
-      {/* Action bar — global actions (Refresh / Promote config / Add cluster) are
+      {/* Action bar — global actions (Promote config / Add cluster) are
           hidden when rendered as a fleet Health facet (fleetId set); in that context
           the view is read-only health for the fleet's members only. */}
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1186,25 +1196,6 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
             `${operators.length} cluster${operators.length === 1 ? "" : "s"} · select two to compare`}
         </div>
         <div className="flex items-center gap-2">
-          {!fleetId && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={isFetching || localRefreshing}
-              title="Re-check connectivity for all clusters"
-            >
-              <RefreshCw
-                className={cn(
-                  "h-4 w-4 mr-1.5",
-                  (isFetching || localRefreshing) && "animate-spin",
-                )}
-              />
-              {(isFetching || localRefreshing) && !isLoading
-                ? "Checking…"
-                : "Refresh"}
-            </Button>
-          )}
           {canCompare && (
             <Button
               variant="outline"
@@ -1227,7 +1218,7 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
           )}
           {!fleetId && (
             <Button
-              variant="outline"
+              variant="default"
               size="sm"
               onClick={() => setShowAddCluster(true)}
             >
@@ -1268,19 +1259,11 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
 
       {/* Error */}
       {isError && (
-        <SectionCard>
-          <div className="text-center py-2">
-            <Activity className="h-10 w-10 mx-auto mb-3 text-destructive" />
-            <h3 className="text-sm font-semibold text-foreground mb-1">
-              Failed to load fleet health
-            </h3>
-            <p className="text-xs text-muted-foreground">
-              {error instanceof Error
-                ? error.message
-                : "Unable to reach the backend."}
-            </p>
-          </div>
-        </SectionCard>
+        <ErrorState
+          error={error}
+          title="Failed to load fleet health"
+          onRetry={() => refetch()}
+        />
       )}
 
       {/* Loading */}
@@ -1557,46 +1540,11 @@ function MemberTypeBadge({ memberType }: { memberType: string }) {
 /** Lifecycle state badge — derived unified state per fleet member (D-022 P4). */
 function LifecycleBadge({ state }: { state: FleetLifecycleState }) {
   if (!state) return null;
-  // status-color-as-badge: pill with a status dot, never a full-card tint.
-  const pillMap: Record<string, { pill: string; dot: string; extra?: string }> =
-    {
-      provisioning: {
-        pill: "bg-warning/10 text-warning border-warning/20",
-        dot: "bg-warning",
-      },
-      active: {
-        pill: "bg-success/10 text-success border-success/20",
-        dot: "bg-success",
-      },
-      draining: {
-        pill: "bg-warning/10 text-warning border-warning/20",
-        dot: "bg-warning",
-      },
-      decommissioned: {
-        pill: "bg-muted text-muted-foreground border-border",
-        dot: "bg-muted-foreground",
-        extra: "line-through",
-      },
-      unknown: {
-        pill: "bg-destructive/10 text-destructive border-destructive/20",
-        dot: "bg-destructive",
-      },
-    };
-  const { pill, dot, extra } = pillMap[state] ?? {
-    pill: "bg-muted text-muted-foreground border-border",
-    dot: "bg-muted-foreground",
-  };
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border",
-        pill,
-        extra,
-      )}
-    >
-      <span className={cn("h-1.5 w-1.5 rounded-full", dot)} />
-      {state}
-    </span>
+    <StatusBadge
+      status={state}
+      className={state === "decommissioned" ? "line-through" : undefined}
+    />
   );
 }
 
@@ -1860,47 +1808,61 @@ function InventoryView({ fleetId }: { fleetId?: number }) {
 
         {/* Type filter — hidden when fleet-scoped (data comes from fleet resolver) */}
         {fleetId == null && (
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="rounded border border-border bg-card text-foreground px-2 py-1 text-xs"
+          <Select
+            value={typeFilter || "all"}
+            onValueChange={(val) => setTypeFilter(val === "all" ? "" : val)}
           >
-            <option value="">All types</option>
-            <option value="cluster">Clusters</option>
-            <option value="bare-metal-host">Hosts</option>
-            <option value="dpu">DPUs</option>
-          </select>
+            <SelectTrigger className="h-7 text-xs w-[110px] bg-card">
+              <SelectValue placeholder="All types" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types</SelectItem>
+              <SelectItem value="cluster">Clusters</SelectItem>
+              <SelectItem value="bare-metal-host">Hosts</SelectItem>
+              <SelectItem value="dpu">DPUs</SelectItem>
+            </SelectContent>
+          </Select>
         )}
 
         {/* Lifecycle filter */}
-        <select
-          value={lifecycleFilter}
-          onChange={(e) => setLifecycleFilter(e.target.value)}
-          className="rounded border border-border bg-card text-foreground px-2 py-1 text-xs"
+        <Select
+          value={lifecycleFilter || "all"}
+          onValueChange={(val) => setLifecycleFilter(val === "all" ? "" : val)}
         >
-          <option value="">All lifecycle</option>
-          <option value="provisioning">Provisioning</option>
-          <option value="active">Active</option>
-          <option value="draining">Draining</option>
-          <option value="decommissioned">Decommissioned</option>
-          <option value="unknown">Unknown</option>
-        </select>
+          <SelectTrigger className="h-7 text-xs w-[120px] bg-card">
+            <SelectValue placeholder="All lifecycle" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All lifecycle</SelectItem>
+            <SelectItem value="provisioning">Provisioning</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="draining">Draining</SelectItem>
+            <SelectItem value="decommissioned">Decommissioned</SelectItem>
+            <SelectItem value="unknown">Unknown</SelectItem>
+          </SelectContent>
+        </Select>
 
         {/* Group-by — hidden when fleet-scoped */}
         {fleetId == null && (
-          <select
-            value={groupBy}
-            onChange={(e) => setGroupBy(e.target.value)}
-            className="rounded border border-border bg-card text-foreground px-2 py-1 text-xs"
+          <Select
+            value={groupBy || "none"}
+            onValueChange={(val) => setGroupBy(val === "none" ? "" : val)}
           >
-            <option value="">No grouping</option>
-            <option value="vendor">By vendor</option>
-            <option value="region">By region</option>
-            <option value="env">By env</option>
-            <option value="team">By team</option>
-            <option value="platform-profile">By platform profile</option>
-            <option value="has-dpu">By has-dpu</option>
-          </select>
+            <SelectTrigger className="h-7 text-xs w-[130px] bg-card">
+              <SelectValue placeholder="No grouping" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No grouping</SelectItem>
+              <SelectItem value="vendor">By vendor</SelectItem>
+              <SelectItem value="region">By region</SelectItem>
+              <SelectItem value="env">By env</SelectItem>
+              <SelectItem value="team">By team</SelectItem>
+              <SelectItem value="platform-profile">
+                By platform profile
+              </SelectItem>
+              <SelectItem value="has-dpu">By has-dpu</SelectItem>
+            </SelectContent>
+          </Select>
         )}
 
         {/* Label filter — hidden when fleet-scoped */}
@@ -2004,21 +1966,25 @@ function InventoryView({ fleetId }: { fleetId?: number }) {
                   <label className="text-xs text-muted-foreground">
                     Action
                   </label>
-                  <select
+                  <Select
                     value={runAction}
-                    onChange={(e) =>
-                      setRunAction(e.target.value as FleetSafeAction)
+                    onValueChange={(val) =>
+                      setRunAction(val as FleetSafeAction)
                     }
-                    className="w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-sm mt-1"
                   >
-                    {FLEET_SAFE_ACTIONS.map((a) => (
-                      <option key={a} value={a}>
-                        {a}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger className="w-full mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {FLEET_SAFE_ACTIONS.map((a) => (
+                        <SelectItem key={a} value={a}>
+                          {a}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   {FLEET_ACTION_DESCRIPTIONS[runAction] && (
-                    <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
+                    <p className="mt-1 text-2xs text-muted-foreground leading-snug">
                       {FLEET_ACTION_DESCRIPTIONS[runAction]}
                     </p>
                   )}
@@ -2181,48 +2147,6 @@ function InventoryView({ fleetId }: { fleetId?: number }) {
 // ============================================================================
 // BULK-OPS VIEW — D-022 Phase 2: define target, blast-radius preview, run
 // ============================================================================
-
-/** Simple status pill for bulk run progress — status-color-as-badge. */
-function BulkRunStatusBadge({ status }: { status: FleetBulkRun["status"] }) {
-  const pillMap: Record<string, { pill: string; dot: string }> = {
-    pending: {
-      pill: "bg-muted text-muted-foreground border-border",
-      dot: "bg-muted-foreground",
-    },
-    running: {
-      pill: "bg-primary/10 text-primary border-primary/20",
-      dot: "bg-primary",
-    },
-    paused_gate: {
-      pill: "bg-warning/10 text-warning border-warning/20",
-      dot: "bg-warning",
-    },
-    completed: {
-      pill: "bg-success/10 text-success border-success/20",
-      dot: "bg-success",
-    },
-    failed: {
-      pill: "bg-destructive/10 text-destructive border-destructive/20",
-      dot: "bg-destructive",
-    },
-    cancelled: {
-      pill: "bg-muted text-muted-foreground border-border",
-      dot: "bg-muted-foreground",
-    },
-  };
-  const { pill, dot } = pillMap[status] ?? pillMap["pending"];
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border",
-        pill,
-      )}
-    >
-      <span className={cn("h-1.5 w-1.5 rounded-full", dot)} />
-      {status}
-    </span>
-  );
-}
 
 /** Countdown display for timed_wait gate — "resumes in HH:MM:SS". */
 function TimedWaitCountdown({ resumesAt }: { resumesAt: string }) {
@@ -2538,7 +2462,7 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
           </span>
           <Button
             size="sm"
-            variant="outline"
+            variant={showStrategyForm ? "outline" : "default"}
             onClick={() => setShowStrategyForm((v) => !v)}
           >
             {showStrategyForm ? (
@@ -2608,15 +2532,21 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
                 <label className="text-xs font-medium text-muted-foreground">
                   Wave by
                 </label>
-                <select
+                <Select
                   value={strategyWaveBy}
-                  onChange={(e) => setStrategyWaveBy(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-xs"
+                  onValueChange={(val) => setStrategyWaveBy(val)}
                 >
-                  <option value="fault_domain">fault_domain</option>
-                  <option value="label">label (pick key below)</option>
-                </select>
-                <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
+                  <SelectTrigger className="mt-1 w-full text-xs h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fault_domain">fault_domain</SelectItem>
+                    <SelectItem value="label">
+                      label (pick key below)
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="mt-1 text-2xs text-muted-foreground leading-snug">
                   {strategyWaveBy === "label"
                     ? "Members are grouped into waves by a label key (e.g. region → one wave per region)."
                     : "Members are grouped into waves by fault-domain — roll out zone-by-zone for blast-radius control."}
@@ -2633,7 +2563,7 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
                     placeholder="region"
                     className="mt-1 w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-xs"
                   />
-                  <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
+                  <p className="mt-1 text-2xs text-muted-foreground leading-snug">
                     E.g. <code className="bg-muted px-1 rounded">region</code> →
                     one wave per unique region value.
                   </p>
@@ -2653,7 +2583,7 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
                   className="mt-1 w-full"
                 />
                 <span className="text-xs text-foreground">{strategyPct}%</span>
-                <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
+                <p className="mt-1 text-2xs text-muted-foreground leading-snug">
                   How many members in a wave run at once. Smaller = safer;
                   larger = faster. 25% is a safe starting point.
                 </p>
@@ -2662,24 +2592,28 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
                 <label className="text-xs font-medium text-muted-foreground">
                   Gate kind
                 </label>
-                <select
+                <Select
                   value={strategyGateKind}
-                  onChange={(e) =>
-                    setStrategyGateKind(
-                      e.target.value as typeof strategyGateKind,
-                    )
+                  onValueChange={(val) =>
+                    setStrategyGateKind(val as typeof strategyGateKind)
                   }
-                  className="mt-1 w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-xs"
                 >
-                  <option value="approval">approval (manual resume)</option>
-                  <option value="timed_wait">
-                    timed_wait (auto-resume after delay)
-                  </option>
-                  <option value="health_stable">
-                    health_stable (auto-proceed)
-                  </option>
-                </select>
-                <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
+                  <SelectTrigger className="mt-1 w-full text-xs h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="approval">
+                      approval (manual resume)
+                    </SelectItem>
+                    <SelectItem value="timed_wait">
+                      timed_wait (auto-resume after delay)
+                    </SelectItem>
+                    <SelectItem value="health_stable">
+                      health_stable (auto-proceed)
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="mt-1 text-2xs text-muted-foreground leading-snug">
                   {strategyGateKind === "approval"
                     ? "Pauses between waves for a human OK — safest choice for production."
                     : strategyGateKind === "timed_wait"
@@ -2701,7 +2635,7 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
                     }
                     className="mt-1 w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-xs"
                   />
-                  <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
+                  <p className="mt-1 text-2xs text-muted-foreground leading-snug">
                     300s (5 min) is a reasonable soak time.
                   </p>
                 </div>
@@ -2777,22 +2711,26 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
         </div>
         <div className="space-y-3">
           <div className="flex gap-2 items-center">
-            <select
-              value={selectedTargetId ?? ""}
-              onChange={(e) => {
-                setSelectedTargetId(Number(e.target.value) || null);
+            <Select
+              value={selectedTargetId ? String(selectedTargetId) : "none"}
+              onValueChange={(val) => {
+                setSelectedTargetId(val === "none" ? null : Number(val));
                 setDecision(null);
                 setDecisionId(null);
               }}
-              className="flex-1 rounded-md border border-border bg-card text-foreground px-2 py-1 text-xs"
             >
-              <option value="">Select a target...</option>
-              {(targets ?? []).map((t: FleetTarget) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="flex-1 text-xs h-8">
+                <SelectValue placeholder="Select a target..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Select a target...</SelectItem>
+                {(targets ?? []).map((t: FleetTarget) => (
+                  <SelectItem key={t.id} value={String(t.id)}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               size="sm"
               variant="outline"
@@ -2856,16 +2794,17 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
                 <label className="text-xs font-medium text-muted-foreground">
                   Action
                 </label>
-                <select
-                  value={action}
-                  onChange={(e) => setAction(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-xs"
-                >
-                  <option value="re-reconcile">re-reconcile</option>
-                  <option value="set-labels">set-labels</option>
-                </select>
+                <Select value={action} onValueChange={(val) => setAction(val)}>
+                  <SelectTrigger className="mt-1 w-full text-xs h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="re-reconcile">re-reconcile</SelectItem>
+                    <SelectItem value="set-labels">set-labels</SelectItem>
+                  </SelectContent>
+                </Select>
                 {FLEET_ACTION_DESCRIPTIONS[action] && (
-                  <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
+                  <p className="mt-1 text-2xs text-muted-foreground leading-snug">
                     {FLEET_ACTION_DESCRIPTIONS[action]}
                   </p>
                 )}
@@ -2874,20 +2813,28 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
                 <label className="text-xs font-medium text-muted-foreground">
                   Strategy (optional)
                 </label>
-                <select
-                  value={selectedStrategyId ?? ""}
-                  onChange={(e) =>
-                    setSelectedStrategyId(Number(e.target.value) || null)
+                <Select
+                  value={
+                    selectedStrategyId ? String(selectedStrategyId) : "none"
                   }
-                  className="mt-1 w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-xs"
+                  onValueChange={(val) =>
+                    setSelectedStrategyId(val === "none" ? null : Number(val))
+                  }
                 >
-                  <option value="">No strategy (use manual settings)</option>
-                  {(strategies ?? []).map((s: FleetOperationStrategy) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="mt-1 w-full text-xs h-8">
+                    <SelectValue placeholder="No strategy (use manual settings)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">
+                      No strategy (use manual settings)
+                    </SelectItem>
+                    {(strategies ?? []).map((s: FleetOperationStrategy) => (
+                      <SelectItem key={s.id} value={String(s.id)}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               {!selectedStrategyId && (
                 <>
@@ -2908,22 +2855,24 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
                     <label className="text-xs font-medium text-muted-foreground">
                       Gate mode
                     </label>
-                    <select
+                    <Select
                       value={gateMode}
-                      onChange={(e) =>
-                        setGateMode(
-                          e.target.value as "manual" | "health_stable",
-                        )
+                      onValueChange={(val) =>
+                        setGateMode(val as "manual" | "health_stable")
                       }
-                      className="mt-1 w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-xs"
                     >
-                      <option value="manual">
-                        manual (pause between waves)
-                      </option>
-                      <option value="health_stable">
-                        health_stable (auto-proceed)
-                      </option>
-                    </select>
+                      <SelectTrigger className="mt-1 w-full text-xs h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="manual">
+                          manual (pause between waves)
+                        </SelectItem>
+                        <SelectItem value="health_stable">
+                          health_stable (auto-proceed)
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </>
               )}
@@ -2975,7 +2924,7 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
               <h3 className="text-sm font-semibold text-foreground">
                 Run #{bulkRun.id} — {bulkRun.action}
               </h3>
-              <BulkRunStatusBadge status={bulkRun.status} />
+              <StatusBadge status={bulkRun.status} />
               {/* timed_wait countdown — shown when paused with gate_resumes_at */}
               {bulkRun.status === "paused_gate" && bulkRun.gate_resumes_at && (
                 <TimedWaitCountdown resumesAt={bulkRun.gate_resumes_at} />
@@ -3064,7 +3013,7 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
                   onClick={() => setActiveRunId(run.id)}
                   className="flex items-center gap-2 flex-1 text-left"
                 >
-                  <BulkRunStatusBadge status={run.status} />
+                  <StatusBadge status={run.status} />
                   <span className="font-medium text-foreground flex-1 truncate">
                     #{run.id} — {run.action}
                   </span>
@@ -3099,36 +3048,6 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
 // ============================================================================
 // COMPLIANCE VIEW — D-022 Phase 3: fleet policies + compliance dashboard
 // ============================================================================
-
-/** Status pill for a single member's compliance status — status-color-as-badge. */
-function ComplianceStatusBadge({ status }: { status: string }) {
-  const pillMap: Record<string, { pill: string; dot: string }> = {
-    compliant: {
-      pill: "bg-success/10 text-success border-success/20",
-      dot: "bg-success",
-    },
-    drifted: {
-      pill: "bg-warning/10 text-warning border-warning/20",
-      dot: "bg-warning",
-    },
-    unknown: {
-      pill: "bg-muted text-muted-foreground border-border",
-      dot: "bg-muted-foreground",
-    },
-  };
-  const { pill, dot } = pillMap[status] ?? pillMap["unknown"];
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border",
-        pill,
-      )}
-    >
-      <span className={cn("h-1.5 w-1.5 rounded-full", dot)} />
-      {status}
-    </span>
-  );
-}
 
 /** Per-policy compliance card — includes edit + delete affordances (D-022 P5 S3). */
 const PolicyComplianceCard = memo(function PolicyComplianceCard({
@@ -3298,7 +3217,7 @@ const PolicyComplianceCard = memo(function PolicyComplianceCard({
           <div className="space-y-1">
             {rollup.drifted_members.map((m) => (
               <div key={m.member_id} className="flex items-start gap-2 text-xs">
-                <ComplianceStatusBadge status={m.status} />
+                <StatusBadge status={m.status} />
                 <span className="text-muted-foreground">
                   member #{m.member_id}
                 </span>
@@ -3397,30 +3316,38 @@ function EditPolicyForm({
         </div>
         <div>
           <label className="text-xs text-muted-foreground">Kind</label>
-          <select
-            className="w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-sm mt-1"
+          <Select
             value={kind}
-            onChange={(e) => setKind(e.target.value as typeof kind)}
+            onValueChange={(val) => setKind(val as typeof kind)}
           >
-            <option value="label-compliance">label-compliance</option>
-            <option value="os-compliance-seed">
-              os-compliance-seed (inform-only)
-            </option>
-          </select>
+            <SelectTrigger className="w-full mt-1">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="label-compliance">label-compliance</SelectItem>
+              <SelectItem value="os-compliance-seed">
+                os-compliance-seed (inform-only)
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div>
           <label className="text-xs text-muted-foreground">Mode</label>
-          <select
-            className="w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-sm mt-1"
+          <Select
             value={mode}
-            onChange={(e) => setMode(e.target.value as typeof mode)}
+            onValueChange={(val) => setMode(val as typeof mode)}
             disabled={kind === "os-compliance-seed"}
           >
-            <option value="inform">inform</option>
-            <option value="enforce">enforce</option>
-          </select>
+            <SelectTrigger className="w-full mt-1">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="inform">inform</SelectItem>
+              <SelectItem value="enforce">enforce</SelectItem>
+            </SelectContent>
+          </Select>
           {kind !== "os-compliance-seed" && (
-            <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
+            <p className="mt-1 text-2xs text-muted-foreground leading-snug">
               {mode === "enforce"
                 ? "Switch to Enforce → drift will be auto-remediated on the next run."
                 : "Inform = report drift only (safe, no changes). Switch to Enforce to auto-remediate."}
@@ -3569,18 +3496,24 @@ function CreatePolicyForm({
           {fleetId == null ? (
             <div>
               <label className="text-xs text-muted-foreground">Target</label>
-              <select
-                className="w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-sm mt-1"
-                value={targetId ?? ""}
-                onChange={(e) => setTargetId(Number(e.target.value))}
+              <Select
+                value={targetId ? String(targetId) : "none"}
+                onValueChange={(val) =>
+                  setTargetId(val === "none" ? null : Number(val))
+                }
               >
-                <option value="">Select target…</option>
-                {(targets ?? []).map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="w-full mt-1">
+                  <SelectValue placeholder="Select target…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Select target…</SelectItem>
+                  {(targets ?? []).map((t) => (
+                    <SelectItem key={t.id} value={String(t.id)}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           ) : (
             <div>
@@ -3598,20 +3531,28 @@ function CreatePolicyForm({
           <div className="col-span-2 grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-muted-foreground">Kind</label>
-              <select
-                className="w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-sm mt-1"
+              <Select
                 value={kind}
-                onChange={(e) => {
-                  const next = e.target.value as typeof kind;
+                onValueChange={(val) => {
+                  const next = val as typeof kind;
                   setKind(next);
                   // os-compliance-seed is inform-only — reset mode to inform.
                   if (next === "os-compliance-seed") setMode("inform");
                 }}
               >
-                <option value="label-compliance">label-compliance</option>
-                <option value="os-compliance-seed">os-compliance-seed</option>
-              </select>
-              <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
+                <SelectTrigger className="w-full mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="label-compliance">
+                    label-compliance
+                  </SelectItem>
+                  <SelectItem value="os-compliance-seed">
+                    os-compliance-seed
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-2xs text-muted-foreground leading-snug">
                 {kind === "label-compliance"
                   ? "Members must carry specific labels (e.g. tier=prod)."
                   : "Members must run a minimum OS/version — inform-only, reports drift without auto-fixing."}
@@ -3619,16 +3560,20 @@ function CreatePolicyForm({
             </div>
             <div>
               <label className="text-xs text-muted-foreground">Mode</label>
-              <select
-                className="w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-sm mt-1"
+              <Select
                 value={mode}
-                onChange={(e) => setMode(e.target.value as typeof mode)}
+                onValueChange={(val) => setMode(val as typeof mode)}
                 disabled={kind === "os-compliance-seed"}
               >
-                <option value="inform">inform</option>
-                <option value="enforce">enforce</option>
-              </select>
-              <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
+                <SelectTrigger className="w-full mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="inform">inform</SelectItem>
+                  <SelectItem value="enforce">enforce</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-2xs text-muted-foreground leading-snug">
                 {kind === "os-compliance-seed"
                   ? "os-compliance-seed is always inform — it reports drift but never auto-fixes."
                   : mode === "inform"
@@ -3649,7 +3594,7 @@ function CreatePolicyForm({
               onChange={(e) => setRequiredLabels(e.target.value)}
               placeholder="tier=prod,env=production"
             />
-            <p className="mt-1 text-[11px] text-muted-foreground">
+            <p className="mt-1 text-2xs text-muted-foreground">
               Example:{" "}
               <code className="bg-muted px-1 py-0.5 rounded">
                 tier=prod,team=platform
@@ -3679,7 +3624,7 @@ function CreatePolicyForm({
                 onChange={(e) => setMinVersion(e.target.value)}
                 placeholder="22.04"
               />
-              <p className="mt-1 text-[11px] text-muted-foreground col-span-2">
+              <p className="mt-1 text-2xs text-muted-foreground col-span-2">
                 Example: OS{" "}
                 <code className="bg-muted px-1 py-0.5 rounded">ubuntu</code> min
                 version{" "}
@@ -3703,7 +3648,7 @@ function CreatePolicyForm({
           )}
         </div>
         {saveSummary && (
-          <p className="text-[11px] text-muted-foreground border-t border-border pt-2">
+          <p className="text-2xs text-muted-foreground border-t border-border pt-2">
             {saveSummary}
           </p>
         )}
@@ -3826,62 +3771,6 @@ function ComplianceView({ fleetId }: { fleetId?: number }) {
 // D-022 P6 Slice B: rollup helpers + Fleet detail drill-down
 // ──────────────────────────────────────────────────────────────────────────────
 
-/** Worst-state pill badge — mirrors LifecycleBadge/BulkRunStatusBadge pattern. */
-function WorstStateBadge({ state }: { state: WorstState | undefined }) {
-  if (!state) return null;
-  const map: Record<
-    WorstState,
-    {
-      pill: string;
-      icon: typeof CheckCircle2 | typeof XCircle | typeof AlertCircle | null;
-      label: string;
-    }
-  > = {
-    error: {
-      pill: "bg-destructive/10 text-destructive border-destructive/20",
-      icon: XCircle,
-      label: "Error",
-    },
-    drifted: {
-      pill: "bg-warning/10 text-warning border-warning/20",
-      icon: AlertCircle,
-      label: "Drifted",
-    },
-    provisioning: {
-      pill: "bg-primary/10 text-primary border-primary/20",
-      icon: null,
-      label: "Provisioning",
-    },
-    unreachable: {
-      pill: "bg-muted text-muted-foreground border-border",
-      icon: null,
-      label: "Unreachable",
-    },
-    ready: {
-      pill: "bg-success/10 text-success border-success/20",
-      icon: CheckCircle2,
-      label: "Ready",
-    },
-    unknown: {
-      pill: "bg-muted text-muted-foreground border-border",
-      icon: null,
-      label: "Unknown",
-    },
-  };
-  const { pill, icon: Icon, label } = map[state] ?? map.unknown;
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border",
-        pill,
-      )}
-    >
-      {Icon && <Icon className="h-3 w-3" />}
-      {label}
-    </span>
-  );
-}
-
 /** Compact rollup summary strip — member count · compliant/total · drift · worst-state. */
 function RollupSummaryStrip({ rollup }: { rollup: FleetRollup }) {
   return (
@@ -3902,7 +3791,7 @@ function RollupSummaryStrip({ rollup }: { rollup: FleetRollup }) {
           {rollup.unreachable_count} unreachable
         </span>
       )}
-      <WorstStateBadge state={rollup.worst_state} />
+      {rollup.worst_state && <StatusBadge status={rollup.worst_state} />}
     </div>
   );
 }
@@ -4003,7 +3892,7 @@ function FleetConfigsDetailTab({
                     </span>
                     <Badge
                       variant="secondary"
-                      className="text-[10px] px-1.5 py-0 h-4 uppercase shrink-0"
+                      className="text-2xs px-1.5 py-0 h-4 uppercase shrink-0"
                     >
                       {cfg.category}
                     </Badge>
@@ -4037,7 +3926,7 @@ function FleetConfigsDetailTab({
                 </div>
               </div>
 
-              <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1.5 border-t border-border/50">
+              <div className="flex items-center justify-between text-2xs text-muted-foreground pt-1.5 border-t border-border/50">
                 <span className="font-mono">
                   {cfg.config_yaml.split("\n").length} lines YAML
                 </span>
@@ -4438,7 +4327,7 @@ function FleetsView() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div className="space-y-1">
-                <label className="text-[11px] font-medium text-foreground">
+                <label className="text-2xs font-medium text-foreground">
                   Fleet Name *
                 </label>
                 <input
@@ -4449,7 +4338,7 @@ function FleetsView() {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[11px] font-medium text-foreground">
+                <label className="text-2xs font-medium text-foreground">
                   Description (optional)
                 </label>
                 <input
@@ -4478,7 +4367,7 @@ function FleetsView() {
               <button
                 type="button"
                 onClick={() => setShowAdvancedSelectors(!showAdvancedSelectors)}
-                className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 font-medium"
+                className="text-2xs text-muted-foreground hover:text-foreground flex items-center gap-1 font-medium"
               >
                 {showAdvancedSelectors ? (
                   <ChevronDown className="w-3 h-3" />
@@ -4621,7 +4510,7 @@ function FleetsView() {
                             target.pinned_member_ids.length > 0 && (
                               <Badge
                                 variant="outline"
-                                className="text-[10px] px-1.5 py-0 h-4"
+                                className="text-2xs px-1.5 py-0 h-4"
                               >
                                 {target.pinned_member_ids.length} cluster
                                 {target.pinned_member_ids.length === 1
@@ -4761,6 +4650,15 @@ type FleetView =
   | "bulkops"
   | "compliance";
 
+const VALID_VIEWS: FleetView[] = [
+  "overview",
+  "bnk",
+  "fleets",
+  "inventory",
+  "bulkops",
+  "compliance",
+];
+
 export default function Fleet() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -4770,21 +4668,22 @@ export default function Fleet() {
   const fleetDetailId = fleetParam ? Number(fleetParam) : null;
 
   // backward compat with ?view=overview etc. (dpf deep-links now redirect to /infrastructure)
-  const rawView = searchParams.get("view") ?? searchParams.get("tab");
+  const rawView = searchParams.get("tab") ?? searchParams.get("view");
   const urlView = rawView === "operators" ? "overview" : rawView;
-  const validViews: FleetView[] = [
-    "overview",
-    "bnk",
-    "fleets",
-    "inventory",
-    "bulkops",
-    "compliance",
-  ];
   const initialView: FleetView =
-    urlView && validViews.includes(urlView as FleetView)
+    urlView && VALID_VIEWS.includes(urlView as FleetView)
       ? (urlView as FleetView)
       : "overview";
   const [activeView, setActiveView] = useState<FleetView>(initialView);
+
+  // Keep state in sync with URL tab param
+  useEffect(() => {
+    if (urlView && VALID_VIEWS.includes(urlView as FleetView)) {
+      setActiveView(urlView as FleetView);
+    } else if (!urlView) {
+      setActiveView("overview");
+    }
+  }, [urlView]);
 
   // Redirect legacy DPF deep-links to /infrastructure
   useEffect(() => {
@@ -4800,7 +4699,7 @@ export default function Fleet() {
 
   const handleSelectView = useCallback(
     (view: string) => {
-      const v = validViews.includes(view as FleetView)
+      const v = VALID_VIEWS.includes(view as FleetView)
         ? (view as FleetView)
         : "overview";
       setActiveView(v);
@@ -4808,16 +4707,14 @@ export default function Fleet() {
       const next = new URLSearchParams(searchParams);
       next.delete("fleet");
       next.delete("detail_tab");
+      next.delete("view"); // clear legacy alias
       if (v === "overview") {
-        next.delete("view");
         next.delete("tab");
       } else {
-        next.set("view", v);
-        next.delete("tab");
+        next.set("tab", v);
       }
-      setSearchParams(next);
+      setSearchParams(next, { replace: true });
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [searchParams, setSearchParams],
   );
 
@@ -4832,60 +4729,120 @@ export default function Fleet() {
     "Group clusters into fleets and operate them at scale — health, policy, compliance, and staged operations.";
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <PageHeader
-        title="Fleet"
-        subtitle={subtitle}
-        onRefresh={refresh}
-        isRefreshing={isRefreshing}
-      />
+    <Tabs
+      value={fleetDetailId != null ? "" : activeView}
+      onValueChange={handleSelectView}
+      orientation="vertical"
+      className="flex min-h-[calc(100vh-3rem)]"
+    >
+      {/* Left Flush Inner Sub-Sidebar */}
+      <CollapsibleInnerSidebar className="w-52 shrink-0 border-r border-border bg-card/30 p-3 space-y-4">
+        <div className="px-2 py-1 space-y-1">
+          <h1 className="text-sm font-semibold tracking-tight text-foreground">
+            Cluster Fleet
+          </h1>
+          <p className="text-2xs text-muted-foreground leading-relaxed">
+            {subtitle}
+          </p>
+        </div>
 
-      {/* When ?fleet=<id> is set, show per-fleet detail shell (no top-level tabs). */}
-      {fleetDetailId != null ? (
-        <FleetDetailShell fleetId={fleetDetailId} />
-      ) : (
-        <Tabs value={activeView} onValueChange={handleSelectView}>
-          <ResourceViewTabs
-            variant="inline"
+        <div className="space-y-1">
+          <div className="px-2.5 py-1 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+            FLEET VIEWS
+          </div>
+          <TabsList
             aria-label="Fleet views"
-            active={activeView}
-            onChange={(key) => handleSelectView(key)}
-            tabs={[
-              { key: "overview", label: "Overview", icon: Activity },
-              { key: "bnk", label: "BNK Resources", icon: Gauge },
-              { key: "fleets", label: "Fleets", icon: Flag },
-            ]}
-          />
+            className="flex flex-col items-stretch h-auto bg-transparent p-0 gap-1"
+          >
+            <TabsTrigger
+              value="overview"
+              className="w-full justify-start gap-2 px-2.5 py-1.5 text-xs font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
+            >
+              <Activity className="h-3.5 w-3.5 shrink-0" />
+              <span>Overview</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="bnk"
+              className="w-full justify-start gap-2 px-2.5 py-1.5 text-xs font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
+            >
+              <Gauge className="h-3.5 w-3.5 shrink-0" />
+              <span>BNK Resources</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="fleets"
+              className="w-full justify-start gap-2 px-2.5 py-1.5 text-xs font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
+            >
+              <Flag className="h-3.5 w-3.5 shrink-0" />
+              <span>Fleets</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
+      </CollapsibleInnerSidebar>
 
-          <TabsContent value="overview" className="mt-6">
-            <OverviewView />
-          </TabsContent>
-
-          <TabsContent value="bnk" className="mt-6">
-            <BnkResourcesPanel
-              data={bnkConsumption}
-              isLoading={bnkLoading}
-              error={bnkError}
+      {/* Right Content Pane */}
+      <div className="flex-1 min-w-0 p-6 space-y-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold tracking-tight text-foreground">
+              {activeView === "bnk"
+                ? "BNK Resources"
+                : activeView === "fleets"
+                  ? "Fleets"
+                  : "Cluster Fleet Overview"}
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={refresh}
+            disabled={isRefreshing}
+            aria-label="Refresh"
+          >
+            <RefreshCw
+              className={cn(
+                "h-3.5 w-3.5 mr-1.5",
+                isRefreshing && "animate-spin",
+              )}
             />
-          </TabsContent>
+            Refresh
+          </Button>
+        </div>
 
-          <TabsContent value="fleets" className="mt-6">
-            <FleetsView />
-          </TabsContent>
+        {/* When ?fleet=<id> is set, show per-fleet detail shell. */}
+        {fleetDetailId != null ? (
+          <FleetDetailShell fleetId={fleetDetailId} />
+        ) : (
+          <>
+            <TabsContent value="overview" className="mt-0">
+              <OverviewView />
+            </TabsContent>
 
-          {/* Legacy deep-links: ?view=inventory|bulkops|compliance are forwarded to their views */}
-          <TabsContent value="inventory" className="mt-6">
-            <InventoryView />
-          </TabsContent>
-          <TabsContent value="bulkops" className="mt-6">
-            <BulkOpsView />
-          </TabsContent>
-          <TabsContent value="compliance" className="mt-6">
-            <ComplianceView />
-          </TabsContent>
-        </Tabs>
-      )}
-    </div>
+            <TabsContent value="bnk" className="mt-0">
+              <BnkResourcesPanel
+                data={bnkConsumption}
+                isLoading={bnkLoading}
+                error={bnkError}
+              />
+            </TabsContent>
+
+            <TabsContent value="fleets" className="mt-0">
+              <FleetsView />
+            </TabsContent>
+
+            {/* Legacy deep-links: ?view=inventory|bulkops|compliance are forwarded to their views */}
+            <TabsContent value="inventory" className="mt-0">
+              <InventoryView />
+            </TabsContent>
+            <TabsContent value="bulkops" className="mt-0">
+              <BulkOpsView />
+            </TabsContent>
+            <TabsContent value="compliance" className="mt-0">
+              <ComplianceView />
+            </TabsContent>
+          </>
+        )}
+      </div>
+    </Tabs>
   );
 }

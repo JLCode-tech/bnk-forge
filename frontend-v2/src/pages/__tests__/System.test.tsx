@@ -56,12 +56,16 @@ describe("System", () => {
     expect(
       screen.getByRole("heading", { level: 1, name: "System" }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/monitor system health/i)).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/monitor system health/i).length,
+    ).toBeGreaterThanOrEqual(1);
   });
 
   it("renders all tab labels", () => {
     render(<System />, { initialRoute: "/system" });
-    expect(screen.getByText("System Monitor")).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", { name: /System Monitor/i }),
+    ).toBeInTheDocument();
     expect(screen.getByText("MCP Server")).toBeInTheDocument();
     expect(screen.getByText("Audit Log")).toBeInTheDocument();
     expect(screen.getByText("Alerts")).toBeInTheDocument();

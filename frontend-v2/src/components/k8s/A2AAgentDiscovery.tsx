@@ -9,20 +9,28 @@
  * topology analysis via the /f5bnk/a2a/agents endpoint.
  */
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
-  Radar, Bot, Globe, Route, Shield, Zap, Bell,
-  RefreshCw, ChevronDown, ChevronRight, ExternalLink,
-} from 'lucide-react';
-import { api } from '@/lib/api';
-import { queryKeys } from '@/lib/queryKeys';
-import { SkeletonTable } from '@/components/ui/skeleton-table';
-import { EmptyState } from '@/components/ui/empty-state';
-import type { A2AAgentCandidate } from '@/types/f5bnk';
+  Radar,
+  Bot,
+  Globe,
+  Route,
+  Shield,
+  Zap,
+  Bell,
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+} from "lucide-react";
+import { api } from "@/lib/api";
+import { queryKeys } from "@/lib/queryKeys";
+import { SkeletonTable } from "@/components/ui/skeleton-table";
+import { EmptyState } from "@/components/ui/empty-state";
+import type { A2AAgentCandidate } from "@/types/f5bnk";
 
 // ---------------------------------------------------------------------------
 // Agent Card Component
@@ -31,28 +39,31 @@ import type { A2AAgentCandidate } from '@/types/f5bnk';
 function AgentCard({ agent }: { agent: A2AAgentCandidate }) {
   const [expanded, setExpanded] = useState(false);
   const card = agent.agentCard;
-  const isConfirmed = agent.probeStatus === 'success' && card;
+  const isConfirmed = agent.probeStatus === "success" && card;
 
   const surfaceClass = isConfirmed
-    ? 'border-success/30 bg-success/5'
-    : 'border-border bg-muted/50';
+    ? "border-success/30 bg-success/5"
+    : "border-border bg-muted/50";
 
-  const iconWrapClass = isConfirmed
-    ? 'bg-success/10'
-    : 'bg-muted';
+  const iconWrapClass = isConfirmed ? "bg-success/10" : "bg-muted";
 
   return (
-    <div className={cn('rounded-lg border p-4 transition-colors', surfaceClass)}>
+    <div
+      className={cn("rounded-lg border p-4 transition-colors", surfaceClass)}
+    >
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className={cn('flex-shrink-0 p-2 rounded-lg', iconWrapClass)}>
-            <Bot className={cn('h-5 w-5', isConfirmed ? 'text-success' : 'text-muted-foreground')} />
+          <div className={cn("flex-shrink-0 p-2 rounded-lg", iconWrapClass)}>
+            <Bot
+              className={cn(
+                "h-5 w-5",
+                isConfirmed ? "text-success" : "text-muted-foreground",
+              )}
+            />
           </div>
           <div className="min-w-0">
-            <h3 className="font-medium truncate">
-              {card?.name || agent.name}
-            </h3>
+            <h3 className="font-medium truncate">{card?.name || agent.name}</h3>
             <p className="text-xs truncate text-muted-foreground">
               {agent.namespace}/{agent.name}
               {agent.ports.length > 0 && `:${agent.ports[0].port}`}
@@ -115,7 +126,10 @@ function AgentCard({ agent }: { agent: A2AAgentCandidate }) {
           </p>
           <div className="flex flex-wrap gap-1">
             {card.skills.slice(0, 5).map((skill, i) => {
-              const skillName = typeof skill === 'string' ? skill : (skill as { name?: string })?.name || String(skill);
+              const skillName =
+                typeof skill === "string"
+                  ? skill
+                  : (skill as { name?: string })?.name || String(skill);
               return (
                 <Badge key={i} variant="secondary" className="text-xs">
                   {skillName}
@@ -137,21 +151,35 @@ function AgentCard({ agent }: { agent: A2AAgentCandidate }) {
           onClick={() => setExpanded(!expanded)}
           className="flex items-center gap-1 text-xs font-medium w-full text-left text-muted-foreground hover:text-foreground/80"
         >
-          {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          {expanded ? (
+            <ChevronDown className="h-3 w-3" />
+          ) : (
+            <ChevronRight className="h-3 w-3" />
+          )}
           <Globe className="h-3 w-3" />
-          {agent.gateways.join(', ')}
+          {agent.gateways.join(", ")}
           <span className="text-muted-foreground ml-1">
-            ({agent.routeRefs.length} route{agent.routeRefs.length !== 1 ? 's' : ''})
+            ({agent.routeRefs.length} route
+            {agent.routeRefs.length !== 1 ? "s" : ""})
           </span>
         </button>
         {expanded && (
           <div className="mt-2 space-y-1 ml-4">
             {agent.routeRefs.map((ref, i) => (
-              <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
+              <div
+                key={i}
+                className="flex items-center gap-2 text-xs text-muted-foreground"
+              >
                 <Route className="h-3 w-3" />
-                <span>{ref.namespace}/{ref.name}</span>
-                <Badge variant="outline" className="text-xs py-0">{ref.kind}</Badge>
-                {ref.port && <span className="text-muted-foreground">:{ref.port}</span>}
+                <span>
+                  {ref.namespace}/{ref.name}
+                </span>
+                <Badge variant="outline" className="text-xs py-0">
+                  {ref.kind}
+                </Badge>
+                {ref.port && (
+                  <span className="text-muted-foreground">:{ref.port}</span>
+                )}
               </div>
             ))}
           </div>
@@ -180,14 +208,30 @@ function AgentCard({ agent }: { agent: A2AAgentCandidate }) {
 
 function ProbeStatusBadge({ status }: { status: string }) {
   switch (status) {
-    case 'success':
-      return <Badge variant="success" className="text-xs">Confirmed</Badge>;
-    case 'error':
-      return <Badge variant="outline" className="text-xs">No Agent Card</Badge>;
-    case 'pending':
-      return <Badge variant="outline" className="text-xs text-muted-foreground">Not Probed</Badge>;
-    case 'skipped':
-      return <Badge variant="warning" className="text-xs">Skipped</Badge>;
+    case "success":
+      return (
+        <Badge variant="success" className="text-xs">
+          Confirmed
+        </Badge>
+      );
+    case "error":
+      return (
+        <Badge variant="outline" className="text-xs">
+          No Agent Card
+        </Badge>
+      );
+    case "pending":
+      return (
+        <Badge variant="outline" className="text-xs text-muted-foreground">
+          Not Probed
+        </Badge>
+      );
+    case "skipped":
+      return (
+        <Badge variant="warning" className="text-xs">
+          Skipped
+        </Badge>
+      );
     default:
       return null;
   }
@@ -198,9 +242,13 @@ function ProbeStatusBadge({ status }: { status: string }) {
 // ---------------------------------------------------------------------------
 
 function SummaryCard({
-  label, value, icon: Icon,
+  label,
+  value,
+  icon: Icon,
 }: {
-  label: string; value: number; icon: React.ElementType;
+  label: string;
+  value: number;
+  icon: React.ElementType;
 }) {
   return (
     <div className="rounded-lg border border-border bg-card p-3">
@@ -222,17 +270,26 @@ interface A2AAgentDiscoveryProps {
   namespace: string | undefined;
 }
 
-export function A2AAgentDiscovery({ clusterId, namespace }: A2AAgentDiscoveryProps) {
+export function A2AAgentDiscovery({
+  clusterId,
+  namespace,
+}: A2AAgentDiscoveryProps) {
   const [probeEnabled, setProbeEnabled] = useState(false);
 
-  const { data, isLoading, error, refetch, isFetching } = useQuery({
-    queryKey: queryKeys.k8s.clusters.a2aAgents(clusterId, { namespace, probe: probeEnabled }),
-    queryFn: () => api.getA2AAgents(clusterId, { namespace, probe: probeEnabled }),
+  const { data, isLoading, error } = useQuery({
+    queryKey: queryKeys.k8s.clusters.a2aAgents(clusterId, {
+      namespace,
+      probe: probeEnabled,
+    }),
+    queryFn: () =>
+      api.getA2AAgents(clusterId, { namespace, probe: probeEnabled }),
     enabled: !!clusterId,
   });
 
   const agents = data?.agents ?? [];
-  const confirmedCount = agents.filter(a => a.probeStatus === 'success').length;
+  const confirmedCount = agents.filter(
+    (a) => a.probeStatus === "success",
+  ).length;
 
   if (isLoading) {
     return <SkeletonTable rows={4} columns={3} />;
@@ -252,30 +309,46 @@ export function A2AAgentDiscovery({ clusterId, namespace }: A2AAgentDiscoveryPro
     <div className="space-y-4">
       {/* Summary */}
       <div className="grid grid-cols-3 gap-3">
-        <SummaryCard label="HTTPRoute Backends" value={agents.length} icon={Bot} />
-        <SummaryCard label="Confirmed Agents" value={confirmedCount} icon={Radar} />
-        <SummaryCard label="Gateways" value={new Set(agents.flatMap(a => a.gateways)).size} icon={Globe} />
+        <SummaryCard
+          label="HTTPRoute Backends"
+          value={agents.length}
+          icon={Bot}
+        />
+        <SummaryCard
+          label="Confirmed Agents"
+          value={confirmedCount}
+          icon={Radar}
+        />
+        <SummaryCard
+          label="Gateways"
+          value={new Set(agents.flatMap((a) => a.gateways)).size}
+          icon={Globe}
+        />
       </div>
 
       {/* Actions */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           {agents.length === 0
-            ? 'No services found behind HTTPRoutes.'
-            : `${agents.length} service${agents.length !== 1 ? 's' : ''} behind HTTPRoutes — `
-          }
+            ? "No services found behind HTTPRoutes."
+            : `${agents.length} service${agents.length !== 1 ? "s" : ""} behind HTTPRoutes — `}
           {agents.length > 0 && !probeEnabled && (
-            <span>click <strong>Probe Agents</strong> to check for agent cards.</span>
+            <span>
+              click <strong>Probe Agents</strong> to check for agent cards.
+            </span>
           )}
           {agents.length > 0 && probeEnabled && (
-            <span>{confirmedCount} confirmed A2A agent{confirmedCount !== 1 ? 's' : ''}.</span>
+            <span>
+              {confirmedCount} confirmed A2A agent
+              {confirmedCount !== 1 ? "s" : ""}.
+            </span>
           )}
         </p>
         <div className="flex items-center gap-2">
           {!probeEnabled && agents.length > 0 && (
             <Button
               size="sm"
-              variant="outline"
+              variant="default"
               onClick={() => setProbeEnabled(true)}
               className="gap-1.5"
             >
@@ -283,16 +356,6 @@ export function A2AAgentDiscovery({ clusterId, namespace }: A2AAgentDiscoveryPro
               Probe Agents
             </Button>
           )}
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="gap-1.5"
-          >
-            <RefreshCw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
-            Refresh
-          </Button>
         </div>
       </div>
 

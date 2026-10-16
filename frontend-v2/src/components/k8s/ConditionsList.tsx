@@ -42,7 +42,7 @@ export function ConditionsList({
               <span className="text-sm font-medium">{condition.type}</span>
               <Badge
                 variant={severity === 'healthy' ? 'success' : severity === 'unhealthy' ? 'destructive' : 'warning'}
-                className="ml-auto text-[10px]"
+                className="ml-auto text-2xs"
               >
                 {condition.status}
               </Badge>

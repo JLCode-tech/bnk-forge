@@ -378,7 +378,7 @@ function PodSelector({
                   {pod.namespace}
                 </span>
                 {!pod.has_debug && (
-                  <Badge variant="warning" className="text-[10px] ml-1">
+                  <Badge variant="warning" className="text-2xs ml-1">
                     No debug
                   </Badge>
                 )}
