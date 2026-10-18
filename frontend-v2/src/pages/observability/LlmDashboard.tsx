@@ -82,6 +82,8 @@ const sumSeries = (series: LlmSeries[]): number =>
 const requestSeriesColor = (name: string): string =>
   name.toLowerCase().includes("error") ? ERROR_COLOR : SUCCESS_COLOR;
 
+const LLM_REFRESH_KEYS = [["llm-observability"]] as const;
+
 export default function LlmDashboard() {
   useEffect(() => {
     document.title = "Token Governance and Intelligence | BNK-Forge";
@@ -91,7 +93,7 @@ export default function LlmDashboard() {
   const { data: clustersData } = useAllClusters();
   const clusters = clustersData?.clusters ?? [];
   const { data: filterData } = useLlmFilterData(f.clusterId, f.range);
-  const { refresh, isRefreshing } = usePageRefresh([["llm-observability"]]);
+  const { refresh, isRefreshing } = usePageRefresh(LLM_REFRESH_KEYS);
 
   const { data: llmStats } = useLlmStats(f.clusterId, {
     range: f.range,

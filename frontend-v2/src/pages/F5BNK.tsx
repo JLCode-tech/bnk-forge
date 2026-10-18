@@ -44,6 +44,7 @@ import { useQuery, useQueryClient, useIsFetching } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useProjectClusters, useClusterNamespaces } from "@/hooks/useK8s";
 import { refreshBnkData, useBnkData } from "@/hooks/k8s/useBnk";
+import { refreshLicensing } from "@/hooks/useLicensing";
 import { keepPreviousForScope } from "@/lib/queryKeys";
 import { useAllClusters } from "@/hooks/useK8sClusters";
 import { useBnkConsumption } from "@/hooks/useSystem";
@@ -900,7 +901,7 @@ export default function F5BNK() {
     queryClient.invalidateQueries({ queryKey: ["runbooks"] });
     queryClient.invalidateQueries({ queryKey: ["tmm-debug"] });
     queryClient.invalidateQueries({ queryKey: ["qkview"] });
-    queryClient.invalidateQueries({ queryKey: ["licensing"] });
+    void refreshLicensing(queryClient, selectedCluster);
     // Last, so its forced BNK data fetch is not cancelled by the broader invalidations above.
     refreshBnkData(queryClient, selectedCluster);
   };

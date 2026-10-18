@@ -273,6 +273,8 @@ export const queryKeys = {
       crds: (clusterId: number, params?: { group?: string[] }) =>
         ["k8s", "clusters", clusterId, "crds", params] as const,
       // CNF: Namespace topology graph (D-018 P4)
+      topologyAll: (clusterId: number) =>
+        ["k8s", "clusters", clusterId, "topology"] as const,
       topology: (clusterId: number, namespace: string) =>
         ["k8s", "clusters", clusterId, "topology", namespace] as const,
       // DPF (NVIDIA DPU infrastructure)
@@ -836,10 +838,13 @@ export function keepPreviousForCluster(clusterId: number) {
  * Prevents cross-scope stale data leakage during transitions.
  */
 export function keepPreviousForScope(...scopeItems: unknown[]) {
-  return <T>(previousData: T | undefined, previousQuery?: { queryKey: readonly unknown[] }) => {
+  return <T>(
+    previousData: T | undefined,
+    previousQuery?: { queryKey: readonly unknown[] },
+  ) => {
     if (!previousQuery?.queryKey) return undefined;
     const allMatch = scopeItems.every(
-      item => item === undefined || previousQuery.queryKey.includes(item)
+      (item) => item === undefined || previousQuery.queryKey.includes(item),
     );
     return allMatch ? previousData : undefined;
   };

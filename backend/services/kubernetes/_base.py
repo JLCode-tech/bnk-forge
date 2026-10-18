@@ -220,7 +220,9 @@ class KubernetesServiceBase:
         cfg = client.Configuration.get_default_copy()
         cfg.retries = urllib3.util.Retry(total=0, connect=0, read=0, redirect=0)
         cfg.connection_pool_maxsize = 128
-        return client.ApiClient(cfg, pool_threads=128)
+        api_client = client.ApiClient(cfg)
+        setattr(api_client, "_forge_cluster_id", cluster.id)
+        return api_client
 
     @staticmethod
     def _generate_eks_token(cluster: KubernetesCluster, aws_env: dict) -> str | None:
@@ -494,12 +496,13 @@ class KubernetesServiceBase:
         client.CoreV1Api(api_client).list_namespace(limit=1, _request_timeout=(5, 15))
         return client.VersionApi(api_client).get_code(_request_timeout=(5, 15))
 
-    def list_namespaces(self, cluster_id: int) -> list[str]:
+    def list_namespaces(self, cluster_id: int, force: bool = False) -> list[str]:
         """List all namespaces in a cluster."""
         cache_key = f"k8s:namespaces:{cluster_id}"
-        cached = cache.get(cache_key)
-        if cached is not None and isinstance(cached, list):
-            return cached
+        if not force:
+            cached = cache.get(cache_key)
+            if cached is not None and isinstance(cached, list):
+                return cached
 
         cluster = self.get_cluster(cluster_id)
         api_client = self.load_kubeconfig(cluster)
@@ -510,12 +513,13 @@ class KubernetesServiceBase:
         cache.set(cache_key, result, ttl_seconds=60)
         return result
 
-    def get_node_count(self, cluster_id: int) -> int:
+    def get_node_count(self, cluster_id: int, force: bool = False) -> int:
         """Get the total number of nodes in a cluster."""
         cache_key = f"k8s:nodes:count:{cluster_id}"
-        cached = cache.get(cache_key)
-        if cached is not None and isinstance(cached, int):
-            return cached
+        if not force:
+            cached = cache.get(cache_key)
+            if cached is not None and isinstance(cached, int):
+                return cached
 
         cluster = self.get_cluster(cluster_id)
         api_client = self.load_kubeconfig(cluster)
