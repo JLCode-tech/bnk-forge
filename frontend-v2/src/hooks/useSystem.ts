@@ -240,8 +240,11 @@ export function useUpgradeStatus() {
   const query = useQuery({
     queryKey: queryKeys.system.upgradeStatus(),
     queryFn: () => api.getUpgradeStatus(),
-    refetchInterval: isVisible ? 10_000 : false,
-    staleTime: 5_000,
+    refetchInterval: (q) => {
+      if (!isVisible) return false;
+      return q.state.data?.status === 'in_progress' ? 10_000 : 60_000;
+    },
+    staleTime: 30_000,
     retry: false, // Don't retry if backend is down (may be restarting during upgrade)
   });
 

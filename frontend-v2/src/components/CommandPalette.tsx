@@ -60,8 +60,8 @@ interface CommandPaletteProps {
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
-  const { data: projects } = useProjects();
-  const { data: deployments } = useDeployments();
+  const { data: projects } = useProjects({ enabled: open });
+  const { data: deployments } = useDeployments({ enabled: open });
   const [search, setSearch] = useState("");
 
   // Quick actions

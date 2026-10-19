@@ -9,6 +9,7 @@ Provides endpoints to create, list, monitor, download, and delete
 QKView diagnostic tarballs from F5 BNK clusters.
 """
 
+import asyncio
 import base64
 import logging
 from typing import Any
@@ -241,7 +242,7 @@ async def check_cwc(
 
     # Legacy fallback
     k8s_service = KubernetesService(db)
-    return check_cwc_available(k8s_service, cluster_id)
+    return await asyncio.to_thread(check_cwc_available, k8s_service, cluster_id)
 
 
 # Keep the original function names as module-level aliases for mock.patch targets
@@ -280,7 +281,7 @@ async def list_qkviews_endpoint(
     # Legacy fallback
     k8s_service = KubernetesService(db)
     try:
-        qkviews = list_qkviews(k8s_service, cluster_id)
+        qkviews = await asyncio.to_thread(list_qkviews, k8s_service, cluster_id)
         return {"qkviews": qkviews}
     except QKViewError as e:
         return {"qkviews": [], "error": str(e)}
@@ -337,7 +338,7 @@ async def create_qkview_endpoint(
             core_opts["since"] = request.core_files_since
         options["core_files"] = core_opts
 
-    result = create_qkview(k8s_service, request.cluster_id, options)
+    result = await asyncio.to_thread(create_qkview, k8s_service, request.cluster_id, options)
     return result
 
 
@@ -366,7 +367,7 @@ async def get_qkview_endpoint(
 
     # Legacy fallback
     k8s_service = KubernetesService(db)
-    return get_qkview(k8s_service, cluster_id, qkview_id)
+    return await asyncio.to_thread(get_qkview, k8s_service, cluster_id, qkview_id)
 
 
 @router.get(
@@ -394,7 +395,7 @@ async def get_qkview_status_endpoint(
 
     # Legacy fallback
     k8s_service = KubernetesService(db)
-    return get_qkview_status(k8s_service, cluster_id, qkview_id)
+    return await asyncio.to_thread(get_qkview_status, k8s_service, cluster_id, qkview_id)
 
 
 @router.get("/{qkview_id}/download", dependencies=[Depends(require_viewer)])
@@ -435,7 +436,7 @@ async def download_qkview_endpoint(
 
     # Legacy fallback
     k8s_service = KubernetesService(db)
-    data = download_qkview(k8s_service, cluster_id, qkview_id)
+    data = await asyncio.to_thread(download_qkview, k8s_service, cluster_id, qkview_id)
     return Response(
         content=data,
         media_type="application/gzip",
@@ -470,7 +471,7 @@ async def delete_qkview_endpoint(
     # Legacy fallback
     k8s_service = KubernetesService(db)
     try:
-        return delete_qkview(k8s_service, cluster_id, qkview_id)
+        return await asyncio.to_thread(delete_qkview, k8s_service, cluster_id, qkview_id)
     except QKViewError as e:
         # In-progress jobs raise QKViewError(409); surface the real status code
         # rather than falling through to a generic 500 (FEAT-0343 / ERR-0027).
@@ -503,7 +504,7 @@ async def cancel_qkview_endpoint(
     # Legacy fallback
     k8s_service = KubernetesService(db)
     try:
-        return cancel_qkview(k8s_service, cluster_id, qkview_id)
+        return await asyncio.to_thread(cancel_qkview, k8s_service, cluster_id, qkview_id)
     except QKViewError as e:
         # In-progress jobs raise QKViewError(409); surface the real status code
         # rather than falling through to a generic 500 (FEAT-0343 / ERR-0027).

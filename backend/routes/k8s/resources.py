@@ -54,6 +54,7 @@ router = APIRouter(prefix="/api", tags=["k8s-resources"])
 # Generic Resource Read
 # ============================================================================
 
+
 @router.get(
     "/k8s/clusters/{cluster_id}/resources/{resource_type}",
     response_model=ResourceListEnvelope,
@@ -69,8 +70,10 @@ def get_cluster_resources(
     resource_type: str,
     namespace: str | None = None,
     label_selector: str | None = None,
-    group: str | None = Query(default=None, description="API group to disambiguate bare plural CRD names (e.g. k8s.f5.com)"),
-    db: Session = Depends(get_db)
+    group: str | None = Query(
+        default=None, description="API group to disambiguate bare plural CRD names (e.g. k8s.f5.com)"
+    ),
+    db: Session = Depends(get_db),
 ):
     """
     Generic endpoint to get any Kubernetes resource type.
@@ -104,7 +107,7 @@ def get_cluster_resources(
             "count": len(resources),
             "resource_type": resource_type,
             "namespace": namespace,
-            "cluster_id": cluster_id
+            "cluster_id": cluster_id,
         }
 
     except ApiException as e:
@@ -117,7 +120,7 @@ def get_cluster_resources(
                 "resource_type": resource_type,
                 "namespace": namespace,
                 "cluster_id": cluster_id,
-                "info": f"Resource type '{resource_type}' not available in this cluster. The required CRDs may not be installed."
+                "info": f"Resource type '{resource_type}' not available in this cluster. The required CRDs may not be installed.",
             }
         else:
             logger.error(f"K8s API error fetching {resource_type}: {e}")
@@ -137,18 +140,34 @@ def get_cluster_resources(
 # just stays count-less.
 _RESOURCE_SUMMARY_KINDS: tuple[str, ...] = (
     # Workloads — all health-checkable
-    "pod", "deployment", "statefulset", "daemonset", "replicaset",
+    "pod",
+    "deployment",
+    "statefulset",
+    "daemonset",
+    "replicaset",
     # Networking
-    "service", "ingress",
+    "service",
+    "ingress",
     # Gateway API — small payloads
-    "gatewayclass", "gateway", "httproute", "grpcroute",
-    "tcproute", "udproute", "tlsroute", "referencegrant",
+    "gatewayclass",
+    "gateway",
+    "httproute",
+    "grpcroute",
+    "tcproute",
+    "udproute",
+    "tlsroute",
+    "referencegrant",
     # Storage (kept — PVC/SC/PV are small)
-    "persistentvolumeclaim", "storageclass", "persistentvolume",
+    "persistentvolumeclaim",
+    "storageclass",
+    "persistentvolume",
     # Cluster
-    "node", "namespace",
+    "node",
+    "namespace",
     # cert-manager — small
-    "certificate", "clusterissuer", "issuer",
+    "certificate",
+    "clusterissuer",
+    "issuer",
 )
 
 # Per-kind list timeout. Keeps a flaky CRD from blocking the whole request.
@@ -156,9 +175,15 @@ _KIND_LIST_TIMEOUT_SEC = 10
 
 # Kinds where "unhealthy" is semantically meaningful. Others return
 # `unhealthy: null` — the sidebar shows a count-only badge for them.
-_HEALTH_CHECKABLE_KINDS: frozenset[str] = frozenset({
-    "pod", "deployment", "statefulset", "daemonset", "replicaset",
-})
+_HEALTH_CHECKABLE_KINDS: frozenset[str] = frozenset(
+    {
+        "pod",
+        "deployment",
+        "statefulset",
+        "daemonset",
+        "replicaset",
+    }
+)
 
 
 # API classes keyed by api_group — imported from the single source of truth.
@@ -167,7 +192,7 @@ _CORE_API_CLASSES = API_GROUP_CLIENTS
 
 def _kind_to_snake(kind: str) -> str:
     """Convert CamelCase kind (e.g. PersistentVolumeClaim) to snake_case."""
-    return ''.join(['_' + c.lower() if c.isupper() else c for c in kind]).lstrip('_')
+    return "".join(["_" + c.lower() if c.isupper() else c for c in kind]).lstrip("_")
 
 
 def _unhealthy_from_native(kind: str, items: list) -> int | None:
@@ -225,6 +250,7 @@ def _fetch_kind_summary(
     namespace: str | None,
     db=None,
     cluster_id: int | None = None,
+    rt=None,
 ) -> dict:
     """
     Fetch count + unhealthy for a single kind. Never raises.
@@ -235,13 +261,14 @@ def _fetch_kind_summary(
     summary we only need a length and a few status fields, so we walk the
     native V1* objects directly.
 
-    Expects the api_client to have been loaded once by the caller on the
-    main thread — load_kubeconfig mutates global k8s client state and is
-    not safe to call from worker threads.
+    Expects the api_client and resolved resource type (rt) to have been loaded
+    on the main thread — load_kubeconfig mutates global k8s client state and
+    SQLAlchemy Session is not thread-safe across worker threads.
     """
     _t0 = time.monotonic()
     try:
-        rt = resolve_resource_type(db, cluster_id, kind)
+        if rt is None:
+            rt = resolve_resource_type(db, cluster_id, kind)
 
         needs_health = kind in _HEALTH_CHECKABLE_KINDS
 
@@ -370,10 +397,8 @@ def _fetch_kind_summary(
 
 
 # Per (cluster, namespace) TTL cache for resource-summary responses.
-# TTL must exceed typical request duration — otherwise the entry is already
-# stale by the time it's written (we had exactly that bug with TTL=20 vs a
-# 30s fetch). 60s leaves room for slow fetches while still refreshing
-# frequently enough for the sidebar to feel live.
+# Uses Redis (TTL 15s) with in-process dict fallback when Redis is unavailable.
+_RESOURCE_SUMMARY_REDIS_TTL_SEC = 15
 _RESOURCE_SUMMARY_TTL_SEC = 60.0
 _resource_summary_cache: dict[tuple[int, str | None], tuple[float, dict]] = {}
 _resource_summary_lock = Lock()
@@ -400,17 +425,27 @@ def get_cluster_resource_summary(
 
     `namespace=all` or `namespace=None` returns cluster-wide counts.
 
-    Cached per (cluster, namespace) for ~20s to match the sidebar's polling
-    cadence without re-hitting the k8s API on every render.
+    Cached in Redis per (cluster, namespace) for 15s with in-process fallback.
     """
-    effective_ns = None if (namespace in (None, "", "all")) else namespace
-    cache_key = (cluster_id, effective_ns)
+    from core.cache import cache
 
-    now_mono = time.monotonic()
-    with _resource_summary_lock:
-        cached = _resource_summary_cache.get(cache_key)
-        if cached and (now_mono - cached[0]) < _RESOURCE_SUMMARY_TTL_SEC:
-            return cached[1]
+    effective_ns = None if (namespace in (None, "", "all")) else namespace
+    redis_key = (
+        f"k8s:resource_summary:{cluster_id}"
+        if effective_ns is None
+        else f"k8s:resource_summary:{cluster_id}:{effective_ns}"
+    )
+    cached_redis = cache.get(redis_key)
+    if cached_redis is not None:
+        return cached_redis
+
+    cache_key = (cluster_id, effective_ns)
+    if not cache.is_available():
+        now_mono = time.monotonic()
+        with _resource_summary_lock:
+            cached = _resource_summary_cache.get(cache_key)
+            if cached and (now_mono - cached[0]) < _RESOURCE_SUMMARY_TTL_SEC:
+                return cached[1]
 
     k8s_service = KubernetesService(db)
     # Load kubeconfig ONCE on the main thread — load_kubeconfig mutates
@@ -419,12 +454,21 @@ def get_cluster_resource_summary(
     cluster = k8s_service.get_cluster(cluster_id)
     api_client = k8s_service.load_kubeconfig(cluster)
 
+    # Pre-resolve resource types on the main thread before spawning worker
+    # threads — SQLAlchemy Session (db) is NOT thread-safe across workers.
+    resolved_types: dict[str, object] = {}
     summary: dict[str, dict] = {}
+    for kind in _RESOURCE_SUMMARY_KINDS:
+        try:
+            resolved_types[kind] = resolve_resource_type(db, cluster_id, kind)
+        except Exception as e:
+            logger.warning(f"resource-summary: failed to resolve {kind} on main thread: {e}")
+            summary[kind] = {"count": 0, "unhealthy": None, "available": False, "error": str(e)}
 
-    with ThreadPoolExecutor(max_workers=min(10, len(_RESOURCE_SUMMARY_KINDS))) as executor:
+    with ThreadPoolExecutor(max_workers=min(10, max(1, len(resolved_types)))) as executor:
         futures = {
-            executor.submit(_fetch_kind_summary, api_client, kind, effective_ns, db, cluster_id): kind
-            for kind in _RESOURCE_SUMMARY_KINDS
+            executor.submit(_fetch_kind_summary, api_client, kind, effective_ns, None, cluster_id, rt): kind
+            for kind, rt in resolved_types.items()
         }
         for future in as_completed(futures):
             kind = futures[future]
@@ -440,15 +484,14 @@ def get_cluster_resource_summary(
         "summary": summary,
     }
 
-    # Stamp the cache entry with the write time, not the request start —
-    # otherwise a 30s fetch burns most of its own TTL before it's even stored.
-    write_mono = time.monotonic()
-    with _resource_summary_lock:
-        # Opportunistic stale-entry eviction so the cache can't grow unbounded.
-        stale_cutoff = write_mono - _RESOURCE_SUMMARY_TTL_SEC
-        for key in [k for k, (t, _) in _resource_summary_cache.items() if t < stale_cutoff]:
-            _resource_summary_cache.pop(key, None)
-        _resource_summary_cache[cache_key] = (write_mono, response)
+    if not cache.set(redis_key, response, _RESOURCE_SUMMARY_REDIS_TTL_SEC):
+        # Stamp the fallback cache entry with the write time when Redis is unavailable.
+        write_mono = time.monotonic()
+        with _resource_summary_lock:
+            stale_cutoff = write_mono - _RESOURCE_SUMMARY_TTL_SEC
+            for key in [k for k, (t, _) in _resource_summary_cache.items() if t < stale_cutoff]:
+                _resource_summary_cache.pop(key, None)
+            _resource_summary_cache[cache_key] = (write_mono, response)
 
     return response
 
@@ -456,6 +499,7 @@ def get_cluster_resource_summary(
 # ============================================================================
 # Resource Write Operations (CRUD)
 # ============================================================================
+
 
 @router.post("/k8s/clusters/{cluster_id}/resources/{resource_type}")
 @handle_route_errors("create resource")
@@ -476,7 +520,7 @@ def create_resource(
         resource_type_key=resource_type,
         resource_yaml=request.resource_yaml,
         namespace=request.namespace,
-        dry_run=request.dry_run
+        dry_run=request.dry_run,
     )
     return result
 
@@ -502,7 +546,7 @@ def update_resource(
         resource_name=resource_name,
         resource_yaml=request.resource_yaml,
         namespace=request.namespace,
-        dry_run=request.dry_run
+        dry_run=request.dry_run,
     )
     return result
 
@@ -528,7 +572,7 @@ def delete_resource(
         resource_type_key=resource_type,
         resource_name=resource_name,
         namespace=namespace,
-        dry_run=dry_run
+        dry_run=dry_run,
     )
     return result
 
@@ -559,7 +603,7 @@ def patch_resource(
         resource_name=resource_name,
         patch_data=request.patch_data,
         namespace=request.namespace,
-        patch_type=request.patch_type
+        patch_type=request.patch_type,
     )
     return result
 
@@ -567,6 +611,7 @@ def patch_resource(
 # ============================================================================
 # Labels and Annotations
 # ============================================================================
+
 
 @router.post("/k8s/clusters/{cluster_id}/resources/{resource_type}/{resource_name}/label")
 @handle_route_errors("label resource")
@@ -589,7 +634,7 @@ def label_resource(
         resource_name=resource_name,
         labels=request.labels,
         namespace=request.namespace,
-        overwrite=request.overwrite
+        overwrite=request.overwrite,
     )
     return result
 
@@ -615,7 +660,7 @@ def annotate_resource(
         resource_name=resource_name,
         annotations=request.annotations,
         namespace=request.namespace,
-        overwrite=request.overwrite
+        overwrite=request.overwrite,
     )
     return result
 
@@ -623,6 +668,7 @@ def annotate_resource(
 # ============================================================================
 # Deployment Operations
 # ============================================================================
+
 
 @router.post("/k8s/clusters/{cluster_id}/deployments/{deployment_name}/scale")
 @handle_route_errors("scale deployment")
@@ -636,10 +682,7 @@ def scale_deployment(
     """Scale a deployment to a specific number of replicas."""
     k8s_service = KubernetesService(db)
     result = k8s_service.scale_deployment(
-        cluster_id=cluster_id,
-        deployment_name=deployment_name,
-        namespace=request.namespace,
-        replicas=request.replicas
+        cluster_id=cluster_id, deployment_name=deployment_name, namespace=request.namespace, replicas=request.replicas
     )
     return result
 
@@ -647,6 +690,7 @@ def scale_deployment(
 # ============================================================================
 # Pod Operations
 # ============================================================================
+
 
 @router.get(
     "/k8s/clusters/{cluster_id}/pods/{pod_name}/logs",
@@ -660,7 +704,7 @@ def get_pod_logs(
     namespace: str,
     container: str | None = None,
     tail_lines: int = 100,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Get logs from a pod.
@@ -673,7 +717,7 @@ def get_pod_logs(
         namespace=namespace,
         container=container,
         tail_lines=tail_lines,
-        follow=False  # Don't use follow in HTTP endpoint (use WebSocket for streaming)
+        follow=False,  # Don't use follow in HTTP endpoint (use WebSocket for streaming)
     )
     return {
         "logs": logs,
@@ -698,11 +742,7 @@ def restart_pod(
     The pod will be recreated automatically by its controller (Deployment, StatefulSet, etc.).
     """
     k8s_service = KubernetesService(db)
-    result = k8s_service.restart_pod(
-        cluster_id=cluster_id,
-        pod_name=pod_name,
-        namespace=namespace
-    )
+    result = k8s_service.restart_pod(cluster_id=cluster_id, pod_name=pod_name, namespace=namespace)
     return {
         **result,
         "pod_name": pod_name,
@@ -713,25 +753,17 @@ def restart_pod(
 
 @router.get("/k8s/clusters/{cluster_id}/pods/{pod_name}/containers", dependencies=[Depends(require_viewer)])
 @handle_route_errors("list pod containers")
-def list_pod_containers(
-    cluster_id: int,
-    pod_name: str,
-    namespace: str,
-    db: Session = Depends(get_db)
-):
+def list_pod_containers(cluster_id: int, pod_name: str, namespace: str, db: Session = Depends(get_db)):
     """List all containers in a pod (including init containers)."""
     k8s_service = KubernetesService(db)
-    containers = k8s_service.get_pod_containers(
-        cluster_id=cluster_id,
-        pod_name=pod_name,
-        namespace=namespace
-    )
+    containers = k8s_service.get_pod_containers(cluster_id=cluster_id, pod_name=pod_name, namespace=namespace)
     return containers
 
 
 # ============================================================================
 # Describe & Events
 # ============================================================================
+
 
 @router.get(
     "/k8s/clusters/{cluster_id}/resources/{resource_type}/{resource_name}/describe",
@@ -740,11 +772,7 @@ def list_pod_containers(
 )
 @handle_route_errors("describe resource")
 def describe_resource(
-    cluster_id: int,
-    resource_type: str,
-    resource_name: str,
-    namespace: str | None = None,
-    db: Session = Depends(get_db)
+    cluster_id: int, resource_type: str, resource_name: str, namespace: str | None = None, db: Session = Depends(get_db)
 ):
     """
     Describe a resource - kubectl describe equivalent.
@@ -752,10 +780,7 @@ def describe_resource(
     """
     k8s_service = KubernetesService(db)
     description = k8s_service.describe_resource(
-        cluster_id=cluster_id,
-        resource_type_key=resource_type,
-        resource_name=resource_name,
-        namespace=namespace
+        cluster_id=cluster_id, resource_type_key=resource_type, resource_name=resource_name, namespace=namespace
     )
     return {
         **description,
@@ -777,7 +802,7 @@ def get_cluster_events(
     resource_type: str | None = None,
     resource_name: str | None = None,
     event_type: str | None = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Get events from cluster.
@@ -789,7 +814,7 @@ def get_cluster_events(
         namespace=namespace,
         resource_type=resource_type,
         resource_name=resource_name,
-        event_type=event_type
+        event_type=event_type,
     )
     return {
         "events": events,
@@ -806,6 +831,7 @@ def get_cluster_events(
 # Metrics (kubectl top)
 # ============================================================================
 
+
 @router.get(
     "/k8s/clusters/{cluster_id}/top/pods",
     response_model=PodTopResponse,
@@ -813,10 +839,7 @@ def get_cluster_events(
 )
 @handle_route_errors("get pod metrics")
 def get_pod_metrics(
-    cluster_id: int,
-    namespace: str | None = None,
-    sort_by: str | None = None,
-    db: Session = Depends(get_db)
+    cluster_id: int, namespace: str | None = None, sort_by: str | None = None, db: Session = Depends(get_db)
 ):
     """
     Get pod resource usage metrics (CPU and memory).
@@ -825,11 +848,7 @@ def get_pod_metrics(
     Requires metrics-server to be installed in the cluster.
     """
     k8s_service = KubernetesService(db)
-    metrics = k8s_service.get_pod_metrics(
-        cluster_id=cluster_id,
-        namespace=namespace,
-        sort_by=sort_by
-    )
+    metrics = k8s_service.get_pod_metrics(cluster_id=cluster_id, namespace=namespace, sort_by=sort_by)
     return {
         **metrics,
         "cluster_id": cluster_id,
@@ -844,11 +863,7 @@ def get_pod_metrics(
     dependencies=[Depends(require_viewer)],
 )
 @handle_route_errors("get node metrics")
-def get_node_metrics(
-    cluster_id: int,
-    sort_by: str | None = None,
-    db: Session = Depends(get_db)
-):
+def get_node_metrics(cluster_id: int, sort_by: str | None = None, db: Session = Depends(get_db)):
     """
     Get node resource usage metrics (CPU and memory).
     Equivalent to: kubectl top nodes
@@ -856,10 +871,7 @@ def get_node_metrics(
     Requires metrics-server to be installed in the cluster.
     """
     k8s_service = KubernetesService(db)
-    metrics = k8s_service.get_node_metrics(
-        cluster_id=cluster_id,
-        sort_by=sort_by
-    )
+    metrics = k8s_service.get_node_metrics(cluster_id=cluster_id, sort_by=sort_by)
     return {
         **metrics,
         "cluster_id": cluster_id,
@@ -871,14 +883,12 @@ def get_node_metrics(
 # Deployment Rollout Management
 # ============================================================================
 
-@router.get("/k8s/clusters/{cluster_id}/deployments/{deployment_name}/rollout/history", dependencies=[Depends(require_viewer)])
+
+@router.get(
+    "/k8s/clusters/{cluster_id}/deployments/{deployment_name}/rollout/history", dependencies=[Depends(require_viewer)]
+)
 @handle_route_errors("get rollout history")
-def get_rollout_history(
-    cluster_id: int,
-    deployment_name: str,
-    namespace: str,
-    db: Session = Depends(get_db)
-):
+def get_rollout_history(cluster_id: int, deployment_name: str, namespace: str, db: Session = Depends(get_db)):
     """
     Get rollout history for a deployment.
     Equivalent to: kubectl rollout history deployment/{name}
@@ -887,21 +897,16 @@ def get_rollout_history(
     """
     k8s_service = KubernetesService(db)
     history = k8s_service.get_rollout_history(
-        cluster_id=cluster_id,
-        deployment_name=deployment_name,
-        namespace=namespace
+        cluster_id=cluster_id, deployment_name=deployment_name, namespace=namespace
     )
     return {"history": history, "deployment_name": deployment_name, "namespace": namespace}
 
 
-@router.get("/k8s/clusters/{cluster_id}/deployments/{deployment_name}/rollout/status", dependencies=[Depends(require_viewer)])
+@router.get(
+    "/k8s/clusters/{cluster_id}/deployments/{deployment_name}/rollout/status", dependencies=[Depends(require_viewer)]
+)
 @handle_route_errors("get rollout status")
-def get_rollout_status(
-    cluster_id: int,
-    deployment_name: str,
-    namespace: str,
-    db: Session = Depends(get_db)
-):
+def get_rollout_status(cluster_id: int, deployment_name: str, namespace: str, db: Session = Depends(get_db)):
     """
     Get current rollout status for a deployment.
     Equivalent to: kubectl rollout status deployment/{name}
@@ -909,11 +914,7 @@ def get_rollout_status(
     Returns deployment status with replicas and conditions.
     """
     k8s_service = KubernetesService(db)
-    status = k8s_service.get_rollout_status(
-        cluster_id=cluster_id,
-        deployment_name=deployment_name,
-        namespace=namespace
-    )
+    status = k8s_service.get_rollout_status(cluster_id=cluster_id, deployment_name=deployment_name, namespace=namespace)
     return status
 
 
@@ -933,10 +934,7 @@ def rollout_undo(
     """
     k8s_service = KubernetesService(db)
     result = k8s_service.rollout_undo(
-        cluster_id=cluster_id,
-        deployment_name=deployment_name,
-        namespace=namespace,
-        revision=revision
+        cluster_id=cluster_id, deployment_name=deployment_name, namespace=namespace, revision=revision
     )
     return result
 
@@ -957,11 +955,7 @@ def rollout_restart(
     This triggers a rolling restart of all pods in the deployment.
     """
     k8s_service = KubernetesService(db)
-    result = k8s_service.rollout_restart(
-        cluster_id=cluster_id,
-        deployment_name=deployment_name,
-        namespace=namespace
-    )
+    result = k8s_service.rollout_restart(cluster_id=cluster_id, deployment_name=deployment_name, namespace=namespace)
     return result
 
 
@@ -981,11 +975,7 @@ def rollout_pause(
     This prevents the deployment controller from progressing the rollout.
     """
     k8s_service = KubernetesService(db)
-    result = k8s_service.rollout_pause(
-        cluster_id=cluster_id,
-        deployment_name=deployment_name,
-        namespace=namespace
-    )
+    result = k8s_service.rollout_pause(cluster_id=cluster_id, deployment_name=deployment_name, namespace=namespace)
     return result
 
 
@@ -1005,17 +995,14 @@ def rollout_resume(
     This allows the deployment controller to continue the rollout.
     """
     k8s_service = KubernetesService(db)
-    result = k8s_service.rollout_resume(
-        cluster_id=cluster_id,
-        deployment_name=deployment_name,
-        namespace=namespace
-    )
+    result = k8s_service.rollout_resume(cluster_id=cluster_id, deployment_name=deployment_name, namespace=namespace)
     return result
 
 
 # ============================================================================
 # Node Operations
 # ============================================================================
+
 
 @router.post("/k8s/clusters/{cluster_id}/nodes/{node_name}/cordon")
 @handle_route_errors("cordon node")
@@ -1033,10 +1020,7 @@ def cordon_node(
     Existing pods continue running.
     """
     k8s_service = KubernetesService(db)
-    result = k8s_service.cordon_node(
-        cluster_id=cluster_id,
-        node_name=node_name
-    )
+    result = k8s_service.cordon_node(cluster_id=cluster_id, node_name=node_name)
     return result
 
 
@@ -1055,10 +1039,7 @@ def uncordon_node(
     This allows new pods to be scheduled on the node again.
     """
     k8s_service = KubernetesService(db)
-    result = k8s_service.uncordon_node(
-        cluster_id=cluster_id,
-        node_name=node_name
-    )
+    result = k8s_service.uncordon_node(cluster_id=cluster_id, node_name=node_name)
     return result
 
 
@@ -1094,6 +1075,6 @@ def drain_node(
         ignore_daemonsets=ignore_daemonsets,
         delete_emptydir_data=delete_emptydir_data,
         force=force,
-        grace_period=grace_period
+        grace_period=grace_period,
     )
     return result

@@ -13,8 +13,8 @@ Covers:
 import logging
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func
-from sqlalchemy.orm import joinedload
+from sqlalchemy import case, func
+from sqlalchemy.orm import joinedload, undefer
 
 from core.cache import cache
 from core.errors import BadRequestError, NotFoundError, ServiceError
@@ -36,9 +36,7 @@ class DriftService(BaseService):
         """Get drift settings for a project, creating defaults if none exist."""
         self._get_project(project_id)
 
-        settings = self.db.query(DriftSettings).filter(
-            DriftSettings.project_id == project_id
-        ).first()
+        settings = self.db.query(DriftSettings).filter(DriftSettings.project_id == project_id).first()
 
         if not settings:
             settings = DriftSettings(
@@ -60,9 +58,7 @@ class DriftService(BaseService):
         """Update drift settings for a project."""
         self._get_project(project_id)
 
-        settings = self.db.query(DriftSettings).filter(
-            DriftSettings.project_id == project_id
-        ).first()
+        settings = self.db.query(DriftSettings).filter(DriftSettings.project_id == project_id).first()
 
         if not settings:
             settings = DriftSettings(project_id=project_id)
@@ -87,9 +83,7 @@ class DriftService(BaseService):
         """Enable drift detection for a project."""
         self._get_project(project_id)
 
-        settings = self.db.query(DriftSettings).filter(
-            DriftSettings.project_id == project_id
-        ).first()
+        settings = self.db.query(DriftSettings).filter(DriftSettings.project_id == project_id).first()
 
         if not settings:
             settings = DriftSettings(
@@ -112,9 +106,7 @@ class DriftService(BaseService):
         """Disable drift detection for a project."""
         self._get_project(project_id)
 
-        settings = self.db.query(DriftSettings).filter(
-            DriftSettings.project_id == project_id
-        ).first()
+        settings = self.db.query(DriftSettings).filter(DriftSettings.project_id == project_id).first()
 
         if not settings:
             # Create default disabled settings if none exist
@@ -151,7 +143,11 @@ class DriftService(BaseService):
 
         query = (
             self.db.query(DriftCheck)
-            .options(joinedload(DriftCheck.module).joinedload(ProjectModule.library_module).load_only(ModuleLibrary.id, ModuleLibrary.name))
+            .options(
+                joinedload(DriftCheck.module)
+                .joinedload(ProjectModule.library_module)
+                .load_only(ModuleLibrary.id, ModuleLibrary.name)
+            )
             .filter(DriftCheck.project_id == project_id)
         )
 
@@ -168,7 +164,11 @@ class DriftService(BaseService):
         """Get detailed information about a specific drift check."""
         check = (
             self.db.query(DriftCheck)
-            .options(joinedload(DriftCheck.module).joinedload(ProjectModule.library_module).load_only(ModuleLibrary.id, ModuleLibrary.name))
+            .options(
+                joinedload(DriftCheck.module)
+                .joinedload(ProjectModule.library_module)
+                .load_only(ModuleLibrary.id, ModuleLibrary.name)
+            )
             .filter(DriftCheck.id == check_id)
             .first()
         )
@@ -221,11 +221,13 @@ class DriftService(BaseService):
 
             try:
                 run_drift_check.delay(drift_check.id, module.id)
-                drift_checks.append({
-                    "check_id": drift_check.id,
-                    "module_id": module.id,
-                    "module_name": module.library_module.name,
-                })
+                drift_checks.append(
+                    {
+                        "check_id": drift_check.id,
+                        "module_id": module.id,
+                        "module_name": module.library_module.name,
+                    }
+                )
             except Exception as e:
                 drift_check.status = "failed"
                 drift_check.error_message = f"Failed to queue task: {str(e)}"
@@ -288,80 +290,82 @@ class DriftService(BaseService):
 
     def get_global_summary(self) -> dict:
         """Get global drift summary across all projects."""
-        total_checks = self.db.query(DriftCheck).count()
-        drift_detected = self.db.query(DriftCheck).filter(DriftCheck.drift_detected).count()
-        no_drift = self.db.query(DriftCheck).filter(
-            not DriftCheck.drift_detected, DriftCheck.status == "completed"
-        ).count()
-        failed = self.db.query(DriftCheck).filter(DriftCheck.status == "failed").count()
-
-        last_check = self.db.query(DriftCheck).order_by(DriftCheck.last_check_at.desc()).first()
-        last_check_at = last_check.last_check_at if last_check else None
-
-        projects_with_drift = (
-            self.db.query(func.count(func.distinct(DriftCheck.project_id)))
-            .filter(DriftCheck.drift_detected)
-            .scalar()
-        )
-        modules_with_drift = (
-            self.db.query(func.count(func.distinct(DriftCheck.module_id)))
-            .filter(DriftCheck.drift_detected, DriftCheck.module_id.isnot(None))
-            .scalar()
-        )
+        row = self.db.query(
+            func.count(DriftCheck.id).label("total_checks"),
+            func.coalesce(func.sum(case((DriftCheck.drift_detected.is_(True), 1), else_=0)), 0).label("drift_detected"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            (DriftCheck.drift_detected.is_(False)) & (DriftCheck.status == "completed"),
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("no_drift"),
+            func.coalesce(func.sum(case((DriftCheck.status == "failed", 1), else_=0)), 0).label("failed"),
+            func.max(DriftCheck.last_check_at).label("last_check_at"),
+            func.count(
+                func.distinct(case((DriftCheck.drift_detected.is_(True), DriftCheck.project_id), else_=None))
+            ).label("projects_with_drift"),
+            func.count(
+                func.distinct(case((DriftCheck.drift_detected.is_(True), DriftCheck.module_id), else_=None))
+            ).label("modules_with_drift"),
+        ).one()
 
         return {
-            "total_checks": total_checks,
-            "drift_detected_count": drift_detected,
-            "no_drift_count": no_drift,
-            "failed_count": failed,
-            "last_check_at": last_check_at,
-            "projects_with_drift": projects_with_drift,
-            "modules_with_drift": modules_with_drift,
+            "total_checks": int(row.total_checks or 0),
+            "drift_detected_count": int(row.drift_detected or 0),
+            "no_drift_count": int(row.no_drift or 0),
+            "failed_count": int(row.failed or 0),
+            "last_check_at": row.last_check_at,
+            "projects_with_drift": int(row.projects_with_drift or 0),
+            "modules_with_drift": int(row.modules_with_drift or 0),
         }
 
     def get_project_summary(self, project_id: int) -> dict:
         """Get drift summary for a specific project."""
         self._get_project(project_id)
 
-        total_checks = self.db.query(DriftCheck).filter(DriftCheck.project_id == project_id).count()
-        drift_detected = self.db.query(DriftCheck).filter(
-            DriftCheck.project_id == project_id, DriftCheck.drift_detected
-        ).count()
-        no_drift = self.db.query(DriftCheck).filter(
-            DriftCheck.project_id == project_id,
-            not DriftCheck.drift_detected,
-            DriftCheck.status == "completed",
-        ).count()
-        failed = self.db.query(DriftCheck).filter(
-            DriftCheck.project_id == project_id, DriftCheck.status == "failed"
-        ).count()
-
-        last_check = (
-            self.db.query(DriftCheck)
-            .filter(DriftCheck.project_id == project_id)
-            .order_by(DriftCheck.last_check_at.desc())
-            .first()
-        )
-        last_check_at = last_check.last_check_at if last_check else None
-
-        modules_with_drift = (
-            self.db.query(func.count(func.distinct(DriftCheck.module_id)))
-            .filter(
-                DriftCheck.project_id == project_id,
-                DriftCheck.drift_detected,
-                DriftCheck.module_id.isnot(None),
+        row = (
+            self.db.query(
+                func.count(DriftCheck.id).label("total_checks"),
+                func.coalesce(func.sum(case((DriftCheck.drift_detected.is_(True), 1), else_=0)), 0).label(
+                    "drift_detected"
+                ),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (
+                                (DriftCheck.drift_detected.is_(False)) & (DriftCheck.status == "completed"),
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ).label("no_drift"),
+                func.coalesce(func.sum(case((DriftCheck.status == "failed", 1), else_=0)), 0).label("failed"),
+                func.max(DriftCheck.last_check_at).label("last_check_at"),
+                func.count(
+                    func.distinct(case((DriftCheck.drift_detected.is_(True), DriftCheck.module_id), else_=None))
+                ).label("modules_with_drift"),
             )
-            .scalar()
+            .filter(DriftCheck.project_id == project_id)
+            .one()
         )
 
+        drift_detected = int(row.drift_detected or 0)
         return {
-            "total_checks": total_checks,
+            "total_checks": int(row.total_checks or 0),
             "drift_detected_count": drift_detected,
-            "no_drift_count": no_drift,
-            "failed_count": failed,
-            "last_check_at": last_check_at,
+            "no_drift_count": int(row.no_drift or 0),
+            "failed_count": int(row.failed or 0),
+            "last_check_at": row.last_check_at,
             "projects_with_drift": 1 if drift_detected > 0 else 0,
-            "modules_with_drift": modules_with_drift,
+            "modules_with_drift": int(row.modules_with_drift or 0),
         }
 
     def get_stats(self, project_id: int | None = None, days: int | None = None) -> dict:
@@ -378,17 +382,15 @@ class DriftService(BaseService):
         enabled_projects = enabled_query.count()
 
         cutoff = datetime.now(UTC) - timedelta(days=effective_days)
-        checks_query = self.db.query(DriftCheck).filter(DriftCheck.created_at >= cutoff)
+        stats_query = self.db.query(
+            func.count(DriftCheck.id).label("recent_checks"),
+            func.coalesce(func.sum(case((DriftCheck.drift_detected.is_(True), 1), else_=0)), 0).label("recent_drift"),
+        ).filter(DriftCheck.created_at >= cutoff)
         if project_id:
-            checks_query = checks_query.filter(DriftCheck.project_id == project_id)
-        recent_checks = checks_query.count()
-
-        drift_query = self.db.query(DriftCheck).filter(
-            DriftCheck.created_at >= cutoff, DriftCheck.drift_detected
-        )
-        if project_id:
-            drift_query = drift_query.filter(DriftCheck.project_id == project_id)
-        recent_drift = drift_query.count()
+            stats_query = stats_query.filter(DriftCheck.project_id == project_id)
+        stats_row = stats_query.one()
+        recent_checks = int(stats_row.recent_checks or 0)
+        recent_drift = int(stats_row.recent_drift or 0)
 
         result = {
             "enabled_projects": enabled_projects,
@@ -425,9 +427,7 @@ class DriftService(BaseService):
         if deployable_id is None:
             return {"status": "not_forge_deployed", "deployed_release_id": None, "running_release_id": running_id}
 
-        deployable = self.db.query(BnkDeployableRelease).filter(
-            BnkDeployableRelease.id == deployable_id
-        ).first()
+        deployable = self.db.query(BnkDeployableRelease).filter(BnkDeployableRelease.id == deployable_id).first()
         if deployable is None:
             return {"status": "not_forge_deployed", "deployed_release_id": None, "running_release_id": running_id}
 
@@ -452,9 +452,7 @@ class DriftService(BaseService):
         """Get drift status for all modules deployed to a cluster's project."""
         from models import KubernetesCluster
 
-        cluster = self.db.query(KubernetesCluster).filter(
-            KubernetesCluster.id == cluster_id
-        ).first()
+        cluster = self.db.query(KubernetesCluster).filter(KubernetesCluster.id == cluster_id).first()
         if not cluster:
             raise NotFoundError("cluster", cluster_id)
 
@@ -484,10 +482,35 @@ class DriftService(BaseService):
                 "release_drift": self._compute_release_drift(cluster),
             }
 
-        settings = self.db.query(DriftSettings).filter(
-            DriftSettings.project_id == project_id
-        ).first()
+        settings = self.db.query(DriftSettings).filter(DriftSettings.project_id == project_id).first()
         drift_enabled = settings.enabled if settings else False
+
+        module_ids = [m.id for m in modules]
+        rn = (
+            func.row_number()
+            .over(
+                partition_by=DriftCheck.module_id,
+                order_by=(DriftCheck.created_at.desc(), DriftCheck.id.desc()),
+            )
+            .label("rn")
+        )
+        subq = (
+            self.db.query(DriftCheck.id.label("check_id"), rn)
+            .filter(
+                DriftCheck.project_id == project_id,
+                DriftCheck.module_id.in_(module_ids),
+                DriftCheck.status == "completed",
+            )
+            .subquery()
+        )
+        latest_checks_by_module = {
+            c.module_id: c
+            for c in self.db.query(DriftCheck)
+            .options(undefer(DriftCheck.drift_details))
+            .join(subq, DriftCheck.id == subq.c.check_id)
+            .filter(subq.c.rn == 1)
+            .all()
+        }
 
         module_statuses = []
         drift_count = 0
@@ -495,17 +518,7 @@ class DriftService(BaseService):
         unchecked_count = 0
 
         for module in modules:
-            latest_check = (
-                self.db.query(DriftCheck)
-                .filter(
-                    DriftCheck.project_id == project_id,
-                    DriftCheck.module_id == module.id,
-                    DriftCheck.status == "completed",
-                )
-                .order_by(DriftCheck.created_at.desc())
-                .first()
-            )
-
+            latest_check = latest_checks_by_module.get(module.id)
             engine_type = self._detect_engine_type(module)
 
             if latest_check:
@@ -516,32 +529,36 @@ class DriftService(BaseService):
                     ok_count += 1
                     status = "ok"
 
-                module_statuses.append({
-                    "module_id": module.id,
-                    "module_name": module.library_module.name if module.library_module else module.path_in_project,
-                    "module_path": module.path_in_project,
-                    "engine_type": engine_type,
-                    "status": status,
-                    "drift_detected": latest_check.drift_detected,
-                    "drift_summary": latest_check.drift_summary,
-                    "drift_details": latest_check.drift_details,
-                    "last_check_at": latest_check.last_check_at.isoformat() if latest_check.last_check_at else None,
-                    "check_id": latest_check.id,
-                })
+                module_statuses.append(
+                    {
+                        "module_id": module.id,
+                        "module_name": module.library_module.name if module.library_module else module.path_in_project,
+                        "module_path": module.path_in_project,
+                        "engine_type": engine_type,
+                        "status": status,
+                        "drift_detected": latest_check.drift_detected,
+                        "drift_summary": latest_check.drift_summary,
+                        "drift_details": latest_check.drift_details,
+                        "last_check_at": latest_check.last_check_at.isoformat() if latest_check.last_check_at else None,
+                        "check_id": latest_check.id,
+                    }
+                )
             else:
                 unchecked_count += 1
-                module_statuses.append({
-                    "module_id": module.id,
-                    "module_name": module.library_module.name if module.library_module else module.path_in_project,
-                    "module_path": module.path_in_project,
-                    "engine_type": engine_type,
-                    "status": "unchecked",
-                    "drift_detected": False,
-                    "drift_summary": None,
-                    "drift_details": None,
-                    "last_check_at": None,
-                    "check_id": None,
-                })
+                module_statuses.append(
+                    {
+                        "module_id": module.id,
+                        "module_name": module.library_module.name if module.library_module else module.path_in_project,
+                        "module_path": module.path_in_project,
+                        "engine_type": engine_type,
+                        "status": "unchecked",
+                        "drift_detected": False,
+                        "drift_summary": None,
+                        "drift_details": None,
+                        "last_check_at": None,
+                        "check_id": None,
+                    }
+                )
 
         if drift_count > 0:
             overall_status = "drift_detected"
@@ -594,22 +611,28 @@ class DriftService(BaseService):
         for check in checks:
             module = check.module
             project = module.project if module else None
-            results.append({
-                "id": check.id,
-                "project_id": check.project_id,
-                "project_name": project.name if project else "Unknown",
-                "module_id": check.module_id,
-                "module_name": (
-                    module.library_module.name
-                    if module and module.library_module
-                    else module.path_in_project if module else "Unknown"
-                ),
-                "drift_summary": check.drift_summary,
-                "drift_details": check.drift_details,
-                "last_check_at": check.last_check_at.isoformat() if check.last_check_at else None,
-                "resource_changes": check.drift_details.get("resource_changes") if check.drift_details else None,
-                "changed_resources": check.drift_details.get("changed_resources", []) if check.drift_details else [],
-            })
+            results.append(
+                {
+                    "id": check.id,
+                    "project_id": check.project_id,
+                    "project_name": project.name if project else "Unknown",
+                    "module_id": check.module_id,
+                    "module_name": (
+                        module.library_module.name
+                        if module and module.library_module
+                        else module.path_in_project
+                        if module
+                        else "Unknown"
+                    ),
+                    "drift_summary": check.drift_summary,
+                    "drift_details": check.drift_details,
+                    "last_check_at": check.last_check_at.isoformat() if check.last_check_at else None,
+                    "resource_changes": check.drift_details.get("resource_changes") if check.drift_details else None,
+                    "changed_resources": check.drift_details.get("changed_resources", [])
+                    if check.drift_details
+                    else [],
+                }
+            )
         return results
 
     # ================================================================

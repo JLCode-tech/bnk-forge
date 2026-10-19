@@ -44,6 +44,13 @@ _FLEET_BASE = "/k8s/llm-observability"
 # contract is unchanged.
 
 
+_LLM_OBS_CACHE_TTL_SEC = 30
+
+
+def _cache_dump(res):
+    return res.model_dump(mode="json") if hasattr(res, "model_dump") else res
+
+
 @router.get(
     f"{_FLEET_BASE}/stats",
     response_model=LlmStatsResponse,
@@ -64,8 +71,15 @@ async def get_llm_stats(
     db: Session = Depends(get_db),
 ):
     """Summary tiles: total requests, success rate, avg latency, tokens, cost, models."""
+    from core.cache import cache
+
+    cache_key = f"llm_obs:stats:{cluster_id}:{project_id}:{time_range}:{model}:{status}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     if project_id is not None:
-        return await asyncio.to_thread(
+        res = await asyncio.to_thread(
             LlmObservabilityService(db).stats,
             cluster_id,
             time_range,
@@ -73,7 +87,10 @@ async def get_llm_stats(
             status,
             project_id=project_id,
         )
-    return await asyncio.to_thread(LlmObservabilityService(db).stats, cluster_id, time_range, model, status)
+    else:
+        res = await asyncio.to_thread(LlmObservabilityService(db).stats, cluster_id, time_range, model, status)
+    cache.set(cache_key, _cache_dump(res), _LLM_OBS_CACHE_TTL_SEC)
+    return res
 
 
 @router.get(
@@ -97,8 +114,15 @@ async def get_llm_histogram(
     db: Session = Depends(get_db),
 ):
     """Time-series for one metric (requests|tokens|cost|models|latency)."""
+    from core.cache import cache
+
+    cache_key = f"llm_obs:histogram:{cluster_id}:{project_id}:{metric}:{time_range}:{model}:{status}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     if project_id is not None:
-        return await asyncio.to_thread(
+        res = await asyncio.to_thread(
             LlmObservabilityService(db).histogram,
             cluster_id,
             time_range,
@@ -107,7 +131,12 @@ async def get_llm_histogram(
             status,
             project_id=project_id,
         )
-    return await asyncio.to_thread(LlmObservabilityService(db).histogram, cluster_id, time_range, metric, model, status)
+    else:
+        res = await asyncio.to_thread(
+            LlmObservabilityService(db).histogram, cluster_id, time_range, metric, model, status
+        )
+    cache.set(cache_key, _cache_dump(res), _LLM_OBS_CACHE_TTL_SEC)
+    return res
 
 
 @router.get(
@@ -130,8 +159,15 @@ async def get_llm_rankings(
     db: Session = Depends(get_db),
 ):
     """Per-model rows with window-over-window trend deltas."""
+    from core.cache import cache
+
+    cache_key = f"llm_obs:rankings:{cluster_id}:{project_id}:{time_range}:{model}:{status}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     if project_id is not None:
-        return await asyncio.to_thread(
+        res = await asyncio.to_thread(
             LlmObservabilityService(db).rankings,
             cluster_id,
             time_range,
@@ -139,7 +175,10 @@ async def get_llm_rankings(
             status,
             project_id=project_id,
         )
-    return await asyncio.to_thread(LlmObservabilityService(db).rankings, cluster_id, time_range, model, status)
+    else:
+        res = await asyncio.to_thread(LlmObservabilityService(db).rankings, cluster_id, time_range, model, status)
+    cache.set(cache_key, _cache_dump(res), _LLM_OBS_CACHE_TTL_SEC)
+    return res
 
 
 @router.get(
@@ -163,8 +202,15 @@ async def get_llm_provider_usage(
     db: Session = Depends(get_db),
 ):
     """Time-series folded to inferred provider (cost|tokens|latency)."""
+    from core.cache import cache
+
+    cache_key = f"llm_obs:provider_usage:{cluster_id}:{project_id}:{metric}:{time_range}:{model}:{status}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     if project_id is not None:
-        return await asyncio.to_thread(
+        res = await asyncio.to_thread(
             LlmObservabilityService(db).provider_usage,
             cluster_id,
             time_range,
@@ -173,9 +219,12 @@ async def get_llm_provider_usage(
             status,
             project_id=project_id,
         )
-    return await asyncio.to_thread(
-        LlmObservabilityService(db).provider_usage, cluster_id, time_range, metric, model, status
-    )
+    else:
+        res = await asyncio.to_thread(
+            LlmObservabilityService(db).provider_usage, cluster_id, time_range, metric, model, status
+        )
+    cache.set(cache_key, _cache_dump(res), _LLM_OBS_CACHE_TTL_SEC)
+    return res
 
 
 @router.get(
@@ -243,11 +292,21 @@ async def get_llm_filterdata(
     db: Session = Depends(get_db),
 ):
     """Distinct model + status label values for filter dropdowns."""
+    from core.cache import cache
+
+    cache_key = f"llm_obs:filterdata:{cluster_id}:{project_id}:{time_range}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     if project_id is not None:
-        return await asyncio.to_thread(
+        res = await asyncio.to_thread(
             LlmObservabilityService(db).filterdata,
             cluster_id,
             time_range,
             project_id=project_id,
         )
-    return await asyncio.to_thread(LlmObservabilityService(db).filterdata, cluster_id, time_range)
+    else:
+        res = await asyncio.to_thread(LlmObservabilityService(db).filterdata, cluster_id, time_range)
+    cache.set(cache_key, _cache_dump(res), _LLM_OBS_CACHE_TTL_SEC)
+    return res

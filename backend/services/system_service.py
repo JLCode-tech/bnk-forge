@@ -499,6 +499,13 @@ class SystemService:
 
     def get_system_version(self) -> dict[str, Any]:
         """Get current and available system versions."""
+        from core.cache import cache
+
+        cache_key = "system:version"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         result = {
             "current_version": "unknown", "latest_version": "unknown",
             "update_available": False, "commits_behind": 0, "error": None
@@ -604,6 +611,7 @@ class SystemService:
         except Exception as e:
             logger.warning(f"Unexpected error during version check: {e}")
 
+        cache.set(cache_key, result, ttl_seconds=1800)
         return result
 
     # ================================================================

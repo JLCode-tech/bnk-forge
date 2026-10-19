@@ -406,9 +406,10 @@ export function StackDetailDialog({
   
   // Fetch existing projects for "deploy to existing" option
   const { data: existingProjects } = useQuery({
-    queryKey: ['projects'],
+    queryKey: ['projects', 'list'],
     queryFn: () => api.getProjects(),
     enabled: open,
+    staleTime: 30_000,
   });
   
   // Check if this stack has prerequisites that suggest existing infrastructure

@@ -38,8 +38,9 @@ export function ProcessMetricsBar() {
   const { data } = useQuery<ProcessMetrics>({
     queryKey: queryKeys.system.processMetrics(),
     queryFn: systemApi.getProcessMetrics,
-    refetchInterval: isVisible ? 5_000 : false,
-    staleTime: 2_000,
+    refetchInterval: isVisible ? 20_000 : false,
+    refetchIntervalInBackground: false,
+    staleTime: 10_000,
   });
 
   // Diff consecutive samples to compute network rate. Keep the previous

@@ -276,7 +276,11 @@ export default function SystemUpgrade() {
 
     async function recoverUpgradeState() {
       try {
-        const state = await api.getUpgradeStatus();
+        const state = await queryClient.fetchQuery({
+          queryKey: queryKeys.system.upgradeStatus(),
+          queryFn: () => api.getUpgradeStatus(),
+          staleTime: 30_000,
+        });
         if (cancelled) return;
 
         if (state.status === 'in_progress') {

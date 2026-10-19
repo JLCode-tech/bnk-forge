@@ -333,7 +333,7 @@ function NotificationBell() {
   const deleteNotification = useDeleteNotification();
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
-    useNotificationsInfinite(filters);
+    useNotificationsInfinite(filters, { enabled: open });
 
   const notifications = data?.pages.flat() ?? [];
 

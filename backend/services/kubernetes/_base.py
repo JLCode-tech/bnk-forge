@@ -40,6 +40,7 @@ class KubernetesServiceBase:
 
     def __init__(self, db: Session):
         self.db = db
+        self._api_clients: dict[tuple[Any, ...], client.ApiClient] = {}
 
     def get_cluster(self, cluster_id: int) -> KubernetesCluster:
         """Get cluster configuration from database."""
@@ -65,6 +66,18 @@ class KubernetesServiceBase:
         """
         if not cluster.kubeconfig_encrypted:
             raise ValueError(f"Cluster {cluster.name} has no kubeconfig configured")
+
+        client_cache_key = (
+            getattr(cluster, "id", None),
+            cluster.kubeconfig_encrypted,
+            getattr(cluster, "context", None),
+            getattr(cluster, "cloud_provider", None),
+            getattr(cluster, "region", None),
+            getattr(cluster, "ssh_tunnel_enabled", None),
+        )
+        api_clients = getattr(self, "_api_clients", None)
+        if api_clients is not None and client_cache_key[0] is not None and client_cache_key in api_clients:
+            return api_clients[client_cache_key]
 
         # Decrypt kubeconfig
         kubeconfig_yaml = decrypt_value(cluster.kubeconfig_encrypted)
@@ -222,6 +235,8 @@ class KubernetesServiceBase:
         cfg.connection_pool_maxsize = 128
         api_client = client.ApiClient(cfg)
         setattr(api_client, "_forge_cluster_id", cluster.id)
+        if api_clients is not None and client_cache_key[0] is not None:
+            api_clients[client_cache_key] = api_client
         return api_client
 
     @staticmethod

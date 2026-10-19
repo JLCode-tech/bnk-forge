@@ -14,6 +14,7 @@ Endpoints:
   GET  /api/licensing/{cluster_id}/cwc-status — Full CWC connectivity check
 """
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -270,7 +271,7 @@ async def get_license_status_endpoint(
     # Legacy fallback
     try:
         k8s_service = KubernetesService(db)
-        return legacy_get_license_status(k8s_service, cluster_id, force=force)
+        return await asyncio.to_thread(legacy_get_license_status, k8s_service, cluster_id, force=force)
     except QKViewError as e:
         raise HTTPException(
             status_code=e.status_code or 502,
@@ -322,7 +323,7 @@ async def get_license_report_endpoint(
     # Legacy fallback
     try:
         k8s_service = KubernetesService(db)
-        return legacy_get_license_report(k8s_service, cluster_id, force=force)
+        return await asyncio.to_thread(legacy_get_license_report, k8s_service, cluster_id, force=force)
     except QKViewError as e:
         raise HTTPException(
             status_code=e.status_code or 502,
@@ -369,7 +370,7 @@ async def activate_license_endpoint(
     # Legacy fallback
     try:
         k8s_service = KubernetesService(db)
-        result = legacy_activate_license(k8s_service, cluster_id, request.jwt)
+        result = await asyncio.to_thread(legacy_activate_license, k8s_service, cluster_id, request.jwt)
     except QKViewError as e:
         raise HTTPException(
             status_code=e.status_code or 502,
@@ -438,7 +439,8 @@ async def renew_license_endpoint(
     # Legacy fallback
     try:
         k8s_service = KubernetesService(db)
-        result = legacy_renew_license(
+        result = await asyncio.to_thread(
+            legacy_renew_license,
             k8s_service,
             cluster_id,
             request.jwt,
@@ -497,7 +499,8 @@ async def post_license_receipt_endpoint(
     # Legacy fallback
     try:
         k8s_service = KubernetesService(db)
-        result = legacy_post_license_receipt(
+        result = await asyncio.to_thread(
+            legacy_post_license_receipt,
             k8s_service,
             cluster_id,
             request.manifest,
@@ -521,7 +524,7 @@ async def post_license_receipt_endpoint(
     response_model=LicenseActionResponse,
     dependencies=[Depends(require_operator)],
 )
-async def validate_jwks_endpoint(
+def validate_jwks_endpoint(
     cluster_id: int,
     db: Session = Depends(get_db),
 ):
@@ -573,7 +576,7 @@ async def get_cwc_setup_status_endpoint(
         }
 
     k8s_service = KubernetesService(db)
-    return legacy_check_cwc_api_setup_status(k8s_service, cluster_id)
+    return await asyncio.to_thread(legacy_check_cwc_api_setup_status, k8s_service, cluster_id)
 
 
 @router.post(
@@ -602,7 +605,7 @@ async def run_cwc_setup_endpoint(
         return {**result, "operator_dispatch": True}
 
     k8s_service = KubernetesService(db)
-    return legacy_setup_cwc_api_certs(k8s_service, cluster_id)
+    return await asyncio.to_thread(legacy_setup_cwc_api_certs, k8s_service, cluster_id)
 
 
 @router.get(
@@ -644,14 +647,15 @@ async def get_cwc_status_endpoint(
             cache.set(cache_key, response, ttl_seconds=120)
         return response
 
-    # Legacy fallback — check CWC availability + cert-manager via kubeconfig
-    try:
+    # Legacy fallback — check CWC availability + cert-manager via kubeconfig off the event loop
+    def _legacy_cwc_status():
         k8s_service = KubernetesService(db)
         available = legacy_check_cwc_available(k8s_service, cluster_id)
         cwc_found = available.get("available", False)
 
         # Also check cert-manager availability (ClusterIssuer exists)
         cert_manager_ok = False
+        api_client = None
         try:
             cluster = k8s_service.get_cluster(cluster_id)
             api_client = k8s_service.load_kubeconfig(cluster)
@@ -662,9 +666,6 @@ async def get_cwc_status_endpoint(
             pass
 
         # Also check if the CWC licensing cert (cwc-license-certs) exists.
-        # This is created by FLO/BNK and is separate from the QKView certs
-        # that BNK-Forge creates.  If it exists, licensing mTLS is available
-        # even without the BNK-Forge-specific QKView cert setup.
         cwc_license_certs_ok = False
         try:
             from services.qkview_service import (
@@ -673,12 +674,13 @@ async def get_cwc_status_endpoint(
                 _secret_exists,
             )
 
-            cwc_ns = _detect_cwc_namespace(api_client)
-            cwc_license_certs_ok = _secret_exists(api_client, CWC_LICENSE_CERTS_SECRET, cwc_ns)
+            if api_client is not None:
+                cwc_ns = _detect_cwc_namespace(api_client)
+                cwc_license_certs_ok = _secret_exists(api_client, CWC_LICENSE_CERTS_SECRET, cwc_ns)
         except Exception:
             pass
 
-        response = {
+        resp = {
             "cwc_service_found": cwc_found,
             "cwc_reachable": cwc_found,
             "certs_mounted": cwc_found or cwc_license_certs_ok,
@@ -687,16 +689,18 @@ async def get_cwc_status_endpoint(
             "message": available.get("message", ""),
         }
 
-        # When CWC is reachable, include the raw CWC /status payload so callers
-        # get the full health check, not just boolean flags (FEAT-0261 / ERR-0008).
         status_ok = True
         if cwc_found:
             try:
-                response["status"] = legacy_get_license_status(k8s_service, cluster_id, force=force)
+                resp["status"] = legacy_get_license_status(k8s_service, cluster_id, force=force)
             except Exception as status_err:
                 status_ok = False
                 logger.debug("Could not fetch CWC /status payload: %s", status_err)
 
+        return resp, cwc_found, status_ok
+
+    try:
+        response, cwc_found, status_ok = await asyncio.to_thread(_legacy_cwc_status)
         if cwc_found and status_ok:
             cache.set(cache_key, response, ttl_seconds=120)
         return response

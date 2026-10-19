@@ -186,7 +186,12 @@ export default function CNF() {
     selectedCluster ?? 0,
     "f5bigdnsapps",
     nsParam,
-    { enabled: !!selectedCluster && isClusterReachable },
+    {
+      enabled:
+        !!selectedCluster &&
+        isClusterReachable &&
+        (view === "overview" || view === "dns" || view === "network-graph"),
+    },
   );
 
   const { data: dnsCachesData, isLoading: dnsCachesLoading } =
@@ -194,31 +199,52 @@ export default function CNF() {
       selectedCluster ?? 0,
       "f5bigdnsresolvercaches",
       nsParam,
-      { enabled: !!selectedCluster && isClusterReachable },
+      {
+        enabled:
+          !!selectedCluster &&
+          isClusterReachable &&
+          (view === "overview" || view === "dns"),
+      },
     );
 
   const { data: dnsZonesData, isLoading: dnsZonesLoading } =
     useClusterResources(selectedCluster ?? 0, "f5bigdnszones", nsParam, {
-      enabled: !!selectedCluster && isClusterReachable,
+      enabled:
+        !!selectedCluster &&
+        isClusterReachable &&
+        (view === "overview" || view === "dns"),
     });
 
   const { data: cnatData, isLoading: cnatLoading } = useClusterResources(
     selectedCluster ?? 0,
     "f5bigcgnats",
     nsParam,
-    { enabled: !!selectedCluster && isClusterReachable },
+    {
+      enabled:
+        !!selectedCluster &&
+        isClusterReachable &&
+        (view === "overview" || view === "telco" || view === "network-graph"),
+    },
   );
 
   const { data: diameterData, isLoading: diameterLoading } =
     useClusterResources(selectedCluster ?? 0, "f5bigdiameters", nsParam, {
-      enabled: !!selectedCluster && isClusterReachable,
+      enabled:
+        !!selectedCluster &&
+        isClusterReachable &&
+        (view === "overview" || view === "telco" || view === "network-graph"),
     });
 
   const { data: ipsData, isLoading: ipsLoading } = useClusterResources(
     selectedCluster ?? 0,
     "f5bigipams",
     nsParam,
-    { enabled: !!selectedCluster && isClusterReachable },
+    {
+      enabled:
+        !!selectedCluster &&
+        isClusterReachable &&
+        (view === "overview" || view === "telco"),
+    },
   );
 
   const dnsApps: K8sResource[] = useMemo(() => {

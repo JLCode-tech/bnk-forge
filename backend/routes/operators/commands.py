@@ -1,6 +1,7 @@
 """
 Command dispatch routes: send command, fan-out, connectivity mode, reverse tunnel, link/unlink cluster.
 """
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends
@@ -96,7 +97,7 @@ async def fan_out_command(
         target_ids = body.operator_ids
     elif body.labels:
         # Filter by labels
-        all_ops = list_operators(db, connected_only=True)
+        all_ops = await asyncio.to_thread(list_operators, db, True)
         for op in all_ops:
             op_labels = op.labels or {}
             if all(op_labels.get(k) == v for k, v in body.labels.items()):

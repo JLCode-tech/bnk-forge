@@ -865,10 +865,17 @@ def _compute_fleet_rollup(
             unreachable_count += 1
 
     # --- 3. Policy rollup — latest evaluation per policy for this fleet ---
+    from sqlalchemy import func
+
     from models.fleet_policy import FleetPolicy, PolicyEvaluation
 
-    policies = db.query(FleetPolicy).filter(FleetPolicy.target_id == fleet_id, FleetPolicy.deleted_at.is_(None)).all()
-    policy_count = len(policies)
+    policy_ids = [
+        pid
+        for (pid,) in db.query(FleetPolicy.id)
+        .filter(FleetPolicy.target_id == fleet_id, FleetPolicy.deleted_at.is_(None))
+        .all()
+    ]
+    policy_count = len(policy_ids)
 
     total_compliant = 0
     total_evaluated = 0
@@ -876,22 +883,44 @@ def _compute_fleet_rollup(
     last_eval_dt = None
     has_drift = False
 
-    for policy in policies:
-        latest = (
-            db.query(PolicyEvaluation)
-            .filter(PolicyEvaluation.policy_id == policy.id)
-            .order_by(PolicyEvaluation.evaluated_at.desc())
-            .first()
+    if policy_ids:
+        rn = (
+            func.row_number()
+            .over(
+                partition_by=PolicyEvaluation.policy_id,
+                order_by=PolicyEvaluation.evaluated_at.desc(),
+            )
+            .label("rn")
         )
-        if latest is None:
-            continue
-        total_compliant += latest.compliant_count
-        total_evaluated += latest.total_count
-        total_drift += latest.drifted_count
-        if latest.drifted_count > 0:
-            has_drift = True
-        if last_eval_dt is None or latest.evaluated_at > last_eval_dt:
-            last_eval_dt = latest.evaluated_at
+        ranked_subq = (
+            db.query(
+                PolicyEvaluation.compliant_count,
+                PolicyEvaluation.total_count,
+                PolicyEvaluation.drifted_count,
+                PolicyEvaluation.evaluated_at,
+                rn,
+            )
+            .filter(PolicyEvaluation.policy_id.in_(policy_ids))
+            .subquery()
+        )
+        latest_evals = (
+            db.query(
+                ranked_subq.c.compliant_count,
+                ranked_subq.c.total_count,
+                ranked_subq.c.drifted_count,
+                ranked_subq.c.evaluated_at,
+            )
+            .filter(ranked_subq.c.rn == 1)
+            .all()
+        )
+        for latest in latest_evals:
+            total_compliant += latest.compliant_count
+            total_evaluated += latest.total_count
+            total_drift += latest.drifted_count
+            if latest.drifted_count > 0:
+                has_drift = True
+            if last_eval_dt is None or latest.evaluated_at > last_eval_dt:
+                last_eval_dt = latest.evaluated_at
 
     # --- 4. Worst-state ranking ---
     # drifted > provisioning > unreachable > ready > unknown
@@ -924,7 +953,7 @@ def _compute_fleet_rollup(
     _FAILED_STATUS = "failed"
 
     all_runs_for_fleet = (
-        db.query(FleetBulkRun)
+        db.query(FleetBulkRun.status)
         .join(FleetDecision, FleetBulkRun.decision_id == FleetDecision.id)
         .filter(FleetDecision.target_id == fleet_id)
         .order_by(FleetBulkRun.id.desc())

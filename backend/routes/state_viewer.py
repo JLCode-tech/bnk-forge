@@ -7,6 +7,7 @@ Supports:
 - Encrypted state files (OpenTofu 1.8+ native encryption)
 """
 
+import asyncio
 import logging
 import os
 
@@ -50,6 +51,7 @@ router = APIRouter(prefix="/api/state", tags=["state-viewer"])
 # Helper Functions
 # ============================================================
 
+
 def get_module_state_path(module: ProjectModule, project: Project) -> str:
     """
     Get the path to a module's terraform.tfstate file (v2 architecture).
@@ -75,6 +77,7 @@ def check_state_file_exists(state_path: str) -> bool:
 # ============================================================
 # API Endpoints
 # ============================================================
+
 
 @router.get("/module/{module_id}", dependencies=[Depends(require_viewer)])
 @handle_route_errors("get module state")
@@ -118,35 +121,33 @@ async def get_module_state(module_id: int, db: Session = Depends(get_db)):
                 "outputs": {},
                 "dependencies": [],
                 "metadata": {},
-                "is_encrypted": False
-            }
+                "is_encrypted": False,
+            },
         )
 
     # Check if state is encrypted
     if is_state_encrypted(state_path):
         # PERF-012: Use async decryption to avoid blocking event loop
-        success, decrypted_state = await decrypt_state_async(
-            state_path, project.id, module_id, db
-        )
+        success, decrypted_state = await decrypt_state_async(state_path, project.id, module_id, db)
 
         if success:
-            # Parse decrypted state
+            # Parse decrypted state off the event loop
             parser = TerraformStateParser(state_path, decrypted_state=decrypted_state)
-            state_data = parser.parse()
+            state_data = await asyncio.to_thread(parser.parse)
 
             return {
                 "exists": True,
                 "state_path": state_path,
                 "is_encrypted": True,
                 "decryption_successful": True,
-                "resources": state_data['resources'],
-                "outputs": state_data['outputs'],
-                "dependencies": state_data['dependencies'],
-                "metadata": state_data['metadata']
+                "resources": state_data["resources"],
+                "outputs": state_data["outputs"],
+                "dependencies": state_data["dependencies"],
+                "metadata": state_data["metadata"],
             }
         else:
             # Decryption failed - return metadata and outputs from DB
-            metadata = get_state_metadata(state_path)
+            metadata = await asyncio.to_thread(get_state_metadata, state_path)
             return {
                 "exists": True,
                 "state_path": state_path,
@@ -157,22 +158,22 @@ async def get_module_state(module_id: int, db: Session = Depends(get_db)):
                 "outputs": normalize_module_outputs_in_place(module).outputs,  # Fallback to normalized DB outputs
                 "dependencies": [],
                 "metadata": metadata,
-                "message": "State is encrypted. Showing outputs from database."
+                "message": "State is encrypted. Showing outputs from database.",
             }
 
-    # Parse unencrypted state file
+    # Parse unencrypted state file off the event loop
     try:
         parser = TerraformStateParser(state_path)
-        state_data = parser.parse()
+        state_data = await asyncio.to_thread(parser.parse)
 
         return {
             "exists": True,
             "state_path": state_path,
             "is_encrypted": False,
-            "resources": state_data['resources'],
-            "outputs": state_data['outputs'],
-            "dependencies": state_data['dependencies'],
-            "metadata": state_data['metadata']
+            "resources": state_data["resources"],
+            "outputs": state_data["outputs"],
+            "dependencies": state_data["dependencies"],
+            "metadata": state_data["metadata"],
         }
 
     except StateFileInvalidError as e:
@@ -209,20 +210,12 @@ async def get_module_resources(module_id: int, db: Session = Depends(get_db)):
     state_path = get_module_state_path(module, project)
 
     if not check_state_file_exists(state_path):
-        return {
-            "exists": False,
-            "is_encrypted": False,
-            "resources": [],
-            "counts_by_type": {},
-            "counts_by_provider": {}
-        }
+        return {"exists": False, "is_encrypted": False, "resources": [], "counts_by_type": {}, "counts_by_provider": {}}
 
     # Check if encrypted
     if is_state_encrypted(state_path):
         # PERF-012: Use async to avoid blocking event loop
-        success, resource_list = await get_state_resources_list_async(
-            state_path, project.id, module_id, db
-        )
+        success, resource_list = await get_state_resources_list_async(state_path, project.id, module_id, db)
 
         if success:
             # Group resources by type for counts
@@ -237,10 +230,12 @@ async def get_module_resources(module_id: int, db: Session = Depends(get_db)):
             return {
                 "exists": True,
                 "is_encrypted": True,
-                "resources": [{"address": r, "type": r.split(".")[0] if "." in r else "unknown"} for r in resource_list],
+                "resources": [
+                    {"address": r, "type": r.split(".")[0] if "." in r else "unknown"} for r in resource_list
+                ],
                 "resource_count": len(resource_list),
                 "counts_by_type": counts_by_type,
-                "counts_by_provider": {}  # Cannot determine without full state
+                "counts_by_provider": {},  # Cannot determine without full state
             }
         else:
             # Failed to get resources
@@ -250,29 +245,27 @@ async def get_module_resources(module_id: int, db: Session = Depends(get_db)):
                 "error": resource_list[0] if resource_list else "Failed to list resources",
                 "resources": [],
                 "counts_by_type": {},
-                "counts_by_provider": {}
+                "counts_by_provider": {},
             }
 
-    # Parse unencrypted state
-    parser = TerraformStateParser(state_path)
-    state_data = parser.parse()
+    # Parse unencrypted state off the event loop
+    def _parse_unencrypted():
+        parser = TerraformStateParser(state_path)
+        state_data = parser.parse()
+        return {
+            "exists": True,
+            "is_encrypted": False,
+            "resources": state_data["resources"],
+            "counts_by_type": parser.get_resource_count_by_type(),
+            "counts_by_provider": parser.get_provider_summary(),
+        }
 
-    return {
-        "exists": True,
-        "is_encrypted": False,
-        "resources": state_data['resources'],
-        "counts_by_type": parser.get_resource_count_by_type(),
-        "counts_by_provider": parser.get_provider_summary()
-    }
+    return await asyncio.to_thread(_parse_unencrypted)
 
 
 @router.get("/module/{module_id}/resource/{resource_address:path}", dependencies=[Depends(require_viewer)])
 @handle_route_errors("get resource details")
-def get_resource_details(
-    module_id: int,
-    resource_address: str,
-    db: Session = Depends(get_db)
-):
+def get_resource_details(module_id: int, resource_address: str, db: Session = Depends(get_db)):
     """
     Get detailed information about a specific resource.
 
@@ -308,14 +301,10 @@ def get_resource_details(
 
     # Find dependencies and dependents
     dependencies = parser.extract_dependencies()
-    resource_dependencies = [d for d in dependencies if d['source'] == resource['full_address']]
-    resource_dependents = [d for d in dependencies if d['target'] == resource['full_address']]
+    resource_dependencies = [d for d in dependencies if d["source"] == resource["full_address"]]
+    resource_dependents = [d for d in dependencies if d["target"] == resource["full_address"]]
 
-    return {
-        "resource": resource,
-        "dependencies": resource_dependencies,
-        "dependents": resource_dependents
-    }
+    return {"resource": resource, "dependencies": resource_dependencies, "dependents": resource_dependents}
 
 
 @router.get("/module/{module_id}/graph", dependencies=[Depends(require_viewer)])
@@ -341,21 +330,14 @@ def get_dependency_graph(module_id: int, db: Session = Depends(get_db)):
     state_path = get_module_state_path(module, project)
 
     if not check_state_file_exists(state_path):
-        return {
-            "exists": False,
-            "nodes": [],
-            "edges": []
-        }
+        return {"exists": False, "nodes": [], "edges": []}
 
     # Parse state and build graph
     parser = TerraformStateParser(state_path)
     parser.parse()  # Must parse first
     graph = parser.build_dependency_graph()
 
-    return {
-        "exists": True,
-        **graph
-    }
+    return {"exists": True, **graph}
 
 
 @router.get("/module/{module_id}/outputs", dependencies=[Depends(require_viewer)])
@@ -380,25 +362,19 @@ def get_module_outputs(module_id: int, db: Session = Depends(get_db)):
     state_path = get_module_state_path(module, project)
 
     if not check_state_file_exists(state_path):
-        return {
-            "exists": False,
-            "outputs": {}
-        }
+        return {"exists": False, "outputs": {}}
 
     # Parse state
     parser = TerraformStateParser(state_path)
     state_data = parser.parse()
 
     # Mask sensitive outputs
-    outputs = state_data['outputs']
+    outputs = state_data["outputs"]
     for output_name, output_data in outputs.items():
-        if output_data.get('sensitive'):
-            output_data['value'] = '***SENSITIVE***'
+        if output_data.get("sensitive"):
+            output_data["value"] = "***SENSITIVE***"
 
-    return {
-        "exists": True,
-        "outputs": outputs
-    }
+    return {"exists": True, "outputs": outputs}
 
 
 @router.post("/module/{module_id}/refresh")
@@ -424,22 +400,19 @@ def refresh_module_state(module_id: int, user: User = Depends(require_module_own
     state_path = get_module_state_path(module, project)
 
     if not check_state_file_exists(state_path):
-        return {
-            "exists": False,
-            "message": "State file not found",
-            "refreshed_at": None
-        }
+        return {"exists": False, "message": "State file not found", "refreshed_at": None}
 
     # Parse fresh state
     parser = TerraformStateParser(state_path)
     state_data = parser.parse()
 
     from datetime import datetime
+
     return {
         "exists": True,
         "message": "State refreshed successfully",
         "refreshed_at": datetime.now().isoformat(),
-        "metadata": state_data['metadata']
+        "metadata": state_data["metadata"],
     }
 
 
@@ -471,6 +444,7 @@ def get_raw_state(module_id: int, db: Session = Depends(get_db)):
 
     # Read raw state
     import json
+
     with open(state_path) as f:
         raw_state = json.load(f)
 
@@ -478,7 +452,7 @@ def get_raw_state(module_id: int, db: Session = Depends(get_db)):
         "exists": True,
         "state_path": state_path,
         "raw_state": raw_state,
-        "warning": "This data may contain sensitive information"
+        "warning": "This data may contain sensitive information",
     }
 
 
@@ -521,7 +495,7 @@ def reset_module_state(module_id: int, user: User = Depends(require_module_owner
         "module_name": module_name,
         "previous_status": module.status,
         "state_deleted": False,
-        "reset_at": datetime.now().isoformat()
+        "reset_at": datetime.now().isoformat(),
     }
 
     # Delete state file and directory if exists
@@ -548,6 +522,7 @@ def reset_module_state(module_id: int, user: User = Depends(require_module_owner
 
     # PERF-017: Invalidate state caches after reset
     from services.state_decryption_service import invalidate_state_cache
+
     invalidate_state_cache(module_id, module.project_id)
 
     result["new_status"] = ModuleStatus.NOT_INITIALIZED
@@ -560,11 +535,7 @@ def reset_module_state(module_id: int, user: User = Depends(require_module_owner
 
 @router.get("/project/{project_id}/modules", dependencies=[Depends(require_viewer)])
 @handle_route_errors("get project modules with state")
-def get_project_modules_with_state(
-    project_id: int,
-    skip_cache: bool = False,
-    db: Session = Depends(get_db)
-):
+def get_project_modules_with_state(project_id: int, skip_cache: bool = False, db: Session = Depends(get_db)):
     """
     Get all modules in a project with their state status.
 
@@ -604,7 +575,7 @@ def get_project_modules_with_state(
             "status": module.status,
             "state_exists": state_exists,
             "state_path": state_path,
-            "is_encrypted": False
+            "is_encrypted": False,
         }
 
         # If state exists, add resource count
@@ -618,9 +589,7 @@ def get_project_modules_with_state(
                 module_info["lineage"] = metadata.get("lineage", "unknown")
 
                 # Get resource count using tofu state list
-                success, resource_list = get_state_resources_list(
-                    state_path, project_id, module.id, db
-                )
+                success, resource_list = get_state_resources_list(state_path, project_id, module.id, db)
                 if success:
                     module_info["resource_count"] = len(resource_list)
                 else:
@@ -642,11 +611,7 @@ def get_project_modules_with_state(
 
         result.append(module_info)
 
-    response = {
-        "project_id": project_id,
-        "project_name": project.name,
-        "modules": result
-    }
+    response = {"project_id": project_id, "project_name": project.name, "modules": result}
 
     # Cache for 60 seconds (state doesn't change frequently)
     cache.set(cache_key, response, ttl_seconds=60)
