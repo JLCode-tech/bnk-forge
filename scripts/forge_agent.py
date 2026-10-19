@@ -154,6 +154,7 @@ class ForgeAgent:
             requests.packages.urllib3.disable_warnings()
         self.agent_id: int | None = None
         self.running = True
+        self.parked = False
         self.current_process: asyncio.subprocess.Process | None = None
         self._supported_flags: set[str] | None = None
         self.ignored_settings: list[str] = []
@@ -316,6 +317,7 @@ class ForgeAgent:
                             "stop the duplicate and restart this agent",
                             self.agent_id,
                         )
+                        self.parked = True
                         while self.running:
                             await asyncio.sleep(1)
                     elif ws.close_code == 4401:
@@ -608,6 +610,8 @@ class ForgeAgent:
         "scenario": "--scenario",
         "public_dataset": "--public-dataset",
         "max_context_length": "--max-context-length",
+        "arrival_pattern": "--arrival-pattern",
+        "warmup_duration": "--warmup-duration",
     }
 
     # Boolean flags: present without a value when truthy.

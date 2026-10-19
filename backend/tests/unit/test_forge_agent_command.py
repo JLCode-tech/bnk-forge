@@ -689,3 +689,20 @@ def test_dilation_above_one_speeds_arrival_rate(agent, tmp_path):
     new_gap = out[1]["timestamp"] - out[0]["timestamp"]
     assert new_gap < 80  # gap compressed -> requests arrive FASTER
     assert new_gap == 80 / 2.0  # exactly 40.0
+
+
+def test_poisson_step_config_emits_arrival_pattern_and_warmup(agent):
+    """A Poisson scenario step config must emit --arrival-pattern and --warmup-duration."""
+    config = {
+        "url": "http://proxy:10080",
+        "model": "meta-llama/Llama-3.1-70B-Instruct",
+        "request_rate": 8.0,
+        "arrival_pattern": "poisson",
+        "warmup_duration": 30,
+        "benchmark_duration": 60,
+    }
+    cmd = agent._build_aiperf_command(config)
+    assert "--arrival-pattern" in cmd
+    assert cmd[cmd.index("--arrival-pattern") + 1] == "poisson"
+    assert "--warmup-duration" in cmd
+    assert cmd[cmd.index("--warmup-duration") + 1] == "30"
