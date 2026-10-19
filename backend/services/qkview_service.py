@@ -493,7 +493,7 @@ def _sweep_cwc_token_cache() -> None:
 
 def _cwc_meta_key(api_client: k8s_client.ApiClient) -> str:
     cluster_id = getattr(api_client, "_forge_cluster_id", None)
-    if cluster_id is not None:
+    if isinstance(cluster_id, (int, str)):
         return f"cwc:client_meta:{cluster_id}"
     return f"cwc:client_meta:{getattr(api_client.configuration, 'host', 'default')}"
 

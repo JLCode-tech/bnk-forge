@@ -2503,6 +2503,8 @@ def _agent_ws_authorized(websocket: WebSocket, agent_id: int) -> int | None:
     if payload.get("role") == "agent":
         token_agent_id = payload.get("agent_id")
         if token_agent_id is None:
+            if _is_bootstrap_token(payload) and _is_builtin_agent_id(agent_id):
+                return None
             logger.warning("Agent %d WS rejected: role=agent token missing agent_id claim", agent_id)
             return 4401
         try:
