@@ -207,17 +207,41 @@ vi.mock("@/lib/api/llmObservability", () => ({
           remediation_action: "apply_dns_resolver",
         },
       ],
+      request_audit_logs: [
+        {
+          id: "req-audit-1",
+          timestamp: "2026-10-20T09:00:00Z",
+          cluster_id: 1,
+          route_name: "ai-inference-route",
+          principal_name: "upf-anomaly-agent",
+          team_name: "Packet Core AI Copilots",
+          org_name: "Telco Core Engineering",
+          model_id: "gpt-4o",
+          provider_name: "openai-primary",
+          status_code: 200,
+          latency_ms: 312,
+          prompt_tokens: 420,
+          completion_tokens: 180,
+          cost_usd: 0.00285,
+          semantic_cache_status: "MISS",
+          failover_triggered: false,
+          path: "/v1/chat/completions",
+        },
+      ],
     }),
     createTenant: vi.fn(),
     createProvider: vi.fn(),
     createModel: vi.fn(),
     createRoute: vi.fn(),
+    updateRoutePolicies: vi.fn(),
     createOrg: vi.fn(),
     createTeam: vi.fn(),
     createPrincipal: vi.fn(),
     issueVirtualKey: vi.fn(),
+    rotateVirtualKey: vi.fn(),
     revokeVirtualKey: vi.fn(),
     remediate: vi.fn(),
+    testGatewayRequest: vi.fn(),
   },
 }));
 
@@ -271,6 +295,7 @@ describe("SmartLlmRouterPage (Multi-Cluster AI Gateway & Governance Console)", (
       expect(screen.getAllByText(/upf-agent-prod-key/i).length).toBeGreaterThan(
         0,
       );
+      expect(screen.getAllByText(/req-audit-1/i).length).toBeGreaterThan(0);
     });
 
     // Switch to BNK 2.4.1 Readiness view
@@ -293,7 +318,7 @@ describe("SmartLlmRouterPage (Multi-Cluster AI Gateway & Governance Console)", (
     ).not.toBeInTheDocument();
   });
 
-  it("creates an AITenant and executes BNK 2.4.1 auto-remediation", async () => {
+  it("creates an AITenant, tests live gateway inference, rotates virtual keys, and executes BNK 2.4.1 auto-remediation", async () => {
     const { llmObservabilityApi } = await import("@/lib/api/llmObservability");
     vi.mocked(llmObservabilityApi.createTenant).mockResolvedValueOnce({
       name: "telco-ai-tenant",
@@ -301,6 +326,42 @@ describe("SmartLlmRouterPage (Multi-Cluster AI Gateway & Governance Console)", (
       status: "Ready",
       models_count: 0,
       providers_count: 0,
+    });
+    vi.mocked(llmObservabilityApi.testGatewayRequest).mockResolvedValueOnce({
+      status_code: 200,
+      route_name: "ai-inference-route",
+      model_id: "gpt-4o",
+      selected_provider: "openai-primary",
+      failover_triggered: false,
+      semantic_cache_status: "HIT",
+      auth_verified: true,
+      principal_name: "upf-anomaly-agent",
+      latency_ms: 8,
+      prompt_tokens: 24,
+      completion_tokens: 48,
+      estimated_cost_usd: 0,
+      response_text: "[BNK 2.4.1 AI Gateway -> openai-primary] Healthy",
+      clickhouse_logged_id: "req-test-99",
+    });
+    vi.mocked(llmObservabilityApi.rotateVirtualKey).mockResolvedValueOnce({
+      id: "vk-1",
+      name: "upf-agent-prod-key",
+      masked_key: "f5vk_new1••••••••••••9999",
+      cleartext_key: "f5vk_new12345678909999",
+      principal_id: "prin-1",
+      principal_name: "upf-anomaly-agent",
+      principal_type: "agent",
+      team_name: "Packet Core AI Copilots",
+      org_name: "Telco Core Engineering",
+      cluster_id: 1,
+      allowed_models: ["gpt-4o"],
+      rpm_limit: 300,
+      tpm_limit: 120000,
+      monthly_budget_usd: 300,
+      spend_usd: 95,
+      status: "active",
+      created_at: "2026-10-20T08:00:00Z",
+      expires_at: null,
     });
     vi.mocked(llmObservabilityApi.remediate).mockResolvedValueOnce({
       success: true,
@@ -325,6 +386,33 @@ describe("SmartLlmRouterPage (Multi-Cluster AI Gateway & Governance Console)", (
       expect(llmObservabilityApi.createTenant).toHaveBeenCalledWith(1, {
         name: "telco-ai-tenant",
       });
+    });
+
+    // Test Gateway Routes & Policies live request tester
+    await user.click(
+      screen.getByRole("button", { name: /Gateway Routes & Policies/i }),
+    );
+    const sendTestBtn = await screen.findByRole("button", {
+      name: /Send Test Inference/i,
+    });
+    await user.click(sendTestBtn);
+    await waitFor(() => {
+      expect(llmObservabilityApi.testGatewayRequest).toHaveBeenCalled();
+      expect(screen.getByText(/Cache: HIT/i)).toBeInTheDocument();
+    });
+
+    // Test Virtual Key Rotation on DSSM Governance view
+    await user.click(
+      screen.getByRole("button", { name: /DSSM Governance & Keys/i }),
+    );
+    const rotateBtn = await screen.findByRole("button", { name: /Rotate/i });
+    await user.click(rotateBtn);
+    await waitFor(() => {
+      expect(llmObservabilityApi.rotateVirtualKey).toHaveBeenCalledWith(
+        1,
+        "vk-1",
+      );
+      expect(screen.getByText(/f5vk_new12345678909999/i)).toBeInTheDocument();
     });
 
     await user.click(

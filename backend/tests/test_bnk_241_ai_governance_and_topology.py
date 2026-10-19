@@ -14,8 +14,10 @@ from schemas.llm_observability import (
     CreateGovernanceOrgRequest,
     CreateGovernancePrincipalRequest,
     CreateGovernanceTeamRequest,
+    GatewayInferenceTestRequest,
     IssueVirtualKeyRequest,
     RemediateAiGatewayRequest,
+    UpdateAiGatewayRoutePoliciesRequest,
 )
 from services.ai_gateway_governance_service import AiGatewayGovernanceService
 from services.topology_builder_service import _assemble_custom_fabric_topology
@@ -80,7 +82,7 @@ def test_bnk_241_crd_registry_entries():
 
 
 def test_dependency_fabric_cross_crd_assembly():
-    """Verify _assemble_custom_fabric_topology links AppPolicy, Gateway, HTTPRoute, and AI CRDs."""
+    """Verify _assemble_custom_fabric_topology links AI Gateway, CNF, GSLB, CGNAT, and Telemetry CRDs."""
     nodes = []
     edges = []
 
@@ -137,6 +139,7 @@ def test_dependency_fabric_cross_crd_assembly():
                 "spec": {
                     "tenantRef": {"name": "enterprise-ai"},
                     "credentialRef": {"name": "openai-cred"},
+                    "openAI": {"baseURL": "https://api.openai.com/v1"},
                 },
             }
         ],
@@ -155,6 +158,12 @@ def test_dependency_fabric_cross_crd_assembly():
                 "type": "Opaque",
             }
         ],
+        "f5biggslbzone": [
+            {
+                "metadata": {"name": "ai-global-zone", "namespace": "default"},
+                "spec": {"wideIps": [{"name": "ai-global-wideip"}]},
+            }
+        ],
         "f5biggslbwideip": [
             {
                 "metadata": {"name": "ai-global-wideip", "namespace": "default"},
@@ -162,6 +171,29 @@ def test_dependency_fabric_cross_crd_assembly():
             }
         ],
         "f5biggslbpool": [{"metadata": {"name": "ai-global-pool", "namespace": "default"}}],
+        "f5bigcgnat": [
+            {
+                "metadata": {"name": "carrier-cgnat", "namespace": "default"},
+                "spec": {"natPool": "egress-nat-pool"},
+            }
+        ],
+        "f5bignatpool": [{"metadata": {"name": "egress-nat-pool", "namespace": "default"}}],
+        "cneinstance": [{"metadata": {"name": "tmm-cne", "namespace": "default"}, "spec": {"vlans": ["ext-vlan"]}}],
+        "f5spkvlan": [{"metadata": {"name": "ext-vlan", "namespace": "default"}}],
+        "f5spkstaticroute": [{"metadata": {"name": "llm-egress-route", "namespace": "default"}}],
+        "scrape": [
+            {
+                "metadata": {"name": "tmm-scrape", "namespace": "default"},
+                "spec": {"scrapeClassName": "tmm-scrape-class"},
+            }
+        ],
+        "scrapeclass": [
+            {
+                "metadata": {"name": "tmm-scrape-class", "namespace": "default"},
+                "spec": {"scrapeTemplateName": "tmm-scrape-tpl"},
+            }
+        ],
+        "scrapetemplate": [{"metadata": {"name": "tmm-scrape-tpl", "namespace": "default"}}],
     }
 
     _assemble_custom_fabric_topology(
@@ -181,8 +213,14 @@ def test_dependency_fabric_cross_crd_assembly():
     assert "AIProvider/default/openai-primary" in node_ids
     assert "AICredential/default/openai-cred" in node_ids
     assert "Secret/default/openai-api-secret" in node_ids
+    assert "F5BigGslbZone/default/ai-global-zone" in node_ids
     assert "F5BigGslbWideip/default/ai-global-wideip" in node_ids
     assert "F5BigGslbPool/default/ai-global-pool" in node_ids
+    assert "F5BigCgnat/default/carrier-cgnat" in node_ids
+    assert "F5BigNatPool/default/egress-nat-pool" in node_ids
+    assert "Scrape/default/tmm-scrape" in node_ids
+    assert "ScrapeClass/default/tmm-scrape-class" in node_ids
+    assert "ScrapeTemplate/default/tmm-scrape-tpl" in node_ids
 
     edge_pairs = {(e.source, e.target, e.kind) for e in edges}
     assert (
@@ -205,6 +243,31 @@ def test_dependency_fabric_cross_crd_assembly():
         "Secret/default/openai-api-secret",
         "references",
     ) in edge_pairs
+    assert (
+        "F5BigGslbZone/default/ai-global-zone",
+        "F5BigGslbWideip/default/ai-global-wideip",
+        "routes",
+    ) in edge_pairs
+    assert (
+        "F5BigCgnat/default/carrier-cgnat",
+        "F5BigNatPool/default/egress-nat-pool",
+        "references",
+    ) in edge_pairs
+    assert (
+        "CNEInstance/default/tmm-cne",
+        "F5SPKStaticRoute/default/llm-egress-route",
+        "routes",
+    ) in edge_pairs
+    assert (
+        "Scrape/default/tmm-scrape",
+        "ScrapeClass/default/tmm-scrape-class",
+        "references",
+    ) in edge_pairs
+    assert (
+        "ScrapeClass/default/tmm-scrape-class",
+        "ScrapeTemplate/default/tmm-scrape-tpl",
+        "references",
+    ) in edge_pairs
 
 
 def test_ai_gateway_governance_service_end_to_end():
@@ -215,19 +278,23 @@ def test_ai_gateway_governance_service_end_to_end():
 
     svc = AiGatewayGovernanceService(db=db_mock)
 
-    # 1. Overview returns rich multi-cluster defaults when cluster has no live CRs
+    # 1. Overview returns rich multi-cluster defaults with computed relational counts
     overview = svc.overview(cluster_id=1)
     assert len(overview.tenants) >= 1
+    assert overview.tenants[0].models_count >= 2
+    assert overview.tenants[0].providers_count >= 3
     assert len(overview.providers) >= 1
     assert len(overview.models) >= 1
     assert len(overview.routes) >= 1
     assert len(overview.orgs) >= 1
+    assert overview.orgs[0].teams_count >= 2
     assert len(overview.teams) >= 1
     assert len(overview.principals) >= 1
     assert len(overview.virtual_keys) >= 1
     assert len(overview.readiness_checks) >= 4
     assert len(overview.topology_nodes) >= 1
     assert len(overview.topology_edges) >= 1
+    assert len(overview.request_audit_logs) >= 1
 
     # 2. Create AITenant
     tenant_res = svc.create_tenant(
@@ -255,6 +322,21 @@ def test_ai_gateway_governance_service_end_to_end():
     assert provider_res.status == "success"
     assert provider_res.entity["name"] == "vllm-cluster-pool"
     assert provider_res.entity["base_url"] == "http://vllm.default.svc.cluster.local:8000/v1"
+    assert "generic:" in provider_res.applied_yaml
+
+    # Verify OpenAI vendor uses openAI: block in generated YAML
+    openai_prov_res = svc.create_provider(
+        CreateAiProviderRequest(
+            cluster_id=1,
+            name="openai-telco",
+            namespace="f5-bnk",
+            tenant="telco-ai-tenant",
+            vendor="OpenAI",
+            base_url="https://api.openai.com/v1",
+            api_key="sk-openai-test",
+        )
+    )
+    assert "openAI:" in openai_prov_res.applied_yaml
 
     # 4. Create AIModel with weighted deployments & micro-USD pricing
     model_res = svc.create_model(
@@ -286,6 +368,7 @@ def test_ai_gateway_governance_service_end_to_end():
             cluster_id=1,
             name="telco-llm-edge",
             namespace="f5-bnk",
+            gateway_name="telco-llm-gw",
             vip_address="10.20.30.40",
             listener_port=8080,
             tenant="telco-ai-tenant",
@@ -298,6 +381,34 @@ def test_ai_gateway_governance_service_end_to_end():
     assert route_res.entity["name"] == "telco-llm-edge"
     assert route_res.entity["semantic_cache_pool_max_size"] == 128
     assert route_res.entity["semantic_cache_pool_idle_timeout"] == "600s"
+    assert "backendRequest: 300s" in route_res.applied_yaml
+
+    # BNK 2.4.1 Rule: "The listener chooses the tenant" — reject binding another tenant to same gateway:port
+    with pytest.raises(ValueError, match="listener chooses the tenant"):
+        svc.create_route(
+            CreateAiGatewayRouteRequest(
+                cluster_id=1,
+                name="conflicting-tenant-route",
+                namespace="f5-bnk",
+                gateway_name="telco-llm-gw",
+                vip_address="10.20.30.40",
+                listener_port=8080,
+                tenant="enterprise-ai",
+            )
+        )
+
+    # Toggle route policies in-place
+    policy_res = svc.update_route_policies(
+        "telco-llm-edge",
+        UpdateAiGatewayRoutePoliciesRequest(
+            cluster_id=1,
+            failover_enabled=False,
+            semantic_cache_enabled=True,
+            model_routing_enabled=False,
+        ),
+    )
+    assert policy_res.entity["failover_enabled"] is False
+    assert policy_res.entity["model_routing_enabled"] is False
 
     # 6. DSSM Org, Team, Principal, and Virtual Key lifecycle
     org_res = svc.create_org(CreateGovernanceOrgRequest(cluster_id=1, tenant="telco-ai-tenant", name="Core Network AI"))
@@ -324,19 +435,86 @@ def test_ai_gateway_governance_service_end_to_end():
             tenant="telco-ai-tenant",
             name="ran-agent-prod-key",
             principal_id=principal_res.entity["id"],
-            allowed_models=["meta-llama/Llama-3.3-70B-Instruct"],
+            allowed_models=["meta-llama/Llama-3.3-70B-Instruct", "gpt-4o"],
         )
     )
     assert vk_res.status == "success"
     assert vk_res.entity["raw_key"] is not None
     assert vk_res.entity["raw_key"].startswith("f5vk_")
     assert vk_res.entity["status"] == "active"
+    assert vk_res.entity["principal_type"] == "agent"
+    assert vk_res.entity["team_name"] == "RAN Copilots"
+    assert vk_res.entity["org_name"] == "Core Network AI"
+
+    # Rotate Virtual Key in-place
+    rotated_res = svc.rotate_virtual_key(vk_res.entity["id"], cluster_id=1)
+    assert rotated_res.status == "success"
+    assert rotated_res.cleartext_key is not None
+    assert rotated_res.cleartext_key != vk_res.cleartext_key
+
+    # 7. Polaris Step 8: Live Gateway Inference & Policy Tester
+    # Missing /v1 prefix returns 404 diagnostic
+    bad_path_test = svc.test_gateway_request(
+        GatewayInferenceTestRequest(
+            cluster_id=1,
+            route_name="ai-inference-route",
+            model_id="gpt-4o",
+            prompt="Check BNK 2.4.1 readiness",
+            path="/chat/completions",
+            virtual_key=rotated_res.cleartext_key,
+        )
+    )
+    assert bad_path_test.status_code == 404
+
+    # First valid request -> Semantic Cache MISS; second identical request -> HIT
+    first_test = svc.test_gateway_request(
+        GatewayInferenceTestRequest(
+            cluster_id=1,
+            route_name="ai-inference-route",
+            model_id="gpt-4o",
+            prompt="Check BNK 2.4.1 readiness",
+            path="/v1/chat/completions",
+            virtual_key=rotated_res.cleartext_key,
+        )
+    )
+    assert first_test.status_code == 200
+    assert first_test.semantic_cache_status == "MISS"
+
+    second_test = svc.test_gateway_request(
+        GatewayInferenceTestRequest(
+            cluster_id=1,
+            route_name="ai-inference-route",
+            model_id="gpt-4o",
+            prompt="Check BNK 2.4.1 readiness",
+            path="/v1/chat/completions",
+            virtual_key=rotated_res.cleartext_key,
+        )
+    )
+    assert second_test.status_code == 200
+    assert second_test.semantic_cache_status == "HIT"
+    assert second_test.estimated_cost_usd == 0.0
+
+    # Simulate primary failure -> triggers automatic failover
+    failover_test = svc.test_gateway_request(
+        GatewayInferenceTestRequest(
+            cluster_id=1,
+            route_name="ai-inference-route",
+            model_id="gpt-4o",
+            prompt="Different prompt triggering failover",
+            path="/v1/chat/completions",
+            virtual_key=rotated_res.cleartext_key,
+            simulate_primary_failure=True,
+        )
+    )
+    assert failover_test.status_code == 200
+    assert failover_test.failover_triggered is True
+    assert failover_test.selected_provider == "dgx-vllm-local"
 
     revoked_res = svc.revoke_virtual_key(vk_res.entity["id"], cluster_id=1)
     assert revoked_res.status == "success"
     assert revoked_res.entity["status"] == "revoked"
 
-    # 7. BNK 2.4.1 Remediation actions
+    # 8. BNK 2.4.1 Remediation actions
     for action in [
         "restart_controller",
         "apply_dns_resolver",
@@ -346,8 +524,12 @@ def test_ai_gateway_governance_service_end_to_end():
         res = svc.remediate(RemediateAiGatewayRequest(cluster_id=1, action=action, namespace="f5-bnk"))
         assert res.status == "success"
         assert res.success is True
+        if action == "apply_dns_resolver":
+            assert "cacheType: net-resolver" in (res.applied_yaml or "")
+        if action == "apply_default_egress":
+            assert "kind: F5SPKStaticRoute" in (res.applied_yaml or "")
 
-    # 8. Verify frontend-contract fields on overview and mutation responses
+    # 9. Verify frontend-contract fields on overview and mutation responses
     updated_overview = svc.overview(cluster_id=1)
     assert len(updated_overview.organizations) == len(updated_overview.orgs)
     assert len(updated_overview.diagnostics) == len(updated_overview.readiness_checks)
@@ -355,3 +537,20 @@ def test_ai_gateway_governance_service_end_to_end():
     assert updated_overview.models[0].model_id != ""
     assert updated_overview.routes[0].port > 0
     assert vk_res.cleartext_key is not None and vk_res.cleartext_key.startswith("f5vk_")
+
+
+def test_governance_routes_enforce_operator_rbac():
+    """Verify all mutating governance routes require operator role rather than viewer."""
+    from routes.k8s.llm_observability import router
+    from routes.auth import require_operator, require_viewer
+
+    mutating_routes = [
+        r
+        for r in router.routes
+        if getattr(r, "methods", None) and any(m in r.methods for m in ("POST", "PATCH", "DELETE"))
+    ]
+    assert len(mutating_routes) >= 10
+    for route in mutating_routes:
+        dep_callables = [d.call for d in route.dependant.dependencies]
+        assert require_operator in dep_callables, f"Route {route.path} missing require_operator"
+        assert require_viewer not in dep_callables, f"Mutating route {route.path} must not use require_viewer"

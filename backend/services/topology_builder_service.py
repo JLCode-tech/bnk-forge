@@ -54,9 +54,19 @@ _OPTIONAL_FABRIC_CRD_KEYS: tuple[str, ...] = (
     "f5bigdnscache",
     "f5bigcgnat",
     "f5bignatpool",
+    "f5bignatpolicy",
+    "f5bigfwpolicy",
+    "f5bigsfwpolicy",
+    "f5bigddospolicy",
+    "f5bignetpolicy",
     "f5bigdiameter",
+    "f5biggslbzone",
     "f5biggslbwideip",
     "f5biggslbpool",
+    "scrape",
+    "scrapeclass",
+    "scrapetemplate",
+    "observer",
     "secret",
 )
 
@@ -563,9 +573,19 @@ _FABRIC_KIND_META: dict[str, tuple[str, str]] = {
     "f5bigdnscache": ("F5BigDnsCache", "f5-cnf"),
     "f5bigcgnat": ("F5BigCgnat", "f5-cnf"),
     "f5bignatpool": ("F5BigNatPool", "f5-cnf"),
+    "f5bignatpolicy": ("F5BigNatPolicy", "f5-cnf"),
+    "f5bigfwpolicy": ("F5BigFwPolicy", "f5-cnf"),
+    "f5bigsfwpolicy": ("F5BigSfwPolicy", "f5-cnf"),
+    "f5bigddospolicy": ("F5BigDdosPolicy", "f5-cnf"),
+    "f5bignetpolicy": ("F5BigNetPolicy", "f5-cnf"),
     "f5bigdiameter": ("F5BigDiameter", "f5-cnf"),
+    "f5biggslbzone": ("F5BigGslbZone", "f5-cnf"),
     "f5biggslbwideip": ("F5BigGslbWideip", "f5-cnf"),
     "f5biggslbpool": ("F5BigGslbPool", "f5-cnf"),
+    "scrape": ("Scrape", "f5-cnf"),
+    "scrapeclass": ("ScrapeClass", "f5-cnf"),
+    "scrapetemplate": ("ScrapeTemplate", "f5-cnf"),
+    "observer": ("Observer", "f5-cnf"),
 }
 
 
@@ -659,11 +679,21 @@ def _assemble_custom_fabric_topology(
                 )
             elif key == "aiprovider":
                 vendor = spec.get("vendor", "Generic")
-                generic_cfg = spec.get("generic") or {}
+                vendor_cfg = (
+                    spec.get("generic")
+                    or spec.get("openAI")
+                    or spec.get("anthropic")
+                    or spec.get("azureOpenAI")
+                    or spec.get("azureFoundry")
+                    or spec.get("bedrock")
+                    or spec.get("gemini")
+                    or {}
+                )
                 meta.update(
                     {
                         "vendor": vendor,
-                        "base_url": _get_field(generic_cfg, "baseURL", "base_url"),
+                        "base_url": _get_field(vendor_cfg, "baseURL", "base_url")
+                        or _get_field(vendor_cfg, "endpoint", "base_url"),
                         "enabled": spec.get("enabled", True),
                         "tenant": (_get_field(spec, "tenantRef", "tenant_ref") or {}).get("name"),
                     }
@@ -861,7 +891,19 @@ def _assemble_custom_fabric_topology(
                 "secretRef",
             )
 
-    # CNF cross-CRD links: F5BigGslbWideip -> F5BigGslbPool, F5BigCgnat -> F5BigNatPool, CNEInstance -> AIGateway
+    # CNF cross-CRD links: F5BigGslbZone -> F5BigGslbWideip -> F5BigGslbPool,
+    # F5BigCgnat / F5BigNatPolicy -> F5BigNatPool, CNEInstance -> AIGateway / F5BigDnsCache / F5SPKStaticRoute,
+    # Scrape -> ScrapeClass -> ScrapeTemplate
+    for zone in custom_resources.get("f5biggslbzone") or []:
+        z_name = _meta_name(zone)
+        z_ns = _meta_ns(zone, namespace)
+        z_id = _node_id("F5BigGslbZone", z_name, z_ns)
+        spec = zone.get("spec") or {}
+        for wip in spec.get("wideips") or spec.get("wideIps") or []:
+            wip_name = wip.get("name") if isinstance(wip, dict) else str(wip)
+            if wip_name:
+                add_edge_if_valid(z_id, _node_id("F5BigGslbWideip", wip_name, z_ns), "routes", "gslbWideip")
+
     for wideip in custom_resources.get("f5biggslbwideip") or []:
         w_name = _meta_name(wideip)
         w_ns = _meta_ns(wideip, namespace)
@@ -871,6 +913,33 @@ def _assemble_custom_fabric_topology(
             p_name = pool.get("name") if isinstance(pool, dict) else str(pool)
             if p_name:
                 add_edge_if_valid(w_id, _node_id("F5BigGslbPool", p_name, w_ns), "routes", "gslbPool")
+
+    for cgnat_key, cgnat_kind in (("f5bigcgnat", "F5BigCgnat"), ("f5bignatpolicy", "F5BigNatPolicy")):
+        for cgnat in custom_resources.get(cgnat_key) or []:
+            cg_name = _meta_name(cgnat)
+            cg_ns = _meta_ns(cgnat, namespace)
+            cg_id = _node_id(cgnat_kind, cg_name, cg_ns)
+            spec = cgnat.get("spec") or {}
+            pool_refs: list[str] = []
+            for field_name in ("natPool", "nat_pool", "poolRef", "pool_ref", "sourceNatPool"):
+                val = spec.get(field_name)
+                if isinstance(val, dict) and val.get("name"):
+                    pool_refs.append(str(val["name"]))
+                elif isinstance(val, str) and val:
+                    pool_refs.append(val)
+            for rule in spec.get("rules") or spec.get("rule") or []:
+                if isinstance(rule, dict):
+                    r_pool = (
+                        rule.get("natPool")
+                        or rule.get("pool")
+                        or (rule.get("sourceTranslation") or {}).get("pat", {}).get("pool")
+                    )
+                    if isinstance(r_pool, dict) and r_pool.get("name"):
+                        pool_refs.append(str(r_pool["name"]))
+                    elif isinstance(r_pool, str) and r_pool:
+                        pool_refs.append(r_pool)
+            for pool_name in pool_refs:
+                add_edge_if_valid(cg_id, _node_id("F5BigNatPool", pool_name, cg_ns), "references", "natPool")
 
     for cne in custom_resources.get("cneinstance") or []:
         cne_name = _meta_name(cne)
@@ -884,3 +953,39 @@ def _assemble_custom_fabric_topology(
             dc_name = _meta_name(dnscache)
             dc_ns = _meta_ns(dnscache, namespace)
             add_edge_if_valid(cne_id, _node_id("F5BigDnsCache", dc_name, dc_ns), "references", "dnsResolver")
+        for sroute in custom_resources.get("f5spkstaticroute") or []:
+            sr_name = _meta_name(sroute)
+            sr_ns = _meta_ns(sroute, namespace)
+            add_edge_if_valid(cne_id, _node_id("F5SPKStaticRoute", sr_name, sr_ns), "routes", "egressRoute")
+        for vlan in custom_resources.get("f5spkvlan") or []:
+            vl_name = _meta_name(vlan)
+            vl_ns = _meta_ns(vlan, namespace)
+            add_edge_if_valid(cne_id, _node_id("F5SPKVlan", vl_name, vl_ns), "references", "vlan")
+
+    for scrape in custom_resources.get("scrape") or []:
+        sc_name = _meta_name(scrape)
+        sc_ns = _meta_ns(scrape, namespace)
+        sc_id = _node_id("Scrape", sc_name, sc_ns)
+        spec = scrape.get("spec") or {}
+        cls_ref = _get_field(spec, "scrapeClassName", "scrape_class_name") or (
+            _get_field(spec, "scrapeClassRef", "scrape_class_ref") or {}
+        )
+        cls_name = cls_ref.get("name") if isinstance(cls_ref, dict) else str(cls_ref or "")
+        if cls_name:
+            add_edge_if_valid(sc_id, _node_id("ScrapeClass", cls_name, sc_ns), "references", "scrapeClass")
+
+    for sclass in custom_resources.get("scrapeclass") or []:
+        scl_name = _meta_name(sclass)
+        scl_ns = _meta_ns(sclass, namespace)
+        scl_id = _node_id("ScrapeClass", scl_name, scl_ns)
+        spec = sclass.get("spec") or {}
+        tpl_ref = (
+            _get_field(spec, "scrapeTemplateName", "scrape_template_name")
+            or _get_field(spec, "templateName", "template_name")
+            or _get_field(spec, "scrapeTemplateRef", "scrape_template_ref")
+            or _get_field(spec, "templateRef", "template_ref")
+            or {}
+        )
+        tpl_name = tpl_ref.get("name") if isinstance(tpl_ref, dict) else str(tpl_ref or "")
+        if tpl_name:
+            add_edge_if_valid(scl_id, _node_id("ScrapeTemplate", tpl_name, scl_ns), "references", "scrapeTemplate")

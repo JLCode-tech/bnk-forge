@@ -25,6 +25,8 @@ import type {
   DssmPrincipal,
   DssmTeam,
   DssmVirtualKey,
+  GatewayInferenceTestRequest,
+  GatewayInferenceTestResponse,
   IssueVirtualKeyRequest,
   LlmFilterData,
   LlmHistogram,
@@ -37,6 +39,7 @@ import type {
   LlmStats,
   RemediationRequest,
   RemediationResponse,
+  UpdateAiGatewayRoutePoliciesRequest,
 } from "@/types/llm-observability";
 
 const base = (clusterId?: number) =>
@@ -91,7 +94,7 @@ export const llmObservabilityApi = {
       .get<LlmFilterData>(`${base(clusterId)}/filterdata`, { params })
       .then((res) => res.data),
 
-  getGovernanceOverview: (clusterId?: number, namespace = "default") =>
+  getGovernanceOverview: (clusterId?: number, namespace = "f5-bnk") =>
     apiClient
       .get<AiGatewayGovernanceOverview>(
         `${base(clusterId)}/governance/overview`,
@@ -127,6 +130,18 @@ export const llmObservabilityApi = {
       )
       .then((res) => res.data),
 
+  updateRoutePolicies: (
+    clusterId: number,
+    routeName: string,
+    payload: UpdateAiGatewayRoutePoliciesRequest,
+  ) =>
+    apiClient
+      .patch<RemediationResponse>(
+        `${base(clusterId)}/governance/routes/${encodeURIComponent(routeName)}/policies`,
+        payload,
+      )
+      .then((res) => res.data),
+
   createOrg: (clusterId: number, payload: CreateDssmOrgRequest) =>
     apiClient
       .post<DssmOrganization>(`${base(clusterId)}/governance/orgs`, payload)
@@ -150,18 +165,38 @@ export const llmObservabilityApi = {
       )
       .then((res) => res.data),
 
+  rotateVirtualKey: (clusterId: number, keyId: string) =>
+    apiClient
+      .post<DssmVirtualKey>(
+        `${base(clusterId)}/governance/virtual-keys/${encodeURIComponent(keyId)}/rotate`,
+      )
+      .then((res) => res.data),
+
   revokeVirtualKey: (clusterId: number, keyId: string) =>
     apiClient
       .delete<{
         status: string;
         key_id: string;
-      }>(`${base(clusterId)}/governance/virtual-keys/${encodeURIComponent(keyId)}`)
+      }>(
+        `${base(clusterId)}/governance/virtual-keys/${encodeURIComponent(keyId)}`,
+      )
       .then((res) => res.data),
 
   remediate: (clusterId: number, payload: RemediationRequest) =>
     apiClient
       .post<RemediationResponse>(
         `${base(clusterId)}/governance/remediate`,
+        payload,
+      )
+      .then((res) => res.data),
+
+  testGatewayRequest: (
+    clusterId: number,
+    payload: GatewayInferenceTestRequest,
+  ) =>
+    apiClient
+      .post<GatewayInferenceTestResponse>(
+        `${base(clusterId)}/governance/test-request`,
         payload,
       )
       .then((res) => res.data),

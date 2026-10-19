@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from core.errors import handle_route_errors
 from database import get_db
-from routes.auth import require_viewer
+from routes.auth import require_operator, require_viewer
 from schemas.llm_observability import (
     AiGovernanceMutationResponse,
     AiGovernanceOverviewResponse,
@@ -32,6 +32,8 @@ from schemas.llm_observability import (
     CreateGovernanceOrgRequest,
     CreateGovernancePrincipalRequest,
     CreateGovernanceTeamRequest,
+    GatewayInferenceTestRequest,
+    GatewayInferenceTestResponse,
     IssueVirtualKeyRequest,
     LlmFilterDataResponse,
     LlmHistogramResponse,
@@ -40,6 +42,7 @@ from schemas.llm_observability import (
     LlmRankingsResponse,
     LlmStatsResponse,
     RemediateAiGatewayRequest,
+    UpdateAiGatewayRoutePoliciesRequest,
 )
 from services.ai_gateway_governance_service import AiGatewayGovernanceService
 from services.llm_observability_service import LlmObservabilityService
@@ -356,12 +359,12 @@ async def get_ai_governance_overview(
 @router.post(
     f"{_FLEET_BASE}/governance/tenants",
     response_model=AiGovernanceMutationResponse,
-    dependencies=[Depends(require_viewer)],
+    dependencies=[Depends(require_operator)],
 )
 @router.post(
     f"{_BASE}/governance/tenants",
     response_model=AiGovernanceMutationResponse,
-    dependencies=[Depends(require_viewer)],
+    dependencies=[Depends(require_operator)],
 )
 @handle_route_errors("create AI tenant")
 async def create_ai_tenant(
@@ -378,12 +381,12 @@ async def create_ai_tenant(
 @router.post(
     f"{_FLEET_BASE}/governance/providers",
     response_model=AiGovernanceMutationResponse,
-    dependencies=[Depends(require_viewer)],
+    dependencies=[Depends(require_operator)],
 )
 @router.post(
     f"{_BASE}/governance/providers",
     response_model=AiGovernanceMutationResponse,
-    dependencies=[Depends(require_viewer)],
+    dependencies=[Depends(require_operator)],
 )
 @handle_route_errors("create AI provider")
 async def create_ai_provider(
@@ -400,12 +403,12 @@ async def create_ai_provider(
 @router.post(
     f"{_FLEET_BASE}/governance/models",
     response_model=AiGovernanceMutationResponse,
-    dependencies=[Depends(require_viewer)],
+    dependencies=[Depends(require_operator)],
 )
 @router.post(
     f"{_BASE}/governance/models",
     response_model=AiGovernanceMutationResponse,
-    dependencies=[Depends(require_viewer)],
+    dependencies=[Depends(require_operator)],
 )
 @handle_route_errors("create AI model")
 async def create_ai_model(
@@ -422,12 +425,12 @@ async def create_ai_model(
 @router.post(
     f"{_FLEET_BASE}/governance/routes",
     response_model=AiGovernanceMutationResponse,
-    dependencies=[Depends(require_viewer)],
+    dependencies=[Depends(require_operator)],
 )
 @router.post(
     f"{_BASE}/governance/routes",
     response_model=AiGovernanceMutationResponse,
-    dependencies=[Depends(require_viewer)],
+    dependencies=[Depends(require_operator)],
 )
 @handle_route_errors("create AI gateway route")
 async def create_ai_gateway_route(
@@ -441,15 +444,38 @@ async def create_ai_gateway_route(
     return await asyncio.to_thread(AiGatewayGovernanceService(db).create_route, req)
 
 
+@router.patch(
+    f"{_FLEET_BASE}/governance/routes/{{route_name}}/policies",
+    response_model=AiGovernanceMutationResponse,
+    dependencies=[Depends(require_operator)],
+)
+@router.patch(
+    f"{_BASE}/governance/routes/{{route_name}}/policies",
+    response_model=AiGovernanceMutationResponse,
+    dependencies=[Depends(require_operator)],
+)
+@handle_route_errors("update AI gateway route policies")
+async def update_ai_gateway_route_policies(
+    route_name: str,
+    req: UpdateAiGatewayRoutePoliciesRequest,
+    cluster_id: int | None = None,
+    db: Session = Depends(get_db),
+):
+    """Toggle Semantic Cache, Virtual Key Auth, or Prompt Guardrails on an existing AIGatewayRoute."""
+    if cluster_id is not None:
+        req.cluster_id = cluster_id
+    return await asyncio.to_thread(AiGatewayGovernanceService(db).update_route_policies, route_name, req)
+
+
 @router.post(
     f"{_FLEET_BASE}/governance/orgs",
     response_model=AiGovernanceMutationResponse,
-    dependencies=[Depends(require_viewer)],
+    dependencies=[Depends(require_operator)],
 )
 @router.post(
     f"{_BASE}/governance/orgs",
     response_model=AiGovernanceMutationResponse,
-    dependencies=[Depends(require_viewer)],
+    dependencies=[Depends(require_operator)],
 )
 @handle_route_errors("create DSSM governance organization")
 async def create_governance_org(
@@ -466,12 +492,12 @@ async def create_governance_org(
 @router.post(
     f"{_FLEET_BASE}/governance/teams",
     response_model=AiGovernanceMutationResponse,
-    dependencies=[Depends(require_viewer)],
+    dependencies=[Depends(require_operator)],
 )
 @router.post(
     f"{_BASE}/governance/teams",
     response_model=AiGovernanceMutationResponse,
-    dependencies=[Depends(require_viewer)],
+    dependencies=[Depends(require_operator)],
 )
 @handle_route_errors("create DSSM governance team")
 async def create_governance_team(
@@ -488,12 +514,12 @@ async def create_governance_team(
 @router.post(
     f"{_FLEET_BASE}/governance/principals",
     response_model=AiGovernanceMutationResponse,
-    dependencies=[Depends(require_viewer)],
+    dependencies=[Depends(require_operator)],
 )
 @router.post(
     f"{_BASE}/governance/principals",
     response_model=AiGovernanceMutationResponse,
-    dependencies=[Depends(require_viewer)],
+    dependencies=[Depends(require_operator)],
 )
 @handle_route_errors("create DSSM governance principal")
 async def create_governance_principal(
@@ -510,12 +536,12 @@ async def create_governance_principal(
 @router.post(
     f"{_FLEET_BASE}/governance/virtual-keys",
     response_model=AiGovernanceMutationResponse,
-    dependencies=[Depends(require_viewer)],
+    dependencies=[Depends(require_operator)],
 )
 @router.post(
     f"{_BASE}/governance/virtual-keys",
     response_model=AiGovernanceMutationResponse,
-    dependencies=[Depends(require_viewer)],
+    dependencies=[Depends(require_operator)],
 )
 @handle_route_errors("issue DSSM virtual key")
 async def issue_governance_virtual_key(
@@ -529,15 +555,35 @@ async def issue_governance_virtual_key(
     return await asyncio.to_thread(AiGatewayGovernanceService(db).issue_virtual_key, req)
 
 
+@router.post(
+    f"{_FLEET_BASE}/governance/virtual-keys/{{key_id}}/rotate",
+    response_model=AiGovernanceMutationResponse,
+    dependencies=[Depends(require_operator)],
+)
+@router.post(
+    f"{_BASE}/governance/virtual-keys/{{key_id}}/rotate",
+    response_model=AiGovernanceMutationResponse,
+    dependencies=[Depends(require_operator)],
+)
+@handle_route_errors("rotate DSSM virtual key")
+async def rotate_governance_virtual_key(
+    key_id: str,
+    cluster_id: int | None = None,
+    db: Session = Depends(get_db),
+):
+    """Rotate an existing DSSM Virtual Key in-place, invalidating the old token secret."""
+    return await asyncio.to_thread(AiGatewayGovernanceService(db).rotate_virtual_key, key_id, cluster_id)
+
+
 @router.delete(
     f"{_FLEET_BASE}/governance/virtual-keys/{{key_id}}",
     response_model=AiGovernanceMutationResponse,
-    dependencies=[Depends(require_viewer)],
+    dependencies=[Depends(require_operator)],
 )
 @router.delete(
     f"{_BASE}/governance/virtual-keys/{{key_id}}",
     response_model=AiGovernanceMutationResponse,
-    dependencies=[Depends(require_viewer)],
+    dependencies=[Depends(require_operator)],
 )
 @handle_route_errors("revoke DSSM virtual key")
 async def revoke_governance_virtual_key(
@@ -552,12 +598,12 @@ async def revoke_governance_virtual_key(
 @router.post(
     f"{_FLEET_BASE}/governance/remediate",
     response_model=AiGovernanceMutationResponse,
-    dependencies=[Depends(require_viewer)],
+    dependencies=[Depends(require_operator)],
 )
 @router.post(
     f"{_BASE}/governance/remediate",
     response_model=AiGovernanceMutationResponse,
-    dependencies=[Depends(require_viewer)],
+    dependencies=[Depends(require_operator)],
 )
 @handle_route_errors("remediate AI gateway check")
 async def remediate_ai_gateway(
@@ -569,3 +615,25 @@ async def remediate_ai_gateway(
     if cluster_id is not None:
         req.cluster_id = cluster_id
     return await asyncio.to_thread(AiGatewayGovernanceService(db).remediate, req)
+
+
+@router.post(
+    f"{_FLEET_BASE}/governance/test-request",
+    response_model=GatewayInferenceTestResponse,
+    dependencies=[Depends(require_operator)],
+)
+@router.post(
+    f"{_BASE}/governance/test-request",
+    response_model=GatewayInferenceTestResponse,
+    dependencies=[Depends(require_operator)],
+)
+@handle_route_errors("test AI gateway inference request")
+async def test_ai_gateway_request(
+    req: GatewayInferenceTestRequest,
+    cluster_id: int | None = None,
+    db: Session = Depends(get_db),
+):
+    """Polaris Step 8 live inference & policy tester across Virtual Key Auth, Budgets, Semantic Cache, and Failover."""
+    if cluster_id is not None:
+        req.cluster_id = cluster_id
+    return await asyncio.to_thread(AiGatewayGovernanceService(db).test_gateway_request, req)

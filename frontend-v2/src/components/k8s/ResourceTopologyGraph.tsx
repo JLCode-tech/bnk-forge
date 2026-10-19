@@ -96,6 +96,8 @@ const KIND_LABEL: Record<string, string> = {
   Gateway: "Gateway",
   HTTPRoute: "HTTPRoute",
   AppPolicy: "AppPolicy",
+  SecPolicy: "SecPolicy",
+  NetPolicy: "NetPolicy",
   AIGatewayProfile: "AIProfile",
   AITenant: "AITenant",
   AIModel: "AIModel",
@@ -103,7 +105,16 @@ const KIND_LABEL: Record<string, string> = {
   AICredential: "AICred",
   AIGateway: "AIGateway",
   CNEInstance: "CNEInstance",
+  F5BigDns: "DNS",
   F5BigDnsCache: "DNSCache",
+  F5BigCgnat: "CGNAT",
+  F5BigNatPool: "NATPool",
+  F5BigNatPolicy: "NATPolicy",
+  F5BigFwPolicy: "FwPolicy",
+  F5BigSfwPolicy: "SfwPolicy",
+  F5BigDdosPolicy: "DDoSPolicy",
+  F5BigNetPolicy: "NetPolicy",
+  F5BigDiameter: "Diameter",
   F5BigGslbWideip: "GSLB WideIP",
   F5BigGslbPool: "GSLB Pool",
   F5BigGslbZone: "GSLB Zone",
@@ -111,6 +122,10 @@ const KIND_LABEL: Record<string, string> = {
   F5SPKVlan: "VLAN",
   F5SPKSnatpool: "SNATPool",
   F5SPKStaticRoute: "StaticRoute",
+  Scrape: "Scrape",
+  ScrapeClass: "ScrapeClass",
+  ScrapeTemplate: "ScrapeTpl",
+  Observer: "Observer",
 };
 
 const AI_KINDS = new Set([
@@ -126,7 +141,18 @@ const GATEWAY_KINDS = new Set(["Gateway", "HTTPRoute", "AppPolicy"]);
 
 const CNF_KINDS = new Set([
   "CNEInstance",
+  "SecPolicy",
+  "NetPolicy",
+  "F5BigDns",
   "F5BigDnsCache",
+  "F5BigCgnat",
+  "F5BigNatPool",
+  "F5BigNatPolicy",
+  "F5BigFwPolicy",
+  "F5BigSfwPolicy",
+  "F5BigDdosPolicy",
+  "F5BigNetPolicy",
+  "F5BigDiameter",
   "F5BigGslbWideip",
   "F5BigGslbPool",
   "F5BigGslbZone",
@@ -134,14 +160,28 @@ const CNF_KINDS = new Set([
   "F5SPKVlan",
   "F5SPKSnatpool",
   "F5SPKStaticRoute",
+  "Scrape",
+  "ScrapeClass",
+  "ScrapeTemplate",
+  "Observer",
 ]);
 
 function inferDomain(node: TopologyNode): Exclude<FabricDomainFilter, "all"> {
   if (node.category === "ai-gateway" || AI_KINDS.has(node.kind))
     return "ai-gateway";
-  if (node.category === "gateway" || GATEWAY_KINDS.has(node.kind))
+  if (
+    node.category === "gateway" ||
+    node.category === "gateway-api" ||
+    GATEWAY_KINDS.has(node.kind)
+  )
     return "gateway";
-  if (node.category === "cnf" || CNF_KINDS.has(node.kind)) return "cnf";
+  if (
+    node.category === "cnf" ||
+    node.category === "f5-cnf" ||
+    node.category === "f5-bnk" ||
+    CNF_KINDS.has(node.kind)
+  )
+    return "cnf";
   return "workload";
 }
 
@@ -502,7 +542,8 @@ function TopologyInner({
 
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
-      const parts = node.id.split("/");
+      const cleanId = node.id.replace(/^c\d+:/, "");
+      const parts = cleanId.split("/");
       if (parts.length < 3) return;
       const [kind, namespace, ...nameParts] = parts;
       const name = nameParts.join("/");

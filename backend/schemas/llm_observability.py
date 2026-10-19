@@ -410,6 +410,56 @@ class AiReadinessCheckItem(BaseModel):
         return self
 
 
+class ClickHouseRequestAuditItem(BaseModel):
+    id: str = ""
+    request_id: str = ""
+    timestamp: str
+    cluster_id: int
+    cluster_name: str = ""
+    tenant: str = "default"
+    route_name: str = "ai-platform-profile"
+    org_name: str = "Enterprise AI Platform"
+    team_name: str = "Inference Platform"
+    principal_name: str = "prod-rag-pipeline"
+    virtual_key_id: str = ""
+    virtual_key_name: str = ""
+    method: str = "POST"
+    path: str = "/v1/chat/completions"
+    model: str = "gpt-4o"
+    model_id: str = ""
+    provider: str = "openai-primary"
+    provider_name: str = ""
+    status_code: int = 200
+    latency_ms: float = 420.0
+    prompt_tokens: int = 128
+    completion_tokens: int = 256
+    total_tokens: int = 384
+    cost_usd: float = 0.00288
+    cache_status: str = "MISS"  # HIT | MISS | BYPASS
+    semantic_cache_status: str = ""
+    failover_used: bool = False
+    failover_triggered: bool = False
+    error_reason: str | None = None
+
+    @model_validator(mode="after")
+    def _sync_audit_aliases(self) -> "ClickHouseRequestAuditItem":
+        if not self.id and self.request_id:
+            self.id = self.request_id
+        if not self.request_id and self.id:
+            self.request_id = self.id
+        if not self.model_id and self.model:
+            self.model_id = self.model
+        if not self.provider_name and self.provider:
+            self.provider_name = self.provider
+        if not self.semantic_cache_status and self.cache_status:
+            self.semantic_cache_status = self.cache_status
+        if self.failover_used and not self.failover_triggered:
+            self.failover_triggered = True
+        if self.failover_triggered and not self.failover_used:
+            self.failover_used = True
+        return self
+
+
 class AiGovernanceOverviewResponse(_Envelope):
     namespace: str = "f5-bnk"
     tenants: list[AiTenantSummary] = Field(default_factory=list)
@@ -423,6 +473,7 @@ class AiGovernanceOverviewResponse(_Envelope):
     virtual_keys: list[GovernanceVirtualKeyItem] = Field(default_factory=list)
     readiness_checks: list[AiReadinessCheckItem] = Field(default_factory=list)
     diagnostics: list[AiReadinessCheckItem] = Field(default_factory=list)
+    request_audit_logs: list[ClickHouseRequestAuditItem] = Field(default_factory=list)
     topology_nodes: list[dict] = Field(default_factory=list)
     topology_edges: list[dict] = Field(default_factory=list)
 
@@ -639,6 +690,101 @@ class RemediateAiGatewayRequest(BaseModel):
     target_name: str | None = None
 
 
+class UpdateAiGatewayRoutePoliciesRequest(BaseModel):
+    cluster_id: int = 1
+    namespace: str = "f5-bnk"
+    auth_mode: str | None = None
+    virtual_keys_enabled: bool | None = None
+    jwt_enabled: bool | None = None
+    failover_enabled: bool | None = None
+    prompt_cache_enabled: bool | None = None
+    semantic_cache_enabled: bool | None = None
+    semantic_cache_similarity_threshold: float | None = None
+    semantic_cache_pool_max_size: int | None = None
+    semantic_cache_pool_idle_timeout: str | None = None
+    model_routing_enabled: bool | None = None
+
+    @model_validator(mode="after")
+    def _normalize(self) -> "UpdateAiGatewayRoutePoliciesRequest":
+        if self.semantic_cache_enabled is not None and self.prompt_cache_enabled is None:
+            self.prompt_cache_enabled = self.semantic_cache_enabled
+        if self.auth_mode:
+            self.virtual_keys_enabled = "virtual_key" in self.auth_mode
+            self.jwt_enabled = "jwt" in self.auth_mode
+        return self
+
+
+class GatewayInferenceTestRequest(BaseModel):
+    cluster_id: int = 1
+    namespace: str = "f5-bnk"
+    route_name: str | None = "ai-platform-profile"
+    method: str = "POST"  # GET | POST
+    path: str = "/v1/chat/completions"  # /v1/models | /v1/chat/completions | /models (tests missing /v1 gotcha)
+    virtual_key: str | None = ""
+    model: str = "gpt-4o"
+    model_id: str | None = None
+    prompt: str = "Explain BNK 2.4.1 TMM + Envoy AI Gateway hybrid data plane."
+    simulate_primary_failure: bool = False
+
+    @model_validator(mode="after")
+    def _normalize_test_req(self) -> "GatewayInferenceTestRequest":
+        if self.model_id:
+            self.model = self.model_id
+        else:
+            self.model_id = self.model
+        if not self.route_name:
+            self.route_name = "ai-platform-profile"
+        if self.virtual_key is None:
+            self.virtual_key = ""
+        return self
+
+
+class GatewayInferenceTestResponse(BaseModel):
+    status_code: int
+    success: bool
+    route_name: str
+    listener_port: int
+    tenant: str
+    model: str
+    selected_provider: str | None = None
+    failover_triggered: bool = False
+    cache_status: str = "BYPASS"  # HIT | MISS | BYPASS
+    semantic_cache_status: str = ""
+    latency_ms: float = 0.0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    cost_usd: float = 0.0
+    estimated_cost_usd: float = 0.0
+    auth_verified: bool = True
+    principal_name: str | None = None
+    team_name: str | None = None
+    org_name: str | None = None
+    clickhouse_logged_id: str = ""
+    response_text: str = ""
+    response_body: dict = Field(default_factory=dict)
+    troubleshooting_hint: str | None = None
+    audit_record: ClickHouseRequestAuditItem | None = None
+
+    @model_validator(mode="after")
+    def _sync_test_resp_aliases(self) -> "GatewayInferenceTestResponse":
+        if not self.semantic_cache_status:
+            self.semantic_cache_status = self.cache_status
+        self.estimated_cost_usd = self.cost_usd
+        self.auth_verified = self.status_code != 401
+        if not self.clickhouse_logged_id and self.audit_record:
+            self.clickhouse_logged_id = self.audit_record.id or self.audit_record.request_id
+        if not self.response_text:
+            choices = self.response_body.get("choices")
+            if isinstance(choices, list) and choices:
+                msg = choices[0].get("message") if isinstance(choices[0], dict) else None
+                if isinstance(msg, dict) and msg.get("content"):
+                    self.response_text = str(msg["content"])
+            if not self.response_text and self.troubleshooting_hint:
+                self.response_text = self.troubleshooting_hint
+        return self
+
+
 class AiGovernanceMutationResponse(BaseModel):
     status: str = "success"
     success: bool = True
@@ -646,6 +792,7 @@ class AiGovernanceMutationResponse(BaseModel):
     message: str
     cluster_id: int
     manifests_applied: list[dict] = Field(default_factory=list)
+    applied_yaml: str = ""
     entity: dict | None = None
     details: dict = Field(default_factory=dict)
     id: str | None = None
@@ -655,6 +802,10 @@ class AiGovernanceMutationResponse(BaseModel):
 
     @model_validator(mode="after")
     def _populate_entity_shortcuts(self) -> "AiGovernanceMutationResponse":
+        if self.manifests_applied and not self.applied_yaml:
+            import yaml
+
+            self.applied_yaml = yaml.safe_dump_all(self.manifests_applied, sort_keys=False)
         if self.entity:
             if not self.id and "id" in self.entity:
                 self.id = str(self.entity["id"])

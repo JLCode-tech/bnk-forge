@@ -251,6 +251,38 @@ export interface Bnk241DiagnosticCheck {
   remediation_action?: string | null;
 }
 
+export interface ClickHouseRequestAuditItem {
+  id: string;
+  request_id?: string;
+  timestamp: string;
+  cluster_id: number;
+  cluster_name: string;
+  tenant: string;
+  route_name?: string;
+  org_name: string;
+  team_name: string;
+  principal_name: string;
+  virtual_key_id: string;
+  virtual_key_name: string;
+  method?: string;
+  path?: string;
+  model_id: string;
+  model?: string;
+  provider_name: string;
+  provider?: string;
+  status_code: number;
+  latency_ms: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+  semantic_cache_status: string;
+  cache_status?: string;
+  failover_triggered: boolean;
+  failover_used?: boolean;
+  error_reason?: string | null;
+}
+
 export interface AiGatewayGovernanceOverview {
   cluster_id?: number | null;
   namespace: string;
@@ -264,6 +296,9 @@ export interface AiGatewayGovernanceOverview {
   principals: DssmPrincipal[];
   virtual_keys: DssmVirtualKey[];
   diagnostics: Bnk241DiagnosticCheck[];
+  request_audit_logs?: ClickHouseRequestAuditItem[];
+  topology_nodes?: Record<string, unknown>[];
+  topology_edges?: Record<string, unknown>[];
 }
 
 export interface CreateAiTenantRequest {
@@ -298,6 +333,19 @@ export interface CreateAiGatewayRouteRequest {
   path_prefix?: string;
   tenant_ref?: string;
   auth_mode?: string;
+  failover_enabled?: boolean;
+  semantic_cache_enabled?: boolean;
+  semantic_cache_similarity_threshold?: number;
+  semantic_cache_pool_max_size?: number;
+  semantic_cache_pool_idle_timeout?: string;
+  model_routing_enabled?: boolean;
+}
+
+export interface UpdateAiGatewayRoutePoliciesRequest {
+  namespace?: string;
+  auth_mode?: string;
+  virtual_keys_enabled?: boolean;
+  jwt_enabled?: boolean;
   failover_enabled?: boolean;
   semantic_cache_enabled?: boolean;
   semantic_cache_similarity_threshold?: number;
@@ -351,4 +399,44 @@ export interface RemediationResponse {
   action: string;
   message: string;
   details: Record<string, unknown>;
+}
+
+export interface GatewayInferenceTestRequest {
+  namespace?: string;
+  route_name?: string | null;
+  method?: string;
+  path?: string;
+  virtual_key?: string | null;
+  model?: string;
+  model_id?: string;
+  prompt?: string;
+  simulate_primary_failure?: boolean;
+}
+
+export interface GatewayInferenceTestResponse {
+  status_code: number;
+  success: boolean;
+  route_name: string;
+  listener_port: number;
+  tenant: string;
+  model: string;
+  selected_provider?: string | null;
+  failover_triggered: boolean;
+  semantic_cache_status: string;
+  cache_status?: string;
+  latency_ms: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  estimated_cost_usd: number;
+  cost_usd?: number;
+  auth_verified?: boolean;
+  principal_name?: string | null;
+  team_name?: string | null;
+  org_name?: string | null;
+  clickhouse_logged_id: string;
+  response_text: string;
+  response_body?: Record<string, unknown>;
+  troubleshooting_hint?: string | null;
+  audit_record?: ClickHouseRequestAuditItem | null;
 }

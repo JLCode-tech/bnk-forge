@@ -33,6 +33,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from core.cache import cache
 from models.kubernetes import KubernetesCluster
 from schemas.llm_observability import (
     AiGovernanceMutationResponse,
@@ -43,6 +44,7 @@ from schemas.llm_observability import (
     AiProviderSummary,
     AiReadinessCheckItem,
     AiTenantSummary,
+    ClickHouseRequestAuditItem,
     CreateAiGatewayRouteRequest,
     CreateAiModelRequest,
     CreateAiProviderRequest,
@@ -50,12 +52,15 @@ from schemas.llm_observability import (
     CreateGovernanceOrgRequest,
     CreateGovernancePrincipalRequest,
     CreateGovernanceTeamRequest,
+    GatewayInferenceTestRequest,
+    GatewayInferenceTestResponse,
     GovernanceOrgItem,
     GovernancePrincipalItem,
     GovernanceTeamItem,
     GovernanceVirtualKeyItem,
     IssueVirtualKeyRequest,
     RemediateAiGatewayRequest,
+    UpdateAiGatewayRoutePoliciesRequest,
 )
 from services.kubernetes_service import KubernetesService
 from services.topology_builder_service import assemble_topology
@@ -67,12 +72,83 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
+_VENDOR_SETTINGS_KEY_MAP: dict[str, str] = {
+    "openai": "openAI",
+    "anthropic": "anthropic",
+    "azureopenai": "azureOpenAI",
+    "azurefoundry": "azureFoundry",
+    "bedrock": "bedrock",
+    "gemini": "gemini",
+    "generic": "generic",
+}
+
+
+def _vendor_settings_key(vendor: str) -> str:
+    """Return the BNK 2.4.1 AIProvider spec block name for the given vendor."""
+    return _VENDOR_SETTINGS_KEY_MAP.get((vendor or "generic").strip().lower(), "generic")
+
+
 # ---------------------------------------------------------------------------
-# In-memory multi-cluster state overlay (persists across requests in worker
+# Multi-cluster state overlay (persists in Redis + in-memory across requests
 # and seeds realistic BNK 2.4.1 reference topology when live CRDs are absent)
 # ---------------------------------------------------------------------------
 
 _CLUSTER_STATE: dict[int, dict[str, Any]] = {}
+_REDIS_STATE_TTL = 86400
+
+
+def _sync_derived_fields(state: dict[str, Any]) -> dict[str, Any]:
+    """Recompute relational counts and denormalized labels across tenants, orgs, teams, principals, and keys."""
+    providers = state.get("providers", [])
+    models = state.get("models", [])
+    teams = state.get("teams", [])
+    principals = state.get("principals", [])
+    vkeys = state.get("virtual_keys", [])
+
+    for t in state.get("tenants", []):
+        tname = t["name"]
+        t["models_count"] = sum(1 for m in models if m.get("tenant") == tname)
+        t["providers_count"] = sum(1 for p in providers if p.get("tenant") == tname)
+
+    for o in state.get("orgs", []):
+        oid = o["id"]
+        o["teams_count"] = sum(1 for tm in teams if tm.get("org_id") == oid)
+
+    team_by_id = {tm["id"]: tm for tm in teams}
+    for pr in principals:
+        tm = team_by_id.get(pr.get("team_id", ""))
+        if tm:
+            pr["team_name"] = tm["name"]
+            pr["org_id"] = tm.get("org_id", "")
+        pr["active_keys"] = sum(
+            1 for vk in vkeys if vk.get("principal_id") == pr["id"] and vk.get("status") == "active"
+        )
+
+    prin_by_id = {pr["id"]: pr for pr in principals}
+    for vk in vkeys:
+        pr = prin_by_id.get(vk.get("principal_id", ""))
+        if pr:
+            vk["principal_name"] = pr["name"]
+            vk["principal_type"] = pr.get("kind", "service")
+            tm = team_by_id.get(pr.get("team_id", ""))
+            if tm:
+                vk["team_name"] = tm["name"]
+                vk["org_name"] = tm.get("org_name", "Core AI Engineering")
+            vk.setdefault("rpm_limit", pr.get("rate_limit_rpm", 120))
+            vk.setdefault("tpm_limit", pr.get("rate_limit_tpm", 60000))
+            vk.setdefault("monthly_budget_usd", pr.get("monthly_budget_usd", 50.0))
+        vk.setdefault("spend_usd", 12.40 if vk.get("status") == "active" else 0.0)
+
+    return state
+
+
+def _save_cluster_state(cluster_id: int, state: dict[str, Any]) -> None:
+    _sync_derived_fields(state)
+    _CLUSTER_STATE[cluster_id] = state
+    try:
+        cache.set(f"aigw:gov:state:v2:{cluster_id}", state, ttl_seconds=_REDIS_STATE_TTL)
+    except Exception:
+        logger.debug("Redis cache unavailable for AI governance state %s", cluster_id)
 
 
 def _ensure_cluster_seed(cluster_id: int, cluster_name: str) -> dict[str, Any]:
@@ -80,7 +156,16 @@ def _ensure_cluster_seed(cluster_id: int, cluster_name: str) -> dict[str, Any]:
     if cluster_id in _CLUSTER_STATE:
         state = _CLUSTER_STATE[cluster_id]
         state["cluster_name"] = cluster_name
-        return state
+        return _sync_derived_fields(state)
+
+    try:
+        cached = cache.get(f"aigw:gov:state:v2:{cluster_id}")
+        if isinstance(cached, dict) and cached.get("tenants"):
+            cached["cluster_name"] = cluster_name
+            _CLUSTER_STATE[cluster_id] = cached
+            return _sync_derived_fields(cached)
+    except Exception:
+        logger.debug("Redis cache read skipped for AI governance state %s", cluster_id)
 
     tenant_name = "ai-platform"
     ns = "f5-bnk"
@@ -93,6 +178,7 @@ def _ensure_cluster_seed(cluster_id: int, cluster_name: str) -> dict[str, Any]:
         "numa_spanning_enabled": True,
         "egress_route_applied": True,
         "stuck_profile_remediated": False,
+        "prompt_cache_entries": {},
         "tenants": [
             {
                 "name": tenant_name,
@@ -228,6 +314,7 @@ def _ensure_cluster_seed(cluster_id: int, cluster_name: str) -> dict[str, Any]:
                 "failover_on_429": True,
                 "failover_on_5xx": True,
                 "prompt_cache_enabled": True,
+                "semantic_cache_similarity_threshold": 0.92,
                 "semantic_cache_pool_max_size": 64,
                 "semantic_cache_pool_idle_timeout": "300s",
                 "model_routing_enabled": True,
@@ -267,7 +354,21 @@ def _ensure_cluster_seed(cluster_id: int, cluster_name: str) -> dict[str, Any]:
                 "allowed_models": ["gpt-4o", "claude-sonnet-4-20250514"],
                 "rate_limit_rpm": 1200,
                 "rate_limit_tpm": 500000,
-            }
+            },
+            {
+                "id": f"team-telco-{cluster_id}",
+                "name": "Telco Network Ops Team",
+                "org_id": f"org-core-{cluster_id}",
+                "org_name": "Core AI Engineering",
+                "tenant": tenant_name,
+                "cluster_id": cluster_id,
+                "cluster_name": cluster_name,
+                "monthly_budget_usd": 450.0,
+                "current_spend_usd": 94.10,
+                "allowed_models": ["gpt-4o", "meta-llama/Llama-3.1-70B-Instruct"],
+                "rate_limit_rpm": 900,
+                "rate_limit_tpm": 350000,
+            },
         ],
         "principals": [
             {
@@ -277,6 +378,7 @@ def _ensure_cluster_seed(cluster_id: int, cluster_name: str) -> dict[str, Any]:
                 "role": "member",
                 "team_id": f"team-platform-{cluster_id}",
                 "team_name": "Platform & Inference Team",
+                "org_id": f"org-core-{cluster_id}",
                 "tenant": tenant_name,
                 "cluster_id": cluster_id,
                 "cluster_name": cluster_name,
@@ -293,6 +395,7 @@ def _ensure_cluster_seed(cluster_id: int, cluster_name: str) -> dict[str, Any]:
                 "role": "admin",
                 "team_id": f"team-platform-{cluster_id}",
                 "team_name": "Platform & Inference Team",
+                "org_id": f"org-core-{cluster_id}",
                 "tenant": tenant_name,
                 "cluster_id": cluster_id,
                 "cluster_name": cluster_name,
@@ -311,17 +414,76 @@ def _ensure_cluster_seed(cluster_id: int, cluster_name: str) -> dict[str, Any]:
                 "raw_key": None,
                 "principal_id": f"prin-agent-{cluster_id}",
                 "principal_name": "sre-triage-agent",
+                "principal_type": "agent",
+                "team_name": "Platform & Inference Team",
+                "org_name": "Core AI Engineering",
                 "tenant": tenant_name,
                 "cluster_id": cluster_id,
                 "cluster_name": cluster_name,
                 "allowed_models": ["gpt-4o", "claude-sonnet-4-20250514"],
+                "rpm_limit": 300,
+                "tpm_limit": 120000,
+                "monthly_budget_usd": 150.0,
+                "spend_usd": 42.10,
                 "status": "active",
                 "created_at": "2026-10-15T09:00:00+00:00",
                 "last_used_at": _now_iso(),
             }
         ],
+        "request_audit_logs": [
+            {
+                "request_id": f"req-aigw-{cluster_id}-001",
+                "timestamp": _now_iso(),
+                "cluster_id": cluster_id,
+                "cluster_name": cluster_name,
+                "tenant": tenant_name,
+                "org_name": "Core AI Engineering",
+                "team_name": "Platform & Inference Team",
+                "principal_name": "sre-triage-agent",
+                "virtual_key_id": f"vk-sre-{cluster_id}",
+                "virtual_key_name": "sre-triage-prod-key",
+                "method": "POST",
+                "path": "/v1/chat/completions",
+                "model": "gpt-4o",
+                "provider": "openai-primary",
+                "status_code": 200,
+                "latency_ms": 384.5,
+                "prompt_tokens": 312,
+                "completion_tokens": 488,
+                "total_tokens": 800,
+                "cost_usd": 0.00566,
+                "cache_status": "MISS",
+                "failover_used": False,
+                "error_reason": None,
+            },
+            {
+                "request_id": f"req-aigw-{cluster_id}-002",
+                "timestamp": _now_iso(),
+                "cluster_id": cluster_id,
+                "cluster_name": cluster_name,
+                "tenant": tenant_name,
+                "org_name": "Core AI Engineering",
+                "team_name": "Platform & Inference Team",
+                "principal_name": "platform-lead@f5.com",
+                "virtual_key_id": f"vk-sre-{cluster_id}",
+                "virtual_key_name": "sre-triage-prod-key",
+                "method": "POST",
+                "path": "/v1/chat/completions",
+                "model": "claude-sonnet-4-20250514",
+                "provider": "anthropic-claude",
+                "status_code": 200,
+                "latency_ms": 4.2,
+                "prompt_tokens": 210,
+                "completion_tokens": 390,
+                "total_tokens": 600,
+                "cost_usd": 0.0,
+                "cache_status": "HIT",
+                "failover_used": False,
+                "error_reason": None,
+            },
+        ],
     }
-    _CLUSTER_STATE[cluster_id] = state
+    _save_cluster_state(cluster_id, state)
     return state
 
 
@@ -364,11 +526,30 @@ def _build_k8s_custom_resources_from_state(state: dict[str, Any]) -> dict[str, l
         "f5bigdnscache": [
             {
                 "metadata": {"name": "aigw-dns-resolver", "namespace": ns, "uid": f"dns-{state['cluster_id']}"},
-                "spec": {"forwardZones": [{"names": ["."], "nameservers": ["10.96.0.10:53"]}]},
+                "spec": {
+                    "cacheType": "net-resolver",
+                    "ipv4": True,
+                    "ipv6": False,
+                    "netResolver": {"forwardZones": [{"name": ".", "nameservers": ["10.96.0.10:53", "8.8.8.8:53"]}]},
+                },
                 "status": {"conditions": [{"type": "Ready", "status": "True", "reason": "Programmed"}]},
             }
         ]
         if state.get("dns_resolver_applied", True)
+        else [],
+        "f5spkstaticroute": [
+            {
+                "metadata": {"name": "llm-egress-route", "namespace": ns, "uid": f"sroute-{state['cluster_id']}"},
+                "spec": {
+                    "destination": "0.0.0.0/0",
+                    "netmask": "0.0.0.0",
+                    "gateway": "10.20.2.1",
+                    "vlan": "external-egress",
+                },
+                "status": {"conditions": [{"type": "Ready", "status": "True", "reason": "Programmed"}]},
+            }
+        ]
+        if state.get("egress_route_applied", True)
         else [],
         "aitenant": [],
         "aiprovider": [],
@@ -401,6 +582,7 @@ def _build_k8s_custom_resources_from_state(state: dict[str, Any]) -> dict[str, l
     for p in state.get("providers", []):
         cred_name = p.get("credential_name") or f"{p['name']}-cred"
         sec_name = p.get("secret_name") or f"{p['name']}-secret"
+        vkey = _vendor_settings_key(p.get("vendor", "Generic"))
         custom["aiprovider"].append(
             {
                 "metadata": {
@@ -411,7 +593,7 @@ def _build_k8s_custom_resources_from_state(state: dict[str, Any]) -> dict[str, l
                 "spec": {
                     "tenantRef": {"name": p["tenant"]},
                     "vendor": p["vendor"],
-                    "generic": {"baseURL": p.get("base_url")} if p.get("base_url") else {},
+                    vkey: {"baseURL": p.get("base_url")} if p.get("base_url") else {},
                     "credentialRef": {"name": cred_name},
                     "enabled": p.get("enabled", True),
                 },
@@ -748,6 +930,7 @@ class AiGatewayGovernanceService:
         principals: list[GovernancePrincipalItem] = []
         virtual_keys: list[GovernanceVirtualKeyItem] = []
         readiness_checks: list[AiReadinessCheckItem] = []
+        request_audit_logs: list[ClickHouseRequestAuditItem] = []
         all_nodes: list[dict[str, Any]] = []
         all_edges: list[dict[str, Any]] = []
 
@@ -762,6 +945,7 @@ class AiGatewayGovernanceService:
             principals.extend(GovernancePrincipalItem(**pr) for pr in state["principals"])
             virtual_keys.extend(GovernanceVirtualKeyItem(**vk) for vk in state["virtual_keys"])
             readiness_checks.extend(self._build_readiness_checks(state))
+            request_audit_logs.extend(ClickHouseRequestAuditItem(**log) for log in state.get("request_audit_logs", []))
 
             custom_res = _build_k8s_custom_resources_from_state(state)
             topo = assemble_topology(
@@ -801,6 +985,7 @@ class AiGatewayGovernanceService:
             principals=principals,
             virtual_keys=virtual_keys,
             readiness_checks=readiness_checks,
+            request_audit_logs=request_audit_logs,
             topology_nodes=all_nodes,
             topology_edges=all_edges,
         )
@@ -835,6 +1020,7 @@ class AiGatewayGovernanceService:
             "status_message": "AITenant is ready",
         }
         state["tenants"] = [t for t in state["tenants"] if t["name"] != req.name] + [entity]
+        _save_cluster_state(cid, state)
         return AiGovernanceMutationResponse(
             message=f"AITenant '{req.name}' applied on cluster {cname}",
             cluster_id=cid,
@@ -854,6 +1040,7 @@ class AiGatewayGovernanceService:
 
         cred_name = req.credential_name or f"{req.name}-cred"
         sec_name = req.secret_name or f"{req.name}-secret"
+        vendor_key = _vendor_settings_key(req.vendor)
 
         secret_manifest = {
             "apiVersion": "v1",
@@ -878,7 +1065,7 @@ class AiGatewayGovernanceService:
             "spec": {
                 "tenantRef": {"name": req.tenant},
                 "vendor": req.vendor,
-                **({"generic": {"baseURL": base_url}} if base_url else {}),
+                vendor_key: {"baseURL": base_url} if base_url else {},
                 "credentialRef": {"name": cred_name},
                 "enabled": req.enabled,
             },
@@ -898,6 +1085,7 @@ class AiGatewayGovernanceService:
             "status_message": "AIProvider & AICredential ready",
         }
         state["providers"] = [p for p in state["providers"] if p["name"] != req.name] + [entity]
+        _save_cluster_state(cid, state)
         return AiGovernanceMutationResponse(
             message=f"Secret '{sec_name}', AICredential '{cred_name}', and AIProvider '{req.name}' applied on {cname}",
             cluster_id=cid,
@@ -946,6 +1134,7 @@ class AiGatewayGovernanceService:
             "status_message": f"AIModel is ready ({len(req.deployments)} deployment(s))",
         }
         state["models"] = [m for m in state["models"] if m["name"] != req.name] + [entity]
+        _save_cluster_state(cid, state)
         return AiGovernanceMutationResponse(
             message=f"AIModel '{req.name}' ({req.public_name}) applied on {cname}",
             cluster_id=cid,
@@ -958,6 +1147,22 @@ class AiGatewayGovernanceService:
         cid, cname = targets[0]
         state = _ensure_cluster_seed(cid, cname)
 
+        # BNK 2.4.1 rule: "The listener chooses the tenant" — two tenants cannot share a listener port on the same Gateway
+        for existing in state.get("routes", []):
+            if (
+                existing["name"] != req.name
+                and existing.get("gateway_name") == req.gateway_name
+                and int(existing.get("listener_port", 8080)) == int(req.listener_port)
+                and existing.get("tenant") != req.tenant
+            ):
+                raise ValueError(
+                    f"BNK 2.4.1 listener conflict ('The listener chooses the tenant'): Gateway '{req.gateway_name}' "
+                    f"listener port {req.listener_port} is already bound to AITenant '{existing.get('tenant')}'. "
+                    f"Each Gateway listener serves one tenant; choose a dedicated port (e.g. {int(req.listener_port) + 1}) "
+                    f"for AITenant '{req.tenant}'."
+                )
+
+        listener_name = "http" if int(req.listener_port) == 8080 else f"http-{req.listener_port}"
         route_name = f"{req.name}-route"
         app_pol_name = f"{req.name}-apppolicy"
 
@@ -968,7 +1173,7 @@ class AiGatewayGovernanceService:
             "spec": {
                 "gatewayClassName": "f5-gateway-class",
                 "addresses": [{"type": "IPAddress", "value": req.vip_address}],
-                "listeners": [{"name": "http", "port": req.listener_port, "protocol": "HTTP"}],
+                "listeners": [{"name": listener_name, "port": req.listener_port, "protocol": "HTTP"}],
             },
         }
         hr_manifest = {
@@ -976,8 +1181,13 @@ class AiGatewayGovernanceService:
             "kind": "HTTPRoute",
             "metadata": {"name": route_name, "namespace": req.namespace},
             "spec": {
-                "parentRefs": [{"name": req.gateway_name, "sectionName": "http"}],
-                "rules": [{"matches": [{"path": {"type": "PathPrefix", "value": req.path_prefix}}]}],
+                "parentRefs": [{"name": req.gateway_name, "sectionName": listener_name}],
+                "rules": [
+                    {
+                        "matches": [{"path": {"type": "PathPrefix", "value": req.path_prefix}}],
+                        "timeouts": {"request": "300s", "backendRequest": "300s"},
+                    }
+                ],
             },
         }
         prof_manifest = {
@@ -1031,7 +1241,7 @@ class AiGatewayGovernanceService:
                         "group": "gateway.networking.k8s.io",
                         "kind": "Gateway",
                         "name": req.gateway_name,
-                        "sectionName": "http",
+                        "sectionName": listener_name,
                     }
                 ],
                 "extensionRefs": [
@@ -1050,7 +1260,7 @@ class AiGatewayGovernanceService:
             "cluster_id": cid,
             "cluster_name": cname,
             "gateway_name": req.gateway_name,
-            "listener_name": "http",
+            "listener_name": listener_name,
             "listener_port": req.listener_port,
             "vip_address": req.vip_address,
             "route_name": route_name,
@@ -1064,6 +1274,7 @@ class AiGatewayGovernanceService:
             "failover_on_429": req.failover_on_429,
             "failover_on_5xx": req.failover_on_5xx,
             "prompt_cache_enabled": req.prompt_cache_enabled,
+            "semantic_cache_similarity_threshold": req.semantic_cache_similarity_threshold or 0.92,
             "semantic_cache_pool_max_size": req.semantic_cache_pool_max_size if req.prompt_cache_enabled else None,
             "semantic_cache_pool_idle_timeout": req.semantic_cache_pool_idle_timeout
             if req.prompt_cache_enabled
@@ -1077,11 +1288,47 @@ class AiGatewayGovernanceService:
             "status_message": f"Profile programmed on Gateway {req.gateway_name}:{req.listener_port}",
         }
         state["routes"] = [r for r in state["routes"] if r["name"] != req.name] + [entity]
+        _save_cluster_state(cid, state)
         return AiGovernanceMutationResponse(
             message=f"Gateway Route & AIGatewayProfile '{req.name}' attached via AppPolicy '{app_pol_name}' on {cname}",
             cluster_id=cid,
             manifests_applied=[gw_manifest, hr_manifest, prof_manifest, app_pol_manifest],
             entity=entity,
+        )
+
+    def update_route_policies(
+        self, route_name: str, req: UpdateAiGatewayRoutePoliciesRequest
+    ) -> AiGovernanceMutationResponse:
+        targets = self._target_clusters(cluster_id=req.cluster_id)
+        cid, cname = targets[0]
+        state = _ensure_cluster_seed(cid, cname)
+
+        route = next((r for r in state["routes"] if r["name"] == route_name), None)
+        if not route:
+            raise ValueError(f"AIGatewayProfile '{route_name}' not found on cluster {cname}")
+
+        if req.virtual_keys_enabled is not None:
+            route["virtual_keys_enabled"] = req.virtual_keys_enabled
+        if req.jwt_enabled is not None:
+            route["jwt_enabled"] = req.jwt_enabled
+        if req.failover_enabled is not None:
+            route["failover_enabled"] = req.failover_enabled
+        if req.prompt_cache_enabled is not None:
+            route["prompt_cache_enabled"] = req.prompt_cache_enabled
+            if req.prompt_cache_enabled:
+                route["semantic_cache_pool_max_size"] = req.semantic_cache_pool_max_size or 64
+                route["semantic_cache_pool_idle_timeout"] = req.semantic_cache_pool_idle_timeout or "300s"
+        if req.semantic_cache_similarity_threshold is not None:
+            route["semantic_cache_similarity_threshold"] = req.semantic_cache_similarity_threshold
+        if req.model_routing_enabled is not None:
+            route["model_routing_enabled"] = req.model_routing_enabled
+
+        _save_cluster_state(cid, state)
+        return AiGovernanceMutationResponse(
+            action="update_route_policies",
+            message=f"Updated traffic policies on AIGatewayProfile '{route_name}' on {cname}",
+            cluster_id=cid,
+            entity=route,
         )
 
     def create_org(self, req: CreateGovernanceOrgRequest) -> AiGovernanceMutationResponse:
@@ -1102,6 +1349,7 @@ class AiGatewayGovernanceService:
             "rate_limit_tpm": req.rate_limit_tpm,
         }
         state["orgs"] = [o for o in state["orgs"] if o["id"] != org_id] + [entity]
+        _save_cluster_state(cid, state)
         return AiGovernanceMutationResponse(
             message=f"DSSM Governance Organization '{req.name}' configured on {cname}",
             cluster_id=cid,
@@ -1130,6 +1378,7 @@ class AiGatewayGovernanceService:
             "rate_limit_tpm": req.rate_limit_tpm,
         }
         state["teams"] = [t for t in state["teams"] if t["id"] != team_id] + [entity]
+        _save_cluster_state(cid, state)
         return AiGovernanceMutationResponse(
             message=f"DSSM Governance Team '{req.name}' configured under '{org_name}' on {cname}",
             cluster_id=cid,
@@ -1142,6 +1391,7 @@ class AiGatewayGovernanceService:
         state = _ensure_cluster_seed(cid, cname)
         team = next((t for t in state["teams"] if t["id"] == req.team_id), None)
         team_name = team["name"] if team else req.team_id
+        org_id = team["org_id"] if team else ""
         prin_id = f"prin-{req.name.lower().replace(' ', '-').replace('@', '-')}-{cid}"
         entity = {
             "id": prin_id,
@@ -1150,6 +1400,7 @@ class AiGatewayGovernanceService:
             "role": req.role,
             "team_id": req.team_id,
             "team_name": team_name,
+            "org_id": org_id,
             "tenant": req.tenant,
             "cluster_id": cid,
             "cluster_name": cname,
@@ -1160,6 +1411,7 @@ class AiGatewayGovernanceService:
             "rate_limit_tpm": req.rate_limit_tpm,
         }
         state["principals"] = [p for p in state["principals"] if p["id"] != prin_id] + [entity]
+        _save_cluster_state(cid, state)
         return AiGovernanceMutationResponse(
             message=f"DSSM Principal '{req.name}' ({req.kind}/{req.role}) configured on {cname}",
             cluster_id=cid,
@@ -1172,6 +1424,14 @@ class AiGatewayGovernanceService:
         state = _ensure_cluster_seed(cid, cname)
         prin = next((p for p in state["principals"] if p["id"] == req.principal_id), None)
         prin_name = prin["name"] if prin else req.principal_id
+        prin_type = prin.get("kind", "service") if prin else "service"
+        team = next((t for t in state["teams"] if prin and t["id"] == prin.get("team_id")), None)
+        team_name = (
+            team["name"]
+            if team
+            else (prin.get("team_name", "Platform & Inference Team") if prin else "Platform & Inference Team")
+        )
+        org_name = team.get("org_name", "Core AI Engineering") if team else "Core AI Engineering"
 
         token = secrets.token_hex(16)
         raw_key = f"f5vk_{token}"
@@ -1185,21 +1445,53 @@ class AiGatewayGovernanceService:
             "raw_key": None,
             "principal_id": req.principal_id,
             "principal_name": prin_name,
+            "principal_type": prin_type,
+            "team_name": team_name,
+            "org_name": org_name,
             "tenant": req.tenant,
             "cluster_id": cid,
             "cluster_name": cname,
             "allowed_models": req.allowed_models,
+            "rpm_limit": req.rpm_limit or (prin.get("rate_limit_rpm", 120) if prin else 120),
+            "tpm_limit": req.tpm_limit or (prin.get("rate_limit_tpm", 60000) if prin else 60000),
+            "monthly_budget_usd": req.monthly_budget_usd
+            if req.monthly_budget_usd is not None
+            else (prin.get("monthly_budget_usd", 50.0) if prin else 50.0),
+            "spend_usd": 0.0,
             "status": "active",
             "created_at": _now_iso(),
             "last_used_at": None,
         }
         state["virtual_keys"].insert(0, stored_entity)
-        returned_entity = {**stored_entity, "raw_key": raw_key}
+        _save_cluster_state(cid, state)
+        returned_entity = {**stored_entity, "raw_key": raw_key, "cleartext_key": raw_key}
         return AiGovernanceMutationResponse(
             message=f"Issued DSSM Virtual Key '{req.name}' for principal '{prin_name}' on {cname}",
             cluster_id=cid,
             entity=returned_entity,
         )
+
+    def rotate_virtual_key(self, key_id: str, cluster_id: int | None = None) -> AiGovernanceMutationResponse:
+        targets = self._target_clusters(cluster_id=cluster_id)
+        for cid, cname in targets:
+            state = _ensure_cluster_seed(cid, cname)
+            for vk in state["virtual_keys"]:
+                if vk["id"] == key_id:
+                    token = secrets.token_hex(16)
+                    raw_key = f"f5vk_{token}"
+                    vk["masked_key"] = f"f5vk_{token[:4]}••••••••••••{token[-4:]}"
+                    vk["status"] = "active"
+                    vk["created_at"] = _now_iso()
+                    _save_cluster_state(cid, state)
+                    returned_entity = {**vk, "raw_key": raw_key, "cleartext_key": raw_key}
+                    return AiGovernanceMutationResponse(
+                        action="rotate_virtual_key",
+                        message=f"Rotated DSSM Virtual Key '{vk['name']}' on {cname}",
+                        cluster_id=cid,
+                        entity=returned_entity,
+                    )
+        cid, cname = targets[0]
+        raise ValueError(f"Virtual Key '{key_id}' not found on cluster {cname}")
 
     def revoke_virtual_key(self, key_id: str, cluster_id: int | None = None) -> AiGovernanceMutationResponse:
         targets = self._target_clusters(cluster_id=cluster_id)
@@ -1208,6 +1500,7 @@ class AiGatewayGovernanceService:
             for vk in state["virtual_keys"]:
                 if vk["id"] == key_id:
                     vk["status"] = "revoked"
+                    _save_cluster_state(cid, state)
                     return AiGovernanceMutationResponse(
                         message=f"Revoked Virtual Key '{vk['name']}' on {cname}",
                         cluster_id=cid,
@@ -1230,9 +1523,12 @@ class AiGatewayGovernanceService:
                 r["stuck_profile_bug"] = False
                 r["status_message"] = "Profile programmed on Gateway after controller rollout restart"
             state["stuck_profile_remediated"] = True
+            _save_cluster_state(cid, state)
             return AiGovernanceMutationResponse(
+                action=req.action,
                 message=f"Executed rollout restart of deploy/f5-cne-controller in {req.namespace} on {cname}; AIGatewayProfile Programmed=True",
                 cluster_id=cid,
+                details={"controller": "deploy/f5-cne-controller", "namespace": req.namespace, "programmed": True},
             )
         if req.action == "apply_dns_resolver":
             state["dns_resolver_applied"] = True
@@ -1240,26 +1536,381 @@ class AiGatewayGovernanceService:
                 "apiVersion": "k8s.f5net.com/v1",
                 "kind": "F5BigDnsCache",
                 "metadata": {"name": "aigw-dns-resolver", "namespace": req.namespace},
-                "spec": {"forwardZones": [{"names": ["."], "nameservers": ["kube-system/coredns:53"]}]},
+                "spec": {
+                    "cacheType": "net-resolver",
+                    "ipv4": True,
+                    "ipv6": False,
+                    "netResolver": {
+                        "forwardZones": [
+                            {
+                                "name": ".",
+                                "nameservers": ["10.96.0.10:53", "8.8.8.8:53", "1.1.1.1:53"],
+                            }
+                        ]
+                    },
+                },
             }
+            _save_cluster_state(cid, state)
             return AiGovernanceMutationResponse(
-                message=f"Deployed F5BigDnsCache 'aigw-dns-resolver' in {req.namespace} on {cname}",
+                action=req.action,
+                message=f"Deployed F5BigDnsCache 'aigw-dns-resolver' (cacheType: net-resolver) in {req.namespace} on {cname}",
                 cluster_id=cid,
                 manifests_applied=[manifest],
+                details={"resolver": "aigw-dns-resolver", "cacheType": "net-resolver"},
             )
         if req.action == "enable_numa_spanning":
             state["numa_spanning_enabled"] = True
+            _save_cluster_state(cid, state)
             return AiGovernanceMutationResponse(
+                action=req.action,
                 message=f"Patched CNEInstance TMM_ENFORCE_SINGLE_NUMA_NODE=false in {req.namespace} on {cname}",
                 cluster_id=cid,
+                details={"TMM_ENFORCE_SINGLE_NUMA_NODE": "false"},
             )
         if req.action == "apply_default_egress":
             state["egress_route_applied"] = True
+            static_route_manifest = {
+                "apiVersion": "k8s.f5net.com/v1",
+                "kind": "F5SPKStaticRoute",
+                "metadata": {"name": "llm-egress-route", "namespace": req.namespace},
+                "spec": {
+                    "destination": "0.0.0.0/0",
+                    "netmask": "0.0.0.0",
+                    "gateway": "10.20.2.1",
+                    "vlan": "external-egress",
+                },
+            }
+            net_policy_manifest = {
+                "apiVersion": "k8s.f5net.com/v1",
+                "kind": "F5BigNetPolicy",
+                "metadata": {"name": "llm-egress-snat", "namespace": req.namespace},
+                "spec": {
+                    "egress": {
+                        "snat": {
+                            "type": "automap",
+                            "egressVlan": "external-egress",
+                        }
+                    }
+                },
+            }
+            _save_cluster_state(cid, state)
             return AiGovernanceMutationResponse(
-                message=f"Applied default F5SPKStaticRoute (0.0.0.0/0) in {req.namespace} on {cname}",
+                action=req.action,
+                message=f"Applied F5SPKStaticRoute 'llm-egress-route' (0.0.0.0/0) and F5BigNetPolicy 'llm-egress-snat' in {req.namespace} on {cname}",
                 cluster_id=cid,
+                manifests_applied=[static_route_manifest, net_policy_manifest],
+                details={"staticRoute": "llm-egress-route", "netPolicy": "llm-egress-snat"},
             )
         return AiGovernanceMutationResponse(
+            action=req.action,
             message=f"Executed remediation '{req.action}' on {cname}",
             cluster_id=cid,
+        )
+
+    def test_gateway_request(self, req: GatewayInferenceTestRequest) -> GatewayInferenceTestResponse:
+        """Simulate & validate live inference traffic through BNK 2.4.1 AI Gateway (Step 8: Test and Monitor)."""
+        targets = self._target_clusters(cluster_id=req.cluster_id)
+        cid, cname = targets[0]
+        state = _ensure_cluster_seed(cid, cname)
+
+        routes = state.get("routes", [])
+        route = next((r for r in routes if r["name"] == req.route_name), routes[0] if routes else None)
+        if not route:
+            return GatewayInferenceTestResponse(
+                status_code=503,
+                success=False,
+                route_name=req.route_name,
+                listener_port=8080,
+                tenant="default",
+                model=req.model,
+                troubleshooting_hint="No AIGatewayProfile / HTTPRoute is configured on this cluster.",
+                response_body={"error": {"message": "No AI Gateway route configured", "type": "gateway_error"}},
+            )
+
+        tenant = route.get("tenant", "default")
+        listener_port = int(route.get("listener_port", 8080))
+        path = (req.path or "/v1/chat/completions").strip()
+
+        # Check 1: BNK 2.4.1 Step 8 Troubleshooting — missing /v1 prefix
+        if not path.startswith(route.get("path_prefix", "/v1")):
+            return GatewayInferenceTestResponse(
+                status_code=404,
+                success=False,
+                route_name=route["name"],
+                listener_port=listener_port,
+                tenant=tenant,
+                model=req.model,
+                troubleshooting_hint=(
+                    f"Gateway is working, but request path '{path}' omitted '{route.get('path_prefix', '/v1')}'. "
+                    "Use /v1/models or /v1/chat/completions."
+                ),
+                response_body={"error": {"message": f"No HTTPRoute match for path '{path}'", "code": 404}},
+            )
+
+        # Check 2: Stuck AIGatewayProfile / DNS / Egress readiness
+        if not route.get("programmed", True) or route.get("stuck_profile_bug"):
+            return GatewayInferenceTestResponse(
+                status_code=503,
+                success=False,
+                route_name=route["name"],
+                listener_port=listener_port,
+                tenant=tenant,
+                model=req.model,
+                troubleshooting_hint=(
+                    "AIGatewayProfile reports Programmed=False ('AI profile is not prepared yet'). "
+                    "Use 'Restart f5-cne-controller & Reconcile' in BNK 2.4.1 Diagnostics."
+                ),
+                response_body={"error": {"message": "AI profile is not prepared yet", "code": 503}},
+            )
+
+        # Check 3: Virtual Key Auth & Governance ACL/Budgets
+        matched_vk: dict[str, Any] | None = None
+        if route.get("virtual_keys_enabled", True):
+            vk_token = (req.virtual_key or "").strip()
+            active_keys = [vk for vk in state.get("virtual_keys", []) if vk.get("status") == "active"]
+            matched_vk = next(
+                (
+                    vk
+                    for vk in active_keys
+                    if vk["id"] == vk_token
+                    or vk["name"] == vk_token
+                    or vk["masked_key"] == vk_token
+                    or (vk_token.startswith("f5vk_") and len(vk_token) > 8)
+                ),
+                None,
+            )
+            if not matched_vk:
+                return GatewayInferenceTestResponse(
+                    status_code=401,
+                    success=False,
+                    route_name=route["name"],
+                    listener_port=listener_port,
+                    tenant=tenant,
+                    model=req.model,
+                    troubleshooting_hint=(
+                        "Virtual Key authentication is enabled on AIGatewayProfile, but no active f5vk_... "
+                        "Bearer token was supplied or the key was revoked."
+                    ),
+                    response_body={"error": {"message": "Invalid or revoked DSSM Virtual Key", "code": 401}},
+                )
+
+            if float(matched_vk.get("spend_usd", 0.0)) >= float(matched_vk.get("monthly_budget_usd", 50.0)):
+                return GatewayInferenceTestResponse(
+                    status_code=429,
+                    success=False,
+                    route_name=route["name"],
+                    listener_port=listener_port,
+                    tenant=tenant,
+                    model=req.model,
+                    principal_name=matched_vk.get("principal_name"),
+                    team_name=matched_vk.get("team_name"),
+                    org_name=matched_vk.get("org_name"),
+                    troubleshooting_hint=(
+                        f"Virtual Key '{matched_vk['name']}' exceeded its monthly budget "
+                        f"(${matched_vk.get('spend_usd', 0):.2f} / ${matched_vk.get('monthly_budget_usd', 0):.2f}). "
+                        "DSSM rate/budget limiter rejected with HTTP 429."
+                    ),
+                    response_body={"error": {"message": "DSSM monthly budget exceeded", "code": 429}},
+                )
+
+        # Handle GET /v1/models
+        if req.method.upper() == "GET" or path.rstrip("/").endswith("/models"):
+            tenant_models = [m for m in state.get("models", []) if m.get("tenant") == tenant]
+            allowed = set(matched_vk.get("allowed_models") or []) if matched_vk else set()
+            visible_models = [
+                m for m in tenant_models if not allowed or m.get("public_name") in allowed or m.get("name") in allowed
+            ]
+            return GatewayInferenceTestResponse(
+                status_code=200,
+                success=True,
+                route_name=route["name"],
+                listener_port=listener_port,
+                tenant=tenant,
+                model=req.model,
+                latency_ms=6.4,
+                principal_name=matched_vk.get("principal_name") if matched_vk else None,
+                team_name=matched_vk.get("team_name") if matched_vk else None,
+                org_name=matched_vk.get("org_name") if matched_vk else None,
+                response_body={
+                    "object": "list",
+                    "data": [
+                        {
+                            "id": m.get("public_name") or m["name"],
+                            "object": "model",
+                            "owned_by": tenant,
+                        }
+                        for m in visible_models
+                    ],
+                },
+            )
+
+        # Check Model ACL on Virtual Key
+        if matched_vk and matched_vk.get("allowed_models"):
+            if req.model not in matched_vk["allowed_models"]:
+                return GatewayInferenceTestResponse(
+                    status_code=403,
+                    success=False,
+                    route_name=route["name"],
+                    listener_port=listener_port,
+                    tenant=tenant,
+                    model=req.model,
+                    principal_name=matched_vk.get("principal_name"),
+                    team_name=matched_vk.get("team_name"),
+                    org_name=matched_vk.get("org_name"),
+                    troubleshooting_hint=(
+                        f"Model '{req.model}' is not authorized in Virtual Key '{matched_vk['name']}' "
+                        f"allowed_models ({', '.join(matched_vk['allowed_models'])})."
+                    ),
+                    response_body={
+                        "error": {"message": f"Model '{req.model}' forbidden by Virtual Key ACL", "code": 403}
+                    },
+                )
+
+        # Lookup AIModel in the listener's AITenant
+        model_obj = next(
+            (
+                m
+                for m in state.get("models", [])
+                if m.get("tenant") == tenant and (m.get("public_name") == req.model or m.get("name") == req.model)
+            ),
+            None,
+        )
+        if not model_obj:
+            return GatewayInferenceTestResponse(
+                status_code=404,
+                success=False,
+                route_name=route["name"],
+                listener_port=listener_port,
+                tenant=tenant,
+                model=req.model,
+                troubleshooting_hint=(
+                    f"Model '{req.model}' is not published in AITenant '{tenant}'. "
+                    "Remember: the Gateway listener chooses the AITenant, and AIModel.spec.tenantRef must match."
+                ),
+                response_body={
+                    "error": {"message": f"Model '{req.model}' not found in tenant '{tenant}'", "code": 404}
+                },
+            )
+
+        deployments = model_obj.get("deployments") or []
+        selected_dep = (
+            deployments[0]
+            if deployments
+            else {"provider": "openai-primary", "input_per_mtok": 2500000, "output_per_mtok": 10000000}
+        )
+        failover_triggered = False
+        if req.simulate_primary_failure and route.get("failover_enabled", True) and len(deployments) > 1:
+            selected_dep = deployments[1]
+            failover_triggered = True
+
+        provider_name = selected_dep.get("provider") or selected_dep.get("provider_ref") or "openai-primary"
+
+        # Semantic Cache check
+        cache_key = f"{tenant}:{req.model}:{req.prompt.strip().lower()}"
+        cache_map = state.setdefault("prompt_cache_entries", {})
+        if route.get("prompt_cache_enabled") and cache_key in cache_map and not req.simulate_primary_failure:
+            cache_status = "HIT"
+            latency_ms = 3.9
+            prompt_tokens = max(12, len(req.prompt.split()) * 2)
+            completion_tokens = 64
+            cost_usd = 0.0
+        else:
+            cache_status = "MISS" if route.get("prompt_cache_enabled") else "BYPASS"
+            if route.get("prompt_cache_enabled"):
+                cache_map[cache_key] = _now_iso()
+            latency_ms = 612.0 if failover_triggered else 348.0
+            prompt_tokens = max(12, len(req.prompt.split()) * 2)
+            completion_tokens = 96
+            in_rate = float(selected_dep.get("input_per_mtok", 2500000))
+            out_rate = float(selected_dep.get("output_per_mtok", 10000000))
+            cost_usd = round(
+                (prompt_tokens * in_rate + completion_tokens * out_rate) / 1_000_000_000_000,
+                6,
+            )
+
+        total_tokens = prompt_tokens + completion_tokens
+
+        if matched_vk and cost_usd > 0:
+            matched_vk["spend_usd"] = round(float(matched_vk.get("spend_usd", 0.0)) + cost_usd, 6)
+            matched_vk["last_used_at"] = _now_iso()
+            for o in state.get("orgs", []):
+                if o.get("tenant") == tenant:
+                    o["current_spend_usd"] = round(float(o.get("current_spend_usd", 0.0)) + cost_usd, 6)
+
+        audit_dict = {
+            "request_id": f"req-aigw-{cid}-{secrets.token_hex(3)}",
+            "timestamp": _now_iso(),
+            "cluster_id": cid,
+            "cluster_name": cname,
+            "tenant": tenant,
+            "org_name": matched_vk.get("org_name", "Core AI Engineering") if matched_vk else "Core AI Engineering",
+            "team_name": matched_vk.get("team_name", "Platform & Inference Team")
+            if matched_vk
+            else "Platform & Inference Team",
+            "principal_name": matched_vk.get("principal_name", "anonymous") if matched_vk else "anonymous",
+            "virtual_key_id": matched_vk.get("id", "") if matched_vk else "",
+            "virtual_key_name": matched_vk.get("name", "") if matched_vk else "",
+            "method": "POST",
+            "path": path,
+            "model": req.model,
+            "provider": provider_name,
+            "status_code": 200,
+            "latency_ms": latency_ms,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "cost_usd": cost_usd,
+            "cache_status": cache_status,
+            "failover_used": failover_triggered,
+            "error_reason": None,
+        }
+        state.setdefault("request_audit_logs", []).insert(0, audit_dict)
+        _save_cluster_state(cid, state)
+
+        return GatewayInferenceTestResponse(
+            status_code=200,
+            success=True,
+            route_name=route["name"],
+            listener_port=listener_port,
+            tenant=tenant,
+            model=req.model,
+            selected_provider=provider_name,
+            failover_triggered=failover_triggered,
+            cache_status=cache_status,
+            latency_ms=latency_ms,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+            cost_usd=cost_usd,
+            principal_name=matched_vk.get("principal_name") if matched_vk else None,
+            team_name=matched_vk.get("team_name") if matched_vk else None,
+            org_name=matched_vk.get("org_name") if matched_vk else None,
+            response_body={
+                "id": audit_dict["request_id"],
+                "object": "chat.completion",
+                "model": req.model,
+                "provider": provider_name,
+                "cache_status": cache_status,
+                "failover_used": failover_triggered,
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": (
+                                f"[BNK 2.4.1 AI Gateway -> {provider_name} ({cache_status})] "
+                                f"Routed via Gateway listener :{listener_port} (AITenant '{tenant}')."
+                            ),
+                        },
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": total_tokens,
+                    "estimated_cost_usd": cost_usd,
+                },
+            },
+            audit_record=ClickHouseRequestAuditItem(**audit_dict),
         )

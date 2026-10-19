@@ -187,18 +187,36 @@ export default function SmartLlmRouterPage() {
     null,
   );
 
+  // DSSM Organization, Team, and Principal form states
+  const [newOrgName, setNewOrgName] = useState("");
+  const [newOrgBudget, setNewOrgBudget] = useState("2500");
+  const [newTeamName, setNewTeamName] = useState("");
+  const [newTeamOrgId, setNewTeamOrgId] = useState("");
+  const [newTeamBudget, setNewTeamBudget] = useState("1000");
+  const [newPrincipalName, setNewPrincipalName] = useState("");
+  const [newPrincipalType, setNewPrincipalType] = useState<
+    "user" | "service" | "agent"
+  >("agent");
+  const [newPrincipalTeamId, setNewPrincipalTeamId] = useState("");
+
+  // Polaris Step 8 Live Gateway Inference & Policy Tester state
+  const [testRouteName, setTestRouteName] = useState("");
+  const [testModelId, setTestModelId] = useState("gpt-4o");
+  const [testPath, setTestPath] = useState("/v1/chat/completions");
+  const [testVirtualKey, setTestVirtualKey] = useState("");
+  const [testPrompt, setTestPrompt] = useState(
+    "Summarize BNK 2.4.1 CNEInstance Multi-NUMA and CoreDNS readiness.",
+  );
+  const [testSimulateFailure, setTestSimulateFailure] = useState(false);
+
   useEffect(() => {
     if (urlView) {
       setSelectedSubView(urlView);
-      if (urlView === "overview") {
-        if (selectedClusterId !== null) {
-          setSelectedClusterId(null);
-        }
-      } else if (selectedClusterId === null && clusters.length > 0) {
-        setSelectedClusterId(clusters[0].id);
+      if (urlView === "overview" && selectedClusterId !== null) {
+        setSelectedClusterId(null);
       }
     }
-  }, [urlView, clusters, selectedClusterId, setSelectedClusterId]);
+  }, [urlView, selectedClusterId, setSelectedClusterId]);
 
   const activeViewKey: InferenceViewKey =
     urlView ?? (selectedClusterId === null ? "overview" : selectedSubView);
@@ -219,17 +237,16 @@ export default function SmartLlmRouterPage() {
     next.set("tab", viewKey);
     setSearchParams(next, { replace: true });
     setSelectedSubView(viewKey);
-    if (selectedClusterId === null && clusters.length > 0) {
-      setSelectedClusterId(clusters[0].id);
-    }
   };
 
   const handleClusterScopeChange = (clusterId: number | null) => {
     setSelectedClusterId(clusterId);
     const next = new URLSearchParams(searchParams);
     if (clusterId === null) {
-      next.delete("tab");
-      setSearchParams(next, { replace: true });
+      if (!urlView) {
+        next.delete("tab");
+        setSearchParams(next, { replace: true });
+      }
       return;
     }
     const targetView =
@@ -253,7 +270,11 @@ export default function SmartLlmRouterPage() {
     isLoading: govLoading,
     refetch: refetchGov,
   } = useQuery({
-    queryKey: ["llm-governance-overview", effectiveClusterId, namespace],
+    queryKey: [
+      "llm-governance-overview",
+      selectedClusterId ?? "all",
+      namespace,
+    ],
     queryFn: () =>
       llmObservabilityApi.getGovernanceOverview(
         selectedClusterId ?? undefined,
@@ -266,6 +287,41 @@ export default function SmartLlmRouterPage() {
     namespace,
     { enabled: activeViewKey === "topology" && !!effectiveClusterId },
   );
+
+  // Merge live cluster topology with governance CRD fabric nodes/edges (supports single & multi-cluster)
+  const mergedTopologyNodes = (() => {
+    const map = new Map<
+      string,
+      NonNullable<typeof fabricTopology>["nodes"][number]
+    >();
+    for (const n of (govOverview?.topology_nodes ??
+      []) as unknown as NonNullable<typeof fabricTopology>["nodes"]) {
+      map.set(n.id, n);
+    }
+    if (selectedClusterId !== null) {
+      for (const n of fabricTopology?.nodes ?? []) {
+        map.set(n.id, n);
+      }
+    }
+    return Array.from(map.values());
+  })();
+
+  const mergedTopologyEdges = (() => {
+    const map = new Map<
+      string,
+      NonNullable<typeof fabricTopology>["edges"][number]
+    >();
+    for (const e of (govOverview?.topology_edges ??
+      []) as unknown as NonNullable<typeof fabricTopology>["edges"]) {
+      map.set(e.id, e);
+    }
+    if (selectedClusterId !== null) {
+      for (const e of fabricTopology?.edges ?? []) {
+        map.set(e.id, e);
+      }
+    }
+    return Array.from(map.values());
+  })();
 
   const invalidateGov = () => {
     void queryClient.invalidateQueries({
@@ -349,6 +405,75 @@ export default function SmartLlmRouterPage() {
     },
   });
 
+  const updateRoutePolicyMut = useMutation({
+    mutationFn: (params: {
+      clusterId: number;
+      routeName: string;
+      payload: Parameters<typeof llmObservabilityApi.updateRoutePolicies>[2];
+    }) =>
+      llmObservabilityApi.updateRoutePolicies(
+        params.clusterId,
+        params.routeName,
+        params.payload,
+      ),
+    onSuccess: () => invalidateGov(),
+  });
+
+  const testRequestMut = useMutation({
+    mutationFn: () =>
+      llmObservabilityApi.testGatewayRequest(effectiveClusterId, {
+        route_name: testRouteName || govOverview?.routes[0]?.name || null,
+        model_id: testModelId.trim() || "gpt-4o",
+        prompt: testPrompt.trim(),
+        path: testPath.trim() || "/v1/chat/completions",
+        virtual_key: testVirtualKey.trim() || null,
+        simulate_primary_failure: testSimulateFailure,
+      }),
+    onSuccess: () => invalidateGov(),
+  });
+
+  const createOrgMut = useMutation({
+    mutationFn: () =>
+      llmObservabilityApi.createOrg(effectiveClusterId, {
+        name: newOrgName.trim(),
+        tenant_ref: govOverview?.tenants[0]?.name ?? "enterprise-ai",
+        monthly_budget_usd: Number(newOrgBudget) || 2500,
+      }),
+    onSuccess: () => {
+      setNewOrgName("");
+      invalidateGov();
+    },
+  });
+
+  const createTeamMut = useMutation({
+    mutationFn: () =>
+      llmObservabilityApi.createTeam(effectiveClusterId, {
+        name: newTeamName.trim(),
+        org_id: newTeamOrgId || govOverview?.organizations[0]?.id || "org-1",
+        monthly_budget_usd: Number(newTeamBudget) || 1000,
+        allowed_models: govOverview?.models.map((m) => m.model_id) ?? [
+          "gpt-4o",
+        ],
+      }),
+    onSuccess: () => {
+      setNewTeamName("");
+      invalidateGov();
+    },
+  });
+
+  const createPrincipalMut = useMutation({
+    mutationFn: () =>
+      llmObservabilityApi.createPrincipal(effectiveClusterId, {
+        name: newPrincipalName.trim(),
+        team_id: newPrincipalTeamId || govOverview?.teams[0]?.id || "team-1",
+        principal_type: newPrincipalType,
+      }),
+    onSuccess: () => {
+      setNewPrincipalName("");
+      invalidateGov();
+    },
+  });
+
   const issueKeyMut = useMutation({
     mutationFn: () =>
       llmObservabilityApi.issueVirtualKey(effectiveClusterId, {
@@ -367,6 +492,21 @@ export default function SmartLlmRouterPage() {
     onSuccess: (created) => {
       setNewKeyName("");
       setIssuedCleartextKey(created.cleartext_key ?? null);
+      if (created.cleartext_key) {
+        setTestVirtualKey(created.cleartext_key);
+      }
+      invalidateGov();
+    },
+  });
+
+  const rotateKeyMut = useMutation({
+    mutationFn: (keyId: string) =>
+      llmObservabilityApi.rotateVirtualKey(effectiveClusterId, keyId),
+    onSuccess: (rotated) => {
+      setIssuedCleartextKey(rotated.cleartext_key ?? null);
+      if (rotated.cleartext_key) {
+        setTestVirtualKey(rotated.cleartext_key);
+      }
       invalidateGov();
     },
   });
@@ -612,9 +752,11 @@ export default function SmartLlmRouterPage() {
                       Gateway Fabric Topology
                     </Badge>
                     <span className="text-xs font-semibold text-foreground">
-                      {activeCluster?.name ??
-                        clusters[0]?.name ??
-                        `Cluster ${effectiveClusterId}`}
+                      {selectedClusterId === null
+                        ? `All Clusters (${clusters.length})`
+                        : (activeCluster?.name ??
+                          clusters[0]?.name ??
+                          `Cluster ${effectiveClusterId}`)}
                     </span>
                     <span className="text-xs text-muted-foreground">
                       · Cross-CRD Dependency Fabric in namespace{" "}
@@ -648,8 +790,8 @@ export default function SmartLlmRouterPage() {
 
                 <div className="rounded-lg border border-border bg-card overflow-hidden">
                   <ResourceTopologyGraph
-                    nodes={fabricTopology?.nodes ?? []}
-                    edges={fabricTopology?.edges ?? []}
+                    nodes={mergedTopologyNodes}
+                    edges={mergedTopologyEdges}
                     info={fabricTopology?.info}
                     defaultDomainFilter="ai-gateway"
                     heightClassName="h-[520px]"
@@ -1037,7 +1179,7 @@ export default function SmartLlmRouterPage() {
 
                 <SectionCard
                   title="Active Gateway Routes & AIGatewayProfiles"
-                  description="Includes BNK 2.4.1 Semantic Cache connection pool parameters and AppPolicy bindings"
+                  description="Includes BNK 2.4.1 Semantic Cache connection pool parameters, AppPolicy bindings, and live policy toggles"
                   compact
                 >
                   <Table>
@@ -1052,7 +1194,9 @@ export default function SmartLlmRouterPage() {
                         <TableHead className="text-xs">
                           Semantic Cache Pool (2.4.1)
                         </TableHead>
-                        <TableHead className="text-xs">Features</TableHead>
+                        <TableHead className="text-xs">
+                          Live Policy Toggles
+                        </TableHead>
                         <TableHead className="text-xs">Programmed</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -1091,17 +1235,75 @@ export default function SmartLlmRouterPage() {
                             )}
                           </TableCell>
                           <TableCell className="text-xs">
-                            <div className="flex flex-wrap gap-1">
-                              {r.failover_enabled && (
-                                <Badge variant="secondary" className="text-2xs">
-                                  Failover
-                                </Badge>
-                              )}
-                              {r.model_routing_enabled && (
-                                <Badge variant="secondary" className="text-2xs">
-                                  ModelRouting
-                                </Badge>
-                              )}
+                            <div className="flex flex-wrap gap-1.5">
+                              <Button
+                                size="sm"
+                                variant={
+                                  r.failover_enabled ? "default" : "outline"
+                                }
+                                className="h-6 px-2 text-2xs"
+                                disabled={updateRoutePolicyMut.isPending}
+                                onClick={() =>
+                                  updateRoutePolicyMut.mutate({
+                                    clusterId:
+                                      r.cluster_id || effectiveClusterId,
+                                    routeName: r.name,
+                                    payload: {
+                                      failover_enabled: !r.failover_enabled,
+                                    },
+                                  })
+                                }
+                              >
+                                Failover: {r.failover_enabled ? "ON" : "OFF"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant={
+                                  r.semantic_cache_enabled
+                                    ? "default"
+                                    : "outline"
+                                }
+                                className="h-6 px-2 text-2xs"
+                                disabled={updateRoutePolicyMut.isPending}
+                                onClick={() =>
+                                  updateRoutePolicyMut.mutate({
+                                    clusterId:
+                                      r.cluster_id || effectiveClusterId,
+                                    routeName: r.name,
+                                    payload: {
+                                      semantic_cache_enabled:
+                                        !r.semantic_cache_enabled,
+                                    },
+                                  })
+                                }
+                              >
+                                SemanticCache:{" "}
+                                {r.semantic_cache_enabled ? "ON" : "OFF"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant={
+                                  r.model_routing_enabled
+                                    ? "default"
+                                    : "outline"
+                                }
+                                className="h-6 px-2 text-2xs"
+                                disabled={updateRoutePolicyMut.isPending}
+                                onClick={() =>
+                                  updateRoutePolicyMut.mutate({
+                                    clusterId:
+                                      r.cluster_id || effectiveClusterId,
+                                    routeName: r.name,
+                                    payload: {
+                                      model_routing_enabled:
+                                        !r.model_routing_enabled,
+                                    },
+                                  })
+                                }
+                              >
+                                ModelRouting:{" "}
+                                {r.model_routing_enabled ? "ON" : "OFF"}
+                              </Button>
                             </div>
                           </TableCell>
                           <TableCell className="text-xs">
@@ -1116,6 +1318,135 @@ export default function SmartLlmRouterPage() {
                       ))}
                     </TableBody>
                   </Table>
+                </SectionCard>
+
+                {/* Polaris Step 8: Live Gateway Request & Policy Tester */}
+                <SectionCard
+                  title="Live Gateway Request & Policy Tester (BNK 2.4.1 Step 8)"
+                  description="Verify /v1 path routing, VirtualKey ACL & budget enforcement, Semantic Prompt Cache HIT/MISS, and automatic provider failover with ClickHouse otel.aigw_requests audit attribution"
+                  compact
+                >
+                  <div className="space-y-3 pt-1">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                      <select
+                        aria-label="Test Route"
+                        value={testRouteName}
+                        onChange={(e) => setTestRouteName(e.target.value)}
+                        className="h-8 rounded-md border border-input bg-background px-2 text-xs font-mono"
+                      >
+                        {(govOverview?.routes ?? []).map((r) => (
+                          <option key={r.name} value={r.name}>
+                            {r.name} ({r.vip_address ?? "0.0.0.0"}:{r.port}
+                            {r.path_prefix})
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        aria-label="Test Model"
+                        value={testModelId}
+                        onChange={(e) => setTestModelId(e.target.value)}
+                        className="h-8 rounded-md border border-input bg-background px-2 text-xs font-mono"
+                      >
+                        {(govOverview?.models ?? []).map((m) => (
+                          <option key={m.model_id} value={m.model_id}>
+                            {m.model_id} ({m.name})
+                          </option>
+                        ))}
+                      </select>
+                      <Input
+                        value={testPath}
+                        onChange={(e) => setTestPath(e.target.value)}
+                        placeholder="/v1/chat/completions"
+                        className="h-8 text-xs font-mono"
+                      />
+                      <Input
+                        value={testVirtualKey}
+                        onChange={(e) => setTestVirtualKey(e.target.value)}
+                        placeholder="Optional f5vk_... key (uses active key if blank)"
+                        className="h-8 text-xs font-mono"
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <Input
+                        value={testPrompt}
+                        onChange={(e) => setTestPrompt(e.target.value)}
+                        placeholder="Prompt to send through AI Gateway..."
+                        className="h-8 text-xs flex-1 min-w-[260px]"
+                      />
+                      <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={testSimulateFailure}
+                          onChange={(e) =>
+                            setTestSimulateFailure(e.target.checked)
+                          }
+                        />
+                        <span>Simulate Primary Provider Failure</span>
+                      </label>
+                      <Button
+                        size="sm"
+                        className="h-8 text-xs gap-1.5"
+                        disabled={
+                          !testPrompt.trim() || testRequestMut.isPending
+                        }
+                        onClick={() => testRequestMut.mutate()}
+                      >
+                        <Zap className="h-3.5 w-3.5" />
+                        Send Test Inference
+                      </Button>
+                    </div>
+                    {testRequestMut.data && (
+                      <div className="p-3 rounded-lg border border-border bg-muted/40 space-y-2 text-xs">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge
+                            variant={
+                              testRequestMut.data.status_code === 200
+                                ? "default"
+                                : "destructive"
+                            }
+                            className="text-2xs font-mono"
+                          >
+                            HTTP {testRequestMut.data.status_code}
+                          </Badge>
+                          <Badge
+                            variant="outline"
+                            className="text-2xs font-mono"
+                          >
+                            Provider: {testRequestMut.data.selected_provider}
+                          </Badge>
+                          <Badge
+                            variant={
+                              testRequestMut.data.semantic_cache_status ===
+                              "HIT"
+                                ? "default"
+                                : "secondary"
+                            }
+                            className="text-2xs font-mono"
+                          >
+                            Cache: {testRequestMut.data.semantic_cache_status}
+                          </Badge>
+                          {testRequestMut.data.failover_triggered && (
+                            <Badge variant="secondary" className="text-2xs">
+                              Failover Triggered
+                            </Badge>
+                          )}
+                          <span className="font-mono text-muted-foreground">
+                            {testRequestMut.data.latency_ms}ms ·{" "}
+                            {testRequestMut.data.prompt_tokens}+
+                            {testRequestMut.data.completion_tokens} tok · $
+                            {testRequestMut.data.estimated_cost_usd.toFixed(6)}
+                          </span>
+                          <span className="font-mono text-2xs text-muted-foreground ml-auto">
+                            ClickHouse ID:{" "}
+                            {testRequestMut.data.clickhouse_logged_id}
+                          </span>
+                        </div>
+                        <p className="font-mono text-xs text-foreground">
+                          {testRequestMut.data.response_text}
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </SectionCard>
               </div>
             )}
@@ -1164,6 +1495,148 @@ export default function SmartLlmRouterPage() {
                     </div>
                   </div>
                 )}
+
+                {/* DSSM Hierarchy Provisioning: Organization -> Team -> Principal */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  <SectionCard
+                    title="1. Create Organization"
+                    description="Bind multi-tenant monthly budget & rate limits to an AITenant"
+                    compact
+                  >
+                    <div className="space-y-2 pt-1">
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          value={newOrgName}
+                          onChange={(e) => setNewOrgName(e.target.value)}
+                          placeholder="Org name (e.g. Core Telco)"
+                          className="h-8 text-xs"
+                        />
+                        <Input
+                          value={newOrgBudget}
+                          onChange={(e) => setNewOrgBudget(e.target.value)}
+                          placeholder="Budget USD (2500)"
+                          className="h-8 text-xs font-mono"
+                        />
+                      </div>
+                      <Button
+                        size="sm"
+                        className="w-full h-8 text-xs gap-1.5"
+                        disabled={!newOrgName.trim() || createOrgMut.isPending}
+                        onClick={() => createOrgMut.mutate()}
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        Create Organization
+                      </Button>
+                    </div>
+                  </SectionCard>
+
+                  <SectionCard
+                    title="2. Create Team"
+                    description="Allocate team sub-budgets and model ACLs within an Organization"
+                    compact
+                  >
+                    <div className="space-y-2 pt-1">
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          value={newTeamName}
+                          onChange={(e) => setNewTeamName(e.target.value)}
+                          placeholder="Team name (e.g. RAN Ops)"
+                          className="h-8 text-xs"
+                        />
+                        <select
+                          aria-label="Team Organization"
+                          value={newTeamOrgId}
+                          onChange={(e) => setNewTeamOrgId(e.target.value)}
+                          className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                        >
+                          {(govOverview?.organizations ?? []).map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {o.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={newTeamBudget}
+                          onChange={(e) => setNewTeamBudget(e.target.value)}
+                          placeholder="Team Budget USD (1000)"
+                          className="h-8 text-xs font-mono"
+                        />
+                        <Button
+                          size="sm"
+                          className="h-8 text-xs gap-1.5 shrink-0"
+                          disabled={
+                            !newTeamName.trim() || createTeamMut.isPending
+                          }
+                          onClick={() => createTeamMut.mutate()}
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Create Team
+                        </Button>
+                      </div>
+                    </div>
+                  </SectionCard>
+
+                  <SectionCard
+                    title="3. Create Principal"
+                    description="Register User, Service, or Autonomous AI Agent under a Team"
+                    compact
+                  >
+                    <div className="space-y-2 pt-1">
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          value={newPrincipalName}
+                          onChange={(e) => setNewPrincipalName(e.target.value)}
+                          placeholder="Principal (e.g. ran-agent)"
+                          className="h-8 text-xs"
+                        />
+                        <select
+                          aria-label="Principal Type"
+                          value={newPrincipalType}
+                          onChange={(e) =>
+                            setNewPrincipalType(
+                              e.target.value as "user" | "service" | "agent",
+                            )
+                          }
+                          className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                        >
+                          <option value="agent">Autonomous Agent</option>
+                          <option value="service">Microservice</option>
+                          <option value="user">Human User</option>
+                        </select>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <select
+                          aria-label="Principal Team"
+                          value={newPrincipalTeamId}
+                          onChange={(e) =>
+                            setNewPrincipalTeamId(e.target.value)
+                          }
+                          className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs"
+                        >
+                          {(govOverview?.teams ?? []).map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name} ({t.org_name})
+                            </option>
+                          ))}
+                        </select>
+                        <Button
+                          size="sm"
+                          className="h-8 text-xs gap-1.5 shrink-0"
+                          disabled={
+                            !newPrincipalName.trim() ||
+                            createPrincipalMut.isPending
+                          }
+                          onClick={() => createPrincipalMut.mutate()}
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Create Principal
+                        </Button>
+                      </div>
+                    </div>
+                  </SectionCard>
+                </div>
 
                 <SectionCard
                   title="Issue DSSM Virtual Key (f5vk_...)"
@@ -1298,14 +1771,28 @@ export default function SmartLlmRouterPage() {
                           </TableCell>
                           <TableCell className="text-xs text-right">
                             {vk.status === "active" && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 px-2 text-xs text-destructive hover:text-destructive"
-                                onClick={() => revokeKeyMut.mutate(vk.id)}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-2 text-2xs gap-1"
+                                  title="Rotate Virtual Key in-place"
+                                  disabled={rotateKeyMut.isPending}
+                                  onClick={() => rotateKeyMut.mutate(vk.id)}
+                                >
+                                  <RefreshCw className="h-3 w-3" />
+                                  Rotate
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                                  title="Revoke Virtual Key"
+                                  onClick={() => revokeKeyMut.mutate(vk.id)}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
                             )}
                           </TableCell>
                         </TableRow>
@@ -1398,6 +1885,99 @@ export default function SmartLlmRouterPage() {
                     </Table>
                   </SectionCard>
                 </div>
+
+                {/* ClickHouse otel.aigw_requests Request Audit & Spend Attribution */}
+                <SectionCard
+                  title="ClickHouse Request Audit & Spend Attribution (otel.aigw_requests)"
+                  description="Per-request token usage, micro-USD cost attribution, Semantic Cache HIT/MISS, and failover events"
+                  compact
+                >
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">Audit ID</TableHead>
+                        <TableHead className="text-xs">
+                          Principal &amp; Team
+                        </TableHead>
+                        <TableHead className="text-xs">
+                          Model / Provider
+                        </TableHead>
+                        <TableHead className="text-xs">Path / Status</TableHead>
+                        <TableHead className="text-xs">
+                          Cache &amp; Failover
+                        </TableHead>
+                        <TableHead className="text-xs text-right">
+                          Tokens (In/Out)
+                        </TableHead>
+                        <TableHead className="text-xs text-right">
+                          Cost (USD)
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(govOverview?.request_audit_logs ?? []).map((log) => (
+                        <TableRow key={log.id}>
+                          <TableCell className="text-xs font-mono text-muted-foreground">
+                            {log.id}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            <div className="font-semibold">
+                              {log.principal_name}
+                            </div>
+                            <div className="text-2xs text-muted-foreground">
+                              {log.team_name} · {log.org_name}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-xs font-mono">
+                            <div>{log.model_id}</div>
+                            <div className="text-2xs text-muted-foreground">
+                              {log.provider_name}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-xs font-mono">
+                            <Badge
+                              variant={
+                                log.status_code === 200
+                                  ? "default"
+                                  : "destructive"
+                              }
+                              className="text-2xs mr-1.5"
+                            >
+                              {log.status_code}
+                            </Badge>
+                            {log.path}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            <div className="flex flex-wrap gap-1">
+                              <Badge
+                                variant={
+                                  log.semantic_cache_status === "HIT"
+                                    ? "default"
+                                    : "outline"
+                                }
+                                className="text-2xs font-mono"
+                              >
+                                {log.semantic_cache_status}
+                              </Badge>
+                              {log.failover_triggered && (
+                                <Badge variant="secondary" className="text-2xs">
+                                  Failover
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-xs font-mono text-right">
+                            {log.prompt_tokens.toLocaleString()} /{" "}
+                            {log.completion_tokens.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-xs font-mono text-right">
+                            ${log.cost_usd.toFixed(6)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </SectionCard>
               </div>
             )}
 
