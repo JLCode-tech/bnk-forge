@@ -12,6 +12,7 @@
 import React, { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Network,
   Cpu,
@@ -23,22 +24,28 @@ import {
   ArrowRight,
   Sliders,
   Pause,
+  ShieldCheck,
 } from "lucide-react";
+import { useTopology } from "@/hooks/useTopology";
+import { ResourceTopologyGraph } from "@/components/k8s/ResourceTopologyGraph";
 import type { K8sResource } from "@/types/kubernetes";
 
 interface CNFNetworkGraphProps {
   clusterId?: number | null;
+  namespace?: string;
   dnsApps?: K8sResource[];
   cgnatInstances?: K8sResource[];
   diameterInstances?: K8sResource[];
+  onDescribeResource?: (resource: K8sResource) => void;
 }
 
-type FunctionFilter = "all" | "dns" | "cgnat" | "diameter";
+type FunctionFilter = "all" | "dns" | "cgnat" | "diameter" | "gslb";
+type GraphViewMode = "pipeline" | "fabric";
 
 interface TopologyNode {
   id: string;
   category: "uplink" | "sriov" | "tmm" | "cnf" | "downlink";
-  subCategory?: "dns" | "cgnat" | "diameter" | "core";
+  subCategory?: "dns" | "cgnat" | "diameter" | "gslb" | "core";
   title: string;
   subtitle: string;
   status: "healthy" | "active" | "standby" | "warning";
@@ -60,23 +67,33 @@ interface TopologyNode {
 }
 
 export function CNFNetworkGraph({
-  clusterId: _clusterId,
+  clusterId,
+  namespace = "default",
   dnsApps = [],
   cgnatInstances = [],
   diameterInstances = [],
+  onDescribeResource,
 }: CNFNetworkGraphProps) {
+  const [graphMode, setGraphMode] = useState<GraphViewMode>("pipeline");
+  const [showReferencePipeline, setShowReferencePipeline] = useState(false);
   const [filter, setFilter] = useState<FunctionFilter>("all");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
     "tmm-core",
   );
   const [isLiveTraffic, setIsLiveTraffic] = useState(true);
 
+  const effectiveNs = !namespace || namespace === "all" ? "default" : namespace;
+  const { data: fabricData } = useTopology(clusterId ?? 0, effectiveNs, {
+    enabled: !!clusterId && graphMode === "fabric",
+  });
+
   const hasRealResources =
     dnsApps.length > 0 ||
     cgnatInstances.length > 0 ||
-    diameterInstances.length > 0;
+    diameterInstances.length > 0 ||
+    showReferencePipeline;
 
-  // Construct topology nodes from real deployed resources
+  // Construct topology nodes from real deployed resources & BNK 2.4.1 capabilities
   const nodes: TopologyNode[] = useMemo(() => {
     return [
       // 1. Uplink Stage
@@ -90,9 +107,11 @@ export function CNFNetworkGraph({
         ipCidr: "10.50.10.1/24",
         vlan: 100,
         mtu: 9000,
+        crdKind: "F5SPKStaticRoute",
+        crdName: "egress-default-route",
         stats: { throughput: "28.4 Gbps", pps: "3.8 Mpps", latency: "0.12 ms" },
         details:
-          "Upstream Provider Top-of-Rack BGP router advertising Anycast VIP prefixes and default telco subscriber route.",
+          "Upstream Provider Top-of-Rack BGP router advertising Anycast VIP prefixes and default telco/AI Gateway egress route (F5SPKStaticRoute 0.0.0.0/0).",
       },
       {
         id: "bgp-gw-2",
@@ -109,7 +128,7 @@ export function CNFNetworkGraph({
           "Secondary BGP peer for ECMP uplink distribution and sub-millisecond BFD failure detection.",
       },
 
-      // 2. Physical Acceleration (SR-IOV & DPDK)
+      // 2. Physical Acceleration (SR-IOV, DPDK & BNK 2.4.1 Zero-Trust DPF NICo)
       {
         id: "sriov-vf0",
         category: "sriov",
@@ -121,57 +140,61 @@ export function CNFNetworkGraph({
         vlan: 100,
         mtu: 9000,
         driver: "vfio-pci (DPDK 23.11)",
+        crdKind: "F5SPKVlan",
+        crdName: "external-vlan",
         stats: { throughput: "24.1 Gbps", pps: "3.2 Mpps" },
         details:
           "Direct hardware NIC queue bypass into user-space via SR-IOV Virtual Function with 1GB Hugepage ring buffers.",
       },
       {
-        id: "sriov-vf1",
+        id: "dpf-nico",
         category: "sriov",
-        title: "SR-IOV net2 (vf0_1)",
-        subtitle: "Intel E810 • vfio-pci",
+        title: "Zero-Trust DPF NICo",
+        subtitle: "BNK 2.4.1 • BlueField-3 DPU",
         status: "active",
-        icon: Layers,
+        icon: ShieldCheck,
         ipCidr: "10.50.10.11/24",
         vlan: 101,
         mtu: 9000,
-        driver: "vfio-pci (DPDK 23.11)",
+        driver: "doca-dpf-nico (Zero-Trust)",
         stats: { throughput: "18.5 Gbps", pps: "2.5 Mpps" },
         details:
-          "Secondary SR-IOV interface attached via Multus CNI directly into the TMM packet container.",
+          "BNK 2.4.1 Zero-Trust NVIDIA DOCA DPF NICo hardware offload isolating host tenant traffic from DPU control/data plane rings.",
       },
 
-      // 3. TMM Packet Core
+      // 3. TMM Packet Core (BNK 2.4.1 Multi-NUMA Spanning)
       {
         id: "tmm-core",
         category: "tmm",
         title: "F5 TMM Core Engine",
-        subtitle: "Micro-Kernel Fastpath (6 Cores)",
+        subtitle: "BNK 2.4.1 • Multi-NUMA Spanning",
         status: "active",
         icon: Zap,
-        driver: "TMM 2.4.0-dpdk",
+        driver: "TMM 2.4.1 (TMM_ENFORCE_SINGLE_NUMA_NODE=false)",
+        crdKind: "CNEInstance",
+        crdName: "f5-cne-controller",
         stats: {
           throughput: "42.6 Gbps",
           pps: "5.7 Mpps",
           sessions: "1,420,000",
         },
         details:
-          "High-speed Traffic Management Microkernel running in kernel-bypass mode with dedicated core isolation (isolcpus) and zero-copy packet dispatching.",
+          "BNK 2.4.1 Traffic Management Microkernel running in kernel-bypass mode with Multi-NUMA node spanning (TMM_ENFORCE_SINGLE_NUMA_NODE=false) and AI Gateway Envoy sidecar coupling.",
       },
 
-      // 4. CNF Micro-Engines
+      // 4. CNF Micro-Engines (DNS Express + aigw-dns-resolver, GSLB v1 GA, CGNAT, Diameter)
       {
         id: "cnf-dns",
         category: "cnf",
         subCategory: "dns",
-        title: "DNS Express Engine",
-        subtitle: "In-Memory Ultra-Fast Resolver",
+        title: "DNS Express & AI Resolver",
+        subtitle: "F5BigDnsApp + F5BigDnsCache",
         status: "active",
         icon: Radio,
-        ipCidr: "10.50.10.53:53",
+        ipCidr: "10.50.10.53:53 / 10.96.0.10",
         vlan: 100,
-        crdKind: "F5BigDnsApp",
-        crdName: dnsApps[0]?.metadata?.name ?? "dns-express-default",
+        crdKind: "F5BigDnsCache",
+        crdName: dnsApps[0]?.metadata?.name ?? "aigw-dns-resolver",
         stats: {
           throughput: "4.8 Gbps",
           pps: "820 Kpps",
@@ -179,7 +202,27 @@ export function CNFNetworkGraph({
           latency: "0.04 ms",
         },
         details:
-          "In-memory authoritative DNS fast-path capable of absorbing volumetric DNS floods (NXDOMAIN/DDoS) directly at line rate without consulting backend nameservers.",
+          "In-memory authoritative DNS Express plus BNK 2.4.1 F5BigDnsCache (aigw-dns-resolver) forwarding AI Gateway HTTPS provider hostname lookups to CoreDNS.",
+      },
+      {
+        id: "cnf-gslb",
+        category: "cnf",
+        subCategory: "gslb",
+        title: "Global Server LB (GA v1)",
+        subtitle: "F5BigGslbWideip • Multi-Region",
+        status: "active",
+        icon: Globe,
+        ipCidr: "anycast-vip.k8s.f5.com",
+        crdKind: "F5BigGslbWideip",
+        crdName: "gslb-ai-inference-wideip",
+        stats: {
+          throughput: "3.2 Gbps",
+          pps: "540 Kpps",
+          qps: "145,000 QPS",
+          latency: "0.08 ms",
+        },
+        details:
+          "BNK 2.4.1 GA v1 Global Server Load Balancing (F5BigGslbInstance, F5BigGslbZone, F5BigGslbPool, F5BigGslbWideip) steering multi-cluster traffic by topology and health.",
       },
       {
         id: "cnf-cgnat",
@@ -224,8 +267,8 @@ export function CNFNetworkGraph({
       {
         id: "downlink-core",
         category: "downlink",
-        title: "5G Core UPF / AMF",
-        subtitle: "User Plane & Access Management",
+        title: "5G Core UPF & AI Backends",
+        subtitle: "User Plane & LLM Egress Fabric",
         status: "healthy",
         icon: Network,
         ipCidr: "10.50.20.0/24",
@@ -237,7 +280,7 @@ export function CNFNetworkGraph({
           sessions: "850,000",
         },
         details:
-          "Internal telco core network fabric feeding 5G UPF (User Plane Function) datapaths, SMF control sessions, and internal cluster workloads.",
+          "Internal telco core network fabric feeding 5G UPF datapaths, vLLM/Ollama GPU inference pools, and external HTTPS AI providers via TMM egress.",
       },
     ];
   }, [dnsApps, cgnatInstances, diameterInstances]);
@@ -259,6 +302,49 @@ export function CNFNetworkGraph({
     return nodes.find((n) => n.id === selectedNodeId) ?? nodes[0];
   }, [nodes, selectedNodeId]);
 
+  if (graphMode === "fabric") {
+    return (
+      <div className="flex flex-col h-full bg-background overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-3 border-b border-border bg-card/60">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              CNF Topology Mode:
+            </span>
+            <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
+              <button
+                type="button"
+                onClick={() => setGraphMode("pipeline")}
+                className="px-2.5 py-1 text-xs font-medium rounded-sm text-muted-foreground hover:text-foreground cursor-pointer"
+              >
+                Data Plane Pipeline
+              </button>
+              <button
+                type="button"
+                onClick={() => setGraphMode("fabric")}
+                className="px-2.5 py-1 text-xs font-medium rounded-sm bg-background text-foreground shadow-xs cursor-pointer"
+              >
+                CRD Dependency Fabric
+              </button>
+            </div>
+          </div>
+          <Badge variant="outline" className="text-xs font-mono">
+            BNK 2.4.1 Cross-CRD Reference Graph ({effectiveNs})
+          </Badge>
+        </div>
+        <div className="flex-1 min-h-[540px]">
+          <ResourceTopologyGraph
+            nodes={fabricData?.nodes ?? []}
+            edges={fabricData?.edges ?? []}
+            info={fabricData?.info}
+            defaultDomainFilter="all"
+            heightClassName="h-full min-h-[540px]"
+            onDescribeResource={onDescribeResource ?? (() => undefined)}
+          />
+        </div>
+      </div>
+    );
+  }
+
   if (!hasRealResources) {
     return (
       <div className="flex items-center justify-center h-full p-12 bg-background">
@@ -271,10 +357,27 @@ export function CNFNetworkGraph({
               No Active CNF Pipeline Detected
             </h3>
             <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
-              No F5 CNF resources (DNS Express, CGNAT, or Diameter) are
-              currently deployed on this cluster. Deployed CNF custom resources
-              and their packet pipeline will appear here automatically.
+              No F5 CNF resources (DNS Express, CGNAT, Diameter, or GSLB v1) are
+              currently deployed on this cluster. You can inspect the live
+              namespace CRD Dependency Fabric or preview the BNK 2.4.1 Reference
+              Data Plane Pipeline.
             </p>
+          </div>
+          <div className="flex items-center justify-center gap-2 pt-2">
+            <Button
+              size="sm"
+              variant="default"
+              onClick={() => setGraphMode("fabric")}
+            >
+              Open CRD Dependency Fabric
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowReferencePipeline(true)}
+            >
+              Preview BNK 2.4.1 Pipeline
+            </Button>
           </div>
         </div>
       </div>
@@ -285,9 +388,25 @@ export function CNFNetworkGraph({
     <div className="flex flex-col h-full bg-background overflow-hidden">
       {/* Top Controls Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-3 border-b border-border bg-card/60 backdrop-blur-xs">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5 mr-2">
+            <button
+              type="button"
+              onClick={() => setGraphMode("pipeline")}
+              className="px-2.5 py-1 text-xs font-medium rounded-sm bg-background text-foreground shadow-xs cursor-pointer"
+            >
+              Data Plane Pipeline
+            </button>
+            <button
+              type="button"
+              onClick={() => setGraphMode("fabric")}
+              className="px-2.5 py-1 text-xs font-medium rounded-sm text-muted-foreground hover:text-foreground cursor-pointer"
+            >
+              CRD Dependency Fabric
+            </button>
+          </div>
           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mr-1">
-            Data Plane View:
+            Function Filter:
           </span>
           <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
             <button
@@ -340,6 +459,19 @@ export function CNFNetworkGraph({
             >
               <Server className="h-3 w-3 text-primary" />
               Diameter
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilter("gslb")}
+              className={cn(
+                "px-2.5 py-1 text-xs font-medium rounded-sm transition-colors cursor-pointer flex items-center gap-1.5",
+                filter === "gslb"
+                  ? "bg-background text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Globe className="h-3 w-3 text-amber-400" />
+              GSLB (GA v1)
             </button>
           </div>
         </div>

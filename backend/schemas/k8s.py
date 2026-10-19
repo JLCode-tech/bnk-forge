@@ -42,9 +42,11 @@ class PlatformConstraints(BaseModel):
     privileged_workloads_require_platform_security_binding: bool | None = None
     direct_node_package_mutation_not_supported: bool | None = None
 
+
 # =============================================================================
 # Cluster Responses
 # =============================================================================
+
 
 class BnkClusterConfigSummary(BaseModel):
     id: int
@@ -88,6 +90,7 @@ class BnkClusterMemberAssignResponse(BaseModel):
 
 class ClusterSummary(BaseModel):
     """Single cluster in list response."""
+
     id: int
     name: str
     context: str | None = None
@@ -128,12 +131,14 @@ class ClusterSummary(BaseModel):
 
 class ClusterListResponse(BaseModel):
     """Response for GET /api/k8s/clusters."""
+
     clusters: list[ClusterSummary]
     count: int | None = None
 
 
 class ClusterDetailResponse(BaseModel):
     """Response for GET /api/k8s/clusters/{id}."""
+
     id: int
     name: str
     context: str | None = None
@@ -174,6 +179,7 @@ class ClusterDetailResponse(BaseModel):
 
 class ClusterCreateResponse(BaseModel):
     """Response for POST /api/projects/{id}/k8s/clusters — returns created cluster."""
+
     id: int
     name: str
     context: str | None = None
@@ -191,6 +197,7 @@ class ClusterCreateResponse(BaseModel):
 
 class ClusterOperationResponse(BaseModel):
     """Response for DELETE /api/k8s/clusters/{id} (cluster delete)."""
+
     success: bool = True
     message: str | None = None
     cluster_id: int | None = None
@@ -198,6 +205,7 @@ class ClusterOperationResponse(BaseModel):
 
 class ClusterRefreshResponse(BaseModel):
     """Response for POST /api/k8s/clusters/{id}/refresh-kubeconfig."""
+
     message: str
     cluster_id: int
     cluster_name: str | None = None
@@ -207,6 +215,7 @@ class ClusterRefreshResponse(BaseModel):
 
 class ClusterConnectionTestResponse(BaseModel):
     """Response for POST /api/k8s/clusters/{id}/test."""
+
     success: bool
     message: str
     cluster_name: str | None = None
@@ -221,8 +230,10 @@ class ClusterConnectionTestResponse(BaseModel):
 # Namespace / Node Responses
 # =============================================================================
 
+
 class NamespaceInfo(BaseModel):
     """Single namespace."""
+
     name: str
     status: str | None = None
     labels: dict[str, str] | None = None
@@ -231,6 +242,7 @@ class NamespaceInfo(BaseModel):
 
 class NamespaceListResponse(BaseModel):
     """Response for GET /api/k8s/clusters/{id}/namespaces."""
+
     namespaces: list[NamespaceInfo]
     count: int | None = None
     cluster_id: int
@@ -238,6 +250,7 @@ class NamespaceListResponse(BaseModel):
 
 class NodeCountResponse(BaseModel):
     """Response for GET /api/k8s/clusters/{id}/nodes/count."""
+
     node_count: int
     cluster_id: int
 
@@ -246,8 +259,10 @@ class NodeCountResponse(BaseModel):
 # Resource Responses
 # =============================================================================
 
+
 class K8sResourceItem(BaseModel):
     """Single K8s resource in list responses."""
+
     name: str
     namespace: str | None = None
     kind: str | None = None
@@ -261,6 +276,7 @@ class K8sResourceItem(BaseModel):
 
 class K8sResourceListResponse(BaseModel):
     """Response for GET /api/k8s/clusters/{id}/resources/{type}."""
+
     resources: list[K8sResourceItem]
     resource_type: str
     namespace: str | None = None
@@ -269,6 +285,7 @@ class K8sResourceListResponse(BaseModel):
 
 class K8sResourceOperationResponse(BaseModel):
     """Generic response for resource CRUD operations."""
+
     success: bool = True
     message: str
     resource_name: str | None = None
@@ -361,8 +378,10 @@ class PodRestartResponse(BaseModel):
 # Scan / Adaptive Module Responses
 # =============================================================================
 
+
 class ClusterScanResponse(BaseModel):
     """Response for POST /api/k8s/clusters/{id}/scan."""
+
     success: bool
     message: str
     scan_results: dict[str, Any] | None = None
@@ -386,12 +405,14 @@ class ClusterScanEnvelope(BaseModel):
 # HugePages Deploy (Recommendation Action)
 # =============================================================================
 
+
 class HugePagesDeployRequest(BaseModel):
     """Request body for POST /api/k8s/clusters/{id}/recommendations/hugepages/deploy.
 
     ``size`` drives the per-node 2Mi page count via the F5 BNK sizing table
     (small=1536, medium=3072, large=6144, max=12288).
     """
+
     size: Literal["small", "medium", "large", "max"]
     namespace: str = Field(default="kube-system", max_length=253)
     image: str | None = Field(
@@ -407,6 +428,7 @@ class HugePagesDeployRequest(BaseModel):
 
 class HugePagesDeployResponse(BaseModel):
     """Response for the HugePages deploy action."""
+
     success: bool
     job_name: str
     namespace: str
@@ -423,8 +445,10 @@ class HugePagesDeployResponse(BaseModel):
 # Node Readiness Probe (issue #387 part A — detection only)
 # =============================================================================
 
+
 class NodeReadinessProbeRequest(BaseModel):
     """Request body for POST /api/k8s/clusters/{id}/node-readiness/probe."""
+
     namespace: str = Field(default="kube-system", max_length=253)
     image: str | None = Field(
         default=None,
@@ -439,6 +463,7 @@ class NodeReadinessProbeRequest(BaseModel):
 
 class NodeCniPlugins(BaseModel):
     """Presence of the CNI delegate plugins F5 BNK's data plane requires."""
+
     macvlan: bool = False
     host_device: bool = False
     ipvlan: bool = False
@@ -446,6 +471,7 @@ class NodeCniPlugins(BaseModel):
 
 class NodeReadinessResult(BaseModel):
     """Per-node CNI/core_pattern/hugepages readiness, from the privileged probe."""
+
     node: str
     cni_plugins: NodeCniPlugins
     cni_ok: bool
@@ -457,6 +483,7 @@ class NodeReadinessResult(BaseModel):
 
 class NodeReadinessProbeResponse(BaseModel):
     """Response for POST /api/k8s/clusters/{id}/node-readiness/probe."""
+
     cluster_id: int
     job_name: str
     is_kind: bool
@@ -470,8 +497,10 @@ class NodeReadinessProbeResponse(BaseModel):
 # Resource Type Catalog
 # =============================================================================
 
+
 class ResourceTypeInfo(BaseModel):
     """Single supported resource type."""
+
     name: str
     api_version: str
     kind: str
@@ -481,6 +510,7 @@ class ResourceTypeInfo(BaseModel):
 
 class ResourceTypeListResponse(BaseModel):
     """Response for GET /api/k8s/resource-types."""
+
     resource_types: list[ResourceTypeInfo]
 
 
@@ -509,8 +539,10 @@ class ResourceTypeCatalogResponse(BaseModel):
 # Tunnel Responses
 # =============================================================================
 
+
 class TunnelStatus(BaseModel):
     """SSH tunnel status for a cluster."""
+
     cluster_id: int
     cluster_name: str | None = None
     active: bool = False
@@ -521,6 +553,7 @@ class TunnelStatus(BaseModel):
 
 class TunnelListResponse(BaseModel):
     """Response for GET /api/k8s/tunnels."""
+
     tunnels: list[TunnelStatus]
 
 
@@ -528,14 +561,17 @@ class TunnelListResponse(BaseModel):
 # Connectivity Probe Responses
 # =============================================================================
 
+
 class ConnectivityIcmpResult(BaseModel):
     """ICMP ping result."""
+
     reachable: bool = False
     latency_ms: float | None = None
 
 
 class ConnectivityTcpResult(BaseModel):
     """TCP port probe result."""
+
     open: bool = False
     connect_ms: float | None = None
     port: int | None = None
@@ -543,6 +579,7 @@ class ConnectivityTcpResult(BaseModel):
 
 class ConnectivityK8sApiResult(BaseModel):
     """K8s API /version probe result."""
+
     accessible: bool = False
     version: str | None = None
     status_code: int | None = None
@@ -550,6 +587,7 @@ class ConnectivityK8sApiResult(BaseModel):
 
 class ClusterConnectivityResponse(BaseModel):
     """Response for GET /api/k8s/clusters/{id}/connectivity."""
+
     cluster_id: int
     cluster_name: str
     api_server: str | None = None
@@ -564,6 +602,7 @@ class ClusterConnectivityResponse(BaseModel):
 
 class ConnectivitySummary(BaseModel):
     """Summary counts for batch connectivity check (canonical vocabulary)."""
+
     total: int = 0
     connected: int = 0
     reachable: int = 0
@@ -574,6 +613,7 @@ class ConnectivitySummary(BaseModel):
 
 class BatchConnectivityResponse(BaseModel):
     """Response for GET /api/k8s/clusters/connectivity."""
+
     results: list[ClusterConnectivityResponse]
     summary: ConnectivitySummary
 
@@ -581,6 +621,7 @@ class BatchConnectivityResponse(BaseModel):
 # =============================================================================
 # CRD Discovery (D-018)
 # =============================================================================
+
 
 class CRDInfo(BaseModel):
     """Single discovered CRD, optionally enriched with static registry metadata."""
@@ -613,20 +654,23 @@ class CrdListEnvelope(BaseModel):
 # Topology (D-018 P4)
 # =============================================================================
 
+
 class TopologyNode(BaseModel):
-    """A single node in the topology graph (Service, Pod, or owning workload)."""
+    """A single node in the Dependency Fabric topology graph (Core, Workload, Gateway, AI Gateway, or CNF CRD)."""
 
     id: str
     """Stable unique id: f"{kind}/{namespace}/{name}"."""
     kind: str
-    """Pod | Service | Deployment | StatefulSet | DaemonSet"""
+    """Pod | Service | Deployment | StatefulSet | DaemonSet | Gateway | HTTPRoute | AppPolicy | AIGatewayProfile | AITenant | AIModel | AIProvider | AICredential | Secret | F5SPKVlan | F5BigDnsCache | ..."""
     name: str
     namespace: str
     uid: str | None = None
     severity: str = "unknown"
     """healthy | degraded | unhealthy | unknown"""
+    category: str | None = None
+    """Optional functional domain: core | workloads | gateway-api | ai-gateway | f5-cnf | f5-bnk | config"""
     meta: dict[str, Any] = Field(default_factory=dict)
-    """Free meta bag: phase, ready_replicas, replicas, container_count, etc."""
+    """Free meta bag: phase, ready_replicas, replicas, container_count, references, conditions, etc."""
 
 
 class TopologyEdge(BaseModel):
@@ -638,7 +682,9 @@ class TopologyEdge(BaseModel):
     target: str
     """id of the target TopologyNode."""
     kind: str
-    """'selects' (Service→Pod, animated) | 'owns' (Workload→Pod, static)."""
+    """'selects' | 'owns' | 'routes' | 'attaches' | 'references'."""
+    label: str | None = None
+    """Optional human-readable relationship label (e.g. 'targetRef', 'extensionRef', 'providerRef')."""
 
 
 class TopologyGraphResponse(BaseModel):
@@ -894,10 +940,7 @@ class CisTranslateRequest(BaseModel):
     )
     vs_names: list[str] = Field(
         default_factory=list,
-        description=(
-            "VirtualServer names to translate. "
-            "If empty, all VirtualServers in vs_namespace are translated."
-        ),
+        description=("VirtualServer names to translate. If empty, all VirtualServers in vs_namespace are translated."),
     )
     vs_namespace: str | None = Field(
         default=None,
@@ -906,8 +949,7 @@ class CisTranslateRequest(BaseModel):
     ts_names: list[str] = Field(
         default_factory=list,
         description=(
-            "TransportServer names to translate. "
-            "If empty, all TransportServers in ts_namespace are translated."
+            "TransportServer names to translate. If empty, all TransportServers in ts_namespace are translated."
         ),
     )
     ts_namespace: str | None = Field(

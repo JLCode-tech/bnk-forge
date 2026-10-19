@@ -492,9 +492,11 @@ export default function CNF() {
                 {view === "network-graph" && (
                   <CNFNetworkGraph
                     clusterId={selectedCluster}
+                    namespace={selectedNamespace}
                     dnsApps={dnsApps}
                     cgnatInstances={cgnatInstances}
                     diameterInstances={diameterInstances}
+                    onDescribeResource={handleDescribe}
                   />
                 )}
               </ConnectivityGate>

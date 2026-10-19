@@ -296,9 +296,23 @@ export function K8sCrdExplorerPanel({
         <div className="rounded-lg border border-border bg-card overflow-hidden">
           <div className="px-4 py-2.5 border-b border-border bg-muted/30 text-xs text-muted-foreground flex items-center justify-between">
             <span>
-              CRD Relationship Topology in namespace:{" "}
+              Cross-CRD Dependency Fabric in namespace:{" "}
               <strong className="text-foreground">{topologyNamespace}</strong>
+              <span className="ml-2 text-muted-foreground/80">
+                (AppPolicy → Gateway ↔ HTTPRoute &amp; AIGatewayProfile →
+                AIModel → AIProvider → AICredential → Secret)
+              </span>
             </span>
+            {topologyData && (
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-2xs">
+                  {topologyData.nodes.length} resources
+                </Badge>
+                <Badge variant="outline" className="text-2xs">
+                  {topologyData.edges.length} references
+                </Badge>
+              </div>
+            )}
           </div>
           {topologyLoading ? (
             <div className="space-y-4 p-6">
