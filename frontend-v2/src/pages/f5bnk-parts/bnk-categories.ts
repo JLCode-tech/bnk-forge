@@ -22,8 +22,10 @@ import { bnkResourceCategories } from './bnk-constants';
 export const BNK_CRD_GROUPS = [
   'gateway.networking.k8s.io', // Gateway API — Gateway, HTTPRoute, ReferenceGrant, ...
   'k8s.f5net.com',             // F5 BNK data-plane CRDs (default _f5_resource group)
-  'k8s.f5.com',                // FLO-managed CRDs (CNEInstance, ...)
+  'k8s.f5.com',                // FLO-managed CRDs (CNEInstance, F5EPP, ...)
+  'gateway.k8s.f5.com',        // BNK 2.4 Gateway API & Tenant (Infra, GatewaySettings, EgressGateway, SecPolicy, NetPolicy)
   'gateway.k8s.f5net.com',     // Gateway extensions (BNKSecPolicy, BNKNetPolicy, L4Route)
+  'inference.networking.k8s.io', // AI Gateway (InferencePool, InferenceModelRewrite)
   'fic.f5.com',                // F5 IPAM Controller CRDs (IPAMRange, ...)
 ];
 
@@ -81,7 +83,11 @@ export function buildBnkCategories(crds: CRDInfo[]): BnkCategory[] {
   for (const crd of crds) {
     const rawCategory = crd.category?.toLowerCase() || '';
     const mappedDomain = domainSlugMap[rawCategory] || (curatedNames.has(crd.category ?? '') ? crd.category : undefined);
-    const categoryName = mappedDomain || (curatedNames.has(crd.group) ? crd.group : 'Other');
+    // Unmapped CRDs (internal operator controller CRDs like rabbitmq, fluentd, dwbld, etc.)
+    // are accessible in Kubernetes Explorer (/kubernetes) and should not clutter the curated BNK navigation.
+    if (!mappedDomain) continue;
+
+    const categoryName = mappedDomain;
     const label = crd.display_name ?? crd.kind;
     const key = crd.name;
     const registryKey = crd.kind.toLowerCase();
