@@ -84,7 +84,13 @@ export default function System() {
   useEffect(() => {
     if (urlTab && URL_TAB_REDIRECTS[urlTab]) {
       window.location.replace(URL_TAB_REDIRECTS[urlTab]);
+      return;
     }
+    const resolved =
+      urlTab && (VALID_TABS as readonly string[]).includes(urlTab)
+        ? urlTab
+        : "monitor";
+    setActiveTab(resolved);
   }, [urlTab]);
 
   const handleTabChange = (tab: string) => {

@@ -66,10 +66,15 @@ export default function Infrastructure() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const urlView = searchParams.get("tab") as InfraView | null;
-  const initialView: InfraView =
-    urlView && VALID_VIEWS.includes(urlView) ? urlView : "dpus";
+  const resolveView = (view: InfraView | null): InfraView =>
+    view && VALID_VIEWS.includes(view) ? view : "topology";
 
-  const [activeView, setActiveView] = useState<InfraView>(initialView);
+  const [activeView, setActiveView] = useState<InfraView>(() =>
+    resolveView(urlView),
+  );
+  useEffect(() => {
+    setActiveView(resolveView(urlView));
+  }, [urlView]);
   const dpfClusterParam = searchParams.get("cluster");
   const selectedClusterId = dpfClusterParam
     ? Number(dpfClusterParam)
@@ -122,7 +127,7 @@ export default function Infrastructure() {
     (view: string) => {
       const v = VALID_VIEWS.includes(view as InfraView)
         ? (view as InfraView)
-        : "dpus";
+        : "topology";
       setActiveView(v);
       const next = new URLSearchParams(searchParams);
       next.set("tab", v);

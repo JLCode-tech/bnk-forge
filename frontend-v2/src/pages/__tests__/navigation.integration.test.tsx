@@ -204,7 +204,7 @@ describe("Navigation Integration", () => {
         { route: "/catalog", title: "Catalog & Blueprints" },
         { route: "/stacks", title: "Blueprints" },
         { route: "/access-methods", title: "Credentials & Registries" },
-        { route: "/auth-templates", title: "Auth & SSO" },
+        { route: "/auth-templates", title: "Credentials & Registries" },
         { route: "/users", title: "Users" },
         { route: "/projects/42", title: "Workspaces" },
         { route: "/benchmarks", title: "Benchmarks" },

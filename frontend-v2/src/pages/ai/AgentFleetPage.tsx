@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQueries } from "@tanstack/react-query";
 import {
   Bot,
@@ -73,7 +74,24 @@ interface FleetAgent {
   cardJson: Record<string, unknown>;
 }
 
+type AgentFleetTab =
+  | "fleet"
+  | "discovery"
+  | "templates"
+  | "irules"
+  | "reference";
+
+function resolveAgentFleetTab(raw: string | null): AgentFleetTab {
+  if (raw === "scanner" || raw === "discovery") return "discovery";
+  if (raw === "templates") return "templates";
+  if (raw === "irules") return "irules";
+  if (raw === "protocol" || raw === "reference") return "reference";
+  return "fleet";
+}
+
 export default function AgentFleetPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlTab = resolveAgentFleetTab(searchParams.get("tab"));
   const { refresh, isRefreshing } = usePageRefresh([
     ["k8s", "clusters"],
     ["llm-observability"],
@@ -91,7 +109,23 @@ export default function AgentFleetPage() {
     "all" | "active" | "throttled"
   >("all");
   const [selectedAgent, setSelectedAgent] = useState<FleetAgent | null>(null);
-  const [activeTab, setActiveTab] = useState("fleet");
+  const [activeTab, setActiveTab] = useState<AgentFleetTab>(urlTab);
+
+  useEffect(() => {
+    setActiveTab(urlTab);
+  }, [urlTab]);
+
+  const handleTabChange = (nextTab: string) => {
+    const valid = resolveAgentFleetTab(nextTab);
+    setActiveTab(valid);
+    const next = new URLSearchParams(searchParams);
+    if (valid === "fleet") {
+      next.delete("tab");
+    } else {
+      next.set("tab", valid);
+    }
+    setSearchParams(next, { replace: true });
+  };
 
   // Query live discovered agents via A2A endpoint across active cluster scope
   const targetClusterIds = useMemo(() => {
@@ -242,7 +276,7 @@ export default function AgentFleetPage() {
   return (
     <Tabs
       value={activeTab}
-      onValueChange={setActiveTab}
+      onValueChange={handleTabChange}
       orientation="vertical"
       className="flex min-h-[calc(100vh-3rem)]"
     >

@@ -6,7 +6,7 @@
  * Provider Usage (cost/tokens/latency, provider inferred from model).
  * Dashboard hooks are gated on the active tab so inactive tabs don't hit Loki.
  */
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 // eslint-disable-next-line no-restricted-imports -- Vertical flush sub-sidebar requires Radix TabsList + TabsTrigger
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -85,10 +85,6 @@ const requestSeriesColor = (name: string): string =>
 const LLM_REFRESH_KEYS = [["llm-observability"]] as const;
 
 export default function LlmDashboard() {
-  useEffect(() => {
-    document.title = "Token Governance and Intelligence | BNK-Forge";
-  }, []);
-
   const f = useObservabilityFilters("overview");
   const { data: clustersData } = useAllClusters();
   const clusters = clustersData?.clusters ?? [];
@@ -337,7 +333,12 @@ export default function LlmDashboard() {
           />
         </TabsContent>
         <TabsContent value="chargeback" className="mt-0">
-          <ChargebackTab />
+          <ChargebackTab
+            clusterId={f.clusterId}
+            scopeName={scopeName}
+            params={f.queryParams}
+            active={f.tab === "chargeback"}
+          />
         </TabsContent>
         <TabsContent value="rankings" className="mt-0">
           <RankingsTab
@@ -797,169 +798,97 @@ function ProviderCard({
 // FinOps Chargeback & In-Line Quota Enforcement Tab
 // ============================================================================
 
-interface ChargebackItem {
-  id: string;
-  agentName: string;
-  clusterId: number;
-  clusterName: string;
-  tenant: string;
-  costCenter: string;
-  monthlyBudget: number;
-  currentSpend: number;
-  tokensProcessed: number;
-  cacheHitPct: number;
-  status: "enforcing" | "active";
-  targetPool: string;
-  primaryModel: string;
+interface ChargebackTabProps extends TabProps {
+  scopeName: string;
 }
 
-const DEMO_CHARGEBACK: ChargebackItem[] = [
-  {
-    id: "cb-1",
-    agentName: "claims-processor-v2",
-    clusterId: 1,
-    clusterName: "aws-us-east-1-prod",
-    tenant: "Claims Automation",
-    costCenter: "CC-4010-INS",
-    monthlyBudget: 5000,
-    currentSpend: 3420,
-    tokensProcessed: 14200000,
-    cacheHitPct: 81.4,
-    status: "active",
-    targetPool: "vllm-llama-70b-pool",
-    primaryModel: "Llama-3.3-70B",
-  },
-  {
-    id: "cb-2",
-    agentName: "customer-support-bot",
-    clusterId: 1,
-    clusterName: "aws-us-east-1-prod",
-    tenant: "Customer Success",
-    costCenter: "CC-1020-CS",
-    monthlyBudget: 2500,
-    currentSpend: 1180,
-    tokensProcessed: 8900000,
-    cacheHitPct: 76.5,
-    status: "active",
-    targetPool: "vllm-mistral-pool",
-    primaryModel: "Mistral-Large-2407",
-  },
-  {
-    id: "cb-3",
-    agentName: "dev-copilot-internal",
-    clusterId: 2,
-    clusterName: "azure-eastus2-prod",
-    tenant: "Engineering Platform",
-    costCenter: "CC-9000-ENG",
-    monthlyBudget: 1000,
-    currentSpend: 1024,
-    tokensProcessed: 3200000,
-    cacheHitPct: 64.2,
-    status: "enforcing",
-    targetPool: "vllm-qwen-coder-pool",
-    primaryModel: "Qwen-2.5-Coder-32B",
-  },
-  {
-    id: "cb-4",
-    agentName: "finance-bi-synthesizer",
-    clusterId: 2,
-    clusterName: "azure-eastus2-prod",
-    tenant: "Corporate Finance",
-    costCenter: "CC-3050-FIN",
-    monthlyBudget: 4000,
-    currentSpend: 2150,
-    tokensProcessed: 9600000,
-    cacheHitPct: 88.0,
-    status: "active",
-    targetPool: "vllm-llama-70b-pool",
-    primaryModel: "Llama-3.3-70B",
-  },
-  {
-    id: "cb-5",
-    agentName: "incident-triage-director",
-    clusterId: 3,
-    clusterName: "gke-us-central1-prod",
-    tenant: "SRE & Operations",
-    costCenter: "CC-7020-OPS",
-    monthlyBudget: 3000,
-    currentSpend: 1420,
-    tokensProcessed: 5400000,
-    cacheHitPct: 84.1,
-    status: "active",
-    targetPool: "vllm-llama-70b-pool",
-    primaryModel: "Llama-3.3-70B",
-  },
-];
+function ChargebackTab({
+  clusterId,
+  scopeName,
+  params,
+  active,
+}: ChargebackTabProps) {
+  const { data: rankingsData, isLoading } = useLlmRankings(
+    clusterId,
+    params,
+    active,
+  );
+  const { data: statsData } = useLlmStats(clusterId, params);
 
-// DEMO_CHARGEBACK is illustrative (no chargeback API yet), so it is shown
-// unfiltered and labelled as demo data rather than filtered by fake cluster ids.
-function ChargebackTab() {
-  const items = DEMO_CHARGEBACK;
+  const rows = useMemo(() => {
+    const r = [...(rankingsData?.rows ?? [])];
+    return r.sort((a, b) => b.cost - a.cost || b.tokens - a.tokens);
+  }, [rankingsData?.rows]);
 
-  const totalBudget = items.reduce((acc, c) => acc + c.monthlyBudget, 0);
-  const totalSpend = items.reduce((acc, c) => acc + c.currentSpend, 0);
-  const totalTokens = items.reduce((acc, c) => acc + c.tokensProcessed, 0);
-  const overallPct =
-    totalBudget > 0 ? Math.round((totalSpend / totalBudget) * 100) : 0;
-  const throttledCount = items.filter(
-    (c) => c.status === "enforcing" || c.currentSpend >= c.monthlyBudget,
-  ).length;
+  if (isLoading) return <Skeleton className="h-64 w-full" />;
+
+  const available = rankingsData?.available ?? false;
+  const totalSpend = rows.reduce((acc, r) => acc + r.cost, 0);
+  const totalTokens = rows.reduce((acc, r) => acc + r.tokens, 0);
+  const totalRequests = rows.reduce((acc, r) => acc + r.requests, 0);
+  const degradedCount = rows.filter((r) => r.success_rate < 0.95).length;
+  const overallSuccessRate =
+    statsData?.available && statsData.total_requests > 0
+      ? fmtPct(statsData.success_rate)
+      : rows.length > 0 && totalRequests > 0
+        ? fmtPct(
+            rows.reduce((acc, r) => acc + r.success_rate * r.requests, 0) /
+              totalRequests,
+          )
+        : "—";
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-muted-foreground">
-        <Badge variant="warning" className="text-2xs">
-          Demo data
-        </Badge>
-        Illustrative chargeback model — not connected to live billing or quota
-        enforcement.
-      </div>
       {/* FinOps Stat Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <SectionCard compact className="border-border">
-          <span className="label-caps block">Allocated Budget</span>
+          <span className="label-caps block">Active Model Workloads</span>
           <div className="flex items-baseline gap-2 mt-1">
             <span className="text-xl font-bold tabular-nums text-foreground">
-              ${totalBudget.toLocaleString()}
+              {available ? rows.length : "—"}
             </span>
             <span className="text-xs text-muted-foreground">
-              across {items.length} workloads
+              {available
+                ? `${fmtInt(totalRequests)} requests`
+                : "No live telemetry"}
             </span>
           </div>
           <p className="text-2xs text-muted-foreground mt-0.5">
-            Enforced in-line at BNK Gateway ingress
+            Scoped to {scopeName}
           </p>
         </SectionCard>
 
         <SectionCard compact className="border-border">
-          <span className="label-caps block">Spend to Date (MTD)</span>
+          <span className="label-caps block">Total Spend (Selected Range)</span>
           <div className="flex items-baseline gap-2 mt-1">
             <span className="text-xl font-bold tabular-nums text-foreground">
-              ${totalSpend.toLocaleString()}
+              {available ? fmtCost(totalSpend) : "—"}
             </span>
             <span className="text-xs font-semibold text-primary tabular-nums">
-              ({overallPct}% Consumed)
+              {available && rows.length > 0
+                ? `across ${rows.length} models`
+                : "0 active models"}
             </span>
           </div>
-          <div className="mt-1.5">
-            <Progress value={overallPct} className="h-1" />
-          </div>
+          <p className="text-2xs text-muted-foreground mt-0.5">
+            Computed from live gateway token telemetry
+          </p>
         </SectionCard>
 
         <SectionCard compact className="border-border">
           <span className="label-caps block">
-            Tokens Processed &amp; Cache Hit
+            Tokens Processed &amp; Success Rate
           </span>
           <div className="flex items-baseline gap-2 mt-1">
             <span className="text-xl font-bold tabular-nums text-foreground">
-              {fmtCompact(totalTokens)}
+              {available ? fmtCompact(totalTokens) : "—"}
             </span>
             <span className="text-xs text-success font-semibold tabular-nums">
-              78.2% Cache Hit
+              {overallSuccessRate} Success
             </span>
           </div>
           <p className="text-2xs text-muted-foreground mt-0.5">
-            Zero re-compute cost on warm prompt prefixes
+            Live request completion across {scopeName}
           </p>
         </SectionCard>
       </div>
@@ -969,11 +898,10 @@ function ChargebackTab() {
         <div className="p-3 border-b border-border bg-muted/20 flex flex-wrap items-center justify-between gap-2">
           <div>
             <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider">
-              Tenant &amp; Workload Cost Attribution
+              Model &amp; Provider Cost Attribution
             </h3>
             <p className="text-2xs text-muted-foreground">
-              In-line token quotas and cost-center allocations enforced by F5
-              BNK.
+              Live token consumption and spend attribution enforced by F5 BNK.
             </p>
           </div>
           <Badge
@@ -981,9 +909,11 @@ function ChargebackTab() {
             className="text-2xs font-mono gap-1 border-border"
           >
             <ShieldCheck className="h-3 w-3 text-success" />
-            {throttledCount > 0
-              ? `${throttledCount} In-Line 429 Throttle Active`
-              : "All Quotas Within Limit"}
+            {!available
+              ? "Telemetry Unavailable"
+              : degradedCount > 0
+                ? `${degradedCount} Model(s) Below 95% Success`
+                : "All Models Healthy"}
           </Badge>
         </div>
 
@@ -991,110 +921,100 @@ function ChargebackTab() {
           <TableHeader>
             <TableRow className="hover:bg-transparent bg-muted/40">
               <TableHead className="text-xs font-semibold">
-                Workload / Agent
+                Model Workload
               </TableHead>
-              <TableHead className="text-xs font-semibold">
-                Tenant &amp; Cost Center
-              </TableHead>
-              <TableHead className="text-xs font-semibold">Cluster</TableHead>
-              <TableHead className="text-xs font-semibold">
-                InferencePool
+              <TableHead className="text-xs font-semibold">Provider</TableHead>
+              <TableHead className="text-xs font-semibold">Scope</TableHead>
+              <TableHead className="text-xs font-semibold text-right">
+                Requests
               </TableHead>
               <TableHead className="text-xs font-semibold text-right">
                 Tokens
               </TableHead>
               <TableHead className="text-xs font-semibold text-right">
-                Cache Hit
+                Avg Latency
               </TableHead>
               <TableHead className="text-xs font-semibold w-[160px]">
-                Budget &amp; Spend (MTD)
+                Spend Share
               </TableHead>
               <TableHead className="text-xs font-semibold">Status</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody className="text-xs">
-            {items.length === 0 ? (
+            {!available || rows.length === 0 ? (
               <TableRow>
                 <TableCell
                   colSpan={8}
                   className="h-24 text-center text-xs text-muted-foreground"
                 >
-                  No workloads found for the selected cluster.
+                  {rankingsData?.errors?.rankings ||
+                    "No live token spend or workload attribution recorded for the selected scope and time range."}
                 </TableCell>
               </TableRow>
             ) : (
-              items.map((row) => {
-                const pct = Math.round(
-                  (row.currentSpend / row.monthlyBudget) * 100,
-                );
-                const isThrottled = row.status === "enforcing" || pct >= 100;
+              rows.map((row) => {
+                const sharePct =
+                  totalSpend > 0
+                    ? Math.round((row.cost / totalSpend) * 100)
+                    : 0;
+                const isDegraded = row.success_rate < 0.95;
 
                 return (
-                  <TableRow key={row.id} className="hover:bg-muted/30">
+                  <TableRow key={row.model} className="hover:bg-muted/30">
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-1.5">
                         <Bot className="h-3.5 w-3.5 text-primary shrink-0" />
-                        <span className="font-mono text-sm">
-                          {row.agentName}
-                        </span>
+                        <span className="font-mono text-sm">{row.model}</span>
                       </div>
                     </TableCell>
 
                     <TableCell>
-                      <div>{row.tenant}</div>
-                      <code className="text-2xs text-muted-foreground font-mono">
-                        {row.costCenter}
-                      </code>
-                    </TableCell>
-
-                    <TableCell>
-                      <span className="font-mono text-2xs text-muted-foreground">
-                        {row.clusterName}
+                      <span className="uppercase font-mono text-2xs text-muted-foreground">
+                        {row.provider}
                       </span>
                     </TableCell>
 
                     <TableCell>
-                      <code className="text-2xs font-mono font-medium">
-                        {row.targetPool}
-                      </code>
-                      <div className="text-2xs text-muted-foreground">
-                        {row.primaryModel}
-                      </div>
+                      <span className="font-mono text-2xs text-muted-foreground">
+                        {scopeName}
+                      </span>
                     </TableCell>
 
                     <TableCell className="text-right font-mono">
-                      {fmtCompact(row.tokensProcessed)}
+                      {fmtInt(row.requests)}
                     </TableCell>
 
-                    <TableCell className="text-right">
-                      <Badge variant="success" className="text-2xs font-mono">
-                        {row.cacheHitPct}%
-                      </Badge>
+                    <TableCell className="text-right font-mono">
+                      {fmtCompact(row.tokens)}
+                    </TableCell>
+
+                    <TableCell className="text-right font-mono">
+                      {fmtLatencyMs(row.avg_latency_ms)}
                     </TableCell>
 
                     <TableCell>
                       <div className="space-y-1">
                         <div className="flex justify-between text-2xs font-mono">
-                          <span>${row.currentSpend.toLocaleString()}</span>
+                          <span>{fmtCost(row.cost)}</span>
                           <span className="text-muted-foreground">
-                            / ${row.monthlyBudget.toLocaleString()}
+                            {sharePct}%
                           </span>
                         </div>
                         <Progress
-                          value={Math.min(pct, 100)}
-                          className={`h-1 ${isThrottled ? "[&>div]:bg-warning" : ""}`}
+                          value={Math.min(sharePct, 100)}
+                          className={`h-1 ${isDegraded ? "[&>div]:bg-warning" : ""}`}
                         />
                       </div>
                     </TableCell>
 
                     <TableCell>
-                      {isThrottled ? (
+                      {isDegraded ? (
                         <Badge variant="warning" className="text-2xs font-mono">
-                          429 Throttled
+                          {fmtPct(row.success_rate)} OK
                         </Badge>
                       ) : (
                         <Badge variant="success" className="text-2xs font-mono">
-                          Active (OK)
+                          {fmtPct(row.success_rate)} OK
                         </Badge>
                       )}
                     </TableCell>

@@ -59,7 +59,10 @@ export default function Catalog() {
   if (
     urlTab === "bfb-images" ||
     urlTab === "doca-images" ||
-    urlTab === "doca-releases"
+    urlTab === "doca-releases" ||
+    urlTab === "system" ||
+    urlTab === "dpu-images" ||
+    urlTab === "pxe-images"
   ) {
     resolvedTab = "system-images";
     initialSystemSubTab = "doca";

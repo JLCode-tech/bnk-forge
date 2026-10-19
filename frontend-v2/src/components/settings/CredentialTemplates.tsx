@@ -1103,8 +1103,8 @@ export default function CredentialTemplates() {
     <SectionCard title="Cloud Credential Templates">
       <p className="text-sm text-muted-foreground -mt-1 mb-6">
         Cloud provider credentials (AWS, GCP, Azure, IBM Cloud) for
-        cloud-managed projects. For on-prem/SSH access, select SSH Credentials
-        from the section menu.
+        cloud-managed projects. For on-prem/SSH access, select SSH Access from
+        the section menu.
       </p>
       <div className="space-y-6">
         <div className="flex items-center gap-2">

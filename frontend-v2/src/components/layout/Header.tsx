@@ -1,4 +1,4 @@
-import { useState, useContext } from "react";
+import { useState, useContext, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -71,7 +71,7 @@ function findNavMatch(pathname: string): RouteHandle | null {
     const matchedItem = section.items.find(
       (item) =>
         item.href === pathname ||
-        (item.href !== "/" && pathname.startsWith(item.href)),
+        (item.matchPaths?.includes(pathname) ?? false),
     );
     if (matchedItem) {
       return {
@@ -465,11 +465,22 @@ export function Header() {
   const { isUpgrading, upgradePhaseLabel } = useUpgradeStatus();
 
   const currentPage = useHeaderMetadata();
+  useEffect(() => {
+    document.title = currentPage.title
+      ? `${currentPage.title} | BNK Forge`
+      : "BNK Forge";
+  }, [currentPage.title]);
   const parentBreadcrumbs = currentPage.breadcrumbs.filter(
     (crumb, index) =>
       index < currentPage.breadcrumbs.length - 1 ||
       crumb.label !== currentPage.title,
   );
+  const lastBreadcrumb =
+    currentPage.breadcrumbs[currentPage.breadcrumbs.length - 1];
+  const titleHref =
+    lastBreadcrumb?.label === currentPage.title
+      ? lastBreadcrumb.href
+      : undefined;
 
   return (
     <header className="border-b bg-card">
@@ -492,7 +503,7 @@ export function Header() {
           </Badge>
           {location.pathname !== "/system" && (
             <Link
-              to="/system?tab=overview"
+              to="/system?tab=monitor"
               className="ml-2 text-xs underline underline-offset-2 opacity-80 hover:opacity-100"
             >
               View progress
@@ -522,7 +533,16 @@ export function Header() {
             </div>
           ))}
           <h2 className="text-sm font-semibold text-foreground">
-            {currentPage.title}
+            {titleHref ? (
+              <Link
+                to={titleHref}
+                className="hover:text-primary transition-colors"
+              >
+                {currentPage.title}
+              </Link>
+            ) : (
+              currentPage.title
+            )}
           </h2>
         </div>
 

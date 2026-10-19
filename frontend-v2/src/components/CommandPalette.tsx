@@ -11,31 +11,46 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 import {
-  LayoutDashboard,
   FolderGit2,
   Package,
   Rocket,
-  Settings,
   Plus,
   Activity,
-  Globe,
-  Server,
-  History,
-  Shield,
-  HardDrive,
-  KeyRound,
-  Cpu,
-  Bot,
-  TrendingUp,
-  Zap,
-  BarChart3,
-  Users,
-  Lock,
   type LucideIcon,
 } from "lucide-react";
+import { navigationSections } from "@/components/layout/nav-sections";
 import { useProjects } from "@/hooks/useProjects";
 import { useDeployments } from "@/hooks/useDeployments";
+import { useAuthStore } from "@/stores/authStore";
 import { DISPLAY_LIMITS } from "@/lib/constants";
+import type { UserRole } from "@/types";
+
+const ROLE_LEVEL: Record<UserRole, number> = {
+  admin: 3,
+  operator: 2,
+  viewer: 1,
+};
+
+const NAV_SHORTCUTS: Record<string, string> = {
+  "/": "⌘D",
+  "/projects": "⌘P",
+  "/catalog": "⌘M",
+  "/tasks": "⌘E",
+  "/fleet": "G F",
+  "/kubernetes": "G K",
+  "/bnk": "G B",
+  "/cnf": "G C",
+  "/crds": "G R",
+  "/infrastructure": "G I",
+  "/benchmarks": "G E",
+  "/ai/mcp-gateway": "G G",
+  "/ai/agents": "G N",
+  "/ai/llm-router": "G L",
+  "/ai/logs": "G Y",
+  "/access-methods": "G A",
+  "/users": "G U",
+  "/system": "G S",
+};
 
 interface CommandPaletteProps {
   open: boolean;
@@ -44,6 +59,7 @@ interface CommandPaletteProps {
 
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const navigate = useNavigate();
+  const user = useAuthStore((s) => s.user);
   const { data: projects } = useProjects();
   const { data: deployments } = useDeployments();
   const [search, setSearch] = useState("");
@@ -78,129 +94,32 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     },
   ];
 
-  // Navigation items aligned with the 4-domain taxonomy
-  const navigationItems = [
-    {
-      id: "overview",
-      label: "Overview",
-      icon: LayoutDashboard,
-      shortcut: "⌘D",
-      action: () => navigate("/"),
-    },
-    {
-      id: "projects",
-      label: "Workspaces",
-      icon: FolderGit2,
-      shortcut: "⌘P",
-      action: () => navigate("/projects"),
-    },
-    {
-      id: "catalog",
-      label: "Catalog & Blueprints",
-      icon: Package,
-      shortcut: "⌘M",
-      action: () => navigate("/catalog"),
-    },
-    {
-      id: "tasks",
-      label: "Activity Log",
-      icon: History,
-      shortcut: "⌘E",
-      action: () => navigate("/tasks"),
-    },
-    {
-      id: "fleet",
-      label: "Cluster Fleet",
-      icon: Globe,
-      shortcut: "G F",
-      action: () => navigate("/fleet"),
-    },
-    {
-      id: "kubernetes",
-      label: "Kubernetes",
-      icon: Server,
-      shortcut: "G K",
-      action: () => navigate("/kubernetes"),
-    },
-    {
-      id: "bnk",
-      label: "F5 BNK",
-      icon: Shield,
-      shortcut: "G B",
-      action: () => navigate("/bnk"),
-    },
-    {
-      id: "cnf",
-      label: "F5 CNF",
-      icon: Cpu,
-      shortcut: "G C",
-      action: () => navigate("/cnf"),
-    },
-    {
-      id: "infrastructure",
-      label: "Infrastructure",
-      icon: HardDrive,
-      shortcut: "G I",
-      action: () => navigate("/infrastructure"),
-    },
-    {
-      id: "benchmarks",
-      label: "Benchmarks",
-      icon: BarChart3,
-      action: () => navigate("/benchmarks"),
-    },
-    {
-      id: "ai-agents",
-      label: "Agent Fleet",
-      icon: Bot,
-      action: () => navigate("/ai/agents"),
-    },
-    {
-      id: "ai-mcp-gateway",
-      label: "Token Governance and Intelligence",
-      icon: TrendingUp,
-      shortcut: "G G",
-      action: () => navigate("/ai/mcp-gateway"),
-    },
-    {
-      id: "ai-llm-router",
-      label: "Intelligent Inference",
-      icon: Zap,
-      action: () => navigate("/ai/llm-router"),
-    },
-    {
-      id: "ai-logs",
-      label: "AI Traffic Logs",
-      icon: Activity,
-      action: () => navigate("/ai/logs"),
-    },
-    {
-      id: "access-methods",
-      label: "Credentials & Registries",
-      icon: KeyRound,
-      shortcut: "G A",
-      action: () => navigate("/access-methods"),
-    },
-    {
-      id: "users",
-      label: "Users",
-      icon: Users,
-      action: () => navigate("/users"),
-    },
-    {
-      id: "auth-sso",
-      label: "Auth & SSO",
-      icon: Lock,
-      action: () => navigate("/auth-templates"),
-    },
-    {
-      id: "system",
-      label: "System",
-      icon: Settings,
-      shortcut: "G S",
-      action: () => navigate("/system"),
-    },
-  ];
+  // Role level (defaults to admin when user is not yet populated in store)
+  const userLevel = user?.role ? ROLE_LEVEL[user.role] : ROLE_LEVEL.admin;
+
+  // Navigation items derived dynamically from navigationSections
+  const navigationItems = navigationSections
+    .filter((section) => {
+      if (!section.minRole) return true;
+      return userLevel >= ROLE_LEVEL[section.minRole];
+    })
+    .flatMap((section) =>
+      section.items
+        .filter((item) => {
+          if (!item.minRole) return true;
+          return userLevel >= ROLE_LEVEL[item.minRole];
+        })
+        .map((item) => ({
+          id:
+            item.href === "/"
+              ? "overview"
+              : item.href.replace(/^\//, "").replace(/\//g, "-"),
+          label: item.name,
+          icon: item.icon,
+          shortcut: NAV_SHORTCUTS[item.href],
+          action: () => navigate(item.href),
+        })),
+    );
 
   // Recent projects
   const recentProjects =

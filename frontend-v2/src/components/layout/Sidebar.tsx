@@ -28,7 +28,7 @@ import { navigationSections, type NavItem } from "./nav-sections";
 import { useProjects } from "@/hooks/useProjects";
 import { useTaskStats, useTasks } from "@/hooks/useTasks";
 import { useAllClusters } from "@/hooks/useK8s";
-import { useFleetHealth } from "@/hooks/useFleet";
+import { useSystemHealth } from "@/hooks/useSystem";
 import { useGlobalDriftCount } from "@/hooks/useDrift";
 import * as React from "react";
 import { startTransition, useState } from "react";
@@ -89,7 +89,8 @@ export function Sidebar() {
   const { data: taskStats } = useTaskStats({ days: 1 });
   const { data: latestTaskData } = useTasks({ limit: 1 });
   const { data: clustersData } = useAllClusters();
-  const { data: fleetHealth } = useFleetHealth();
+  const { data: systemHealth, isError: isSystemHealthError } =
+    useSystemHealth();
   const driftCount = useGlobalDriftCount();
 
   const projectCount = projects?.length ?? 0;
@@ -97,7 +98,29 @@ export function Sidebar() {
     (taskStats?.by_status?.in_progress ?? 0) +
     (taskStats?.by_status?.queued ?? 0);
   const clusterCount = clustersData?.count ?? 0;
-  const fleetTotal = fleetHealth?.total_clusters ?? 0;
+
+  const systemServices = systemHealth?.services
+    ? Object.values(systemHealth.services)
+    : [];
+  const offlineCount = systemServices.filter(
+    (s) => s.status === "offline",
+  ).length;
+  const degradedCount = systemServices.filter(
+    (s) => s.status === "degraded",
+  ).length;
+  const systemStatusDotClass =
+    isSystemHealthError || offlineCount > 0
+      ? "bg-destructive"
+      : degradedCount > 0
+        ? "bg-warning"
+        : "bg-success animate-pulse";
+  const systemStatusLabel = isSystemHealthError
+    ? "System health unavailable"
+    : offlineCount > 0
+      ? `${offlineCount} service${offlineCount === 1 ? "" : "s"} offline`
+      : degradedCount > 0
+        ? `${degradedCount} service${degradedCount === 1 ? "" : "s"} degraded`
+        : "All systems operational";
 
   const latestTask = latestTaskData?.tasks?.[0];
   const latestTaskStatus = latestTask?.status;
@@ -109,9 +132,8 @@ export function Sidebar() {
       case "activity":
         return inProgressTasks;
       case "clusters":
-        return clusterCount;
       case "fleet":
-        return fleetTotal;
+        return clusterCount;
       default:
         return null;
     }
@@ -315,8 +337,10 @@ export function Sidebar() {
           <div className="px-3 py-2 border-t border-border">
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <div className="h-2 w-2 rounded-full bg-success animate-pulse" />
-                <span>All systems operational</span>
+                <div
+                  className={cn("h-2 w-2 rounded-full", systemStatusDotClass)}
+                />
+                <span>{systemStatusLabel}</span>
               </div>
               <UserFooter />
               <div className="flex items-center justify-between text-xs text-muted-foreground">

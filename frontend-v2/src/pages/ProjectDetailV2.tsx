@@ -112,6 +112,7 @@ import { ProjectDependenciesDialog } from "@/components/projects/ProjectDependen
 import { ProjectVariablesEditor } from "@/components/projects/ProjectVariablesEditor";
 import { DriftSettings } from "@/components/drift/DriftSettings";
 import { DriftCheckHistory } from "@/components/drift/DriftCheckHistory";
+import { useProjectDriftSummary } from "@/hooks/useDrift";
 import { SnapshotHistory } from "@/components/snapshots/SnapshotHistory";
 import { K8sClusterList } from "@/components/k8s/K8sClusterList";
 import { SSHConnectivityBadge } from "@/components/ui/SSHConnectivityBadge";
@@ -596,6 +597,10 @@ export default function ProjectDetailV2() {
   const healthPercent =
     modules.length > 0 ? Math.round((deployedCount / modules.length) * 100) : 0;
 
+  const { data: driftSummary } = useProjectDriftSummary(projectId);
+  const driftedCount =
+    driftSummary?.modules_with_drift ?? driftSummary?.drift_detected_count ?? 0;
+
   // Quiet single-line stat summary in header
   const quietStatLine = useMemo(() => {
     const parts: string[] = [];
@@ -606,10 +611,16 @@ export default function ProjectDetailV2() {
     if (projectMode !== "k8s-only") {
       parts.push(`${modules.length} module${modules.length === 1 ? "" : "s"}`);
       parts.push(`health ${healthPercent}%`);
-      parts.push("0 drift");
+      parts.push(`${driftedCount} drift`);
     }
     return parts.join(" · ");
-  }, [clusters?.length, projectMode, modules.length, healthPercent]);
+  }, [
+    clusters?.length,
+    projectMode,
+    modules.length,
+    healthPercent,
+    driftedCount,
+  ]);
 
   const { standaloneModules, stackGroups } = useMemo(() => {
     const standalone = modules.filter(
@@ -858,8 +869,10 @@ export default function ProjectDetailV2() {
                     Drift Detection
                   </span>
                   <span
-                    className="h-2 w-2 rounded-full bg-success shrink-0 ml-1"
-                    title="0 drift"
+                    className={`h-2 w-2 rounded-full shrink-0 ml-1 ${
+                      driftedCount > 0 ? "bg-warning" : "bg-success"
+                    }`}
+                    title={`${driftedCount} drift`}
                     aria-hidden="true"
                   />
                 </TabsTrigger>

@@ -4642,22 +4642,9 @@ function FleetsView() {
 // ──────────────────────────────────────────────────────────────────────────────
 
 /// D-022 P6 IA: Top-level tabs: Overview, BNK Resources, and Fleets (Fleets last).
-type FleetView =
-  | "overview"
-  | "bnk"
-  | "fleets"
-  | "inventory"
-  | "bulkops"
-  | "compliance";
+type FleetView = "overview" | "bnk" | "fleets";
 
-const VALID_VIEWS: FleetView[] = [
-  "overview",
-  "bnk",
-  "fleets",
-  "inventory",
-  "bulkops",
-  "compliance",
-];
+const VALID_VIEWS: FleetView[] = ["overview", "bnk", "fleets"];
 
 export default function Fleet() {
   const navigate = useNavigate();
@@ -4669,7 +4656,14 @@ export default function Fleet() {
 
   // backward compat with ?view=overview etc. (dpf deep-links now redirect to /infrastructure)
   const rawView = searchParams.get("tab") ?? searchParams.get("view");
-  const urlView = rawView === "operators" ? "overview" : rawView;
+  const urlView =
+    rawView === "operators"
+      ? "overview"
+      : rawView === "inventory" ||
+          rawView === "bulkops" ||
+          rawView === "compliance"
+        ? "fleets"
+        : rawView;
   const initialView: FleetView =
     urlView && VALID_VIEWS.includes(urlView as FleetView)
       ? (urlView as FleetView)
@@ -4685,7 +4679,7 @@ export default function Fleet() {
     }
   }, [urlView]);
 
-  // Redirect legacy DPF deep-links to /infrastructure
+  // Redirect legacy DPF deep-links to /infrastructure and legacy facet tabs to ?tab=fleets
   useEffect(() => {
     const raw = searchParams.get("tab") ?? searchParams.get("view");
     if (raw === "dpf" || raw === "dpus") {
@@ -4694,8 +4688,17 @@ export default function Fleet() {
         `/infrastructure?tab=dpus${cluster ? `&cluster=${cluster}` : ""}`,
         { replace: true },
       );
+    } else if (
+      raw === "inventory" ||
+      raw === "bulkops" ||
+      raw === "compliance"
+    ) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("view");
+      next.set("tab", "fleets");
+      setSearchParams(next, { replace: true });
     }
-  }, [searchParams, navigate]);
+  }, [searchParams, navigate, setSearchParams]);
 
   const handleSelectView = useCallback(
     (view: string) => {
@@ -4828,17 +4831,6 @@ export default function Fleet() {
 
             <TabsContent value="fleets" className="mt-0">
               <FleetsView />
-            </TabsContent>
-
-            {/* Legacy deep-links: ?view=inventory|bulkops|compliance are forwarded to their views */}
-            <TabsContent value="inventory" className="mt-0">
-              <InventoryView />
-            </TabsContent>
-            <TabsContent value="bulkops" className="mt-0">
-              <BulkOpsView />
-            </TabsContent>
-            <TabsContent value="compliance" className="mt-0">
-              <ComplianceView />
             </TabsContent>
           </>
         )}

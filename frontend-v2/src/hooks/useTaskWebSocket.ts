@@ -1,14 +1,14 @@
-import { useEffect, useState, useRef } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import type { Task } from '@/types';
+import { useEffect, useState, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import type { Task } from "@/types";
 
 interface TaskUpdate {
-  type: 'task_update' | 'ping' | 'pong';
+  type: "task_update" | "ping" | "pong";
   task_id?: number;
-  status?: 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled';
+  status?: "queued" | "in_progress" | "completed" | "failed" | "cancelled";
   project_id?: number;
   module_id?: number;
-  task_type?: 'init' | 'plan' | 'apply' | 'destroy';
+  task_type?: "init" | "plan" | "apply" | "destroy";
   timestamp?: string;
   exit_code?: number;
   error?: string;
@@ -29,7 +29,7 @@ interface TaskUpdate {
  *
  * Fallback: If WebSocket fails, polling still works via useTasks hook
  */
-export function useTaskWebSocket() {
+export function useTaskWebSocket(enabled = true) {
   const queryClient = useQueryClient();
   const [isConnected, setIsConnected] = useState(false);
   const [gaveUp, setGaveUp] = useState(false);
@@ -39,7 +39,16 @@ export function useTaskWebSocket() {
   const reconnectAttemptsRef = useRef(0);
 
   useEffect(() => {
+    if (!enabled || window.location.pathname === "/login") {
+      setIsConnected(false);
+      setGaveUp(false);
+      return;
+    }
+
     const connect = () => {
+      if (window.location.pathname === "/login") {
+        return;
+      }
       // Clear any pending reconnect
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
@@ -47,7 +56,7 @@ export function useTaskWebSocket() {
       }
 
       // Determine WebSocket URL based on current location
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const wsUrl = `${protocol}//${window.location.host}/api/tasks/ws/tasks`;
 
       const ws = new WebSocket(wsUrl);
@@ -58,17 +67,17 @@ export function useTaskWebSocket() {
         reconnectAttemptsRef.current = 0;
 
         // Send initial ping
-        ws.send('ping');
+        ws.send("ping");
       };
 
       ws.onmessage = (event) => {
         try {
           const update: TaskUpdate = JSON.parse(event.data);
 
-          if (update.type === 'task_update' && update.task_id) {
+          if (update.type === "task_update" && update.task_id) {
             // Update specific task in cache
             queryClient.setQueryData(
-              ['tasks', update.task_id],
+              ["tasks", update.task_id],
               (oldData: Task | undefined) => {
                 if (!oldData) return oldData;
 
@@ -77,46 +86,49 @@ export function useTaskWebSocket() {
                   status: update.status ?? oldData.status,
                   exit_code: update.exit_code ?? oldData.exit_code,
                   error: update.error ?? oldData.error,
-                  duration_seconds: update.duration_seconds ?? oldData.duration_seconds,
+                  duration_seconds:
+                    update.duration_seconds ?? oldData.duration_seconds,
                   // Don't update completed_at here - let the API provide the full data
                 };
-              }
+              },
             );
 
             // Invalidate task list to refresh it (don't refetch immediately)
             queryClient.invalidateQueries({
-              queryKey: ['tasks'],
+              queryKey: ["tasks"],
               exact: false,
-              refetchType: 'none',
+              refetchType: "none",
             });
 
             // If task completed, trigger a refetch after a short delay
             // This ensures we get the full updated task data from the API
             if (
-              update.status === 'completed' ||
-              update.status === 'failed' ||
-              update.status === 'cancelled'
+              update.status === "completed" ||
+              update.status === "failed" ||
+              update.status === "cancelled"
             ) {
               setTimeout(() => {
                 queryClient.invalidateQueries({
-                  queryKey: ['tasks', update.task_id],
+                  queryKey: ["tasks", update.task_id],
                 });
                 queryClient.invalidateQueries({
-                  queryKey: ['tasks'],
+                  queryKey: ["tasks"],
                   exact: false,
                 });
                 // Project Detail / Modules pages key off these — without
                 // invalidation the user has to manually refresh to see status
                 // updates after a deploy completes.
-                queryClient.invalidateQueries({ queryKey: ['project-modules'] });
-                queryClient.invalidateQueries({ queryKey: ['projects'] });
+                queryClient.invalidateQueries({
+                  queryKey: ["project-modules"],
+                });
+                queryClient.invalidateQueries({ queryKey: ["projects"] });
                 // ['parallel-executions'] key removed — no component subscribes to it
                 // anymore (all consumers migrated to ['run-progress', ...])
               }, 500);
             }
-          } else if (update.type === 'ping') {
+          } else if (update.type === "ping") {
             // Respond to server ping
-            ws.send('ping');
+            ws.send("ping");
           }
           // Ignore 'pong' messages (keepalive response)
         } catch {
@@ -133,7 +145,7 @@ export function useTaskWebSocket() {
         if (reconnectAttemptsRef.current < maxAttempts) {
           const delay = Math.min(
             1000 * Math.pow(2, reconnectAttemptsRef.current),
-            30000 // Max 30 seconds
+            30000, // Max 30 seconds
           );
 
           reconnectTimeoutRef.current = setTimeout(() => {
@@ -174,7 +186,7 @@ export function useTaskWebSocket() {
         wsRef.current = null;
       }
     };
-  }, [queryClient]);
+  }, [queryClient, enabled]);
 
   return { isConnected, gaveUp };
 }

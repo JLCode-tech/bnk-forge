@@ -1,4 +1,5 @@
 import { useTaskWebSocket } from "@/hooks/useTaskWebSocket";
+import { useAuthStore } from "@/stores/authStore";
 import { Badge } from "@/components/ui/badge";
 
 /**
@@ -8,14 +9,18 @@ import { Badge } from "@/components/ui/badge";
  * Shows reconnection status to user when connection is lost.
  */
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
-  const { isConnected, gaveUp } = useTaskWebSocket();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const isLoginRoute =
+    typeof window !== "undefined" && window.location.pathname === "/login";
+  const enabled = isAuthenticated && !isLoginRoute;
+  const { isConnected, gaveUp } = useTaskWebSocket(enabled);
 
   return (
     <>
       {children}
 
-      {/* Show reconnecting indicator only while actively retrying */}
-      {!isConnected && !gaveUp && (
+      {/* Show reconnecting indicator only while authenticated and actively retrying */}
+      {enabled && !isConnected && !gaveUp && (
         <div className="fixed bottom-4 right-4 z-50 pointer-events-none">
           <Badge
             variant="outline"

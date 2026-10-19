@@ -1,7 +1,7 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import { lazy, Suspense } from "react";
 import { AppShell } from "@/components/layout/AppShell";
-import { AuthGuard } from "@/components/layout/AuthGuard";
+import { AuthGuard, AdminGuard } from "@/components/layout/AuthGuard";
 import { ErrorBoundary, NotFound } from "@/components/ErrorBoundary";
 import { Loader2 } from "lucide-react";
 
@@ -67,7 +67,7 @@ export const ROUTE_HANDLES: Record<string, RouteHandle> = {
     breadcrumbs: [{ label: "Settings & Access" }],
   },
   "/auth-templates": {
-    title: "Auth & SSO",
+    title: "Credentials & Registries",
     breadcrumbs: [{ label: "Settings & Access" }],
   },
   "/tasks": {
@@ -87,7 +87,7 @@ export const ROUTE_HANDLES: Record<string, RouteHandle> = {
     breadcrumbs: [{ label: "Clusters" }],
   },
   "/crds": {
-    title: "Custom Resources",
+    title: "CR Explorer",
     breadcrumbs: [{ label: "Clusters" }],
   },
   "/bnk": {
@@ -207,7 +207,7 @@ export const router = createBrowserRouter(
         {
           // Old /modules URL now lives under the tabbed Catalog page.
           path: "modules",
-          element: <Navigate to="/catalog" replace />,
+          element: <Navigate to="/catalog?tab=modules" replace />,
         },
         {
           path: "catalog",
@@ -216,11 +216,11 @@ export const router = createBrowserRouter(
         },
         {
           path: "catalog/modules",
-          element: <Navigate to="/catalog" replace />,
+          element: <Navigate to="/catalog?tab=modules" replace />,
         },
         {
           path: "catalog/module-library",
-          element: <Navigate to="/catalog" replace />,
+          element: <Navigate to="/catalog?tab=modules" replace />,
         },
         {
           path: "catalog/blueprint-catalog",
@@ -289,8 +289,7 @@ export const router = createBrowserRouter(
         },
         {
           path: "auth-templates",
-          element: <AuthTemplates />,
-          handle: ROUTE_HANDLES["/auth-templates"],
+          element: <Navigate to="/access-methods" replace />,
         },
         {
           path: "system",
@@ -330,8 +329,7 @@ export const router = createBrowserRouter(
         },
         {
           path: "ai/governance",
-          element: <LlmDashboard />,
-          handle: ROUTE_HANDLES["/ai/governance"],
+          element: <Navigate to="/ai/mcp-gateway" replace />,
         },
         {
           path: "ai/llm-router",
@@ -364,7 +362,11 @@ export const router = createBrowserRouter(
         },
         {
           path: "users",
-          element: <UserManagement />,
+          element: (
+            <AdminGuard>
+              <UserManagement />
+            </AdminGuard>
+          ),
           handle: ROUTE_HANDLES["/users"],
         },
         {

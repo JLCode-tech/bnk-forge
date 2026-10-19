@@ -74,47 +74,19 @@ import { ErrorState } from "@/components/ui/error-state";
 import { parseApiError } from "@/lib/error-handler";
 
 // ---------------------------------------------------------------------------
-// Demo-preview helpers
+// Live & configured weight helpers
 // ---------------------------------------------------------------------------
-//
-// These helpers surface richer AI-analyzer visualisations from whatever data
-// exists on the CR, and fall back to deterministic sample data where the
-// runtime pipeline (Prometheus bridge, analyzer-pod metrics, decision log)
-// isn't wired yet. Every sample section carries a visible "sample" badge so
-// viewers can distinguish configured values from mocked previews.
-//
-// Deterministic per-analyzer: seeded off the analyzer name so demos render
-// consistently across reloads.
-// ---------------------------------------------------------------------------
-
-function hashString(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return Math.abs(h);
-}
 
 interface ModelWeight {
   model: string;
   weight: number; // percent
-  source: "configured" | "sample";
+  source: "configured";
 }
-
-const SAMPLE_MODELS = [
-  "llama3-70b-instruct",
-  "gpt-4o",
-  "claude-sonnet-4",
-  "mistral-large",
-  "gemini-2.5-pro",
-];
 
 function parseModelsAndWeights(
   params: AnalyzerScriptParameter[] | undefined,
   applications: AnalyzerApplication[],
   httpRoutesByRef: Map<string, HTTPRouteLike>,
-  seed: string,
 ): ModelWeight[] {
   // 1. Custom-script path — parameters like model_a=llama3 / weight_a=40
   const modelPairs: Record<string, { model?: string; weight?: number }> = {};
@@ -173,28 +145,7 @@ function parseModelsAndWeights(
       }));
   }
 
-  // 3. Last-resort sample (no parameters, no reachable HTTPRoute weights)
-  const base = hashString(seed);
-  const a = 40 + (base % 15);
-  const b = 35 - ((base >> 4) % 15);
-  const c = Math.max(0, 100 - a - b);
-  return [
-    {
-      model: SAMPLE_MODELS[base % SAMPLE_MODELS.length],
-      weight: a,
-      source: "sample",
-    },
-    {
-      model: SAMPLE_MODELS[(base + 1) % SAMPLE_MODELS.length],
-      weight: b,
-      source: "sample",
-    },
-    {
-      model: SAMPLE_MODELS[(base + 2) % SAMPLE_MODELS.length],
-      weight: c,
-      source: "sample",
-    },
-  ];
+  return [];
 }
 
 interface RuntimeMetricsAgg {
@@ -282,9 +233,9 @@ interface HTTPRouteLike {
 }
 
 interface TrafficSlice {
-  application: string; // backend name (for live) or route name (for sample)
+  application: string; // backend name or route name
   percent: number;
-  source: "live" | "configured" | "sample";
+  source: "live" | "configured";
 }
 
 /**
@@ -383,7 +334,6 @@ function deriveTrafficDistribution(
   applications: AnalyzerApplication[],
   params: AnalyzerScriptParameter[] | undefined,
   httpRoutesByRef: Map<string, HTTPRouteLike>,
-  seed: string,
 ): TrafficSlice[] {
   if (applications.length === 0) return [];
 
@@ -414,26 +364,7 @@ function deriveTrafficDistribution(
     }));
   }
 
-  // 3. Sample — deterministic skewed distribution
-  const h = hashString(seed);
-  const raw = applications.map((_, i) => 20 + ((h >> (i * 2)) % 80));
-  const total = raw.reduce((s, v) => s + v, 0) || 1;
-  return applications.map((a, i) => ({
-    application: a.name,
-    percent: Math.round((raw[i] / total) * 100),
-    source: "sample" as const,
-  }));
-}
-
-function SampleBadge() {
-  return (
-    <Badge
-      variant="outline"
-      className="text-2xs border-warning/40 text-warning bg-warning/5"
-    >
-      sample
-    </Badge>
-  );
+  return [];
 }
 
 // ---------------------------------------------------------------------------
@@ -883,7 +814,6 @@ function AnalyzerCard({
     script?.custom?.parameters,
     spec.applications ?? [],
     httpRoutesByRef,
-    analyzer.metadata.name,
   );
   const liveMetrics: AnalyzerRuntimeMetrics | undefined = metricsQuery.data;
   const runtimeAgg = aggregateRuntimeMetrics(liveMetrics?.per_backend);
@@ -893,10 +823,7 @@ function AnalyzerCard({
     spec.applications ?? [],
     script?.custom?.parameters,
     httpRoutesByRef,
-    analyzer.metadata.name,
   );
-  const anyModelIsSample = modelWeights.some((m) => m.source === "sample");
-  const anySliceIsSample = trafficSlices.some((s) => s.source === "sample");
   const anySliceIsLive = trafficSlices.some((s) => s.source === "live");
 
   return (
@@ -1121,7 +1048,6 @@ function AnalyzerCard({
                     live · HTTPRoute weights
                   </Badge>
                 )}
-                {anySliceIsSample && <SampleBadge />}
               </h4>
               <div className="space-y-1.5">
                 {trafficSlices.map((s, idx) => (
@@ -1148,12 +1074,11 @@ function AnalyzerCard({
           )}
 
           {/* Models & Weights — analyzer's weight decisions; parsed from
-                    script.parameters where possible, sample-fallback otherwise. */}
+                    script.parameters or live HTTPRoute backend weights. */}
           <div>
             <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
               <Brain className="h-4 w-4 text-primary" />
               Models &amp; Weights
-              {anyModelIsSample && <SampleBadge />}
             </h4>
             <div className="border rounded-lg overflow-hidden">
               <Table>
@@ -1165,24 +1090,36 @@ function AnalyzerCard({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {modelWeights.map((mw, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-mono text-sm">
-                        {mw.model}
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {mw.weight}%
-                      </TableCell>
-                      <TableCell>
-                        <div className="h-2 w-full rounded bg-muted overflow-hidden">
-                          <div
-                            className="h-full bg-primary"
-                            style={{ width: `${Math.min(100, mw.weight)}%` }}
-                          />
-                        </div>
+                  {modelWeights.length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={3}
+                        className="text-center text-xs text-muted-foreground py-6"
+                      >
+                        No configured model weights or live HTTPRoute backend
+                        weights reported yet.
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ) : (
+                    modelWeights.map((mw, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell className="font-mono text-sm">
+                          {mw.model}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {mw.weight}%
+                        </TableCell>
+                        <TableCell>
+                          <div className="h-2 w-full rounded bg-muted overflow-hidden">
+                            <div
+                              className="h-full bg-primary"
+                              style={{ width: `${Math.min(100, mw.weight)}%` }}
+                            />
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </div>

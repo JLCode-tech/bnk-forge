@@ -6,7 +6,7 @@
  * how templates apply to projects.
  */
 
-import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import ContainerRegistries from "@/components/settings/ContainerRegistries";
 import CredentialTemplates from "@/components/settings/CredentialTemplates";
 import SSHCredentials from "@/components/settings/SSHCredentials";
@@ -38,14 +38,31 @@ const TAB_META: Record<string, { label: string; description: string }> = {
 
 export default function AuthTemplates() {
   const { refresh, isRefreshing } = usePageRefresh();
-  const [activeTab, setActiveTab] = useState("templates");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawTab = searchParams.get("tab") ?? "templates";
+  const activeTab = rawTab in TAB_META ? rawTab : "templates";
   const currentMeta = TAB_META[activeTab] ?? TAB_META.templates;
+
+  const handleTabChange = (next: string) => {
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        if (next === "templates") {
+          params.delete("tab");
+        } else {
+          params.set("tab", next);
+        }
+        return params;
+      },
+      { replace: true },
+    );
+  };
 
   return (
     <div data-onboarding="auth-templates-page">
       <Tabs
         value={activeTab}
-        onValueChange={setActiveTab}
+        onValueChange={handleTabChange}
         className="min-h-[calc(100vh-3rem)] flex"
       >
         {/* Left Flush Inner Sub-Sidebar */}
@@ -136,9 +153,12 @@ export default function AuthTemplates() {
                 </li>
                 <li>Click on a project or create a new one</li>
                 <li>
-                  Click the{" "}
-                  <strong className="text-foreground">Credentials</strong>{" "}
-                  button on the project detail page
+                  In the{" "}
+                  <strong className="text-foreground">
+                    Workspace Settings
+                  </strong>{" "}
+                  section of the left sidebar, click{" "}
+                  <strong className="text-foreground">Credentials</strong>
                 </li>
                 <li>Select a credential template from the dropdown</li>
                 <li>Save to apply the template to that project</li>

@@ -147,7 +147,7 @@ export default function KubernetesV2() {
   const bgCard = "bg-card";
   const { data: projects } = useProjects();
   const queryClient = useQueryClient();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
 
   // ── Selection State (persisted to localStorage) ────────────────────────
   // ?project=<id> in the URL wins over localStorage so deep links from other
@@ -207,25 +207,9 @@ export default function KubernetesV2() {
     if (crdParam) {
       setInitialCrd(crdParam);
     }
-
-    const paramsToClean = [
-      "project",
-      "cluster",
-      "namespace",
-      "resource",
-      "name",
-      "view",
-      "crd",
-    ];
-    const hasAny = paramsToClean.some((p) => searchParams.has(p));
-    if (hasAny) {
-      const next = new URLSearchParams(searchParams);
-      paramsToClean.forEach((p) => next.delete(p));
-      setSearchParams(next, { replace: true });
-    }
     // setLinkedCluster is a state setter from useLinkedClusterProject below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, setSearchParams]);
+  }, [searchParams]);
 
   const [selectedCluster, setSelectedCluster] = useState<number | null>(() => {
     const fromUrl = searchParams.get("cluster");

@@ -409,7 +409,7 @@ def _cluster_has_dpf_api_groups(cluster: KubernetesCluster, db: Session) -> bool
 # fetch burst when multiple tabs/users poll the endpoint within a short window.
 # Keyed by (sorted cluster IDs tuple, max updated_at) so create/update/delete
 # of a cluster naturally invalidates the cache without needing explicit hooks.
-_FLEET_HEALTH_TTL_SEC = 15.0
+_FLEET_HEALTH_TTL_SEC = 30.0
 _fleet_health_cache: dict[tuple, tuple[float, dict]] = {}
 _fleet_health_lock = Lock()
 
@@ -469,9 +469,8 @@ _OFFLINE_RESULT = {
 }
 
 # TCP pre-check timeout — fast fail for port-blocked clusters.
-# 10s accommodates slower on-prem/tunneled clusters while still
-# short-circuiting truly unreachable hosts before the 60s K8s timeout.
-_TCP_PRECHECK_TIMEOUT = 10
+# 2s short-circuits unreachable hosts before the K8s API timeout.
+_TCP_PRECHECK_TIMEOUT = 2
 
 
 def _query_cluster_health(
@@ -632,16 +631,18 @@ def get_fleet_health(db: Session = Depends(get_db)):
         if op.cluster_id:
             op_by_cluster[op.cluster_id] = op
 
-    # Query all clusters in parallel (30s per-cluster, 60s overall safety timeout).
+    # Query all clusters in parallel (5s per-cluster, 8s overall safety timeout).
     # Pass db=None so worker threads use their own isolated SessionLocal().
+    # Use shutdown(wait=False) so hung worker threads do not block the HTTP response.
     cluster_results: dict[int, dict] = {}
-    with ThreadPoolExecutor(max_workers=min(10, len(clusters))) as executor:
+    executor = ThreadPoolExecutor(max_workers=min(10, len(clusters)))
+    try:
         futures = {executor.submit(_query_cluster_health, cluster, None): cluster for cluster in clusters}
         try:
-            for future in as_completed(futures, timeout=60):
+            for future in as_completed(futures, timeout=8):
                 cluster = futures[future]
                 try:
-                    cluster_results[cluster.id] = future.result(timeout=30)
+                    cluster_results[cluster.id] = future.result(timeout=5)
                 except Exception as e:
                     logger.error(f"Unexpected error querying cluster {cluster.name}: {e}")
                     cluster_results[cluster.id] = {**_OFFLINE_RESULT}
@@ -651,6 +652,8 @@ def get_fleet_health(db: Session = Depends(get_db)):
                 if cluster.id not in cluster_results:
                     logger.warning(f"Fleet: cluster {cluster.name} timed out — marking offline")
                     cluster_results[cluster.id] = {**_OFFLINE_RESULT}
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
     # Build response
     operators_out = []

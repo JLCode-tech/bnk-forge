@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Layers,
   Zap,
@@ -32,6 +33,20 @@ import {
 import { CollapsibleInnerSidebar } from "@/components/layout/InnerSidebar";
 
 type InferenceViewKey = "overview" | "topology" | "pools" | "policies";
+
+function resolveInferenceView(raw: string | null): InferenceViewKey | null {
+  if (!raw) return null;
+  if (raw === "epp") return "policies";
+  if (
+    raw === "overview" ||
+    raw === "topology" ||
+    raw === "pools" ||
+    raw === "policies"
+  ) {
+    return raw;
+  }
+  return null;
+}
 
 const INFERENCE_VIEWS: Array<{
   key: InferenceViewKey;
@@ -70,9 +85,8 @@ const INFERENCE_VIEWS: Array<{
 ];
 
 export default function SmartLlmRouterPage() {
-  useEffect(() => {
-    document.title = "Intelligent Inference | BNK-Forge";
-  }, []);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlView = resolveInferenceView(searchParams.get("tab"));
 
   const {
     data: clustersData,
@@ -82,20 +96,39 @@ export default function SmartLlmRouterPage() {
   const clusters = clustersData?.clusters ?? [];
 
   const [selectedClusterId, setSelectedClusterId] = useClusterScope();
-  const [selectedSubView, setSelectedSubView] =
-    useState<InferenceViewKey>("topology");
+  const [selectedSubView, setSelectedSubView] = useState<InferenceViewKey>(
+    urlView ?? "topology",
+  );
+
+  useEffect(() => {
+    if (urlView) {
+      setSelectedSubView(urlView);
+      if (urlView === "overview") {
+        if (selectedClusterId !== null) {
+          setSelectedClusterId(null);
+        }
+      } else if (selectedClusterId === null && clusters.length > 0) {
+        setSelectedClusterId(clusters[0].id);
+      }
+    }
+  }, [urlView, clusters, selectedClusterId, setSelectedClusterId]);
 
   const activeViewKey: InferenceViewKey =
-    selectedClusterId === null ? "overview" : selectedSubView;
+    urlView ?? (selectedClusterId === null ? "overview" : selectedSubView);
 
   const activeViewMeta =
     INFERENCE_VIEWS.find((v) => v.key === activeViewKey) ?? INFERENCE_VIEWS[0];
 
   const handleSelectView = (viewKey: InferenceViewKey) => {
+    const next = new URLSearchParams(searchParams);
     if (viewKey === "overview") {
+      next.delete("tab");
+      setSearchParams(next, { replace: true });
       setSelectedClusterId(null);
       return;
     }
+    next.set("tab", viewKey);
+    setSearchParams(next, { replace: true });
     setSelectedSubView(viewKey);
     if (selectedClusterId === null && clusters.length > 0) {
       setSelectedClusterId(clusters[0].id);
@@ -104,8 +137,18 @@ export default function SmartLlmRouterPage() {
 
   const handleClusterScopeChange = (clusterId: number | null) => {
     setSelectedClusterId(clusterId);
-    if (clusterId !== null && selectedSubView === "overview") {
-      setSelectedSubView("topology");
+    const next = new URLSearchParams(searchParams);
+    if (clusterId === null) {
+      next.delete("tab");
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    const targetView =
+      selectedSubView === "overview" ? "topology" : selectedSubView;
+    setSelectedSubView(targetView);
+    if (!urlView || urlView === "overview") {
+      next.set("tab", targetView);
+      setSearchParams(next, { replace: true });
     }
   };
 
@@ -268,7 +311,7 @@ export default function SmartLlmRouterPage() {
             </div>
 
             {/* Real-Time Telemetry & EPP Dashboard vs Fleet Router Matrix */}
-            {selectedClusterId === null ? (
+            {activeViewKey === "overview" ? (
               <SectionCard
                 title="Clusters"
                 description="Gateway telemetry per cluster, last 24h. Select one to inspect its Intelligent Inference router."
@@ -312,8 +355,8 @@ export default function SmartLlmRouterPage() {
                           key={c.id}
                           cluster={c}
                           onInspect={() => {
-                            setSelectedSubView("topology");
                             setSelectedClusterId(c.id);
+                            handleSelectView("topology");
                           }}
                         />
                       ))}
@@ -332,7 +375,9 @@ export default function SmartLlmRouterPage() {
                       Scoped Cluster
                     </Badge>
                     <span className="text-xs font-semibold text-foreground">
-                      {activeCluster?.name ?? `Cluster ${selectedClusterId}`}
+                      {activeCluster?.name ??
+                        clusters[0]?.name ??
+                        `Cluster ${selectedClusterId ?? 1}`}
                     </span>
                     <span className="text-xs text-muted-foreground">
                       · F5 AI Analyzer and EPP telemetry
@@ -342,13 +387,15 @@ export default function SmartLlmRouterPage() {
                     variant="outline"
                     size="sm"
                     className="h-7 text-xs gap-1.5"
-                    onClick={() => setSelectedClusterId(null)}
+                    onClick={() => handleSelectView("overview")}
                   >
                     <ArrowLeft className="h-3 w-3" />
                     All Clusters
                   </Button>
                 </div>
-                <F5AIAnalyzerViewer clusterId={selectedClusterId} />
+                <F5AIAnalyzerViewer
+                  clusterId={selectedClusterId ?? clusters[0]?.id ?? 1}
+                />
               </div>
             )}
           </>

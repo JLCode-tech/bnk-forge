@@ -167,19 +167,19 @@ export function useNavigationShortcuts() {
       key: "p",
       meta: true,
       action: () => navigate("/projects"),
-      description: "Go to Projects",
+      description: "Go to Workspaces",
     },
     {
       key: "m",
       meta: true,
       action: () => navigate("/catalog"),
-      description: "Go to Catalog",
+      description: "Go to Catalog & Blueprints",
     },
     {
       key: "e",
       meta: true,
       action: () => navigate("/tasks"),
-      description: "Go to Tasks",
+      description: "Go to Activity Log",
     },
   ]);
 
@@ -195,25 +195,31 @@ export function useNavigationShortcuts() {
       leader: "g",
       followUp: "p",
       action: () => navigate("/projects"),
-      description: "Go to Projects",
+      description: "Go to Workspaces",
+    },
+    {
+      leader: "g",
+      followUp: "m",
+      action: () => navigate("/catalog?tab=modules"),
+      description: "Go to Modules",
     },
     {
       leader: "g",
       followUp: "f",
       action: () => navigate("/fleet"),
-      description: "Go to Fleet",
+      description: "Go to Cluster Fleet",
     },
     {
       leader: "g",
       followUp: "b",
       action: () => navigate("/bnk"),
-      description: "Go to BNK",
+      description: "Go to F5 BNK",
     },
     {
       leader: "g",
       followUp: "c",
       action: () => navigate("/cnf"),
-      description: "Go to CNF",
+      description: "Go to F5 CNF",
     },
     {
       leader: "g",
@@ -237,13 +243,37 @@ export function useNavigationShortcuts() {
       leader: "g",
       followUp: "t",
       action: () => navigate("/tasks"),
-      description: "Go to Tasks",
+      description: "Go to Activity Log",
+    },
+    {
+      leader: "g",
+      followUp: "e",
+      action: () => navigate("/benchmarks"),
+      description: "Go to Benchmarks",
     },
     {
       leader: "g",
       followUp: "g",
       action: () => navigate("/ai/mcp-gateway"),
-      description: "Go to MCP Gateway",
+      description: "Go to Token Governance and Intelligence",
+    },
+    {
+      leader: "g",
+      followUp: "n",
+      action: () => navigate("/ai/agents"),
+      description: "Go to Agent Fleet",
+    },
+    {
+      leader: "g",
+      followUp: "l",
+      action: () => navigate("/ai/llm-router"),
+      description: "Go to Intelligent Inference",
+    },
+    {
+      leader: "g",
+      followUp: "y",
+      action: () => navigate("/ai/logs"),
+      description: "Go to AI Traffic Logs",
     },
     {
       leader: "g",
@@ -254,7 +284,7 @@ export function useNavigationShortcuts() {
     {
       leader: "g",
       followUp: "r",
-      action: () => navigate("/kubernetes?view=crds"),
+      action: () => navigate("/crds"),
       description: "Go to CR Explorer",
     },
     {

@@ -129,10 +129,6 @@ const TRAFFIC_STATUS_VIEWS = [
 ] as const;
 
 export default function LlmLogs() {
-  useEffect(() => {
-    document.title = "AI Traffic Logs | BNK-Forge";
-  }, []);
-
   const f = useObservabilityFilters("logs");
   const { data: filterData } = useLlmFilterData(f.clusterId, f.range);
 

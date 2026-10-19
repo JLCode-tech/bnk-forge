@@ -1,14 +1,23 @@
-import { lazy, Suspense, useState } from 'react';
-import { ResourceViewTabs, type ResourceViewTab } from '@/components/layout/ResourceViewTabs';
-import { HardDrive, Cpu, FileCode, Loader2 } from 'lucide-react';
+import { lazy, Suspense, useEffect, useState } from "react";
+import {
+  ResourceViewTabs,
+  type ResourceViewTab,
+} from "@/components/layout/ResourceViewTabs";
+import { HardDrive, Cpu, FileCode, Loader2 } from "lucide-react";
 
 const BluefieldImages = lazy(() =>
-  import('@/components/settings/BluefieldImages').then((m) => ({ default: m.BluefieldImages })),
+  import("@/components/settings/BluefieldImages").then((m) => ({
+    default: m.BluefieldImages,
+  })),
 );
 const BfConfTemplates = lazy(() =>
-  import('@/components/settings/BfConfTemplates').then((m) => ({ default: m.BfConfTemplates })),
+  import("@/components/settings/BfConfTemplates").then((m) => ({
+    default: m.BfConfTemplates,
+  })),
 );
-const BnkReleasesPanel = lazy(() => import('@/components/catalog/BnkReleasesPanel'));
+const BnkReleasesPanel = lazy(
+  () => import("@/components/catalog/BnkReleasesPanel"),
+);
 
 function TabFallback() {
   return (
@@ -18,19 +27,25 @@ function TabFallback() {
   );
 }
 
-export type SystemSubTab = 'doca' | 'bnk' | 'bfconf';
+export type SystemSubTab = "doca" | "bnk" | "bfconf";
 
 interface SystemImagesPanelProps {
   initialSubTab?: SystemSubTab;
 }
 
-export function SystemImagesPanel({ initialSubTab = 'doca' }: SystemImagesPanelProps) {
+export function SystemImagesPanel({
+  initialSubTab = "doca",
+}: SystemImagesPanelProps) {
   const [subTab, setSubTab] = useState<SystemSubTab>(initialSubTab);
 
+  useEffect(() => {
+    setSubTab(initialSubTab);
+  }, [initialSubTab]);
+
   const tabs: ResourceViewTab[] = [
-    { key: 'doca', label: 'DOCA / BFB Bootstreams', icon: HardDrive },
-    { key: 'bnk', label: 'BNK Operator Releases', icon: Cpu },
-    { key: 'bfconf', label: 'bf.conf Templates', icon: FileCode },
+    { key: "doca", label: "DOCA / BFB Bootstreams", icon: HardDrive },
+    { key: "bnk", label: "BNK Operator Releases", icon: Cpu },
+    { key: "bfconf", label: "bf.conf Templates", icon: FileCode },
   ];
 
   return (
@@ -46,17 +61,17 @@ export function SystemImagesPanel({ initialSubTab = 'doca' }: SystemImagesPanelP
       </div>
 
       <div>
-        {subTab === 'doca' && (
+        {subTab === "doca" && (
           <Suspense fallback={<TabFallback />}>
             <BluefieldImages />
           </Suspense>
         )}
-        {subTab === 'bnk' && (
+        {subTab === "bnk" && (
           <Suspense fallback={<TabFallback />}>
             <BnkReleasesPanel />
           </Suspense>
         )}
-        {subTab === 'bfconf' && (
+        {subTab === "bfconf" && (
           <Suspense fallback={<TabFallback />}>
             <BfConfTemplates />
           </Suspense>
