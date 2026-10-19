@@ -551,8 +551,8 @@ export function F5AIAnalyzerViewer({
         namespace: namespace === "all" ? undefined : namespace,
       }),
     enabled: !!clusterId,
-    refetchInterval: 5000,
-    staleTime: 0,
+    refetchInterval: 30000,
+    staleTime: 30000,
   });
   const httpRoutesByRef = useMemo(() => {
     const map = new Map<string, HTTPRouteLike>();

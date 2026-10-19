@@ -20,6 +20,7 @@ import {
 import type { ModuleLibrary } from '@/types';
 import { DISPLAY_LIMITS } from '@/lib/constants';
 import { useUpgradeRegistryModule } from '@/hooks/useRegistry';
+import { useModuleDetails } from '@/hooks/useModules';
 import { isAxiosError } from 'axios';
 import { notify } from '@/lib/notify';
 import {
@@ -43,11 +44,21 @@ interface ModuleDetailSheetProps {
 export function ModuleDetailSheet({
     open,
     onOpenChange,
-    module,
+    module: moduleProp,
     onAddToProject,
 }: ModuleDetailSheetProps) {
     const [showFullDocs, setShowFullDocs] = useState(false);
     const upgradeMutation = useUpgradeRegistryModule();
+    const needsDetails = Boolean(
+        open &&
+        moduleProp &&
+        moduleProp.readme === undefined &&
+        moduleProp.variables === undefined
+    );
+    const { data: fullModule } = useModuleDetails(
+        needsDetails && moduleProp ? moduleProp.id : 0
+    );
+    const module = fullModule ? { ...moduleProp, ...fullModule } : moduleProp;
 
     if (!module) return null;
 

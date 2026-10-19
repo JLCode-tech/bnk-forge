@@ -11,7 +11,7 @@ import logging
 from collections.abc import Collection
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import desc, func, or_
+from sqlalchemy import case, desc, func, or_
 from sqlalchemy.orm import aliased, joinedload
 
 from core.errors import BadRequestError, ConflictError, NotFoundError
@@ -1677,51 +1677,32 @@ class BenchmarkService(BaseService):
 
     def get_summary(self, cluster_id: int | None = None) -> dict:
         """Get dashboard summary of benchmark activity."""
-        base_query = self.db.query(BenchmarkRun)
-        if cluster_id:
-            base_query = base_query.join(BenchmarkTarget, BenchmarkRun.target_id == BenchmarkTarget.id).filter(
-                BenchmarkTarget.cluster_id == cluster_id
-            )
-
-        total_runs = base_query.count()
-        completed_runs = base_query.filter(BenchmarkRun.status == BenchmarkRunStatus.COMPLETED).count()
-        failed_runs = base_query.filter(BenchmarkRun.status == BenchmarkRunStatus.FAILED).count()
-        running_count = base_query.filter(BenchmarkRun.status == BenchmarkRunStatus.RUNNING).count()
-
-        # Average metrics across completed runs
-        avg_p50_query = self.db.query(func.avg(BenchmarkRun.latency_p50)).filter(
-            BenchmarkRun.status == BenchmarkRunStatus.COMPLETED,
-            BenchmarkRun.latency_p50.isnot(None),
-        )
-        avg_rps_query = self.db.query(func.avg(BenchmarkRun.overall_rps)).filter(
-            BenchmarkRun.status == BenchmarkRunStatus.COMPLETED,
-            BenchmarkRun.overall_rps.isnot(None),
-        )
-        avg_success_query = self.db.query(func.avg(BenchmarkRun.success_rate_pct)).filter(
-            BenchmarkRun.status == BenchmarkRunStatus.COMPLETED,
-            BenchmarkRun.success_rate_pct.isnot(None),
-        )
-        if cluster_id:
-            avg_p50_query = avg_p50_query.join(BenchmarkTarget, BenchmarkRun.target_id == BenchmarkTarget.id).filter(
-                BenchmarkTarget.cluster_id == cluster_id
-            )
-            avg_rps_query = avg_rps_query.join(BenchmarkTarget, BenchmarkRun.target_id == BenchmarkTarget.id).filter(
-                BenchmarkTarget.cluster_id == cluster_id
-            )
-            avg_success_query = avg_success_query.join(
-                BenchmarkTarget, BenchmarkRun.target_id == BenchmarkTarget.id
-            ).filter(BenchmarkTarget.cluster_id == cluster_id)
-
-        avg_p50 = avg_p50_query.scalar()
-        avg_rps = avg_rps_query.scalar()
-        avg_success = avg_success_query.scalar()
-
-        # Last run
-        last_run = base_query.order_by(BenchmarkRun.created_at.desc()).first()
-
-        # Runs in last 7 days
         seven_days_ago = datetime.now(UTC) - timedelta(days=7)
-        runs_last_7d = base_query.filter(BenchmarkRun.created_at >= seven_days_ago).count()
+        is_completed = BenchmarkRun.status == BenchmarkRunStatus.COMPLETED
+
+        agg_query = self.db.query(
+            func.count(BenchmarkRun.id).label("total_runs"),
+            func.coalesce(func.sum(case((is_completed, 1), else_=0)), 0).label("completed_runs"),
+            func.coalesce(func.sum(case((BenchmarkRun.status == BenchmarkRunStatus.FAILED, 1), else_=0)), 0).label(
+                "failed_runs"
+            ),
+            func.coalesce(func.sum(case((BenchmarkRun.status == BenchmarkRunStatus.RUNNING, 1), else_=0)), 0).label(
+                "running_count"
+            ),
+            func.avg(case((is_completed, BenchmarkRun.latency_p50), else_=None)).label("avg_p50"),
+            func.avg(case((is_completed, BenchmarkRun.overall_rps), else_=None)).label("avg_rps"),
+            func.avg(case((is_completed, BenchmarkRun.success_rate_pct), else_=None)).label("avg_success"),
+            func.max(BenchmarkRun.created_at).label("last_run_at"),
+            func.coalesce(func.sum(case((BenchmarkRun.created_at >= seven_days_ago, 1), else_=0)), 0).label(
+                "runs_last_7d"
+            ),
+        )
+        if cluster_id:
+            agg_query = agg_query.join(BenchmarkTarget, BenchmarkRun.target_id == BenchmarkTarget.id).filter(
+                BenchmarkTarget.cluster_id == cluster_id
+            )
+
+        agg = agg_query.one()
 
         # Runs by proxy
         proxy_query = self.db.query(
@@ -1758,15 +1739,15 @@ class BenchmarkService(BaseService):
         runs_by_tool = [{"tool": row.tool, "count": row.count} for row in tool_stats]
 
         return {
-            "total_runs": total_runs,
-            "completed_runs": completed_runs,
-            "failed_runs": failed_runs,
-            "running_count": running_count,
-            "avg_latency_p50": round(avg_p50, 4) if avg_p50 else None,
-            "avg_rps": round(avg_rps, 2) if avg_rps else None,
-            "avg_success_rate": round(avg_success, 2) if avg_success else None,
-            "last_run_at": last_run.created_at if last_run else None,
-            "runs_last_7d": runs_last_7d,
+            "total_runs": int(agg.total_runs or 0),
+            "completed_runs": int(agg.completed_runs or 0),
+            "failed_runs": int(agg.failed_runs or 0),
+            "running_count": int(agg.running_count or 0),
+            "avg_latency_p50": round(agg.avg_p50, 4) if agg.avg_p50 else None,
+            "avg_rps": round(agg.avg_rps, 2) if agg.avg_rps else None,
+            "avg_success_rate": round(agg.avg_success, 2) if agg.avg_success else None,
+            "last_run_at": agg.last_run_at,
+            "runs_last_7d": int(agg.runs_last_7d or 0),
             "runs_by_proxy": runs_by_proxy,
             "runs_by_tool": runs_by_tool,
         }

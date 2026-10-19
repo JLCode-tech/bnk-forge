@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { LayoutGrid } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -10,7 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAllClusters } from "@/hooks/k8s/useClusterCRUD";
-import { projectsApi } from "@/lib/api";
+import { useProjects } from "@/hooks/useProjects";
 import { STORAGE_KEYS } from "@/lib/storage-keys";
 
 export interface ClusterPickerProps {
@@ -68,12 +67,7 @@ export function ClusterPicker({
     onProjectChange?.(nextProjectId);
   };
 
-  const { data: projects = [] } = useQuery({
-    queryKey: ["projects"],
-    queryFn: () => projectsApi.getProjects(),
-    enabled: showProjectSelector,
-    staleTime: 30_000,
-  });
+  const { data: projects = [] } = useProjects({ enabled: showProjectSelector });
 
   const { data } = useAllClusters();
   const allClusters = data?.clusters ?? [];

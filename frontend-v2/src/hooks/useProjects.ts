@@ -6,10 +6,11 @@ import type { ProjectCreateData, ProjectUpdateData, JsonValue } from '@/types';
 import { notify } from '@/lib/notify';
 import { useAppMutation } from '@/hooks/lib/useAppMutation';
 
-export function useProjects() {
+export function useProjects(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: queryKeys.projects.list(),
     queryFn: api.getProjects,
+    enabled: options?.enabled,
     staleTime: 30000, // 30 seconds - projects list doesn't change frequently
   });
 }

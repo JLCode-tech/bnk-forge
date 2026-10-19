@@ -19,7 +19,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ModuleVariableEditor } from './ModuleVariableEditor';
 import { useProjects } from '@/hooks/useProjects';
-import { useAddModuleToProject, useModuleLibrary, useProjectModules } from '@/hooks/useModules';
+import { useAddModuleToProject, useModuleDetails, useModuleLibrary, useProjectModules } from '@/hooks/useModules';
 import { ChevronDown, Package, FolderGit2, CheckCircle2, Loader2, Search, AlertCircle, Globe, Cloud } from 'lucide-react';
 import type { CloudCredentialTemplate, ModuleLibrary, ModuleVariable, Project, JsonValue } from '@/types';
 import { notify } from '@/lib/notify';
@@ -49,6 +49,12 @@ export function AddModuleToProjectDialog({
     const addModuleMutation = useAddModuleToProject();
     const [selectedProjectId, setSelectedProjectId] = useState<number | null>(projectId || null);
     const [selectedModule, setSelectedModule] = useState<ModuleLibrary | null>(module);
+    const needsSelectedDetails = Boolean(
+        open && selectedModule && selectedModule.variables === undefined
+    );
+    const { data: fullSelectedModule } = useModuleDetails(
+        needsSelectedDetails && selectedModule ? selectedModule.id : 0
+    );
     const [moduleSearch, setModuleSearch] = useState('');
     const [variables, setVariables] = useState<Record<string, JsonValue>>({});
     const [pathInProject, setPathInProject] = useState<string>('');
@@ -177,6 +183,19 @@ export function AddModuleToProjectDialog({
             setSelectedProjectId(projectId);
         }
     }, [module, projectId, initializeDefaultVariables]);
+
+    useEffect(() => {
+        if (
+            fullSelectedModule &&
+            selectedModule &&
+            fullSelectedModule.id === selectedModule.id &&
+            selectedModule.variables === undefined
+        ) {
+            const merged = { ...selectedModule, ...fullSelectedModule };
+            setSelectedModule(merged);
+            initializeDefaultVariables(merged);
+        }
+    }, [fullSelectedModule, selectedModule, initializeDefaultVariables]);
 
     // Auto-select a freshly imported registry/git/tfc module once moduleLibrary refreshes.
     useEffect(() => {

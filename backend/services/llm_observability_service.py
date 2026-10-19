@@ -352,9 +352,41 @@ class LlmObservabilityService:
             **data,
         }
 
+    def _cached(self, key: str, compute: Callable[[], dict[str, Any]], use_cache: bool) -> dict[str, Any]:
+        """Cache top-level service responses in Redis for 30s when available."""
+        if not use_cache or not isinstance(self.db, Session):
+            return compute()
+        from core.cache import cache
+
+        cached = cache.get(key)
+        if cached is not None:
+            return cached
+        result = compute()
+        if isinstance(result, dict) and result.get("available"):
+            cache.set(key, result, ttl_seconds=30)
+        return result
+
     # -- endpoints --------------------------------------------------------
 
     def stats(
+        self,
+        cluster_id: int | None,
+        range_: str,
+        model: str | None = None,
+        status: str | None = None,
+        _api_client: Any = None,
+        project_id: int | None = None,
+    ) -> dict[str, Any]:
+        cache_key = f"llm_obs:svc:stats:{cluster_id}:{project_id}:{range_}:{model}:{status}"
+        return self._cached(
+            cache_key,
+            lambda: self._stats_uncached(
+                cluster_id, range_, model=model, status=status, _api_client=_api_client, project_id=project_id
+            ),
+            use_cache=(_api_client is None),
+        )
+
+    def _stats_uncached(
         self,
         cluster_id: int | None,
         range_: str,
@@ -445,6 +477,25 @@ class LlmObservabilityService:
         )
 
     def histogram(
+        self,
+        cluster_id: int | None,
+        range_: str,
+        metric: str,
+        model: str | None = None,
+        status: str | None = None,
+        _api_client: Any = None,
+        project_id: int | None = None,
+    ) -> dict[str, Any]:
+        cache_key = f"llm_obs:svc:histogram:{cluster_id}:{project_id}:{range_}:{metric}:{model}:{status}"
+        return self._cached(
+            cache_key,
+            lambda: self._histogram_uncached(
+                cluster_id, range_, metric, model=model, status=status, _api_client=_api_client, project_id=project_id
+            ),
+            use_cache=(_api_client is None),
+        )
+
+    def _histogram_uncached(
         self,
         cluster_id: int | None,
         range_: str,
@@ -601,6 +652,25 @@ class LlmObservabilityService:
         _api_client: Any = None,
         project_id: int | None = None,
     ) -> dict[str, Any]:
+        cache_key = f"llm_obs:svc:provider_usage:{cluster_id}:{project_id}:{range_}:{metric}:{model}:{status}"
+        return self._cached(
+            cache_key,
+            lambda: self._provider_usage_uncached(
+                cluster_id, range_, metric, model=model, status=status, _api_client=_api_client, project_id=project_id
+            ),
+            use_cache=(_api_client is None),
+        )
+
+    def _provider_usage_uncached(
+        self,
+        cluster_id: int | None,
+        range_: str,
+        metric: str,
+        model: str | None = None,
+        status: str | None = None,
+        _api_client: Any = None,
+        project_id: int | None = None,
+    ) -> dict[str, Any]:
         if cluster_id is None:
             pairs, errors = self._fleet(
                 lambda c, client: self.provider_usage(c.id, range_, metric, model, status, _api_client=client),
@@ -674,6 +744,24 @@ class LlmObservabilityService:
         return self._ok(metric=metric, step_s=step_s, series=series, errors=errors)
 
     def rankings(
+        self,
+        cluster_id: int | None,
+        range_: str,
+        model: str | None = None,
+        status: str | None = None,
+        _api_client: Any = None,
+        project_id: int | None = None,
+    ) -> dict[str, Any]:
+        cache_key = f"llm_obs:svc:rankings:{cluster_id}:{project_id}:{range_}:{model}:{status}"
+        return self._cached(
+            cache_key,
+            lambda: self._rankings_uncached(
+                cluster_id, range_, model=model, status=status, _api_client=_api_client, project_id=project_id
+            ),
+            use_cache=(_api_client is None),
+        )
+
+    def _rankings_uncached(
         self,
         cluster_id: int | None,
         range_: str,
@@ -813,6 +901,39 @@ class LlmObservabilityService:
         project_id: int | None = None,
     ) -> dict[str, Any]:
         limit = max(1, min(limit, 1000))
+        cache_key = (
+            f"llm_obs:svc:logs:{cluster_id}:{project_id}:{range_}:{model}:{status}:{limit}:{content_search}:{end}"
+        )
+        return self._cached(
+            cache_key,
+            lambda: self._logs_uncached(
+                cluster_id,
+                range_,
+                model=model,
+                status=status,
+                limit=limit,
+                content_search=content_search,
+                end=end,
+                _api_client=_api_client,
+                _cluster=_cluster,
+                project_id=project_id,
+            ),
+            use_cache=(_api_client is None),
+        )
+
+    def _logs_uncached(
+        self,
+        cluster_id: int | None,
+        range_: str,
+        model: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        content_search: str | None = None,
+        end: int | None = None,
+        _api_client: Any = None,
+        _cluster: KubernetesCluster | None = None,
+        project_id: int | None = None,
+    ) -> dict[str, Any]:
         if cluster_id is None:
             pairs, errors = self._fleet(
                 lambda c, client: self.logs(
@@ -932,6 +1053,20 @@ class LlmObservabilityService:
         return rows, oldest_ns
 
     def filterdata(
+        self,
+        cluster_id: int | None,
+        range_: str,
+        _api_client: Any = None,
+        project_id: int | None = None,
+    ) -> dict[str, Any]:
+        cache_key = f"llm_obs:svc:filterdata:{cluster_id}:{project_id}:{range_}"
+        return self._cached(
+            cache_key,
+            lambda: self._filterdata_uncached(cluster_id, range_, _api_client=_api_client, project_id=project_id),
+            use_cache=(_api_client is None),
+        )
+
+    def _filterdata_uncached(
         self,
         cluster_id: int | None,
         range_: str,

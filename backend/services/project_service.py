@@ -32,7 +32,7 @@ from core.platform_context import (
 )
 
 # Model imports
-from models import CloudCredentialTemplate, Project, ProjectBackendConfig, ProjectModule, User
+from models import CloudCredentialTemplate, Project, ProjectBackendConfig, ProjectModule, SSHCredential, User
 
 # Service imports
 from services.base_service import BaseService
@@ -391,7 +391,7 @@ class ProjectService(BaseService):
             if cached_result is not None:
                 return cached_result
 
-        # BE-004: Fix N+1 query - eagerly load k8s_clusters, credential_template, and user
+        # BE-004: Fix N+1 query - eagerly load k8s_clusters, credential_template, ssh_credential, backend_config, and user
         projects = self.db.query(Project).options(
             joinedload(Project.credential_template).load_only(
                 CloudCredentialTemplate.id,
@@ -400,6 +400,13 @@ class ProjectService(BaseService):
                 CloudCredentialTemplate.ibmcloud_api_key_encrypted,
                 CloudCredentialTemplate.ibmcloud_resource_group,
             ),
+            joinedload(Project.ssh_credential).load_only(
+                SSHCredential.id,
+                SSHCredential.name,
+                SSHCredential.host,
+                SSHCredential.username,
+            ),
+            joinedload(Project.backend_config),
             subqueryload(Project.k8s_clusters),
             # module_state is derived from module statuses; without this the list
             # endpoint would lazy-load modules once per project.

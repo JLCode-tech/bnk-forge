@@ -33,6 +33,10 @@ class CacheService:
             logger.error(f"❌ Redis cache connection failed: {e}")
             self.redis = None
 
+    def is_available(self) -> bool:
+        """Return True if the Redis client is connected and available."""
+        return self.redis is not None
+
     def get(self, key: str) -> Any | None:
         """
         Get value from cache

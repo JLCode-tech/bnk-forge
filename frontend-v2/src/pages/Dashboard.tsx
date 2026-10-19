@@ -18,7 +18,6 @@ import { usePageRefresh } from "@/hooks/usePageRefresh";
 import { useRecentDeployments } from "@/hooks/useDeployments";
 import { useProjects } from "@/hooks/useProjects";
 import {
-  useGlobalDriftSummary,
   useRecentDrifted,
   useProjectDriftCounts,
   useGlobalDriftCount,
@@ -97,7 +96,6 @@ export default function Dashboard() {
     error: projectsErrorData,
     refetch: refetchProjects,
   } = useProjects();
-  useGlobalDriftSummary();
   const { data: recentDrifted } = useRecentDrifted(6);
   const driftCount = useGlobalDriftCount();
   const projectDriftCounts = useProjectDriftCounts(20);

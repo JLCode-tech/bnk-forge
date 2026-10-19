@@ -6,6 +6,50 @@ import { useState, useEffect } from "react";
 import yaml from "js-yaml";
 import { useTheme } from "@/context/ThemeContext";
 
+const isTestEnv = Boolean(import.meta.env.VITEST);
+let monacoInitPromise: Promise<void> | null = null;
+
+function ensureMonacoLoaded(): Promise<void> {
+  if (!monacoInitPromise) {
+    monacoInitPromise = Promise.all([
+      import("monaco-editor"),
+      import("monaco-editor/esm/vs/editor/editor.worker?worker"),
+      import("@monaco-editor/react"),
+    ])
+      .then(([monaco, { default: editorWorker }, { loader }]) => {
+        self.MonacoEnvironment = {
+          getWorker() {
+            return new editorWorker();
+          },
+        };
+        loader.config({ monaco });
+      })
+      .catch((err) => {
+        monacoInitPromise = null;
+        throw err;
+      });
+  }
+  return monacoInitPromise;
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function useMonacoReady(active = true): boolean {
+  const [ready, setReady] = useState(isTestEnv);
+
+  useEffect(() => {
+    if (ready || !active) return;
+    let cancelled = false;
+    ensureMonacoLoaded().then(() => {
+      if (!cancelled) setReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, active]);
+
+  return ready;
+}
+
 interface YamlEditorProps {
   value: string;
   onChange: (value: string) => void;
@@ -28,6 +72,7 @@ export function YamlEditor({
   showValidation = true,
 }: YamlEditorProps) {
   const { isDark } = useTheme();
+  const monacoReady = useMonacoReady(true);
   const [validation, setValidation] = useState<ValidationResult>({
     isValid: true,
   });
@@ -134,29 +179,38 @@ export function YamlEditor({
       )}
 
       <Card className="overflow-hidden">
-        <Editor
-          height={height}
-          defaultLanguage="yaml"
-          value={value}
-          onChange={handleEditorChange}
-          options={{
-            readOnly,
-            minimap: { enabled: false },
-            scrollBeyondLastLine: false,
-            fontSize: 13,
-            fontFamily: "JetBrains Mono, monospace",
-            lineNumbers: "on",
-            folding: true,
-            wordWrap: "on",
-            automaticLayout: true,
-            tabSize: 2,
-            renderWhitespace: "selection",
-            bracketPairColorization: {
-              enabled: true,
-            },
-          }}
-          theme={isDark ? "vs-dark" : "vs"}
-        />
+        {monacoReady ? (
+          <Editor
+            height={height}
+            defaultLanguage="yaml"
+            value={value}
+            onChange={handleEditorChange}
+            options={{
+              readOnly,
+              minimap: { enabled: false },
+              scrollBeyondLastLine: false,
+              fontSize: 13,
+              fontFamily: "JetBrains Mono, monospace",
+              lineNumbers: "on",
+              folding: true,
+              wordWrap: "on",
+              automaticLayout: true,
+              tabSize: 2,
+              renderWhitespace: "selection",
+              bracketPairColorization: {
+                enabled: true,
+              },
+            }}
+            theme={isDark ? "vs-dark" : "vs"}
+          />
+        ) : (
+          <div
+            style={{ height }}
+            className="flex items-center justify-center text-sm text-muted-foreground"
+          >
+            Loading editor...
+          </div>
+        )}
       </Card>
     </div>
   );

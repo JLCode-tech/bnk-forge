@@ -342,7 +342,11 @@ _api_groups_cache: dict[int, tuple[float, frozenset[str]]] = {}
 _api_groups_lock = Lock()
 
 
-def _cluster_api_groups(cluster: KubernetesCluster, db: Session) -> frozenset[str] | None:
+def _cluster_api_groups(
+    cluster: KubernetesCluster,
+    db: Session,
+    k8s_service: KubernetesService | None = None,
+) -> frozenset[str] | None:
     """
     Return the set of API group names registered on the cluster.
 
@@ -359,8 +363,8 @@ def _cluster_api_groups(cluster: KubernetesCluster, db: Session) -> frozenset[st
             return cached[1]
 
     try:
-        k8s_service = KubernetesService(db)
-        api_client = k8s_service.load_kubeconfig(cluster)
+        svc = k8s_service or KubernetesService(db)
+        api_client = svc.load_kubeconfig(cluster)
         apis = k8s_client.ApisApi(api_client).get_api_versions()
         groups = frozenset(g.name for g in (apis.groups or []))
     except Exception as e:
@@ -372,7 +376,11 @@ def _cluster_api_groups(cluster: KubernetesCluster, db: Session) -> frozenset[st
     return groups
 
 
-def _cluster_has_bnk_api_groups(cluster: KubernetesCluster, db: Session) -> bool:
+def _cluster_has_bnk_api_groups(
+    cluster: KubernetesCluster,
+    db: Session,
+    k8s_service: KubernetesService | None = None,
+) -> bool:
     """
     Check whether the cluster has any BNK-specific API groups registered.
 
@@ -383,13 +391,17 @@ def _cluster_has_bnk_api_groups(cluster: KubernetesCluster, db: Session) -> bool
     On discovery failure we return True (fall through to the full fetch) so
     a broken discovery call never silently hides BNK that's actually present.
     """
-    groups = _cluster_api_groups(cluster, db)
+    groups = _cluster_api_groups(cluster, db, k8s_service=k8s_service)
     if groups is None:
         return True
     return bool(_BNK_API_GROUPS & groups)
 
 
-def _cluster_has_dpf_api_groups(cluster: KubernetesCluster, db: Session) -> bool:
+def _cluster_has_dpf_api_groups(
+    cluster: KubernetesCluster,
+    db: Session,
+    k8s_service: KubernetesService | None = None,
+) -> bool:
     """
     Check whether the cluster has any DPF (NVIDIA DOCA Platform Framework)
     API groups registered.
@@ -399,7 +411,7 @@ def _cluster_has_dpf_api_groups(cluster: KubernetesCluster, db: Session) -> bool
     discovery failure we return False so we DON'T probe — erring on the
     side of skipping expensive calls rather than repeating 404s.
     """
-    groups = _cluster_api_groups(cluster, db)
+    groups = _cluster_api_groups(cluster, db, k8s_service=k8s_service)
     if groups is None:
         return False
     return bool(_DPF_API_GROUPS & groups)
@@ -407,8 +419,10 @@ def _cluster_has_dpf_api_groups(cluster: KubernetesCluster, db: Session) -> bool
 
 # Fleet-health response cache — avoids re-running the full multi-cluster
 # fetch burst when multiple tabs/users poll the endpoint within a short window.
+# Uses Redis (TTL 15s) with in-process dict fallback when Redis is unavailable.
 # Keyed by (sorted cluster IDs tuple, max updated_at) so create/update/delete
 # of a cluster naturally invalidates the cache without needing explicit hooks.
+_FLEET_HEALTH_REDIS_TTL_SEC = 15
 _FLEET_HEALTH_TTL_SEC = 30.0
 _fleet_health_cache: dict[tuple, tuple[float, dict]] = {}
 _fleet_health_lock = Lock()
@@ -525,8 +539,8 @@ def _query_cluster_health(
             # Cheap short-circuits: one discovery call (cached) answers both
             # "does this cluster have BNK?" and "does it have DPF?". Skip the
             # heavy probes for absent frameworks.
-            has_bnk = _cluster_has_bnk_api_groups(cluster, session)
-            has_dpf = _cluster_has_dpf_api_groups(cluster, session)
+            has_bnk = _cluster_has_bnk_api_groups(cluster, session, k8s_service=k8s_service)
+            has_dpf = _cluster_has_dpf_api_groups(cluster, session, k8s_service=k8s_service)
 
             dpf_summary = _query_dpf_summary(k8s_service, cluster.id) if has_dpf else dict(_DPF_NOT_INSTALLED_SUMMARY)
 
@@ -585,6 +599,8 @@ def get_fleet_health(db: Session = Depends(get_db)):
     ID set + max updated_at so cluster create/update/delete invalidate
     naturally without needing explicit cache-busting hooks.
     """
+    from core.cache import cache
+
     clusters = db.query(KubernetesCluster).all()
 
     # Cache lookup — key on (cluster IDs, max updated_at). A changed cluster
@@ -593,15 +609,25 @@ def get_fleet_health(db: Session = Depends(get_db)):
         (c.updated_at for c in clusters if c.updated_at is not None),
         default=None,
     )
+    cluster_ids = tuple(sorted(int(c.id) for c in clusters))
+    max_updated_str = max_updated.isoformat() if max_updated else "none"
+    user_scope = f"{','.join(str(cid) for cid in cluster_ids)}:{max_updated_str}"
+    redis_key = f"fleet:health:{user_scope}"
+
+    cached_redis = cache.get(redis_key)
+    if cached_redis is not None:
+        return cached_redis
+
     cache_key = (
-        tuple(sorted(int(c.id) for c in clusters)),
+        cluster_ids,
         max_updated.isoformat() if max_updated else None,
     )
     now_mono = time.monotonic()
-    with _fleet_health_lock:
-        cached = _fleet_health_cache.get(cache_key)
-        if cached and (now_mono - cached[0]) < _FLEET_HEALTH_TTL_SEC:
-            return cached[1]
+    if not cache.is_available():
+        with _fleet_health_lock:
+            cached = _fleet_health_cache.get(cache_key)
+            if cached and (now_mono - cached[0]) < _FLEET_HEALTH_TTL_SEC:
+                return cached[1]
 
     if not clusters:
         empty_response = {
@@ -620,8 +646,9 @@ def get_fleet_health(db: Session = Depends(get_db)):
                 "support_semantics": [],
             },
         }
-        with _fleet_health_lock:
-            _fleet_health_cache[cache_key] = (now_mono, empty_response)
+        if not cache.set(redis_key, empty_response, _FLEET_HEALTH_REDIS_TTL_SEC):
+            with _fleet_health_lock:
+                _fleet_health_cache[cache_key] = (now_mono, empty_response)
         return empty_response
 
     # Build operator lookup: cluster_id → operator record
@@ -747,13 +774,14 @@ def get_fleet_health(db: Session = Depends(get_db)):
         "operators": operators_out,
         "platform_context": _build_fleet_health_platform_context(clusters),
     }
-    with _fleet_health_lock:
-        # Opportunistically trim stale entries so the cache can't grow unbounded
-        # if cluster sets churn a lot (each distinct key would accumulate).
-        stale_cutoff = now_mono - _FLEET_HEALTH_TTL_SEC
-        for key in [k for k, (t, _) in _fleet_health_cache.items() if t < stale_cutoff]:
-            _fleet_health_cache.pop(key, None)
-        _fleet_health_cache[cache_key] = (now_mono, response)
+    if not cache.set(redis_key, response, _FLEET_HEALTH_REDIS_TTL_SEC):
+        with _fleet_health_lock:
+            # Opportunistically trim stale entries so the cache can't grow unbounded
+            # if cluster sets churn a lot (each distinct key would accumulate).
+            stale_cutoff = now_mono - _FLEET_HEALTH_TTL_SEC
+            for key in [k for k, (t, _) in _fleet_health_cache.items() if t < stale_cutoff]:
+                _fleet_health_cache.pop(key, None)
+            _fleet_health_cache[cache_key] = (now_mono, response)
     return response
 
 

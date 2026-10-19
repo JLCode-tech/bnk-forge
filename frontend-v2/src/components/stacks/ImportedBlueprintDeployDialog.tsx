@@ -26,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useStackRequiredInputs, useStackTemplate } from "@/hooks/useStacks";
+import { useProjects } from "@/hooks/useProjects";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
@@ -103,11 +104,7 @@ export function ImportedBlueprintDeployDialog({
     enabled: open && template?.cloud_provider === "ibm",
   });
 
-  const { data: projects } = useQuery({
-    queryKey: ["projects"],
-    queryFn: () => api.getProjects(),
-    enabled: open,
-  });
+  const { data: projects } = useProjects({ enabled: open });
 
   const releaseId = useMemo(() => Number(slug.replace("release-", "")), [slug]);
   const allInputs = useMemo(

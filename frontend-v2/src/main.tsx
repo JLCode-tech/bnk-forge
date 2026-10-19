@@ -27,23 +27,6 @@ import "@fontsource/jetbrains-mono/600.css";
 import "@fontsource/jetbrains-mono/700.css";
 import "./styles.css";
 
-// ---------------------------------------------------------------------------
-// Monaco Editor: use locally bundled package instead of CDN.
-// Without this, @monaco-editor/react fetches from jsDelivr which fails
-// in air-gapped environments or behind firewalls (dialog shows "Loading..." forever).
-// ---------------------------------------------------------------------------
-import * as monaco from "monaco-editor";
-import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
-
-self.MonacoEnvironment = {
-  getWorker() {
-    return new editorWorker();
-  },
-};
-
-import { loader } from "@monaco-editor/react";
-loader.config({ monaco });
-
 // After a restore reload, nuke the entire query cache so no hook
 // (even those with their own staleTime overrides) can serve pre-restore data.
 if (isPostRestore) {

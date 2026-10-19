@@ -694,7 +694,7 @@ def get_backup_status(db: Session = Depends(get_db)):
 
 @router.post("/restore", response_model=RestoreResponse)
 @handle_route_errors("restore backup")
-async def restore_backup(
+def restore_backup(
     file: UploadFile = File(..., description="Backup archive (.tar.gz)"),
     passphrase: str = Form(..., min_length=12, description="Archive passphrase"),
     db: Session = Depends(get_db),

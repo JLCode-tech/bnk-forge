@@ -5,6 +5,7 @@ Extracted from helm_service.py (R4-012) to keep the monolith under control.
 Provides upload, clone, CRUD, and values management for custom charts.
 """
 
+import asyncio
 import hashlib
 import logging
 import os
@@ -31,11 +32,7 @@ class HelmChartStoreMixin:
         - self._validate_arg(name, value)
     """
 
-    async def upload_chart(
-        self,
-        file: UploadFile,
-        uploaded_by: str | None = None
-    ) -> dict[str, Any]:
+    async def upload_chart(self, file: UploadFile, uploaded_by: str | None = None) -> dict[str, Any]:
         """
         Upload a custom Helm chart (.tgz file).
 
@@ -47,64 +44,58 @@ class HelmChartStoreMixin:
             Chart information dictionary
         """
         # Validate file extension
-        if not file.filename.endswith('.tgz'):
+        if not file.filename.endswith(".tgz"):
             raise ValueError("File must be a .tgz Helm chart package")
 
         # Create upload directory if it doesn't exist
         upload_dir = "/app/helm_charts"
-        os.makedirs(upload_dir, exist_ok=True)
 
         # Read file content
         content = await file.read()
         file_size = len(content)
 
-        # Calculate checksum
-        checksum = hashlib.sha256(content).hexdigest()
+        def _extract_chart_metadata() -> tuple[str, dict[str, Any]]:
+            os.makedirs(upload_dir, exist_ok=True)
+            digest = hashlib.sha256(content).hexdigest()
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".tgz", delete=False) as temp_file:
+                    temp_file.write(content)
+                    temp_path = temp_file.name
 
-        # Extract and validate chart
-        try:
-            # Write to temp file for extraction
-            with tempfile.NamedTemporaryFile(suffix='.tgz', delete=False) as temp_file:
-                temp_file.write(content)
-                temp_path = temp_file.name
+                with tarfile.open(temp_path, "r:gz") as tar:
+                    chart_yaml_path = None
+                    for member in tar.getmembers():
+                        if member.name.endswith("Chart.yaml"):
+                            chart_yaml_path = member.name
+                            break
 
-            # Extract Chart.yaml to read metadata
-            with tarfile.open(temp_path, 'r:gz') as tar:
-                # Find Chart.yaml
-                chart_yaml_path = None
-                for member in tar.getmembers():
-                    if member.name.endswith('Chart.yaml'):
-                        chart_yaml_path = member.name
-                        break
+                    if not chart_yaml_path:
+                        raise ValueError("Invalid Helm chart: Chart.yaml not found")
 
-                if not chart_yaml_path:
-                    raise ValueError("Invalid Helm chart: Chart.yaml not found")
+                    chart_yaml_file = tar.extractfile(chart_yaml_path)
+                    metadata = pyyaml.safe_load(chart_yaml_file.read())
 
-                # Extract and parse Chart.yaml
-                chart_yaml_file = tar.extractfile(chart_yaml_path)
-                chart_metadata = pyyaml.safe_load(chart_yaml_file.read())
+                os.unlink(temp_path)
+                return digest, metadata
+            except Exception as e:
+                logger.error(f"Failed to parse Helm chart: {e}")
+                raise ValueError(f"Invalid Helm chart: {str(e)}")
 
-            # Clean up temp file
-            os.unlink(temp_path)
-
-        except Exception as e:
-            logger.error(f"Failed to parse Helm chart: {e}")
-            raise ValueError(f"Invalid Helm chart: {str(e)}")
+        checksum, chart_metadata = await asyncio.to_thread(_extract_chart_metadata)
 
         # Extract chart information
-        chart_name = chart_metadata.get('name')
-        chart_version = chart_metadata.get('version')
-        app_version = chart_metadata.get('appVersion')
-        description = chart_metadata.get('description')
+        chart_name = chart_metadata.get("name")
+        chart_version = chart_metadata.get("version")
+        app_version = chart_metadata.get("appVersion")
+        description = chart_metadata.get("description")
 
         if not chart_name or not chart_version:
             raise ValueError("Invalid Helm chart: name and version required in Chart.yaml")
 
         # Check if chart already exists
-        existing = self.db.query(HelmChart).filter(
-            HelmChart.name == chart_name,
-            HelmChart.version == chart_version
-        ).first()
+        existing = (
+            self.db.query(HelmChart).filter(HelmChart.name == chart_name, HelmChart.version == chart_version).first()
+        )
 
         if existing:
             raise ValueError(f"Chart {chart_name}:{chart_version} already exists")
@@ -113,8 +104,11 @@ class HelmChartStoreMixin:
         safe_filename = f"{chart_name}-{chart_version}.tgz"
         file_path = os.path.join(upload_dir, safe_filename)
 
-        with open(file_path, 'wb') as f:
-            f.write(content)
+        def _write_chart_file() -> None:
+            with open(file_path, "wb") as f:
+                f.write(content)
+
+        await asyncio.to_thread(_write_chart_file)
 
         # Save to database
         helm_chart = HelmChart(
@@ -126,7 +120,7 @@ class HelmChartStoreMixin:
             file_size=file_size,
             checksum=checksum,
             chart_metadata=chart_metadata,
-            uploaded_by=uploaded_by
+            uploaded_by=uploaded_by,
         )
 
         self.db.add(helm_chart)
@@ -143,8 +137,8 @@ class HelmChartStoreMixin:
                 "description": helm_chart.description,
                 "file_size": helm_chart.file_size,
                 "checksum": helm_chart.checksum,
-                "created_at": helm_chart.created_at.isoformat() if helm_chart.created_at else None
-            }
+                "created_at": helm_chart.created_at.isoformat() if helm_chart.created_at else None,
+            },
         }
 
     def list_uploaded_charts(self, source_type: str | None = None) -> list[dict[str, Any]]:
@@ -176,7 +170,7 @@ class HelmChartStoreMixin:
                 "source_chart": chart.source_chart,
                 "source_repository": chart.source_repository,
                 "uploaded_by": chart.uploaded_by,
-                "created_at": chart.created_at.isoformat() if chart.created_at else None
+                "created_at": chart.created_at.isoformat() if chart.created_at else None,
             }
             for chart in charts
         ]
@@ -216,10 +210,7 @@ class HelmChartStoreMixin:
         self.db.delete(chart)
         self.db.flush()
 
-        return {
-            "success": True,
-            "message": f"Chart {chart.name}:{chart.version} deleted successfully"
-        }
+        return {"success": True, "message": f"Chart {chart.name}:{chart.version} deleted successfully"}
 
     def get_chart_values(self, chart_id: int) -> dict[str, Any]:
         """
@@ -239,11 +230,11 @@ class HelmChartStoreMixin:
             raise ValueError(f"Chart file not found at {chart.file_path}")
 
         # Extract values.yaml from the chart
-        with tarfile.open(chart.file_path, 'r:gz') as tar:
+        with tarfile.open(chart.file_path, "r:gz") as tar:
             # Find values.yaml file
             values_file = None
             for member in tar.getmembers():
-                if member.name.endswith('/values.yaml') or member.name == 'values.yaml':
+                if member.name.endswith("/values.yaml") or member.name == "values.yaml":
                     values_file = member
                     break
 
@@ -252,18 +243,18 @@ class HelmChartStoreMixin:
                     "success": True,
                     "values": "# No values.yaml found in chart\n",
                     "chart_name": chart.name,
-                    "chart_version": chart.version
+                    "chart_version": chart.version,
                 }
 
             # Extract and read the values file
             f = tar.extractfile(values_file)
             if f:
-                values_content = f.read().decode('utf-8')
+                values_content = f.read().decode("utf-8")
                 return {
                     "success": True,
                     "values": values_content,
                     "chart_name": chart.name,
-                    "chart_version": chart.version
+                    "chart_version": chart.version,
                 }
 
         raise ValueError("Failed to read values.yaml from chart")
@@ -286,21 +277,20 @@ class HelmChartStoreMixin:
         if not os.path.exists(chart.file_path):
             raise ValueError(f"Chart file not found at {chart.file_path}")
 
-
         # Create a temporary directory to extract the chart
         with tempfile.TemporaryDirectory() as temp_dir:
             # Extract the entire chart
-            with tarfile.open(chart.file_path, 'r:gz') as tar:
+            with tarfile.open(chart.file_path, "r:gz") as tar:
                 # Use filter='data' to prevent Zip Slip (path traversal) attacks
                 # This ensures files are extracted only within temp_dir
-                tar.extractall(temp_dir, filter='data')
+                tar.extractall(temp_dir, filter="data")
 
             # Find and update the values.yaml file
             values_updated = False
             for root, dirs, files in os.walk(temp_dir):
-                if 'values.yaml' in files:
-                    values_path = os.path.join(root, 'values.yaml')
-                    with open(values_path, 'w') as f:
+                if "values.yaml" in files:
+                    values_path = os.path.join(root, "values.yaml")
+                    with open(values_path, "w") as f:
                         f.write(new_values)
                     values_updated = True
                     break
@@ -309,22 +299,19 @@ class HelmChartStoreMixin:
                 raise ValueError("values.yaml not found in chart")
 
             # Create a new tar.gz with the updated files
-            backup_path = chart.file_path + '.backup'
+            backup_path = chart.file_path + ".backup"
             shutil.copy(chart.file_path, backup_path)
 
             try:
                 # Re-pack the chart
-                with tarfile.open(chart.file_path, 'w:gz') as tar:
+                with tarfile.open(chart.file_path, "w:gz") as tar:
                     for item in os.listdir(temp_dir):
                         tar.add(os.path.join(temp_dir, item), arcname=item)
 
                 # Remove backup if successful
                 os.remove(backup_path)
 
-                return {
-                    "success": True,
-                    "message": f"Chart {chart.name}:{chart.version} values updated successfully"
-                }
+                return {"success": True, "message": f"Chart {chart.name}:{chart.version} values updated successfully"}
             except Exception as e:
                 # Restore from backup on error
                 if os.path.exists(backup_path):
@@ -333,10 +320,7 @@ class HelmChartStoreMixin:
                 raise e
 
     async def clone_chart(
-        self,
-        chart_reference: str,
-        version: str | None = None,
-        cloned_by: str | None = None
+        self, chart_reference: str, version: str | None = None, cloned_by: str | None = None
     ) -> dict[str, Any]:
         """
         Clone a chart from a repository by downloading it.
@@ -353,8 +337,8 @@ class HelmChartStoreMixin:
         self._validate_arg("version", version)
 
         # Parse chart reference
-        if '/' in chart_reference:
-            parts = chart_reference.split('/', 1)
+        if "/" in chart_reference:
+            parts = chart_reference.split("/", 1)
             repository = parts[0]
             chart_name = parts[1]
         else:
@@ -363,74 +347,61 @@ class HelmChartStoreMixin:
 
         # Create download directory
         upload_dir = "/app/helm_charts"
-        os.makedirs(upload_dir, exist_ok=True)
-
-        # Use helm pull to download the chart
-        command = ['helm', 'pull', chart_reference, '--untar=false']
-
+        command = ["helm", "pull", chart_reference, "--untar=false"]
         if version:
-            command.extend(['--version', version])
+            command.extend(["--version", version])
+        command.extend(["--destination", upload_dir])
 
-        # Download to specific directory
-        command.extend(['--destination', upload_dir])
+        def _pull_and_parse_sync() -> tuple[str, dict[str, Any], int, str]:
+            os.makedirs(upload_dir, exist_ok=True)
+            result = subprocess.run(command, capture_output=True, text=True, timeout=120)
+            if result.returncode != 0:
+                raise RuntimeError(f"Failed to clone chart: {result.stderr}")
 
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=120
-        )
+            # Find the downloaded file (Helm pull creates: chartname-version.tgz)
+            files = [f for f in os.listdir(upload_dir) if f.endswith(".tgz")]
+            if not files:
+                raise RuntimeError("Chart was downloaded but file not found")
 
-        if result.returncode != 0:
-            raise RuntimeError(f"Failed to clone chart: {result.stderr}")
+            downloaded_path = max([os.path.join(upload_dir, f) for f in files], key=os.path.getmtime)
 
-        # Find the downloaded file
-        # Helm pull creates: chartname-version.tgz
-        files = [f for f in os.listdir(upload_dir) if f.endswith('.tgz')]
-        if not files:
-            raise RuntimeError("Chart was downloaded but file not found")
+            with tarfile.open(downloaded_path, "r:gz") as tar:
+                chart_yaml_member = None
+                for member in tar.getmembers():
+                    if member.name.endswith("Chart.yaml"):
+                        chart_yaml_member = member
+                        break
 
-        # Get the most recently modified .tgz file
-        downloaded_file = max([os.path.join(upload_dir, f) for f in files], key=os.path.getmtime)
+                if not chart_yaml_member:
+                    raise ValueError("Chart.yaml not found in package")
 
-        # Extract metadata
-        with tarfile.open(downloaded_file, 'r:gz') as tar:
-            # Find Chart.yaml
-            chart_yaml_member = None
-            for member in tar.getmembers():
-                if member.name.endswith('Chart.yaml'):
-                    chart_yaml_member = member
-                    break
+                chart_yaml_content = tar.extractfile(chart_yaml_member).read()
+                parsed_metadata = pyyaml.safe_load(chart_yaml_content)
 
-            if not chart_yaml_member:
-                raise ValueError("Chart.yaml not found in package")
+            sha = hashlib.sha256()
+            with open(downloaded_path, "rb") as f:
+                for chunk in iter(lambda: f.read(4096), b""):
+                    sha.update(chunk)
 
-            # Extract and parse Chart.yaml
-            chart_yaml_content = tar.extractfile(chart_yaml_member).read()
-            chart_metadata = pyyaml.safe_load(chart_yaml_content)
+            size = os.path.getsize(downloaded_path)
+            return downloaded_path, parsed_metadata, size, sha.hexdigest()
 
-        # Calculate checksum
-        checksum = hashlib.sha256()
-        with open(downloaded_file, 'rb') as f:
-            for chunk in iter(lambda: f.read(4096), b''):
-                checksum.update(chunk)
-
-        file_size = os.path.getsize(downloaded_file)
+        downloaded_file, chart_metadata, file_size, checksum_hex = await asyncio.to_thread(_pull_and_parse_sync)
 
         # Store in database
         helm_chart = HelmChart(
-            name=chart_metadata.get('name', chart_name),
-            version=chart_metadata.get('version', version or 'unknown'),
-            app_version=chart_metadata.get('appVersion'),
-            description=chart_metadata.get('description'),
-            source_type='cloned',
+            name=chart_metadata.get("name", chart_name),
+            version=chart_metadata.get("version", version or "unknown"),
+            app_version=chart_metadata.get("appVersion"),
+            description=chart_metadata.get("description"),
+            source_type="cloned",
             source_chart=chart_reference,
             source_repository=repository,
             file_path=downloaded_file,
             file_size=file_size,
-            checksum=checksum.hexdigest(),
+            checksum=checksum_hex,
             chart_metadata=chart_metadata,
-            uploaded_by=cloned_by
+            uploaded_by=cloned_by,
         )
 
         self.db.add(helm_chart)
@@ -450,6 +421,6 @@ class HelmChartStoreMixin:
                 "source_repository": helm_chart.source_repository,
                 "file_size": helm_chart.file_size,
                 "checksum": helm_chart.checksum,
-                "created_at": helm_chart.created_at.isoformat() if helm_chart.created_at else None
-            }
+                "created_at": helm_chart.created_at.isoformat() if helm_chart.created_at else None,
+            },
         }

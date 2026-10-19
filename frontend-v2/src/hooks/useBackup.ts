@@ -26,7 +26,8 @@ export function useMaintenanceStatus() {
   return useQuery({
     queryKey: queryKeys.system.maintenanceStatus(),
     queryFn: () => backupApi.getMaintenanceStatus(),
-    refetchInterval: 3000, // Poll every 3s during maintenance
+    refetchInterval: (query) =>
+      query.state.data?.maintenance_mode ? 3_000 : 60_000,
     retry: 1, // Don't retry too much - server may be restarting
   });
 }

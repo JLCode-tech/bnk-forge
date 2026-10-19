@@ -137,7 +137,7 @@ export default function AgentFleetPage() {
     queries: targetClusterIds.map((cid) => ({
       queryKey: queryKeys.k8s.clusters.a2aAgents(cid, { probe: false }),
       queryFn: () => api.getA2AAgents(cid, { probe: false }),
-      enabled: !!cid,
+      enabled: !!cid && activeTab === "fleet",
     })),
   });
 
@@ -228,6 +228,7 @@ export default function AgentFleetPage() {
   const { data: llmStats, isLoading: statsLoading } = useLlmStats(
     selectedClusterId,
     { range: "24h" },
+    activeTab === "fleet",
   );
 
   // Aggregate stats based on currently filtered scope
