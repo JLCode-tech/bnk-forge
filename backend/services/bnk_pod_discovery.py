@@ -58,6 +58,7 @@ ALL_F5_PREFIXES = (
     "f5-analyzer",
     "f5-afm",
     "f5-observer",
+    "f5-aigateway-console",
     "otel-collector",
     # Utils (infrastructure / one-shot jobs)
     "crd-installer",
@@ -87,6 +88,7 @@ TENANT_PREFIXES = (
     "f5-analyzer",
     "f5-afm",
     "f5-observer",
+    "f5-aigateway-console",
     "otel-collector",
 )
 
@@ -122,6 +124,10 @@ _LABEL_HINTS: dict[str, list[tuple[str, str]]] = {
         ("app", "f5ingress-f5ingress"),
         ("app.kubernetes.io/name", "f5ingress"),
     ],
+    "aigateway_console": [
+        ("app", "f5-aigateway-console"),
+        ("app.kubernetes.io/name", "f5-aigateway-console"),
+    ],
     "ipam": [("app", "ipam-operator")],
     "crd_installer": [("app", "crd-installer")],
     # analyzer has no label hint — ownerRef traversal via f5biganalyzers CR is deferred to Slice 2+.
@@ -134,7 +140,7 @@ _LABEL_HINTS: dict[str, list[tuple[str, str]]] = {
 # too generic — third-party IPAM operators (Whereabouts, MetalLB derivatives) and
 # CRD bootstrap Jobs commonly use the same values.  ipam/crd_installer pods are
 # found via the name-prefix path in _is_bnk_pod, not via this label set.
-_SWEEP_LABEL_ROLES: frozenset[str] = frozenset({"tmm", "flo", "controller"})
+_SWEEP_LABEL_ROLES: frozenset[str] = frozenset({"tmm", "flo", "controller", "aigateway_console"})
 
 # -----------------------------------------------------------------------
 # Container hints — Layer 2 role classifiers
@@ -142,16 +148,17 @@ _SWEEP_LABEL_ROLES: frozenset[str] = frozenset({"tmm", "flo", "controller"})
 # Maps role → list of container name substrings or image substrings.
 # A pod is matched if ANY container name/image contains the hint.
 _CONTAINER_NAME_HINTS: dict[str, list[str]] = {
-    "tmm": ["tmm"],
+    "tmm": ["tmm", "llm-gw-plugin"],
     "flo": ["flo"],
     "controller": ["f5ingress-f5ingress"],
+    "aigateway_console": ["f5-aigateway-console", "aigateway-console"],
 }
 _CONTAINER_IMAGE_HINTS: dict[str, list[str]] = {
     "flo": ["ln-operator"],
 }
 
 # Roles that belong to the "tenant" bucket (vs utils)
-_TENANT_ROLES = frozenset({"tmm", "flo", "controller", "analyzer"})
+_TENANT_ROLES = frozenset({"tmm", "flo", "controller", "analyzer", "aigateway_console"})
 
 
 def _pod_labels(pod_or_dict) -> dict[str, str]:
@@ -215,6 +222,7 @@ def _is_bnk_pod(pod) -> bool:
 # Pod → dict conversion
 # -----------------------------------------------------------------------
 
+
 def pod_to_dict(pod) -> dict[str, Any]:
     """
     Convert a kubernetes.client.V1Pod to a plain dict.
@@ -229,7 +237,9 @@ def pod_to_dict(pod) -> dict[str, Any]:
     # Extract pod start time for uptime calculation
     start_time = None
     if status and status.start_time:
-        start_time = status.start_time.isoformat() if hasattr(status.start_time, "isoformat") else str(status.start_time)
+        start_time = (
+            status.start_time.isoformat() if hasattr(status.start_time, "isoformat") else str(status.start_time)
+        )
 
     return {
         "name": meta.name if meta else "",
@@ -238,10 +248,9 @@ def pod_to_dict(pod) -> dict[str, Any]:
         "hostIP": status.host_ip if status and status.host_ip else None,
         "phase": status.phase if status else "Unknown",
         "startTime": start_time,
-        "conditions": [
-            {"type": c.type, "status": c.status}
-            for c in (status.conditions or [])
-        ] if status and status.conditions else [],
+        "conditions": [{"type": c.type, "status": c.status} for c in (status.conditions or [])]
+        if status and status.conditions
+        else [],
         "containers": [
             {
                 "name": cs.name,
@@ -250,14 +259,19 @@ def pod_to_dict(pod) -> dict[str, Any]:
                 "restartCount": cs.restart_count or 0,  # alias for health dashboard
                 "image": cs.image,
                 "state": (
-                    "running" if cs.state and cs.state.running else
-                    "waiting" if cs.state and cs.state.waiting else
-                    "terminated" if cs.state and cs.state.terminated else
-                    "unknown"
+                    "running"
+                    if cs.state and cs.state.running
+                    else "waiting"
+                    if cs.state and cs.state.waiting
+                    else "terminated"
+                    if cs.state and cs.state.terminated
+                    else "unknown"
                 ),
             }
             for cs in (status.container_statuses or [])
-        ] if status and status.container_statuses else [],
+        ]
+        if status and status.container_statuses
+        else [],
         "labels": dict(meta.labels or {}) if meta and meta.labels else {},
     }
 
@@ -265,6 +279,7 @@ def pod_to_dict(pod) -> dict[str, Any]:
 # -----------------------------------------------------------------------
 # Discovery
 # -----------------------------------------------------------------------
+
 
 def _fetch_pods_in_namespace(api_client, namespace: str) -> list:
     """Fetch raw V1Pod objects from a single namespace. Returns [] if namespace doesn't exist."""
@@ -329,24 +344,15 @@ def discover_f5_pods(
     """
     # Union static seed with any caller-supplied persisted namespaces.
     # Preserve ordering: static seed first, extra namespaces appended.
-    fast_path_ns: tuple[str, ...] = BNK_NAMESPACES + tuple(
-        ns for ns in extra_namespaces if ns not in BNK_NAMESPACES
-    )
+    fast_path_ns: tuple[str, ...] = BNK_NAMESPACES + tuple(ns for ns in extra_namespaces if ns not in BNK_NAMESPACES)
 
     try:
         # Phase 1 (known namespaces) always runs; Phase 2 (cluster-wide
         # sweep) is conditional on include_sweep.
         worker_count = len(fast_path_ns) + (1 if include_sweep else 0)
         with ThreadPoolExecutor(max_workers=max(worker_count, 1)) as executor:
-            ns_futures = {
-                ns: executor.submit(_fetch_pods_in_namespace, api_client, ns)
-                for ns in fast_path_ns
-            }
-            sweep_future = (
-                executor.submit(_sweep_all_namespaces, api_client)
-                if include_sweep
-                else None
-            )
+            ns_futures = {ns: executor.submit(_fetch_pods_in_namespace, api_client, ns) for ns in fast_path_ns}
+            sweep_future = executor.submit(_sweep_all_namespaces, api_client) if include_sweep else None
 
             # Collect phase 1 pods
             phase1_pods: list = []
@@ -389,8 +395,7 @@ def discover_f5_pods(
                 and (pod.metadata.namespace or "", pod.metadata.name or "") in seen
             }
             logger.info(
-                f"Cluster-wide sweep found {extra_count} F5 pods in "
-                f"non-standard namespaces: {sorted(extra_ns_found)}"
+                f"Cluster-wide sweep found {extra_count} F5 pods in non-standard namespaces: {sorted(extra_ns_found)}"
             )
 
         # Classify into tenant vs utils buckets using layered resolution.
@@ -471,6 +476,7 @@ def discover_f5_pods_with_ns_tracking(
 # Classification helpers
 # -----------------------------------------------------------------------
 
+
 def classify_f5_pods(tenant_pods: list[dict], utils_pods: list[dict]) -> dict[str, list[dict]]:
     """
     Classify discovered pods into named groups.
@@ -489,10 +495,14 @@ def classify_f5_pods(tenant_pods: list[dict], utils_pods: list[dict]) -> dict[st
     by (namespace, name) key — each pod is classified at most once.
 
     Returns a dict with keys:
-        tmm, flo, controller, analyzer, crd_installer
+        tmm, flo, controller, analyzer, crd_installer, aigateway_console
     """
     result: dict[str, list[dict]] = {
-        "tmm": [], "flo": [], "controller": [], "analyzer": [], "crd_installer": [],
+        "tmm": [],
+        "flo": [],
+        "controller": [],
+        "analyzer": [],
+        "crd_installer": [],
     }
 
     # Role-to-prefix mapping for Layer-3 — mirrors TENANT_PREFIXES / UTILS_PREFIXES
@@ -504,15 +514,13 @@ def classify_f5_pods(tenant_pods: list[dict], utils_pods: list[dict]) -> dict[st
         ("controller", "f5-cne-controller"),
         ("controller", "f5ingress"),
         ("analyzer", "f5-analyzer"),
+        ("aigateway_console", "f5-aigateway-console"),
         ("crd_installer", "crd-installer"),
     ]
 
     def _classify_pod(p: dict) -> str | None:
         labels = p.get("labels") or {}
-        containers = [
-            {"name": c.get("name", ""), "image": c.get("image", "")}
-            for c in (p.get("containers") or [])
-        ]
+        containers = [{"name": c.get("name", ""), "image": c.get("image", "")} for c in (p.get("containers") or [])]
         name = p.get("name", "")
 
         # Layer 1: label hints
@@ -541,8 +549,27 @@ def classify_f5_pods(tenant_pods: list[dict], utils_pods: list[dict]) -> dict[st
         role = _classify_pod(p)
         if role in result:
             result[role].append(p)
+        elif role == "aigateway_console":
+            result.setdefault("aigateway_console", []).append(p)
 
     return result
+
+
+def pod_has_llm_gw_plugin(pod: dict) -> bool:
+    """Return True if an f5-tmm pod dict contains the llm-gw-plugin sidecar container."""
+    if not isinstance(pod, dict):
+        return False
+    return any(c.get("name") == "llm-gw-plugin" for c in (pod.get("containers") or []))
+
+
+def pod_llm_gw_plugin_ready(pod: dict) -> bool:
+    """Return True if the llm-gw-plugin container in a pod dict is present and ready."""
+    if not isinstance(pod, dict):
+        return False
+    for c in pod.get("containers") or []:
+        if c.get("name") == "llm-gw-plugin":
+            return bool(c.get("ready", False))
+    return False
 
 
 def detect_install_shape(classified: dict[str, list[dict]]) -> str:

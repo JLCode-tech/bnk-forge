@@ -106,9 +106,7 @@ def get_policy_operational_status(resource: dict) -> dict[str, Any]:
                 continue
             a_conds = a.get("conditions", [])
             is_ok = any(
-                isinstance(c, dict)
-                and str(c.get("status", "")).lower() == "true"
-                and c.get("reason") != "RefNotFound"
+                isinstance(c, dict) and str(c.get("status", "")).lower() == "true" and c.get("reason") != "RefNotFound"
                 for c in a_conds
             )
             if not is_ok:
@@ -122,9 +120,7 @@ def get_policy_operational_status(resource: dict) -> dict[str, Any]:
                 continue
             d_conds = d.get("conditions", [])
             is_ok = any(
-                isinstance(c, dict)
-                and str(c.get("status", "")).lower() == "true"
-                and c.get("reason") != "RefNotFound"
+                isinstance(c, dict) and str(c.get("status", "")).lower() == "true" and c.get("reason") != "RefNotFound"
                 for c in d_conds
             )
             if not is_ok:
@@ -162,7 +158,9 @@ def get_policy_operational_status(resource: dict) -> dict[str, Any]:
         "resolved": resolved,
         "programmed": programmed,
         "messages": {
-            "resolved": get_condition_message(resource, "Resolved") or get_condition_message(resource, "ResolvedRefs") or get_condition_message(resource, "Accepted"),
+            "resolved": get_condition_message(resource, "Resolved")
+            or get_condition_message(resource, "ResolvedRefs")
+            or get_condition_message(resource, "Accepted"),
             "programmed": get_condition_message(resource, "Programmed"),
         },
     }
@@ -248,10 +246,12 @@ def resolve_list_refs(
             items = [str(p) for p in raw_items if p is not None]
         else:
             items = list(raw_items)
-        resolved.append({
-            "name": name,
-            spec_key: items,
-        })
+        resolved.append(
+            {
+                "name": name,
+                spec_key: items,
+            }
+        )
     return resolved
 
 
@@ -294,15 +294,17 @@ def build_route_ref_map(topology: list[dict]) -> dict[tuple[str, str], list[dict
                 for backend in route.get("backends", []):
                     backend_ns = backend.get("namespace") or route.get("namespace", "")
                     key = (backend_ns, backend.get("name", ""))
-                    ref_map.setdefault(key, []).append({
-                        "kind": route.get("kind", "HTTPRoute"),
-                        "name": route.get("name", ""),
-                        "namespace": route.get("namespace", ""),
-                        "gatewayName": gw.get("name", ""),
-                        "listenerName": listener.get("name", ""),
-                        "port": backend.get("port"),
-                        "weight": backend.get("weight"),
-                    })
+                    ref_map.setdefault(key, []).append(
+                        {
+                            "kind": route.get("kind", "HTTPRoute"),
+                            "name": route.get("name", ""),
+                            "namespace": route.get("namespace", ""),
+                            "gatewayName": gw.get("name", ""),
+                            "listenerName": listener.get("name", ""),
+                            "port": backend.get("port"),
+                            "weight": backend.get("weight"),
+                        }
+                    )
     return ref_map
 
 
@@ -313,25 +315,68 @@ def build_route_ref_map(topology: list[dict]) -> dict[tuple[str, str], list[dict
 # CRD types fetched for all BNK insight views.
 BNK_RESOURCE_TYPES: list[str] = [
     # Gateway API core + extensions
-    "gatewayclass", "gateway", "httproute", "grpcroute",
-    "tcproute", "udproute", "tlsroute", "l4route", "l4route_24", "referencegrant",
+    "gatewayclass",
+    "gateway",
+    "httproute",
+    "grpcroute",
+    "tcproute",
+    "udproute",
+    "tlsroute",
+    "l4route",
+    "l4route_24",
+    "referencegrant",
     # BNK 2.4+ Gateway & Tenant CRDs
-    "gatewaysettings", "egressgateway", "infra",
-    # Policies (2.4 + legacy)
-    "secpolicy", "netpolicy", "bnksecpolicy", "bnknetpolicy",
+    "gatewaysettings",
+    "egressgateway",
+    "infra",
+    # Policies (2.4.1 + 2.4 + legacy)
+    "apppolicy",
+    "secpolicy",
+    "netpolicy",
+    "bnksecpolicy",
+    "bnknetpolicy",
+    # BNK 2.4.1 LLM Gateway (inference.f5.com)
+    "aitenant",
+    "aicredential",
+    "aiprovider",
+    "aimodel",
+    "aigatewayprofile",
+    "aigateway",
+    # BNK 2.4.1 Metrics (metrics.f5.com)
+    "scrapetemplate",
+    "scrapeclass",
+    "scrape",
     # F5 CRDs & AI Gateway
-    "f5bigfwpolicy", "f5bigcneirule", "f5biganalyzer",
-    "f5bigcneaddresslist", "f5bigcneportlist",
-    "f5epp", "inferencepool", "inferencemodelrewrite",
-    "f5bigpersistenceprofile", "observer",
+    "f5bigfwpolicy",
+    "f5bigcneirule",
+    "f5biganalyzer",
+    "f5bigcneaddresslist",
+    "f5bigcneportlist",
+    "f5epp",
+    "inferencepool",
+    "inferencemodelrewrite",
+    "f5bigpersistenceprofile",
+    "observer",
+    # DNS & GSLB (k8s.f5net.com)
+    "f5bigdnscache",
+    "f5biggslbinstance",
+    "f5biggslbzone",
+    "f5biggslbpool",
+    "f5biggslbwideip",
     # Data plane (legacy 2.3 + shared)
-    "f5spkvlan", "cneinstance", "f5spkstaticroute",
-    "f5spksnatpool", "f5spkegress",
+    "f5spkvlan",
+    "cneinstance",
+    "f5spkstaticroute",
+    "f5spksnatpool",
+    "f5spkegress",
     # Logging
-    "f5bigloghslpub", "f5biglogprofile",
+    "f5bigloghslpub",
+    "f5biglogprofile",
     # Core K8s
     "service",
 ]
+
+BNK_RESOURCE_KEYS: list[str] = BNK_RESOURCE_TYPES
 
 
 def extract_bnk_version(data: dict[str, Any] | None) -> str | None:

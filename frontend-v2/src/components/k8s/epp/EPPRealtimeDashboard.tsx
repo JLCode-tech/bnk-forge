@@ -176,14 +176,14 @@ export function EPPRealtimeDashboard({
       p.metadata?.name === poolRefName &&
       p.metadata?.namespace === eppNamespace,
   );
-  const engine = spec.engine || metrics?.epp_info?.engine || "vllm";
+  const engine = spec.engine || metrics?.epp_info?.engine || "unknown";
   const tokenizer =
     spec.tokenizer?.name ||
     spec.tokenizer ||
     metrics?.epp_info?.tokenizer ||
-    "unsloth/Llama-3.3-70B-Instruct";
-  const blockSize = spec.blockSize || metrics?.epp_info?.block_size || 64;
-  const routingMode = spec.mode || metrics?.epp_info?.mode || "aggregated";
+    "Not configured";
+  const blockSize = spec.blockSize || metrics?.epp_info?.block_size || 0;
+  const routingMode = spec.mode || metrics?.epp_info?.mode || "unknown";
 
   const summary: EppSummaryMetrics = {
     traffic_status:
@@ -640,52 +640,7 @@ export function EPPRealtimeDashboard({
                 <div className="h-56 w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart
-                      data={
-                        history.length > 0
-                          ? history
-                          : [
-                              {
-                                time: "T-3",
-                                outputTps: summary.output_tps,
-                                promptTps: 0,
-                                totalTps: summary.total_tps,
-                                ttftMs: summary.ttft_p95_ms,
-                                itlMs: summary.itl_p95_ms,
-                                cacheHitPct: summary.cache_hit_rate_pct,
-                                kvUsedPct: summary.kv_cache_usage_pct,
-                              },
-                              {
-                                time: "T-2",
-                                outputTps: summary.output_tps,
-                                promptTps: 0,
-                                totalTps: summary.total_tps,
-                                ttftMs: summary.ttft_p95_ms,
-                                itlMs: summary.itl_p95_ms,
-                                cacheHitPct: summary.cache_hit_rate_pct,
-                                kvUsedPct: summary.kv_cache_usage_pct,
-                              },
-                              {
-                                time: "T-1",
-                                outputTps: summary.output_tps,
-                                promptTps: 0,
-                                totalTps: summary.total_tps,
-                                ttftMs: summary.ttft_p95_ms,
-                                itlMs: summary.itl_p95_ms,
-                                cacheHitPct: summary.cache_hit_rate_pct,
-                                kvUsedPct: summary.kv_cache_usage_pct,
-                              },
-                              {
-                                time: "Now",
-                                outputTps: summary.output_tps,
-                                promptTps: 0,
-                                totalTps: summary.total_tps,
-                                ttftMs: summary.ttft_p95_ms,
-                                itlMs: summary.itl_p95_ms,
-                                cacheHitPct: summary.cache_hit_rate_pct,
-                                kvUsedPct: summary.kv_cache_usage_pct,
-                              },
-                            ]
-                      }
+                      data={history}
                       margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
                     >
                       <defs>

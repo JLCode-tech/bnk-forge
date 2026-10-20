@@ -150,21 +150,18 @@ export default function SmartLlmRouterPage() {
   const [newTenantName, setNewTenantName] = useState("");
   const [newProviderName, setNewProviderName] = useState("");
   const [newProviderType, setNewProviderType] = useState("Generic");
-  const [newProviderEndpoint, setNewProviderEndpoint] = useState(
-    "https://api.openai.com/v1",
-  );
+  const [newProviderEndpoint, setNewProviderEndpoint] = useState("");
   const [newProviderApiKey, setNewProviderApiKey] = useState("");
 
   const [newModelName, setNewModelName] = useState("");
-  const [newModelId, setNewModelId] = useState("gpt-4o");
-  const [newModelProviderRef, setNewModelProviderRef] =
-    useState("openai-primary");
+  const [newModelId, setNewModelId] = useState("");
+  const [newModelProviderRef, setNewModelProviderRef] = useState("");
   const [newModelWeight, setNewModelWeight] = useState("100");
-  const [newModelInputCost, setNewModelInputCost] = useState("2500000");
-  const [newModelOutputCost, setNewModelOutputCost] = useState("10000000");
+  const [newModelInputCost, setNewModelInputCost] = useState("");
+  const [newModelOutputCost, setNewModelOutputCost] = useState("");
 
   const [newRouteName, setNewRouteName] = useState("");
-  const [newRouteVip, setNewRouteVip] = useState("10.10.20.90");
+  const [newRouteVip, setNewRouteVip] = useState("");
   const [newRoutePort, setNewRoutePort] = useState("8080");
   const [newRouteAuth, setNewRouteAuth] = useState("virtual-key");
   const [newRoutePoolMaxSize, setNewRoutePoolMaxSize] = useState("64");
@@ -176,9 +173,9 @@ export default function SmartLlmRouterPage() {
 
   const [newKeyName, setNewKeyName] = useState("");
   const [newKeyPrincipalId, setNewKeyPrincipalId] = useState("");
-  const [newKeyRpm, setNewKeyRpm] = useState("600");
-  const [newKeyTpm, setNewKeyTpm] = useState("150000");
-  const [newKeyBudget, setNewKeyBudget] = useState("500");
+  const [newKeyRpm, setNewKeyRpm] = useState("");
+  const [newKeyTpm, setNewKeyTpm] = useState("");
+  const [newKeyBudget, setNewKeyBudget] = useState("");
   const [issuedCleartextKey, setIssuedCleartextKey] = useState<string | null>(
     null,
   );
@@ -189,10 +186,10 @@ export default function SmartLlmRouterPage() {
 
   // DSSM Organization, Team, and Principal form states
   const [newOrgName, setNewOrgName] = useState("");
-  const [newOrgBudget, setNewOrgBudget] = useState("2500");
+  const [newOrgBudget, setNewOrgBudget] = useState("");
   const [newTeamName, setNewTeamName] = useState("");
   const [newTeamOrgId, setNewTeamOrgId] = useState("");
-  const [newTeamBudget, setNewTeamBudget] = useState("1000");
+  const [newTeamBudget, setNewTeamBudget] = useState("");
   const [newPrincipalName, setNewPrincipalName] = useState("");
   const [newPrincipalType, setNewPrincipalType] = useState<
     "user" | "service" | "agent"
@@ -201,12 +198,10 @@ export default function SmartLlmRouterPage() {
 
   // Polaris Step 8 Live Gateway Inference & Policy Tester state
   const [testRouteName, setTestRouteName] = useState("");
-  const [testModelId, setTestModelId] = useState("gpt-4o");
+  const [testModelId, setTestModelId] = useState("");
   const [testPath, setTestPath] = useState("/v1/chat/completions");
   const [testVirtualKey, setTestVirtualKey] = useState("");
-  const [testPrompt, setTestPrompt] = useState(
-    "Summarize BNK 2.4.1 CNEInstance Multi-NUMA and CoreDNS readiness.",
-  );
+  const [testPrompt, setTestPrompt] = useState("");
   const [testSimulateFailure, setTestSimulateFailure] = useState(false);
 
   useEffect(() => {
@@ -258,13 +253,6 @@ export default function SmartLlmRouterPage() {
     }
   };
 
-  const { data: llmStats, isLoading: statsLoading } = useLlmStats(
-    selectedClusterId,
-    { range: "24h" },
-  );
-  const live = llmStats?.available ? llmStats : undefined;
-  const pending = statsLoading ? "…" : "—";
-
   const {
     data: govOverview,
     isLoading: govLoading,
@@ -282,13 +270,37 @@ export default function SmartLlmRouterPage() {
       ),
   });
 
+  const hasAiGatewayDeployed = Boolean(
+    (govOverview?.tenants?.length ?? 0) > 0 ||
+    (govOverview?.providers?.length ?? 0) > 0 ||
+    (govOverview?.models?.length ?? 0) > 0 ||
+    (govOverview?.routes?.length ?? 0) > 0 ||
+    govOverview?.diagnostics?.some(
+      (d) => d.id.startsWith("cne-aigw-") && d.status === "healthy",
+    ),
+  );
+
+  const { data: llmStats, isLoading: statsLoading } = useLlmStats(
+    selectedClusterId,
+    { range: "24h" },
+  );
+  // Only report AI Gateway telemetry when BNK 2.4.1 AI Gateway is actually deployed on the target cluster(s)
+  const live =
+    hasAiGatewayDeployed && llmStats?.available ? llmStats : undefined;
+  const pending = statsLoading || govLoading ? "…" : "—";
+
+  const hasGovTopology = (govOverview?.topology_nodes?.length ?? 0) > 0;
+
   const { data: fabricTopology, refetch: refetchTopology } = useTopology(
     effectiveClusterId,
     namespace,
-    { enabled: activeViewKey === "topology" && !!effectiveClusterId },
+    {
+      enabled:
+        activeViewKey === "topology" && !!effectiveClusterId && hasGovTopology,
+    },
   );
 
-  // Merge live cluster topology with governance CRD fabric nodes/edges (supports single & multi-cluster)
+  // Merge live cluster topology with governance CRD fabric nodes/edges only when AI Gateway CRDs exist
   const mergedTopologyNodes = (() => {
     const map = new Map<
       string,
@@ -298,7 +310,7 @@ export default function SmartLlmRouterPage() {
       []) as unknown as NonNullable<typeof fabricTopology>["nodes"]) {
       map.set(n.id, n);
     }
-    if (selectedClusterId !== null) {
+    if (selectedClusterId !== null && hasGovTopology) {
       for (const n of fabricTopology?.nodes ?? []) {
         map.set(n.id, n);
       }
@@ -315,7 +327,7 @@ export default function SmartLlmRouterPage() {
       []) as unknown as NonNullable<typeof fabricTopology>["edges"]) {
       map.set(e.id, e);
     }
-    if (selectedClusterId !== null) {
+    if (selectedClusterId !== null && hasGovTopology) {
       for (const e of fabricTopology?.edges ?? []) {
         map.set(e.id, e);
       }
@@ -346,7 +358,7 @@ export default function SmartLlmRouterPage() {
       llmObservabilityApi.createProvider(effectiveClusterId, {
         name: newProviderName.trim(),
         namespace,
-        tenant_ref: govOverview?.tenants[0]?.name ?? "default-ai-tenant",
+        tenant_ref: govOverview?.tenants[0]?.name ?? "",
         provider_type: newProviderType,
         endpoint_url: newProviderEndpoint.trim() || null,
         api_key: newProviderApiKey.trim() || null,
@@ -363,11 +375,13 @@ export default function SmartLlmRouterPage() {
       llmObservabilityApi.createModel(effectiveClusterId, {
         name: newModelName.trim(),
         namespace,
-        tenant_ref: govOverview?.tenants[0]?.name ?? "default-ai-tenant",
-        model_id: newModelId.trim(),
+        tenant_ref: govOverview?.tenants[0]?.name ?? "",
+        model_id: newModelId.trim() || newModelName.trim(),
         deployments: [
           {
-            provider_ref: newModelProviderRef.trim() || "openai-primary",
+            provider_ref:
+              newModelProviderRef.trim() ||
+              (govOverview?.providers[0]?.name ?? ""),
             weight: Number(newModelWeight) || 100,
           },
         ],
@@ -389,7 +403,7 @@ export default function SmartLlmRouterPage() {
         vip_address: newRouteVip.trim(),
         port: Number(newRoutePort) || 8080,
         path_prefix: "/v1",
-        tenant_ref: govOverview?.tenants[0]?.name ?? "default-ai-tenant",
+        tenant_ref: govOverview?.tenants[0]?.name ?? "",
         auth_mode: newRouteAuth,
         failover_enabled: newRouteFailover,
         semantic_cache_enabled: newRouteSemanticCache,
@@ -423,8 +437,8 @@ export default function SmartLlmRouterPage() {
     mutationFn: () =>
       llmObservabilityApi.testGatewayRequest(effectiveClusterId, {
         route_name: testRouteName || govOverview?.routes[0]?.name || null,
-        model_id: testModelId.trim() || "gpt-4o",
-        prompt: testPrompt.trim(),
+        model_id: testModelId.trim() || govOverview?.models[0]?.model_id || "",
+        prompt: testPrompt.trim() || "Health check",
         path: testPath.trim() || "/v1/chat/completions",
         virtual_key: testVirtualKey.trim() || null,
         simulate_primary_failure: testSimulateFailure,
@@ -436,8 +450,8 @@ export default function SmartLlmRouterPage() {
     mutationFn: () =>
       llmObservabilityApi.createOrg(effectiveClusterId, {
         name: newOrgName.trim(),
-        tenant_ref: govOverview?.tenants[0]?.name ?? "enterprise-ai",
-        monthly_budget_usd: Number(newOrgBudget) || 2500,
+        tenant_ref: govOverview?.tenants[0]?.name ?? "",
+        monthly_budget_usd: Number(newOrgBudget) || 0,
       }),
     onSuccess: () => {
       setNewOrgName("");
@@ -449,11 +463,9 @@ export default function SmartLlmRouterPage() {
     mutationFn: () =>
       llmObservabilityApi.createTeam(effectiveClusterId, {
         name: newTeamName.trim(),
-        org_id: newTeamOrgId || govOverview?.organizations[0]?.id || "org-1",
-        monthly_budget_usd: Number(newTeamBudget) || 1000,
-        allowed_models: govOverview?.models.map((m) => m.model_id) ?? [
-          "gpt-4o",
-        ],
+        org_id: newTeamOrgId || govOverview?.organizations[0]?.id || "",
+        monthly_budget_usd: Number(newTeamBudget) || 0,
+        allowed_models: govOverview?.models.map((m) => m.model_id) ?? [],
       }),
     onSuccess: () => {
       setNewTeamName("");
@@ -465,7 +477,7 @@ export default function SmartLlmRouterPage() {
     mutationFn: () =>
       llmObservabilityApi.createPrincipal(effectiveClusterId, {
         name: newPrincipalName.trim(),
-        team_id: newPrincipalTeamId || govOverview?.teams[0]?.id || "team-1",
+        team_id: newPrincipalTeamId || govOverview?.teams[0]?.id || "",
         principal_type: newPrincipalType,
       }),
     onSuccess: () => {
@@ -478,16 +490,11 @@ export default function SmartLlmRouterPage() {
     mutationFn: () =>
       llmObservabilityApi.issueVirtualKey(effectiveClusterId, {
         name: newKeyName.trim(),
-        principal_id:
-          newKeyPrincipalId ||
-          govOverview?.principals[0]?.id ||
-          "princ-agent-1",
-        allowed_models: govOverview?.models.map((m) => m.model_id) ?? [
-          "gpt-4o",
-        ],
-        rpm_limit: Number(newKeyRpm) || 600,
-        tpm_limit: Number(newKeyTpm) || 150000,
-        monthly_budget_usd: Number(newKeyBudget) || 500,
+        principal_id: newKeyPrincipalId || govOverview?.principals[0]?.id || "",
+        allowed_models: govOverview?.models.map((m) => m.model_id) ?? [],
+        rpm_limit: Number(newKeyRpm) || 0,
+        tpm_limit: Number(newKeyTpm) || 0,
+        monthly_budget_usd: Number(newKeyBudget) || 0,
       }),
     onSuccess: (created) => {
       setNewKeyName("");
@@ -603,9 +610,15 @@ export default function SmartLlmRouterPage() {
           <div className="flex items-center gap-2 shrink-0 ml-auto">
             <Badge
               variant="outline"
-              className="text-2xs bg-primary/10 text-primary border-primary/30"
+              className={
+                !govLoading && !hasAiGatewayDeployed
+                  ? "text-2xs bg-amber-500/10 text-amber-500 border-amber-500/30"
+                  : "text-2xs bg-primary/10 text-primary border-primary/30"
+              }
             >
-              BNK 2.4.1 AI Gateway
+              {!govLoading && !hasAiGatewayDeployed
+                ? "BNK 2.4.1 AI Gateway · Not Deployed"
+                : "BNK 2.4.1 AI Gateway"}
             </Badge>
             <Input
               value={namespace}
@@ -647,6 +660,32 @@ export default function SmartLlmRouterPage() {
           />
         ) : (
           <>
+            {!govLoading && !hasAiGatewayDeployed && (
+              <div className="p-3.5 rounded-lg border border-amber-500/30 bg-amber-500/10 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div className="space-y-0.5">
+                  <div className="font-semibold text-amber-500">
+                    BNK 2.4.1 AI Gateway (inference.k8s.f5.com/v1alpha1) Not
+                    Deployed
+                  </div>
+                  <div className="text-muted-foreground">
+                    No AITenant, AIProvider, AIModel, or AIGatewayProfile custom
+                    resources or CNEInstance.spec.aiGateway.enabled=true were
+                    detected on{" "}
+                    {selectedClusterId === null
+                      ? "any connected cluster"
+                      : (activeCluster?.name ?? `Cluster ${selectedClusterId}`)}
+                    .
+                  </div>
+                </div>
+                <Badge
+                  variant="outline"
+                  className="text-2xs font-mono border-amber-500/30 text-amber-500"
+                >
+                  0 AI Gateway CRDs
+                </Badge>
+              </div>
+            )}
+
             {/* Crisp Architecture KPI Strip */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <StatTile
@@ -654,8 +693,12 @@ export default function SmartLlmRouterPage() {
                 value={live ? live.total_requests.toLocaleString() : pending}
                 icon={Zap}
                 tone="primary"
-                loading={statsLoading}
-                subtext="Past 24 hours"
+                loading={statsLoading || govLoading}
+                subtext={
+                  hasAiGatewayDeployed
+                    ? "Past 24 hours"
+                    : "BNK 2.4.1 not deployed"
+                }
               />
               <StatTile
                 label="AI Models & Providers"
@@ -670,8 +713,12 @@ export default function SmartLlmRouterPage() {
                 value={live ? `${Math.round(live.avg_latency_ms)}ms` : pending}
                 icon={Activity}
                 tone="success"
-                loading={statsLoading}
-                subtext="Mean end-to-end"
+                loading={statsLoading || govLoading}
+                subtext={
+                  hasAiGatewayDeployed
+                    ? "Mean end-to-end"
+                    : "BNK 2.4.1 not deployed"
+                }
               />
               <StatTile
                 label="DSSM Virtual Keys"
@@ -725,16 +772,38 @@ export default function SmartLlmRouterPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {clusters.map((c) => (
-                        <ClusterRouterRow
-                          key={c.id}
-                          cluster={c}
-                          onInspect={() => {
-                            setSelectedClusterId(c.id);
-                            handleSelectView("topology");
-                          }}
-                        />
-                      ))}
+                      {clusters.map((c) => {
+                        const clusterHasAiGw = Boolean(
+                          govOverview?.tenants?.some(
+                            (t) => t.cluster_id === c.id,
+                          ) ||
+                          govOverview?.providers?.some(
+                            (p) => p.cluster_id === c.id,
+                          ) ||
+                          govOverview?.models?.some(
+                            (m) => m.cluster_id === c.id,
+                          ) ||
+                          govOverview?.routes?.some(
+                            (r) => r.cluster_id === c.id,
+                          ) ||
+                          govOverview?.diagnostics?.some(
+                            (d) =>
+                              d.id === `cne-aigw-${c.id}` &&
+                              d.status === "healthy",
+                          ),
+                        );
+                        return (
+                          <ClusterRouterRow
+                            key={c.id}
+                            cluster={c}
+                            aiGatewayDeployed={clusterHasAiGw}
+                            onInspect={() => {
+                              setSelectedClusterId(c.id);
+                              handleSelectView("topology");
+                            }}
+                          />
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
@@ -981,49 +1050,61 @@ export default function SmartLlmRouterPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {(govOverview?.models ?? []).map((m) => (
-                        <TableRow key={`${m.cluster_id}-${m.name}`}>
-                          <TableCell className="text-xs font-mono font-semibold">
-                            {m.name}
-                          </TableCell>
-                          <TableCell className="text-xs font-mono">
-                            {m.model_id}
-                          </TableCell>
-                          <TableCell className="text-xs">
-                            <Badge variant="outline" className="text-2xs">
-                              {m.tenant_ref}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-xs">
-                            <div className="flex flex-wrap gap-1">
-                              {m.deployments.map((d) => (
-                                <Badge
-                                  key={d.provider_ref}
-                                  variant="secondary"
-                                  className="text-2xs font-mono"
-                                >
-                                  {d.provider_ref} ({d.weight}%)
-                                </Badge>
-                              ))}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-xs font-mono text-right">
-                            $
-                            {(m.input_token_cost_micro_usd / 1_000_000).toFixed(
-                              2,
-                            )}{" "}
-                            / $
-                            {(
-                              m.output_token_cost_micro_usd / 1_000_000
-                            ).toFixed(2)}
-                          </TableCell>
-                          <TableCell className="text-xs">
-                            <Badge variant="default" className="text-2xs">
-                              {m.status}
-                            </Badge>
+                      {(govOverview?.models ?? []).length === 0 ? (
+                        <TableRow>
+                          <TableCell
+                            colSpan={6}
+                            className="text-center text-xs text-muted-foreground py-6"
+                          >
+                            No AIModel custom resources deployed on this
+                            cluster.
                           </TableCell>
                         </TableRow>
-                      ))}
+                      ) : (
+                        (govOverview?.models ?? []).map((m) => (
+                          <TableRow key={`${m.cluster_id}-${m.name}`}>
+                            <TableCell className="text-xs font-mono font-semibold">
+                              {m.name}
+                            </TableCell>
+                            <TableCell className="text-xs font-mono">
+                              {m.model_id}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              <Badge variant="outline" className="text-2xs">
+                                {m.tenant_ref}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              <div className="flex flex-wrap gap-1">
+                                {m.deployments.map((d) => (
+                                  <Badge
+                                    key={d.provider_ref}
+                                    variant="secondary"
+                                    className="text-2xs font-mono"
+                                  >
+                                    {d.provider_ref} ({d.weight}%)
+                                  </Badge>
+                                ))}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-xs font-mono text-right">
+                              $
+                              {(
+                                m.input_token_cost_micro_usd / 1_000_000
+                              ).toFixed(2)}{" "}
+                              / $
+                              {(
+                                m.output_token_cost_micro_usd / 1_000_000
+                              ).toFixed(2)}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              <Badge variant="default" className="text-2xs">
+                                {m.status}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
                     </TableBody>
                   </Table>
                 </SectionCard>
@@ -1045,32 +1126,44 @@ export default function SmartLlmRouterPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {(govOverview?.providers ?? []).map((p) => (
-                        <TableRow key={`${p.cluster_id}-${p.name}`}>
-                          <TableCell className="text-xs font-mono font-semibold">
-                            {p.name}
-                          </TableCell>
-                          <TableCell className="text-xs">
-                            <Badge variant="outline" className="text-2xs">
-                              {p.provider_type}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-xs font-mono text-muted-foreground">
-                            {p.endpoint_url ?? "—"}
-                          </TableCell>
-                          <TableCell className="text-xs font-mono">
-                            {p.credential_ref ?? "—"}
-                          </TableCell>
-                          <TableCell className="text-xs font-mono">
-                            {p.secret_ref ?? "—"}
-                          </TableCell>
-                          <TableCell className="text-xs">
-                            <Badge variant="default" className="text-2xs">
-                              {p.status}
-                            </Badge>
+                      {(govOverview?.providers ?? []).length === 0 ? (
+                        <TableRow>
+                          <TableCell
+                            colSpan={6}
+                            className="text-center text-xs text-muted-foreground py-6"
+                          >
+                            No AIProvider or AICredential resources deployed on
+                            this cluster.
                           </TableCell>
                         </TableRow>
-                      ))}
+                      ) : (
+                        (govOverview?.providers ?? []).map((p) => (
+                          <TableRow key={`${p.cluster_id}-${p.name}`}>
+                            <TableCell className="text-xs font-mono font-semibold">
+                              {p.name}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              <Badge variant="outline" className="text-2xs">
+                                {p.provider_type}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-xs font-mono text-muted-foreground">
+                              {p.endpoint_url ?? "—"}
+                            </TableCell>
+                            <TableCell className="text-xs font-mono">
+                              {p.credential_ref ?? "—"}
+                            </TableCell>
+                            <TableCell className="text-xs font-mono">
+                              {p.secret_ref ?? "—"}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              <Badge variant="default" className="text-2xs">
+                                {p.status}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
                     </TableBody>
                   </Table>
                 </SectionCard>
@@ -1201,121 +1294,135 @@ export default function SmartLlmRouterPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {(govOverview?.routes ?? []).map((r) => (
-                        <TableRow key={`${r.cluster_id}-${r.name}`}>
-                          <TableCell className="text-xs">
-                            <div className="font-mono font-semibold">
-                              {r.name}
-                            </div>
-                            <div className="text-2xs font-mono text-muted-foreground">
-                              {r.vip_address ?? "0.0.0.0"}:{r.port}
-                              {r.path_prefix}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-xs font-mono">
-                            {r.ai_gateway_profile}
-                          </TableCell>
-                          <TableCell className="text-xs font-mono">
-                            {r.app_policy ?? "—"}
-                          </TableCell>
-                          <TableCell className="text-xs">
-                            <Badge variant="outline" className="text-2xs">
-                              {r.auth_mode}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-xs font-mono">
-                            {r.semantic_cache_enabled ? (
-                              <span>
-                                max={r.semantic_cache_pool_max_size}, idle=
-                                {r.semantic_cache_pool_idle_timeout} (sim≥
-                                {r.semantic_cache_similarity_threshold})
-                              </span>
-                            ) : (
-                              "Disabled"
-                            )}
-                          </TableCell>
-                          <TableCell className="text-xs">
-                            <div className="flex flex-wrap gap-1.5">
-                              <Button
-                                size="sm"
-                                variant={
-                                  r.failover_enabled ? "default" : "outline"
-                                }
-                                className="h-6 px-2 text-2xs"
-                                disabled={updateRoutePolicyMut.isPending}
-                                onClick={() =>
-                                  updateRoutePolicyMut.mutate({
-                                    clusterId:
-                                      r.cluster_id || effectiveClusterId,
-                                    routeName: r.name,
-                                    payload: {
-                                      failover_enabled: !r.failover_enabled,
-                                    },
-                                  })
-                                }
-                              >
-                                Failover: {r.failover_enabled ? "ON" : "OFF"}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant={
-                                  r.semantic_cache_enabled
-                                    ? "default"
-                                    : "outline"
-                                }
-                                className="h-6 px-2 text-2xs"
-                                disabled={updateRoutePolicyMut.isPending}
-                                onClick={() =>
-                                  updateRoutePolicyMut.mutate({
-                                    clusterId:
-                                      r.cluster_id || effectiveClusterId,
-                                    routeName: r.name,
-                                    payload: {
-                                      semantic_cache_enabled:
-                                        !r.semantic_cache_enabled,
-                                    },
-                                  })
-                                }
-                              >
-                                SemanticCache:{" "}
-                                {r.semantic_cache_enabled ? "ON" : "OFF"}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant={
-                                  r.model_routing_enabled
-                                    ? "default"
-                                    : "outline"
-                                }
-                                className="h-6 px-2 text-2xs"
-                                disabled={updateRoutePolicyMut.isPending}
-                                onClick={() =>
-                                  updateRoutePolicyMut.mutate({
-                                    clusterId:
-                                      r.cluster_id || effectiveClusterId,
-                                    routeName: r.name,
-                                    payload: {
-                                      model_routing_enabled:
-                                        !r.model_routing_enabled,
-                                    },
-                                  })
-                                }
-                              >
-                                ModelRouting:{" "}
-                                {r.model_routing_enabled ? "ON" : "OFF"}
-                              </Button>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-xs">
-                            <Badge
-                              variant={r.programmed ? "default" : "destructive"}
-                              className="text-2xs"
-                            >
-                              {r.status}
-                            </Badge>
+                      {(govOverview?.routes ?? []).length === 0 ? (
+                        <TableRow>
+                          <TableCell
+                            colSpan={7}
+                            className="text-center text-xs text-muted-foreground py-6"
+                          >
+                            No AI Gateway routes or AIGatewayProfiles deployed
+                            on this cluster.
                           </TableCell>
                         </TableRow>
-                      ))}
+                      ) : (
+                        (govOverview?.routes ?? []).map((r) => (
+                          <TableRow key={`${r.cluster_id}-${r.name}`}>
+                            <TableCell className="text-xs">
+                              <div className="font-mono font-semibold">
+                                {r.name}
+                              </div>
+                              <div className="text-2xs font-mono text-muted-foreground">
+                                {r.vip_address ?? "0.0.0.0"}:{r.port}
+                                {r.path_prefix}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-xs font-mono">
+                              {r.ai_gateway_profile}
+                            </TableCell>
+                            <TableCell className="text-xs font-mono">
+                              {r.app_policy ?? "—"}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              <Badge variant="outline" className="text-2xs">
+                                {r.auth_mode}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-xs font-mono">
+                              {r.semantic_cache_enabled ? (
+                                <span>
+                                  max={r.semantic_cache_pool_max_size}, idle=
+                                  {r.semantic_cache_pool_idle_timeout} (sim≥
+                                  {r.semantic_cache_similarity_threshold})
+                                </span>
+                              ) : (
+                                "Disabled"
+                              )}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              <div className="flex flex-wrap gap-1.5">
+                                <Button
+                                  size="sm"
+                                  variant={
+                                    r.failover_enabled ? "default" : "outline"
+                                  }
+                                  className="h-6 px-2 text-2xs"
+                                  disabled={updateRoutePolicyMut.isPending}
+                                  onClick={() =>
+                                    updateRoutePolicyMut.mutate({
+                                      clusterId:
+                                        r.cluster_id || effectiveClusterId,
+                                      routeName: r.name,
+                                      payload: {
+                                        failover_enabled: !r.failover_enabled,
+                                      },
+                                    })
+                                  }
+                                >
+                                  Failover: {r.failover_enabled ? "ON" : "OFF"}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant={
+                                    r.semantic_cache_enabled
+                                      ? "default"
+                                      : "outline"
+                                  }
+                                  className="h-6 px-2 text-2xs"
+                                  disabled={updateRoutePolicyMut.isPending}
+                                  onClick={() =>
+                                    updateRoutePolicyMut.mutate({
+                                      clusterId:
+                                        r.cluster_id || effectiveClusterId,
+                                      routeName: r.name,
+                                      payload: {
+                                        semantic_cache_enabled:
+                                          !r.semantic_cache_enabled,
+                                      },
+                                    })
+                                  }
+                                >
+                                  SemanticCache:{" "}
+                                  {r.semantic_cache_enabled ? "ON" : "OFF"}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant={
+                                    r.model_routing_enabled
+                                      ? "default"
+                                      : "outline"
+                                  }
+                                  className="h-6 px-2 text-2xs"
+                                  disabled={updateRoutePolicyMut.isPending}
+                                  onClick={() =>
+                                    updateRoutePolicyMut.mutate({
+                                      clusterId:
+                                        r.cluster_id || effectiveClusterId,
+                                      routeName: r.name,
+                                      payload: {
+                                        model_routing_enabled:
+                                          !r.model_routing_enabled,
+                                      },
+                                    })
+                                  }
+                                >
+                                  ModelRouting:{" "}
+                                  {r.model_routing_enabled ? "ON" : "OFF"}
+                                </Button>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              <Badge
+                                variant={
+                                  r.programmed ? "default" : "destructive"
+                                }
+                                className="text-2xs"
+                              >
+                                {r.status}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
                     </TableBody>
                   </Table>
                 </SectionCard>
@@ -1387,7 +1494,8 @@ export default function SmartLlmRouterPage() {
                         size="sm"
                         className="h-8 text-xs gap-1.5"
                         disabled={
-                          !testPrompt.trim() || testRequestMut.isPending
+                          (govOverview?.routes?.length ?? 0) === 0 ||
+                          testRequestMut.isPending
                         }
                         onClick={() => testRequestMut.mutate()}
                       >
@@ -1723,80 +1831,91 @@ export default function SmartLlmRouterPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {(govOverview?.virtual_keys ?? []).map((vk) => (
-                        <TableRow key={vk.id}>
-                          <TableCell className="text-xs font-semibold">
-                            {vk.name}
-                          </TableCell>
-                          <TableCell className="text-xs font-mono text-muted-foreground">
-                            {vk.masked_key}
-                          </TableCell>
-                          <TableCell className="text-xs">
-                            <div>{vk.principal_name}</div>
-                            <div className="text-2xs text-muted-foreground">
-                              {vk.principal_type} · {vk.team_name} (
-                              {vk.org_name})
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-xs">
-                            <div className="flex flex-wrap gap-1">
-                              {vk.allowed_models.map((m) => (
-                                <Badge
-                                  key={m}
-                                  variant="secondary"
-                                  className="text-2xs font-mono"
-                                >
-                                  {m}
-                                </Badge>
-                              ))}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-xs font-mono text-right">
-                            {vk.rpm_limit.toLocaleString()} /{" "}
-                            {vk.tpm_limit.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-xs font-mono text-right">
-                            ${vk.spend_usd.toFixed(2)} / $
-                            {vk.monthly_budget_usd.toFixed(0)}
-                          </TableCell>
-                          <TableCell className="text-xs">
-                            <Badge
-                              variant={
-                                vk.status === "active" ? "default" : "outline"
-                              }
-                              className="text-2xs"
-                            >
-                              {vk.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-xs text-right">
-                            {vk.status === "active" && (
-                              <div className="flex items-center justify-end gap-1">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 px-2 text-2xs gap-1"
-                                  title="Rotate Virtual Key in-place"
-                                  disabled={rotateKeyMut.isPending}
-                                  onClick={() => rotateKeyMut.mutate(vk.id)}
-                                >
-                                  <RefreshCw className="h-3 w-3" />
-                                  Rotate
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-7 px-2 text-xs text-destructive hover:text-destructive"
-                                  title="Revoke Virtual Key"
-                                  onClick={() => revokeKeyMut.mutate(vk.id)}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
-                              </div>
-                            )}
+                      {(govOverview?.virtual_keys ?? []).length === 0 ? (
+                        <TableRow>
+                          <TableCell
+                            colSpan={8}
+                            className="text-center text-xs text-muted-foreground py-6"
+                          >
+                            No DSSM Virtual Keys issued on this cluster.
                           </TableCell>
                         </TableRow>
-                      ))}
+                      ) : (
+                        (govOverview?.virtual_keys ?? []).map((vk) => (
+                          <TableRow key={vk.id}>
+                            <TableCell className="text-xs font-semibold">
+                              {vk.name}
+                            </TableCell>
+                            <TableCell className="text-xs font-mono text-muted-foreground">
+                              {vk.masked_key}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              <div>{vk.principal_name}</div>
+                              <div className="text-2xs text-muted-foreground">
+                                {vk.principal_type} · {vk.team_name} (
+                                {vk.org_name})
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              <div className="flex flex-wrap gap-1">
+                                {vk.allowed_models.map((m) => (
+                                  <Badge
+                                    key={m}
+                                    variant="secondary"
+                                    className="text-2xs font-mono"
+                                  >
+                                    {m}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-xs font-mono text-right">
+                              {vk.rpm_limit.toLocaleString()} /{" "}
+                              {vk.tpm_limit.toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-xs font-mono text-right">
+                              ${vk.spend_usd.toFixed(2)} / $
+                              {vk.monthly_budget_usd.toFixed(0)}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              <Badge
+                                variant={
+                                  vk.status === "active" ? "default" : "outline"
+                                }
+                                className="text-2xs"
+                              >
+                                {vk.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-xs text-right">
+                              {vk.status === "active" && (
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 px-2 text-2xs gap-1"
+                                    title="Rotate Virtual Key in-place"
+                                    disabled={rotateKeyMut.isPending}
+                                    onClick={() => rotateKeyMut.mutate(vk.id)}
+                                  >
+                                    <RefreshCw className="h-3 w-3" />
+                                    Rotate
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                                    title="Revoke Virtual Key"
+                                    onClick={() => revokeKeyMut.mutate(vk.id)}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
                     </TableBody>
                   </Table>
                 </SectionCard>
@@ -1823,24 +1942,35 @@ export default function SmartLlmRouterPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {(govOverview?.organizations ?? []).map((o) => (
-                          <TableRow key={o.id}>
-                            <TableCell className="text-xs font-semibold">
-                              {o.name}
-                            </TableCell>
-                            <TableCell className="text-xs font-mono">
-                              {o.tenant_ref}
-                            </TableCell>
-                            <TableCell className="text-xs font-mono text-right">
-                              ${o.current_spend_usd.toLocaleString()} / $
-                              {o.monthly_budget_usd.toLocaleString()}
-                            </TableCell>
-                            <TableCell className="text-xs font-mono text-right">
-                              {o.rpm_limit.toLocaleString()} /{" "}
-                              {o.tpm_limit.toLocaleString()}
+                        {(govOverview?.organizations ?? []).length === 0 ? (
+                          <TableRow>
+                            <TableCell
+                              colSpan={4}
+                              className="text-center text-xs text-muted-foreground py-6"
+                            >
+                              No organizations configured on this cluster.
                             </TableCell>
                           </TableRow>
-                        ))}
+                        ) : (
+                          (govOverview?.organizations ?? []).map((o) => (
+                            <TableRow key={o.id}>
+                              <TableCell className="text-xs font-semibold">
+                                {o.name}
+                              </TableCell>
+                              <TableCell className="text-xs font-mono">
+                                {o.tenant_ref}
+                              </TableCell>
+                              <TableCell className="text-xs font-mono text-right">
+                                ${o.current_spend_usd.toLocaleString()} / $
+                                {o.monthly_budget_usd.toLocaleString()}
+                              </TableCell>
+                              <TableCell className="text-xs font-mono text-right">
+                                {o.rpm_limit.toLocaleString()} /{" "}
+                                {o.tpm_limit.toLocaleString()}
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
                       </TableBody>
                     </Table>
                   </SectionCard>
@@ -1862,25 +1992,36 @@ export default function SmartLlmRouterPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {(govOverview?.principals ?? []).map((p) => (
-                          <TableRow key={p.id}>
-                            <TableCell className="text-xs font-semibold">
-                              {p.name}
-                            </TableCell>
-                            <TableCell className="text-xs">
-                              <Badge variant="outline" className="text-2xs">
-                                {p.principal_type}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-xs">
-                              {p.team_name}
-                            </TableCell>
-                            <TableCell className="text-xs font-mono text-right">
-                              {p.rpm_limit.toLocaleString()} /{" "}
-                              {p.tpm_limit.toLocaleString()}
+                        {(govOverview?.principals ?? []).length === 0 ? (
+                          <TableRow>
+                            <TableCell
+                              colSpan={4}
+                              className="text-center text-xs text-muted-foreground py-6"
+                            >
+                              No principals or teams configured on this cluster.
                             </TableCell>
                           </TableRow>
-                        ))}
+                        ) : (
+                          (govOverview?.principals ?? []).map((p) => (
+                            <TableRow key={p.id}>
+                              <TableCell className="text-xs font-semibold">
+                                {p.name}
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                <Badge variant="outline" className="text-2xs">
+                                  {p.principal_type}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                {p.team_name}
+                              </TableCell>
+                              <TableCell className="text-xs font-mono text-right">
+                                {p.rpm_limit.toLocaleString()} /{" "}
+                                {p.tpm_limit.toLocaleString()}
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
                       </TableBody>
                     </Table>
                   </SectionCard>
@@ -1915,66 +2056,80 @@ export default function SmartLlmRouterPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {(govOverview?.request_audit_logs ?? []).map((log) => (
-                        <TableRow key={log.id}>
-                          <TableCell className="text-xs font-mono text-muted-foreground">
-                            {log.id}
-                          </TableCell>
-                          <TableCell className="text-xs">
-                            <div className="font-semibold">
-                              {log.principal_name}
-                            </div>
-                            <div className="text-2xs text-muted-foreground">
-                              {log.team_name} · {log.org_name}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-xs font-mono">
-                            <div>{log.model_id}</div>
-                            <div className="text-2xs text-muted-foreground">
-                              {log.provider_name}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-xs font-mono">
-                            <Badge
-                              variant={
-                                log.status_code === 200
-                                  ? "default"
-                                  : "destructive"
-                              }
-                              className="text-2xs mr-1.5"
-                            >
-                              {log.status_code}
-                            </Badge>
-                            {log.path}
-                          </TableCell>
-                          <TableCell className="text-xs">
-                            <div className="flex flex-wrap gap-1">
-                              <Badge
-                                variant={
-                                  log.semantic_cache_status === "HIT"
-                                    ? "default"
-                                    : "outline"
-                                }
-                                className="text-2xs font-mono"
-                              >
-                                {log.semantic_cache_status}
-                              </Badge>
-                              {log.failover_triggered && (
-                                <Badge variant="secondary" className="text-2xs">
-                                  Failover
-                                </Badge>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-xs font-mono text-right">
-                            {log.prompt_tokens.toLocaleString()} /{" "}
-                            {log.completion_tokens.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-xs font-mono text-right">
-                            ${log.cost_usd.toFixed(6)}
+                      {(govOverview?.request_audit_logs ?? []).length === 0 ? (
+                        <TableRow>
+                          <TableCell
+                            colSpan={7}
+                            className="text-center text-xs text-muted-foreground py-6"
+                          >
+                            No gateway request audit logs recorded yet.
                           </TableCell>
                         </TableRow>
-                      ))}
+                      ) : (
+                        (govOverview?.request_audit_logs ?? []).map((log) => (
+                          <TableRow key={log.id}>
+                            <TableCell className="text-xs font-mono text-muted-foreground">
+                              {log.id}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              <div className="font-semibold">
+                                {log.principal_name}
+                              </div>
+                              <div className="text-2xs text-muted-foreground">
+                                {log.team_name} · {log.org_name}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-xs font-mono">
+                              <div>{log.model_id}</div>
+                              <div className="text-2xs text-muted-foreground">
+                                {log.provider_name}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-xs font-mono">
+                              <Badge
+                                variant={
+                                  log.status_code === 200
+                                    ? "default"
+                                    : "destructive"
+                                }
+                                className="text-2xs mr-1.5"
+                              >
+                                {log.status_code}
+                              </Badge>
+                              {log.path}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              <div className="flex flex-wrap gap-1">
+                                <Badge
+                                  variant={
+                                    log.semantic_cache_status === "HIT"
+                                      ? "default"
+                                      : "outline"
+                                  }
+                                  className="text-2xs font-mono"
+                                >
+                                  {log.semantic_cache_status}
+                                </Badge>
+                                {log.failover_triggered && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="text-2xs"
+                                  >
+                                    Failover
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-xs font-mono text-right">
+                              {log.prompt_tokens.toLocaleString()} /{" "}
+                              {log.completion_tokens.toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-xs font-mono text-right">
+                              ${log.cost_usd.toFixed(6)}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
                     </TableBody>
                   </Table>
                 </SectionCard>

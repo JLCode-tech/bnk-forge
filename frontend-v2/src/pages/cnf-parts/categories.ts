@@ -7,9 +7,16 @@
  * Items within each category: alphabetical by label.
  */
 
-import type { CRDInfo } from '@/hooks/useCrds';
-import { crdCategoryLabel } from '@/lib/crd-category-labels';
-import type { CnfCategory, CnfCategoryItem } from './cnf-constants';
+import type { CRDInfo } from "@/hooks/useCrds";
+import { crdCategoryLabel } from "@/lib/crd-category-labels";
+import {
+  CURATED_CNF_CATEGORIES,
+  type CnfCategory,
+  type CnfCategoryItem,
+} from "./cnf-constants";
+
+export { CURATED_CNF_CATEGORIES };
+export const CATEGORIES = CURATED_CNF_CATEGORIES;
 
 export function buildCnfCategories(crds: CRDInfo[]): CnfCategory[] {
   const map = new Map<string, CnfCategory>();
@@ -17,7 +24,9 @@ export function buildCnfCategories(crds: CRDInfo[]): CnfCategory[] {
   for (const crd of crds) {
     const enriched = !!crd.category;
     const rawCategory = crd.category ?? crd.group;
-    const category = crd.category ? (crdCategoryLabel(crd.category) ?? rawCategory) : rawCategory;
+    const category = crd.category
+      ? (crdCategoryLabel(crd.category) ?? rawCategory)
+      : rawCategory;
     const item: CnfCategoryItem = {
       key: crd.name,
       label: crd.display_name ?? crd.kind,

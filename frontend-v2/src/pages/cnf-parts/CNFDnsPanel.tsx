@@ -9,7 +9,7 @@
 
 import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { Globe, Eye } from "lucide-react";
+import { Globe, Eye, Plus, Pencil, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SkeletonTable } from "@/components/ui/skeleton-table";
@@ -34,12 +34,21 @@ interface CNFDnsPanelProps {
   selectedResource: K8sResource | null;
   onSelectResource: (resource: K8sResource) => void;
   onDescribe: (resource: K8sResource) => void;
+  onCreateResource?: (resourceType: string) => void;
+  onEditResource?: (resource: K8sResource, resourceType: string) => void;
+  onDeleteResource?: (resource: K8sResource, resourceType: string) => void;
   searchQuery: string;
   onSearchChange?: (query: string) => void;
   borderDefault: string;
 }
 
 type DnsFilter = "all" | "caches" | "apps" | "zones";
+
+const DNS_CATEGORY_RESOURCE_TYPE: Record<"cache" | "app" | "zone", string> = {
+  cache: "f5bigdnsresolvercaches",
+  app: "f5bigdnsapps",
+  zone: "f5bigdnszones",
+};
 
 export function CNFDnsPanel({
   caches,
@@ -49,6 +58,9 @@ export function CNFDnsPanel({
   selectedResource,
   onSelectResource,
   onDescribe,
+  onCreateResource,
+  onEditResource,
+  onDeleteResource,
   searchQuery,
   borderDefault,
 }: CNFDnsPanelProps) {
@@ -138,6 +150,44 @@ export function CNFDnsPanel({
             Express Zones ({zones.length})
           </button>
         </div>
+
+        {onCreateResource && (
+          <div className="flex items-center gap-1.5">
+            {(activeFilter === "all" || activeFilter === "caches") && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2.5 text-xs gap-1"
+                onClick={() => onCreateResource("f5bigdnsresolvercaches")}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Cache
+              </Button>
+            )}
+            {(activeFilter === "all" || activeFilter === "apps") && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2.5 text-xs gap-1"
+                onClick={() => onCreateResource("f5bigdnsapps")}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Listener
+              </Button>
+            )}
+            {(activeFilter === "all" || activeFilter === "zones") && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2.5 text-xs gap-1"
+                onClick={() => onCreateResource("f5bigdnszones")}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Zone
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Content Area */}
@@ -207,7 +257,7 @@ spec:
                 <TableHead className="py-3 px-4 font-medium text-muted-foreground">
                   Age
                 </TableHead>
-                <TableHead className="text-right py-3 px-4 font-medium w-24 text-muted-foreground">
+                <TableHead className="text-right py-3 px-4 font-medium w-32 text-muted-foreground">
                   Actions
                 </TableHead>
               </TableRow>
@@ -220,6 +270,7 @@ spec:
                 const severity = severityFromConditions(conditions);
                 const severityConfig = getSeverityConfig(severity);
                 const SeverityIcon = severityConfig.icon;
+                const resourceType = DNS_CATEGORY_RESOURCE_TYPE[kindCategory];
 
                 // Extract friendly details based on kind
                 const spec = (resource as { spec?: Record<string, unknown> })
@@ -303,18 +354,48 @@ spec:
                       </span>
                     </TableCell>
                     <TableCell className="py-3 px-4 text-right">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 px-2 text-xs"
-                        aria-label="View details"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDescribe(resource);
-                        }}
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                      </Button>
+                      <div className="inline-flex items-center justify-end gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          aria-label="View details"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDescribe(resource);
+                          }}
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </Button>
+                        {onEditResource && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            aria-label={`Edit ${resource.metadata?.name ?? "resource"}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onEditResource(resource, resourceType);
+                            }}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        {onDeleteResource && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                            aria-label={`Delete ${resource.metadata?.name ?? "resource"}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDeleteResource(resource, resourceType);
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 );

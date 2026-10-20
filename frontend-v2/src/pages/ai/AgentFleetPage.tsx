@@ -173,9 +173,9 @@ export default function AgentFleetPage() {
           tokenizer: a.agentCard?.version
             ? `A2A v${a.agentCard.version}`
             : "A2A JSON-RPC",
-          blockSize: 64,
-          cacheHitRate: 85.0,
-          ttftMs: 40,
+          blockSize: 0,
+          cacheHitRate: 0,
+          ttftMs: 0,
           authMethod:
             a.agentCard?.securitySchemes &&
             Object.keys(a.agentCard.securitySchemes).length > 0
@@ -183,7 +183,7 @@ export default function AgentFleetPage() {
               : "mTLS / Token",
           monthlyBudget: 0,
           currentSpend: 0,
-          sessionPersistence: "Header Sticky (300s)",
+          sessionPersistence: "None configured",
           description:
             a.agentCard?.description ||
             `Discovered A2A/MCP service behind ${a.routeRefs.length} HTTPRoute(s)`,

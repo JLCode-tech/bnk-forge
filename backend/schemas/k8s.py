@@ -650,6 +650,32 @@ class CrdListEnvelope(BaseModel):
     """Non-null only for the reachable-but-empty case (no error, just no matches)."""
 
 
+class CrdPrinterColumn(BaseModel):
+    """Additional printer column defined on a CRD version."""
+
+    name: str
+    type: str = "string"
+    json_path: str = ""
+    description: str | None = None
+
+
+class CrdSchemaResponse(BaseModel):
+    """Response for GET /api/k8s/clusters/{cluster_id}/crds/{crd_name}/schema."""
+
+    name: str
+    kind: str
+    plural: str
+    singular: str | None = None
+    group: str
+    version: str | None = None
+    scope: str = "Namespaced"
+    short_names: list[str] = Field(default_factory=list)
+    versions: list[str] = Field(default_factory=list)
+    open_apiv3_schema: dict[str, Any] = Field(default_factory=dict)
+    additional_printer_columns: list[CrdPrinterColumn] = Field(default_factory=list)
+    conditions: list[dict[str, Any]] = Field(default_factory=list)
+
+
 # =============================================================================
 # Topology (D-018 P4)
 # =============================================================================

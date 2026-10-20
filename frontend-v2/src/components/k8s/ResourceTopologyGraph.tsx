@@ -457,12 +457,29 @@ function TopologyInner({
     const q = searchQuery.trim().toLowerCase();
     const matchingIds = new Set<string>();
 
+    const aiCoreIds = new Set(
+      topologyNodes
+        .filter((n) => inferDomain(n) === "ai-gateway")
+        .map((n) => n.id),
+    );
+    const aiConnectedIds = new Set<string>(aiCoreIds);
+    if (aiCoreIds.size > 0) {
+      // Include 1-hop and 2-hop (e.g. AIGatewayProfile <- AppPolicy -> Gateway <- HTTPRoute) neighbors
+      for (let hop = 0; hop < 2; hop++) {
+        for (const e of topologyEdges) {
+          if (aiConnectedIds.has(e.source)) aiConnectedIds.add(e.target);
+          if (aiConnectedIds.has(e.target)) aiConnectedIds.add(e.source);
+        }
+      }
+    }
+
     for (const n of topologyNodes) {
       const domainMatch =
         domainFilter === "all" ||
         inferDomain(n) === domainFilter ||
-        // Keep Secret/Gateway/HTTPRoute connected to AI Gateway when viewing AI Gateway domain
+        // Keep Secret/Gateway/HTTPRoute/AppPolicy connected to AI Gateway when viewing AI Gateway domain
         (domainFilter === "ai-gateway" &&
+          aiConnectedIds.has(n.id) &&
           (n.kind === "Secret" ||
             n.kind === "Gateway" ||
             n.kind === "HTTPRoute" ||

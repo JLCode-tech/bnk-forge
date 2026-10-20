@@ -11,13 +11,15 @@ import type { K8sCluster } from "@/types/kubernetes";
 
 export function ClusterRouterRow({
   cluster,
+  aiGatewayDeployed = false,
   onInspect,
 }: {
   cluster: K8sCluster;
+  aiGatewayDeployed?: boolean;
   onInspect: () => void;
 }) {
   const { data, isLoading } = useLlmStats(cluster.id, { range: "24h" });
-  const live = data?.available ? data : undefined;
+  const live = aiGatewayDeployed && data?.available ? data : undefined;
   const empty = isLoading ? "…" : "—";
 
   return (
@@ -38,7 +40,15 @@ export function ClusterRouterRow({
         {live ? `${Math.round(live.avg_latency_ms)}ms` : empty}
       </TableCell>
       <TableCell>
-        {isLoading ? (
+        {!aiGatewayDeployed ? (
+          <Badge
+            variant="outline"
+            className="text-2xs text-amber-500 border-amber-500/30 bg-amber-500/10"
+            title="No BNK 2.4.1 inference.k8s.f5.com/v1alpha1 CRDs or CNEInstance.spec.aiGateway.enabled=true detected on this cluster"
+          >
+            BNK 2.4.1 Not Deployed
+          </Badge>
+        ) : isLoading ? (
           <span className="text-xs text-muted-foreground">Checking…</span>
         ) : live ? (
           <Badge

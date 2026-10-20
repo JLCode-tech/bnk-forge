@@ -20,6 +20,9 @@ import { ResourceSidebarViewTabs } from "@/components/layout/ResourceCategorySid
 import { CollapsibleInnerSidebar } from "@/components/layout/InnerSidebar";
 import { ConnectivityGate } from "@/components/ConnectivityGate";
 import { ResourceDescribeViewer } from "@/components/k8s/ResourceDescribeViewer";
+import { ResourceCreateDialog } from "@/components/k8s/ResourceCreateDialog";
+import { ResourceEditDialog } from "@/components/k8s/ResourceEditDialog";
+import { ResourceDeleteDialog } from "@/components/k8s/ResourceDeleteDialog";
 import { ClusterScopePickerCard } from "@/components/k8s/ClusterScopePickerCard";
 import { ErrorState } from "@/components/ui/error-state";
 import { TableHead } from "@/components/ui/table";
@@ -29,6 +32,10 @@ import { useProjectClusters, useClusterNamespaces } from "@/hooks/useK8s";
 import { useAutoSelectProjectCluster } from "@/hooks/useAutoSelectProjectCluster";
 import { useClusterReachable } from "@/hooks/useConnectivity";
 import { useClusterResources } from "@/hooks/useK8sResources";
+import { useCrds } from "@/hooks/useCrds";
+import { api } from "@/lib/api";
+import { parseApiError } from "@/lib/error-handler";
+import { notify } from "@/lib/notify";
 import { STORAGE_KEYS } from "@/lib/storage-keys";
 import type { K8sResource } from "@/types/kubernetes";
 import { CNFClusterRow } from "./cnf-parts/CNFClusterRow";
@@ -162,7 +169,7 @@ export default function CNF() {
   const [selectedNamespace, setSelectedNamespace] = useState<string>("all");
 
   // ---------------------------------------------------------------------------
-  // Selection and Describe modal
+  // Selection, Describe, and CRUD modals
   // ---------------------------------------------------------------------------
   const [selectedResource, setSelectedResource] = useState<K8sResource | null>(
     null,
@@ -171,16 +178,61 @@ export default function CNF() {
   const [resourceToDescribe, setResourceToDescribe] =
     useState<K8sResource | null>(null);
 
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createResourceType, setCreateResourceType] =
+    useState<string>("f5bigdnsapps");
+
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [resourceToEdit, setResourceToEdit] = useState<K8sResource | null>(
+    null,
+  );
+  const [editResourceType, setEditResourceType] =
+    useState<string>("f5bigdnsapps");
+
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [resourceToDelete, setResourceToDelete] = useState<K8sResource | null>(
+    null,
+  );
+  const [deleteResourceType, setDeleteResourceType] =
+    useState<string>("f5bigdnsapps");
+
   const handleDescribe = useCallback((resource: K8sResource) => {
     setResourceToDescribe(resource);
     setDescribeOpen(true);
   }, []);
+
+  const handleCreateResource = useCallback((resourceType: string) => {
+    setCreateResourceType(resourceType);
+    setCreateDialogOpen(true);
+  }, []);
+
+  const handleEditResource = useCallback(
+    (resource: K8sResource, resourceType: string) => {
+      setResourceToEdit(resource);
+      setEditResourceType(resourceType);
+      setEditDialogOpen(true);
+    },
+    [],
+  );
+
+  const handleDeleteResource = useCallback(
+    (resource: K8sResource, resourceType: string) => {
+      setResourceToDelete(resource);
+      setDeleteResourceType(resourceType);
+      setDeleteDialogOpen(true);
+    },
+    [],
+  );
 
   // ---------------------------------------------------------------------------
   // Dedicated CNF Telemetry Queries
   // ---------------------------------------------------------------------------
   const nsParam =
     selectedNamespace === "all" ? undefined : { namespace: selectedNamespace };
+
+  const { data: crdsData } = useCrds(selectedCluster ?? 0, {
+    enabled: !!selectedCluster && isClusterReachable && view === "overview",
+  });
 
   const { data: dnsAppsData, isLoading: dnsAppsLoading } = useClusterResources(
     selectedCluster ?? 0,
@@ -288,6 +340,15 @@ export default function CNF() {
     const items = (ipsData as { items?: K8sResource[] }).items;
     return Array.isArray(items) ? items : [];
   }, [ipsData]);
+
+  const activeCnfResourcesCount =
+    dnsCaches.length +
+    dnsApps.length +
+    dnsZones.length +
+    cgnatInstances.length +
+    diameterInstances.length +
+    ipamInstances.length;
+  const discoveredCrdsCount = crdsData?.count ?? crdsData?.crds?.length ?? 0;
 
   // ---------------------------------------------------------------------------
   // Refresh Handler
@@ -446,7 +507,11 @@ export default function CNF() {
                 {view === "overview" && (
                   <CNFOverview
                     clusterName={currentCluster?.name}
-                    crdsCount={0}
+                    crdsCount={
+                      discoveredCrdsCount > 0
+                        ? discoveredCrdsCount
+                        : activeCnfResourcesCount
+                    }
                     dnsCachesCount={dnsCaches.length}
                     dnsAppsCount={dnsApps.length}
                     dnsZonesCount={dnsZones.length}
@@ -468,6 +533,9 @@ export default function CNF() {
                     selectedResource={selectedResource}
                     onSelectResource={setSelectedResource}
                     onDescribe={handleDescribe}
+                    onCreateResource={handleCreateResource}
+                    onEditResource={handleEditResource}
+                    onDeleteResource={handleDeleteResource}
                     searchQuery={searchQuery}
                     onSearchChange={setSearchQuery}
                     borderDefault="border-border"
@@ -483,6 +551,9 @@ export default function CNF() {
                     selectedResource={selectedResource}
                     onSelectResource={setSelectedResource}
                     onDescribe={handleDescribe}
+                    onCreateResource={handleCreateResource}
+                    onEditResource={handleEditResource}
+                    onDeleteResource={handleDeleteResource}
                     searchQuery={searchQuery}
                     onSearchChange={setSearchQuery}
                     borderDefault="border-border"
@@ -505,15 +576,127 @@ export default function CNF() {
         )}
       </ResourceExplorerLayout.Body>
 
-      {/* Resource Describe Viewer Dialog */}
+      {/* Resource Describe & CRUD Dialogs */}
       {selectedCluster && (
-        <ResourceDescribeViewer
-          open={describeOpen}
-          onOpenChange={setDescribeOpen}
-          resource={resourceToDescribe}
-          clusterId={selectedCluster}
-          namespace={resourceToDescribe?.metadata?.namespace}
-        />
+        <>
+          <ResourceDescribeViewer
+            open={describeOpen}
+            onOpenChange={setDescribeOpen}
+            resource={resourceToDescribe}
+            clusterId={selectedCluster}
+            namespace={resourceToDescribe?.metadata?.namespace}
+          />
+
+          <ResourceCreateDialog
+            open={createDialogOpen}
+            onOpenChange={setCreateDialogOpen}
+            resourceType={createResourceType}
+            namespace={
+              selectedNamespace === "all" ? "default" : selectedNamespace
+            }
+            onSubmit={async (resourceYaml, dryRun) => {
+              try {
+                await api.createK8sResource(
+                  selectedCluster,
+                  createResourceType,
+                  {
+                    resource_yaml: resourceYaml,
+                    namespace:
+                      selectedNamespace === "all"
+                        ? "default"
+                        : selectedNamespace,
+                    dry_run: dryRun,
+                  },
+                );
+                if (dryRun) {
+                  notify.success(
+                    "Dry run successful - no changes applied",
+                    undefined,
+                    { category: "cluster" },
+                  );
+                } else {
+                  setCreateDialogOpen(false);
+                  void handleRefresh();
+                }
+              } catch (error: unknown) {
+                const parsed = parseApiError(error);
+                notify.error(parsed.title, parsed.message, {
+                  category: "cluster",
+                });
+              }
+            }}
+          />
+
+          {resourceToEdit && (
+            <ResourceEditDialog
+              open={editDialogOpen}
+              onOpenChange={setEditDialogOpen}
+              resource={resourceToEdit}
+              onSubmit={async (resourceYaml, dryRun) => {
+                try {
+                  await api.updateK8sResource(
+                    selectedCluster,
+                    editResourceType,
+                    resourceToEdit.metadata.name,
+                    {
+                      resource_yaml: resourceYaml,
+                      namespace: resourceToEdit.metadata.namespace,
+                      dry_run: dryRun,
+                    },
+                  );
+                  if (dryRun) {
+                    notify.success(
+                      "Dry run successful - no changes applied",
+                      undefined,
+                      { category: "cluster" },
+                    );
+                  } else {
+                    setEditDialogOpen(false);
+                    setResourceToEdit(null);
+                    void handleRefresh();
+                  }
+                } catch (error: unknown) {
+                  const parsed = parseApiError(error);
+                  notify.error(parsed.title, parsed.message, {
+                    category: "cluster",
+                  });
+                }
+              }}
+            />
+          )}
+
+          {resourceToDelete && (
+            <ResourceDeleteDialog
+              open={deleteDialogOpen}
+              onOpenChange={setDeleteDialogOpen}
+              resource={resourceToDelete}
+              onConfirm={async () => {
+                try {
+                  await api.deleteK8sResource(
+                    selectedCluster,
+                    deleteResourceType,
+                    resourceToDelete.metadata.name,
+                    { namespace: resourceToDelete.metadata.namespace },
+                  );
+                  notify.success(
+                    `${resourceToDelete.kind} deleted successfully`,
+                    undefined,
+                    { category: "cluster" },
+                  );
+                  setDeleteDialogOpen(false);
+                  setResourceToDelete(null);
+                  setSelectedResource(null);
+                  void handleRefresh();
+                } catch (error: unknown) {
+                  const parsed = parseApiError(error);
+                  notify.error(parsed.title, parsed.message, {
+                    category: "cluster",
+                  });
+                }
+              }}
+            />
+          )}
+        </>
       )}
     </ResourceExplorerLayout>
   );

@@ -430,4 +430,71 @@ describe("SmartLlmRouterPage (Multi-Cluster AI Gateway & Governance Console)", (
       });
     });
   });
+
+  it("renders clean empty states when zero AI Gateway or DSSM resources are deployed on the cluster", async () => {
+    const { llmObservabilityApi } = await import("@/lib/api/llmObservability");
+    vi.mocked(llmObservabilityApi.getGovernanceOverview).mockResolvedValue({
+      cluster_id: 1,
+      namespace: "default",
+      updated_at: "2026-10-20T09:00:00Z",
+      tenants: [],
+      providers: [],
+      models: [],
+      routes: [],
+      organizations: [],
+      teams: [],
+      principals: [],
+      virtual_keys: [],
+      diagnostics: [],
+      request_audit_logs: [],
+    });
+
+    const user = userEvent.setup();
+    render(<SmartLlmRouterPage />);
+
+    await user.click(
+      screen.getByRole("button", { name: /Model & Provider Catalog/i }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          /No AIModel custom resources deployed on this cluster/i,
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /No AIProvider or AICredential resources deployed on this cluster/i,
+        ),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: /Gateway Routes & Policies/i }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          /No AI Gateway routes or AIGatewayProfiles deployed on this cluster/i,
+        ),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: /DSSM Governance & Keys/i }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByText(/No DSSM Virtual Keys issued on this cluster/i),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/No organizations configured on this cluster/i),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/No principals or teams configured on this cluster/i),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/No gateway request audit logs recorded yet/i),
+      ).toBeInTheDocument();
+    });
+  });
 });

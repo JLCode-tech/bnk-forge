@@ -122,6 +122,7 @@ export const bnkResourceCategories = [
       { key: VIEW_POLICY_BUILDER, label: "Policy Builder", icon: Wand2 },
       { key: "secpolicy", label: "Security Policies (2.4)", icon: Shield },
       { key: "netpolicy", label: "Network Policies (2.4)", icon: Network },
+      { key: "apppolicy", label: "App Policies (2.4.1)", icon: Shield },
       { key: "egressgateway", label: "Egress Gateways (2.4)", icon: Network },
       {
         key: "bnksecpolicy",
@@ -165,12 +166,29 @@ export const bnkResourceCategories = [
         icon: Stethoscope,
       },
       { key: VIEW_UPGRADE, label: "Release & Upgrade", icon: ArrowUpCircle },
+      {
+        key: "scrapetemplate",
+        label: "Scrape Templates (2.4.1)",
+        icon: Activity,
+      },
+      { key: "scrapeclass", label: "Scrape Classes (2.4.1)", icon: Settings },
+      { key: "scrape", label: "Scrapes (2.4.1)", icon: FileText },
     ],
   },
   {
     category: "AI Gateway & A2A",
     icon: Bot,
     items: [
+      {
+        key: "aigatewayprofile",
+        label: "AI Gateway Profiles (2.4.1)",
+        icon: Bot,
+      },
+      { key: "aitenant", label: "AI Tenants (2.4.1)", icon: Layers },
+      { key: "aimodel", label: "AI Models (2.4.1)", icon: Cpu },
+      { key: "aiprovider", label: "AI Providers (2.4.1)", icon: Server },
+      { key: "aicredential", label: "AI Credentials (2.4.1)", icon: Lock },
+      { key: "aigateway", label: "AI Gateways", icon: Globe },
       { key: "inferencepool", label: "Inference Pools (GAIE)", icon: Cpu },
       {
         key: "inferencemodelrewrite",

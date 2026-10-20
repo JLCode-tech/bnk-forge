@@ -191,13 +191,28 @@ export function CNFOverview({
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold flex items-center gap-1.5 text-foreground">
-              <span className="inline-block h-2.5 w-2.5 rounded-full bg-success animate-pulse" />
-              Active
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Hardware & SR-IOV data plane graph
-            </p>
+            {totalDns + totalTelco > 0 ? (
+              <>
+                <div className="text-2xl font-bold flex items-center gap-1.5 text-foreground">
+                  <span className="inline-block h-2.5 w-2.5 rounded-full bg-success animate-pulse" />
+                  Active
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {totalDns + totalTelco} network function
+                  {totalDns + totalTelco === 1 ? "" : "s"} in data plane graph
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="text-2xl font-bold flex items-center gap-1.5 text-muted-foreground">
+                  <span className="inline-block h-2.5 w-2.5 rounded-full bg-muted-foreground/40" />
+                  Idle
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  0 network functions deployed on cluster
+                </p>
+              </>
+            )}
             <div className="mt-3 flex items-center text-xs text-primary font-medium">
               View Data Plane Pipeline <ArrowRight className="h-3 w-3 ml-1" />
             </div>

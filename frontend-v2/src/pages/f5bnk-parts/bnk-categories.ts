@@ -9,8 +9,8 @@
  * Falls back to the static list unchanged when `crds` is empty (loading / unreachable).
  */
 
-import type { CRDInfo } from '@/hooks/useCrds';
-import { bnkResourceCategories } from './bnk-constants';
+import type { CRDInfo } from "@/hooks/useCrds";
+import { bnkResourceCategories } from "./bnk-constants";
 
 /**
  * API groups this page's curated categories actually populate from
@@ -20,13 +20,14 @@ import { bnkResourceCategories } from './bnk-constants';
  * reaches `buildBnkCategories` and can't land in "Other" in the first place.
  */
 export const BNK_CRD_GROUPS = [
-  'gateway.networking.k8s.io', // Gateway API — Gateway, HTTPRoute, ReferenceGrant, ...
-  'k8s.f5net.com',             // F5 BNK data-plane CRDs (default _f5_resource group)
-  'k8s.f5.com',                // FLO-managed CRDs (CNEInstance, F5EPP, ...)
-  'gateway.k8s.f5.com',        // BNK 2.4 Gateway API & Tenant (Infra, GatewaySettings, EgressGateway, SecPolicy, NetPolicy)
-  'gateway.k8s.f5net.com',     // Gateway extensions (BNKSecPolicy, BNKNetPolicy, L4Route)
-  'inference.networking.k8s.io', // AI Gateway (InferencePool, InferenceModelRewrite)
-  'fic.f5.com',                // F5 IPAM Controller CRDs (IPAMRange, ...)
+  "gateway.networking.k8s.io", // Gateway API — Gateway, HTTPRoute, ReferenceGrant, ...
+  "k8s.f5net.com", // F5 BNK data-plane CRDs (default _f5_resource group)
+  "k8s.f5.com", // FLO-managed CRDs (CNEInstance, F5EPP, ...)
+  "gateway.k8s.f5.com", // BNK 2.4 Gateway API & Tenant (Infra, GatewaySettings, EgressGateway, SecPolicy, NetPolicy)
+  "gateway.k8s.f5net.com", // Gateway extensions (BNKSecPolicy, BNKNetPolicy, L4Route)
+  "inference.networking.k8s.io", // AI Gateway (InferencePool, InferenceModelRewrite)
+  "fic.f5.com", // F5 IPAM Controller CRDs (IPAMRange, ...)
+  "metrics.f5.com", // BNK 2.4.1 Analytics / Scrape CRDs (ScrapeTemplate, ScrapeClass, Scrape)
 ];
 
 export interface BnkCategoryItem {
@@ -48,29 +49,37 @@ export function buildBnkCategories(crds: CRDInfo[]): BnkCategory[] {
   const result: BnkCategory[] = bnkResourceCategories.map((cat) => ({
     category: cat.category,
     icon: cat.icon,
-    items: cat.items.map((item) => ({ key: item.key, label: item.label, icon: item.icon })),
+    items: cat.items.map((item) => ({
+      key: item.key,
+      label: item.label,
+      icon: item.icon,
+    })),
   }));
 
   if (crds.length === 0) return result;
 
   const curatedNames = new Set(result.map((c) => c.category));
-  const catIndex = new Map<string, BnkCategory>(result.map((c) => [c.category, c]));
+  const catIndex = new Map<string, BnkCategory>(
+    result.map((c) => [c.category, c]),
+  );
 
   const domainSlugMap: Record<string, string> = {
-    'gateway-api': 'Gateways & Traffic',
-    'traffic-management': 'Gateways & Traffic',
-    'gateways': 'Gateways & Traffic',
-    'security': 'Policies & Security',
-    'firewall': 'Policies & Security',
-    'policies': 'Policies & Security',
-    'networking': 'System & Configuration',
-    'f5-bnk': 'System & Configuration',
-    'logging': 'System & Configuration',
-    'system': 'System & Configuration',
-    'ai-gateway': 'AI Gateway & A2A',
-    'a2a': 'AI Gateway & A2A',
-    'health': 'Health & Diagnostics',
-    'diagnostics': 'Health & Diagnostics',
+    "gateway-api": "Gateways & Traffic",
+    "traffic-management": "Gateways & Traffic",
+    gateways: "Gateways & Traffic",
+    security: "Policies & Security",
+    firewall: "Policies & Security",
+    policies: "Policies & Security",
+    networking: "System & Configuration",
+    "f5-bnk": "System & Configuration",
+    logging: "System & Configuration",
+    system: "System & Configuration",
+    "ai-gateway": "AI Gateway & A2A",
+    a2a: "AI Gateway & A2A",
+    health: "Health & Diagnostics",
+    diagnostics: "Health & Diagnostics",
+    metrics: "Health & Diagnostics",
+    observability: "Health & Diagnostics",
   };
 
   const curatedKinds = new Set<string>();
@@ -81,8 +90,10 @@ export function buildBnkCategories(crds: CRDInfo[]): BnkCategory[] {
   }
 
   for (const crd of crds) {
-    const rawCategory = crd.category?.toLowerCase() || '';
-    const mappedDomain = domainSlugMap[rawCategory] || (curatedNames.has(crd.category ?? '') ? crd.category : undefined);
+    const rawCategory = crd.category?.toLowerCase() || "";
+    const mappedDomain =
+      domainSlugMap[rawCategory] ||
+      (curatedNames.has(crd.category ?? "") ? crd.category : undefined);
     // Unmapped CRDs (internal operator controller CRDs like rabbitmq, fluentd, dwbld, etc.)
     // are accessible in Kubernetes Explorer (/kubernetes) and should not clutter the curated BNK navigation.
     if (!mappedDomain) continue;
@@ -101,7 +112,9 @@ export function buildBnkCategories(crds: CRDInfo[]): BnkCategory[] {
       catIndex.set(categoryName, bucket);
     }
 
-    const alreadyPresent = bucket.items.some((i) => i.key === registryKey || i.key === key);
+    const alreadyPresent = bucket.items.some(
+      (i) => i.key === registryKey || i.key === key,
+    );
     if (!alreadyPresent) {
       bucket.items.push({ key, label, icon: null });
     }

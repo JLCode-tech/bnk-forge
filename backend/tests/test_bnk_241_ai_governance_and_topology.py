@@ -1,6 +1,7 @@
 """Tests for BNK 2.4.1 AI Gateway Governance, CRD Registry, and Dependency Fabric Topology."""
 
 from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
 from core.k8s_resource_registry import RESOURCE_REGISTRY, get_resource_type
@@ -278,23 +279,20 @@ def test_ai_gateway_governance_service_end_to_end():
 
     svc = AiGatewayGovernanceService(db=db_mock)
 
-    # 1. Overview returns rich multi-cluster defaults with computed relational counts
+    # 1. Overview starts with zero pre-seeded dummy data when nothing is deployed on cluster
     overview = svc.overview(cluster_id=1)
-    assert len(overview.tenants) >= 1
-    assert overview.tenants[0].models_count >= 2
-    assert overview.tenants[0].providers_count >= 3
-    assert len(overview.providers) >= 1
-    assert len(overview.models) >= 1
-    assert len(overview.routes) >= 1
-    assert len(overview.orgs) >= 1
-    assert overview.orgs[0].teams_count >= 2
-    assert len(overview.teams) >= 1
-    assert len(overview.principals) >= 1
-    assert len(overview.virtual_keys) >= 1
+    assert len(overview.tenants) == 0
+    assert len(overview.providers) == 0
+    assert len(overview.models) == 0
+    assert len(overview.routes) == 0
+    assert len(overview.orgs) == 0
+    assert len(overview.teams) == 0
+    assert len(overview.principals) == 0
+    assert len(overview.virtual_keys) == 0
     assert len(overview.readiness_checks) >= 4
-    assert len(overview.topology_nodes) >= 1
-    assert len(overview.topology_edges) >= 1
-    assert len(overview.request_audit_logs) >= 1
+    assert len(overview.topology_nodes) == 0
+    assert len(overview.topology_edges) == 0
+    assert len(overview.request_audit_logs) == 0
 
     # 2. Create AITenant
     tenant_res = svc.create_tenant(
@@ -351,16 +349,24 @@ def test_ai_gateway_governance_service_end_to_end():
                     name="vllm-primary",
                     provider="vllm-cluster-pool",
                     upstream="meta-llama/Llama-3.3-70B-Instruct",
-                    weight=100,
+                    weight=80,
                     input_per_mtok=400000,
                     output_per_mtok=800000,
-                )
+                ),
+                AiModelDeploymentItem(
+                    name="openai-fallback",
+                    provider="openai-telco",
+                    upstream="gpt-4o",
+                    weight=20,
+                    input_per_mtok=2500000,
+                    output_per_mtok=10000000,
+                ),
             ],
         )
     )
     assert model_res.status == "success"
     assert model_res.entity["name"] == "llama-3-3-70b"
-    assert model_res.entity["deployments"][0]["weight"] == 100
+    assert model_res.entity["deployments"][0]["weight"] == 80
 
     # 5. Create Gateway Route with BNK 2.4.1 Semantic Cache connection pooling
     route_res = svc.create_route(
@@ -410,6 +416,17 @@ def test_ai_gateway_governance_service_end_to_end():
     assert policy_res.entity["failover_enabled"] is False
     assert policy_res.entity["model_routing_enabled"] is False
 
+    # Re-enable failover and model routing for live gateway testing
+    svc.update_route_policies(
+        "telco-llm-edge",
+        UpdateAiGatewayRoutePoliciesRequest(
+            cluster_id=1,
+            failover_enabled=True,
+            semantic_cache_enabled=True,
+            model_routing_enabled=True,
+        ),
+    )
+
     # 6. DSSM Org, Team, Principal, and Virtual Key lifecycle
     org_res = svc.create_org(CreateGovernanceOrgRequest(cluster_id=1, tenant="telco-ai-tenant", name="Core Network AI"))
     team_res = svc.create_team(
@@ -445,6 +462,7 @@ def test_ai_gateway_governance_service_end_to_end():
     assert vk_res.entity["principal_type"] == "agent"
     assert vk_res.entity["team_name"] == "RAN Copilots"
     assert vk_res.entity["org_name"] == "Core Network AI"
+    assert vk_res.entity["spend_to_date_usd"] == 0.0
 
     # Rotate Virtual Key in-place
     rotated_res = svc.rotate_virtual_key(vk_res.entity["id"], cluster_id=1)
@@ -457,8 +475,8 @@ def test_ai_gateway_governance_service_end_to_end():
     bad_path_test = svc.test_gateway_request(
         GatewayInferenceTestRequest(
             cluster_id=1,
-            route_name="ai-inference-route",
-            model_id="gpt-4o",
+            route_name="telco-llm-edge",
+            model_id="meta-llama/Llama-3.3-70B-Instruct",
             prompt="Check BNK 2.4.1 readiness",
             path="/chat/completions",
             virtual_key=rotated_res.cleartext_key,
@@ -470,8 +488,8 @@ def test_ai_gateway_governance_service_end_to_end():
     first_test = svc.test_gateway_request(
         GatewayInferenceTestRequest(
             cluster_id=1,
-            route_name="ai-inference-route",
-            model_id="gpt-4o",
+            route_name="telco-llm-edge",
+            model_id="meta-llama/Llama-3.3-70B-Instruct",
             prompt="Check BNK 2.4.1 readiness",
             path="/v1/chat/completions",
             virtual_key=rotated_res.cleartext_key,
@@ -483,8 +501,8 @@ def test_ai_gateway_governance_service_end_to_end():
     second_test = svc.test_gateway_request(
         GatewayInferenceTestRequest(
             cluster_id=1,
-            route_name="ai-inference-route",
-            model_id="gpt-4o",
+            route_name="telco-llm-edge",
+            model_id="meta-llama/Llama-3.3-70B-Instruct",
             prompt="Check BNK 2.4.1 readiness",
             path="/v1/chat/completions",
             virtual_key=rotated_res.cleartext_key,
@@ -498,8 +516,8 @@ def test_ai_gateway_governance_service_end_to_end():
     failover_test = svc.test_gateway_request(
         GatewayInferenceTestRequest(
             cluster_id=1,
-            route_name="ai-inference-route",
-            model_id="gpt-4o",
+            route_name="telco-llm-edge",
+            model_id="meta-llama/Llama-3.3-70B-Instruct",
             prompt="Different prompt triggering failover",
             path="/v1/chat/completions",
             virtual_key=rotated_res.cleartext_key,
@@ -508,7 +526,7 @@ def test_ai_gateway_governance_service_end_to_end():
     )
     assert failover_test.status_code == 200
     assert failover_test.failover_triggered is True
-    assert failover_test.selected_provider == "dgx-vllm-local"
+    assert failover_test.selected_provider == "openai-telco"
 
     revoked_res = svc.revoke_virtual_key(vk_res.entity["id"], cluster_id=1)
     assert revoked_res.status == "success"
@@ -536,13 +554,15 @@ def test_ai_gateway_governance_service_end_to_end():
     assert updated_overview.providers[0].provider_type != ""
     assert updated_overview.models[0].model_id != ""
     assert updated_overview.routes[0].port > 0
+    assert len(updated_overview.topology_nodes) >= 1
+    assert len(updated_overview.topology_edges) >= 1
     assert vk_res.cleartext_key is not None and vk_res.cleartext_key.startswith("f5vk_")
 
 
 def test_governance_routes_enforce_operator_rbac():
     """Verify all mutating governance routes require operator role rather than viewer."""
-    from routes.k8s.llm_observability import router
     from routes.auth import require_operator, require_viewer
+    from routes.k8s.llm_observability import router
 
     mutating_routes = [
         r
@@ -554,3 +574,120 @@ def test_governance_routes_enforce_operator_rbac():
         dep_callables = [d.call for d in route.dependant.dependencies]
         assert require_operator in dep_callables, f"Route {route.path} missing require_operator"
         assert require_viewer not in dep_callables, f"Mutating route {route.path} must not use require_viewer"
+
+
+def test_live_crd_sync_and_no_topology_pollution_without_ai_gateway(monkeypatch):
+    """Verify non-AI clusters with general F5BigDnsCache/F5SPKStaticRoute do not pollute AI Gateway topology,
+    and clusters with live AIProvider/AIModel/AIGatewayProfile CRDs sync all resources."""
+    from services.ai_gateway_governance_service import (
+        _build_k8s_custom_resources_from_state,
+        _ensure_cluster_seed,
+    )
+
+    db_mock = MagicMock()
+    svc = AiGatewayGovernanceService(db=db_mock)
+    state_no_ai = _ensure_cluster_seed(99, "non-ai-cluster")
+    state_no_ai["dns_resolver_applied"] = True
+    state_no_ai["egress_route_applied"] = True
+    state_no_ai["live_dns_resolvers"] = ["general-dns"]
+    state_no_ai["live_static_routes"] = ["egress-default"]
+    custom_no_ai = _build_k8s_custom_resources_from_state(state_no_ai)
+    assert custom_no_ai.get("f5bigdnscache", []) == []
+    assert custom_no_ai.get("f5spkstaticroute", []) == []
+
+    def fake_get_resources(cluster_id, resource_type, namespace=None):
+        if resource_type == "aitenant":
+            return [
+                {
+                    "metadata": {"name": "live-tenant", "namespace": "f5-bnk"},
+                    "spec": {
+                        "gatewayClassName": "f5-gateway-class",
+                        "governance": {"host": "f5-cne-controller-api.f5-bnk.svc", "port": 8443},
+                    },
+                    "status": {"conditions": [{"type": "Ready", "status": "True"}]},
+                }
+            ]
+        if resource_type == "aiprovider":
+            return [
+                {
+                    "metadata": {"name": "live-provider", "namespace": "f5-bnk"},
+                    "spec": {
+                        "tenantRef": {"name": "live-tenant"},
+                        "generic": {"baseURL": "http://vllm.f5-bnk.svc:8000/v1"},
+                    },
+                    "status": {"conditions": [{"type": "Ready", "status": "True"}]},
+                }
+            ]
+        if resource_type == "aimodel":
+            return [
+                {
+                    "metadata": {"name": "live-model", "namespace": "f5-bnk"},
+                    "spec": {
+                        "name": "meta-llama/Llama-3.3-70B-Instruct",
+                        "tenantRef": {"name": "live-tenant"},
+                        "deployments": [
+                            {
+                                "name": "primary",
+                                "providerRef": {"name": "live-provider"},
+                                "upstream": "meta-llama/Llama-3.3-70B-Instruct",
+                                "weight": 100,
+                            }
+                        ],
+                    },
+                    "status": {"conditions": [{"type": "Ready", "status": "True"}]},
+                }
+            ]
+        if resource_type == "aigatewayprofile":
+            return [
+                {
+                    "metadata": {"name": "live-profile", "namespace": "f5-bnk"},
+                    "spec": {
+                        "targetRef": {"kind": "Gateway", "name": "live-gw", "port": 8080},
+                        "tenantRef": {"name": "live-tenant"},
+                        "promptCache": {
+                            "enabled": True,
+                            "connectionPool": {"maxSize": 128, "idleTimeout": "600s"},
+                        },
+                    },
+                    "status": {"conditions": [{"type": "Accepted", "status": "True"}]},
+                }
+            ]
+        if resource_type == "cneinstance":
+            return [
+                {
+                    "metadata": {"name": "cne-main", "namespace": "f5-bnk"},
+                    "spec": {"aiGateway": {"enabled": True}},
+                }
+            ]
+        if resource_type == "f5bigdnscache":
+            return [{"metadata": {"name": "custom-dns-cache", "namespace": "f5-bnk"}, "spec": {}}]
+        if resource_type == "f5spkstaticroute":
+            return [{"metadata": {"name": "custom-egress-route", "namespace": "f5-bnk"}, "spec": {}}]
+        return []
+
+    from types import SimpleNamespace
+
+    db_mock.query.return_value.filter.return_value.first.return_value = SimpleNamespace(
+        id=100, connectivity_status="connected"
+    )
+    svc._k8s = SimpleNamespace(get_resources=fake_get_resources)
+    state_live = _ensure_cluster_seed(100, "live-ai-cluster")
+    svc._sync_live_cluster_resources(100, "live-ai-cluster", state_live)
+
+    assert len(state_live["tenants"]) == 1
+    assert state_live["tenants"][0]["name"] == "live-tenant"
+    assert len(state_live["providers"]) == 1
+    assert state_live["providers"][0]["name"] == "live-provider"
+    assert len(state_live["models"]) == 1
+    assert state_live["models"][0]["name"] == "live-model"
+    assert len(state_live["routes"]) == 1
+    assert state_live["routes"][0]["name"] == "live-profile"
+    assert state_live["routes"][0]["semantic_cache_pool_max_size"] == 128
+    assert state_live["dns_resolver_applied"] is True
+    assert state_live["egress_route_applied"] is True
+
+    custom_live = _build_k8s_custom_resources_from_state(state_live)
+    assert len(custom_live["f5bigdnscache"]) == 1
+    assert custom_live["f5bigdnscache"][0]["metadata"]["name"] == "custom-dns-cache"
+    assert len(custom_live["f5spkstaticroute"]) == 1
+    assert custom_live["f5spkstaticroute"][0]["metadata"]["name"] == "custom-egress-route"
