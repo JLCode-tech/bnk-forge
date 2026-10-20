@@ -308,17 +308,45 @@ def force_release_workspace_lock(project_id: int, module_id: int, db: Session = 
 # Container Management (subprocess, no service extraction needed)
 # ============================================================
 
+def _docker_api_urls() -> list[str]:
+    """Return candidate Docker Engine HTTP API base URLs (e.g. docker-socket-proxy)."""
+    import os
+
+    candidates: list[str] = []
+    env_host = os.environ.get("DOCKER_HOST", "").strip()
+    if env_host:
+        if env_host.startswith("tcp://"):
+            candidates.append("http://" + env_host[len("tcp://"):].rstrip("/"))
+        elif env_host.startswith(("http://", "https://")):
+            candidates.append(env_host.rstrip("/"))
+    for fallback in ("http://docker-socket-proxy:2375", "http://127.0.0.1:2375"):
+        if fallback not in candidates:
+            candidates.append(fallback)
+    return candidates
+
+
 @router.post("/containers/restart")
 @handle_route_errors("container restart")
 def restart_containers(request: RestartContainersRequest, db: Session = Depends(get_db)):
     """Restart Docker containers for BNK Forge services."""
     import subprocess
 
+    import httpx
+
     services = request.services
     if services is None:
         services = ["backend", "celery-worker", "celery-beat", "frontend"]
 
-    valid_services = {"backend", "celery-worker", "celery-beat", "frontend", "postgres", "redis", "proxy"}
+    valid_services = {
+        "backend",
+        "celery-worker",
+        "celery-worker-2",
+        "celery-beat",
+        "frontend",
+        "postgres",
+        "redis",
+        "proxy",
+    }
     invalid_services = [s for s in services if s not in valid_services]
     if invalid_services:
         raise BadRequestError(f"Invalid service names: {', '.join(invalid_services)}", code="INVALID_SERVICE_NAME")
@@ -336,6 +364,21 @@ def restart_containers(request: RestartContainersRequest, db: Session = Depends(
                 results.append({"service": service, "status": "restarted", "container": container_name})
             else:
                 results.append({"service": service, "status": "failed", "error": result.stderr or "Container not found"})
+        except FileNotFoundError:
+            restarted = False
+            last_err = "Docker CLI and Docker HTTP proxy unavailable"
+            for base_url in _docker_api_urls():
+                try:
+                    resp = httpx.post(f"{base_url}/containers/{container_name}/restart", timeout=60.0)
+                    if resp.status_code in (200, 204):
+                        results.append({"service": service, "status": "restarted", "container": container_name})
+                        restarted = True
+                        break
+                    last_err = f"HTTP {resp.status_code}: {resp.text[:200]}"
+                except Exception as proxy_err:
+                    last_err = str(proxy_err)
+            if not restarted:
+                results.append({"service": service, "status": "failed", "error": last_err})
         except subprocess.TimeoutExpired:
             results.append({"service": service, "status": "timeout", "error": "Restart timed out after 60 seconds"})
         except Exception as e:
@@ -356,12 +399,41 @@ def get_container_status(db: Session = Depends(get_db)):
     """Get status of all BNK Forge Docker containers."""
     import subprocess
 
+    import httpx
+
     try:
         result = subprocess.run(
             ["docker", "ps", "-a", "--filter", "name=bnk-forge", "--format", "{{.Names}}|{{.Status}}|{{.State}}"],
             capture_output=True, text=True, timeout=10
         )
     except FileNotFoundError:
+        for base_url in _docker_api_urls():
+            try:
+                resp = httpx.get(f"{base_url}/containers/json", params={"all": "1"}, timeout=5.0)
+                if resp.status_code == 200:
+                    payload = resp.json()
+                    containers = []
+                    for item in payload if isinstance(payload, list) else []:
+                        names = item.get("Names") or []
+                        raw_name = (names[0] if names else item.get("Id", "")[:12]).lstrip("/")
+                        if "bnk-forge" not in raw_name:
+                            continue
+                        status = item.get("Status", "")
+                        state = item.get("State", "")
+                        service_name = (
+                            raw_name.replace("bnk-forge-v2-", "")
+                            .replace("bnk-forge-", "")
+                            .replace("-1", "")
+                        )
+                        containers.append({
+                            "service": service_name,
+                            "container_name": raw_name,
+                            "status": status,
+                            "state": state,
+                        })
+                    return {"containers": containers, "total": len(containers), "available": True}
+            except Exception:
+                continue
         return {"containers": [], "total": 0, "available": False, "reason": "Docker CLI not found in environment"}
     except subprocess.TimeoutExpired:
         from core.errors import TimeoutError
