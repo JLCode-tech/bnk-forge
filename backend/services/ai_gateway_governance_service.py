@@ -955,10 +955,7 @@ class AiGatewayGovernanceService:
     def _filter_by_namespace(items: list[dict[str, Any]], namespace: str | None) -> list[dict[str, Any]]:
         if not namespace or namespace == "all":
             return items
-        matched = [item for item in items if (item.get("namespace") or "f5-bnk") == namespace]
-        if matched or namespace != "f5-bnk":
-            return matched
-        return items
+        return [item for item in items if (item.get("namespace") or "f5-bnk") == namespace]
 
     def overview(
         self,

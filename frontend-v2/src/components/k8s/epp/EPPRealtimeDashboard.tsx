@@ -265,7 +265,7 @@ export function EPPRealtimeDashboard({
                       variant="outline"
                       className="font-mono text-xs uppercase bg-primary/5 text-primary border-primary/30"
                     >
-                      BNK 2.4+ Native
+                      GAIE Native
                     </Badge>
                   </div>
                   <p className="text-xs text-muted-foreground">

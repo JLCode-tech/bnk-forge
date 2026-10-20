@@ -596,6 +596,8 @@ def test_live_crd_sync_and_no_topology_pollution_without_ai_gateway(monkeypatch)
     assert custom_no_ai.get("f5spkstaticroute", []) == []
 
     def fake_get_resources(cluster_id, resource_type, namespace=None):
+        if cluster_id != 100:
+            return []
         if resource_type == "aitenant":
             return [
                 {
@@ -704,3 +706,39 @@ def test_live_crd_sync_and_no_topology_pollution_without_ai_gateway(monkeypatch)
     assert len(ov_other.providers) == 0
     assert len(ov_other.models) == 0
     assert len(ov_other.routes) == 0
+
+    # Verify filtering by f5-bnk does not leak resources that live in another namespace (e.g. ai-prod)
+    state_custom_ns = _ensure_cluster_seed(101, "custom-ns-cluster")
+    state_custom_ns["providers"] = [
+        {
+            "name": "prod-provider",
+            "cluster_id": 101,
+            "cluster_name": "custom-ns-cluster",
+            "namespace": "ai-prod",
+            "tenant": "prod-tenant",
+            "vendor": "OpenAI",
+            "base_url": "https://api.openai.com/v1",
+            "credential_name": "openai-cred",
+            "secret_name": "openai-sec",
+            "ready": True,
+        }
+    ]
+    state_custom_ns["models"] = []
+    state_custom_ns["routes"] = []
+    ov_f5_empty = svc.overview(cluster_id=101, namespace="f5-bnk")
+    assert len(ov_f5_empty.providers) == 0
+    ov_ai_prod = svc.overview(cluster_id=101, namespace="ai-prod")
+    assert len(ov_ai_prod.providers) == 1
+    assert ov_ai_prod.providers[0].name == "prod-provider"
+    ov_all_ns = svc.overview(cluster_id=101, namespace="all")
+    assert len(ov_all_ns.providers) == 1
+
+    # Verify multi-cluster overview when cluster_id=None aggregates across all target clusters
+    svc._target_clusters = lambda cluster_id=None, project_id=None: [
+        (100, "live-ai-cluster"),
+        (101, "custom-ns-cluster"),
+    ]
+    ov_multi = svc.overview(cluster_id=None, namespace="all")
+    assert len(ov_multi.providers) == 2
+    assert {p.cluster_id for p in ov_multi.providers} == {100, 101}
+    assert any(n["id"].startswith("c100:") for n in ov_multi.topology_nodes)

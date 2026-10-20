@@ -91,15 +91,34 @@ describe("SmartLlmRouterPage (Intelligent Inference — EPP & GAIE)", () => {
       expect(screen.getByTestId("f5-ai-analyzer-viewer")).toHaveTextContent(
         "EPP Viewer for cluster 1",
       );
+      expect(
+        screen.getByText(/Dependency Fabric & Routing Topology/i),
+      ).toBeInTheDocument();
     });
 
     // Switch to Inference Pools & Models view
     await user.click(poolsBtn);
-    expect(screen.getByTestId("f5-ai-analyzer-viewer")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Inference Pools \(InferencePool\)/i),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /Inference Models & LoRA Adapters \(InferenceModel\)/i,
+        ),
+      ).toBeInTheDocument();
+    });
 
     // Switch to EPP Policies & Scoring view
     await user.click(policiesBtn);
-    expect(screen.getByTestId("f5-ai-analyzer-viewer")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.getByText(/EPP Scoring Weights & Queue Policies/i),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/TMM Data-Plane & Infrastructure Readiness/i),
+      ).toBeInTheDocument();
+    });
 
     // Ensure no legacy "BNK 2.4.1" version clutter is rendered
     expect(screen.queryByText(/2\.4\.1/i)).not.toBeInTheDocument();

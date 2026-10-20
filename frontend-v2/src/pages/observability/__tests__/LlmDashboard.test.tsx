@@ -434,6 +434,29 @@ describe("LlmDashboard (/ai/token-governance)", () => {
       expect(screen.getAllByText(/req-audit-1/i).length).toBeGreaterThan(0);
     });
 
+    // Switch to FinOps & Chargeback tab
+    await user.click(screen.getByRole("tab", { name: /FinOps & Chargeback/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          /Organization, Team & Virtual Key Budget Utilization/i,
+        ),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getAllByText(/Telco Core Engineering/i).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/Packet Core AI Copilots/i).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText(/501 requests/i).length).toBeGreaterThan(0);
+
+    // Switch to Gateway Topology tab
+    await user.click(screen.getByRole("tab", { name: /Gateway Topology/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/Gateway Fabric Topology/i)).toBeInTheDocument();
+    });
+
     // Switch to Gateway Diagnostics tab
     await user.click(screen.getByRole("tab", { name: /Gateway Diagnostics/i }));
     await waitFor(() => {

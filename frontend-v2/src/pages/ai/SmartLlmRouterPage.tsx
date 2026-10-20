@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Layers,
   Zap,
@@ -10,6 +11,9 @@ import {
   Cpu,
   Sliders,
   RefreshCw,
+  CheckCircle2,
+  AlertTriangle,
+  Wrench,
 } from "lucide-react";
 import { SectionCard } from "@/components/ui/section-card";
 import { StatTile } from "@/components/observability/StatTile";
@@ -18,14 +22,21 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ClusterPicker } from "@/components/observability/pickers";
 import { F5AIAnalyzerViewer } from "@/components/k8s/F5AIAnalyzerViewer";
+import { ResourceTopologyGraph } from "@/components/k8s/ResourceTopologyGraph";
+import { ResourceDescribeViewer } from "@/components/k8s/ResourceDescribeViewer";
 import { useAllClusters } from "@/hooks/useK8sClusters";
 import { useLlmStats } from "@/hooks/useLlmObservability";
 import { useClusterScope } from "@/hooks/useClusterScope";
+import { useTopology } from "@/hooks/useTopology";
+import { api } from "@/lib/api";
+import { llmObservabilityApi } from "@/lib/api/llmObservability";
 import { cn } from "@/lib/utils";
+import type { K8sResource } from "@/types/kubernetes";
 import { ClusterRouterRow } from "./ClusterRouterRow";
 import {
   Table,
   TableBody,
+  TableCell,
   TableHead,
   TableHeader,
   TableRow,
@@ -85,6 +96,7 @@ const INFERENCE_VIEWS: Array<{
 ];
 
 export default function SmartLlmRouterPage() {
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const urlView = resolveInferenceView(searchParams.get("tab"));
 
@@ -98,6 +110,13 @@ export default function SmartLlmRouterPage() {
   const [selectedClusterId, setSelectedClusterId] = useClusterScope();
   const [selectedSubView, setSelectedSubView] = useState<InferenceViewKey>(
     urlView ?? "topology",
+  );
+  const [describeResource, setDescribeResource] = useState<K8sResource | null>(
+    null,
+  );
+  const [describeOpen, setDescribeOpen] = useState(false);
+  const [remediationBanner, setRemediationBanner] = useState<string | null>(
+    null,
   );
 
   useEffect(() => {
@@ -160,6 +179,63 @@ export default function SmartLlmRouterPage() {
   const pending = statsLoading ? "…" : "—";
 
   const activeCluster = clusters.find((c) => c.id === selectedClusterId);
+  const scopedClusterId = selectedClusterId ?? clusters[0]?.id ?? 1;
+
+  // Dependency Fabric topology for Routing Topology view
+  const { data: fabricTopology } = useTopology(scopedClusterId, "all", {
+    enabled: activeViewKey === "topology" && Boolean(scopedClusterId),
+  });
+
+  // InferencePool & InferenceModel CRs for Pools & Models view
+  const { data: poolData } = useQuery({
+    queryKey: ["bnk-resources", scopedClusterId, "inferencepool", "all"],
+    queryFn: () => api.getClusterResources(scopedClusterId, "inferencepool"),
+    enabled:
+      (activeViewKey === "pools" || activeViewKey === "policies") &&
+      Boolean(scopedClusterId),
+    staleTime: 10000,
+  });
+
+  const { data: modelData } = useQuery({
+    queryKey: ["bnk-resources", scopedClusterId, "inferencemodel", "all"],
+    queryFn: () => api.getClusterResources(scopedClusterId, "inferencemodel"),
+    enabled: activeViewKey === "pools" && Boolean(scopedClusterId),
+    staleTime: 10000,
+  });
+
+  // F5EPP CRs & TMM Data-Plane Readiness for EPP Policies & Scoring view
+  const { data: eppData } = useQuery({
+    queryKey: ["bnk-resources", scopedClusterId, "f5epp", "all"],
+    queryFn: () => api.getClusterResources(scopedClusterId, "f5epp"),
+    enabled: activeViewKey === "policies" && Boolean(scopedClusterId),
+    staleTime: 10000,
+  });
+
+  const { data: govOverview } = useQuery({
+    queryKey: ["llm-governance-overview", scopedClusterId, "all"],
+    queryFn: () =>
+      llmObservabilityApi.getGovernanceOverview(scopedClusterId, "all"),
+    enabled: activeViewKey === "policies" && Boolean(scopedClusterId),
+    staleTime: 15000,
+  });
+
+  const remediateMut = useMutation({
+    mutationFn: (action: string) =>
+      llmObservabilityApi.remediate(scopedClusterId, {
+        action,
+        namespace: "f5-bnk",
+      }),
+    onSuccess: (res) => {
+      setRemediationBanner(res.message);
+      void queryClient.invalidateQueries({
+        queryKey: ["llm-governance-overview"],
+      });
+    },
+  });
+
+  const inferencePools = (poolData?.resources ?? []) as K8sResource[];
+  const inferenceModels = (modelData?.resources ?? []) as K8sResource[];
+  const eppResources = (eppData?.resources ?? []) as K8sResource[];
 
   return (
     <div className="flex min-h-[calc(100vh-3rem)]">
@@ -377,10 +453,10 @@ export default function SmartLlmRouterPage() {
                     <span className="text-xs font-semibold text-foreground">
                       {activeCluster?.name ??
                         clusters[0]?.name ??
-                        `Cluster ${selectedClusterId ?? 1}`}
+                        `Cluster ${scopedClusterId}`}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      · F5 AI Analyzer and EPP telemetry
+                      · {activeViewMeta.label}
                     </span>
                   </div>
                   <Button
@@ -393,14 +469,429 @@ export default function SmartLlmRouterPage() {
                     All Clusters
                   </Button>
                 </div>
-                <F5AIAnalyzerViewer
-                  clusterId={selectedClusterId ?? clusters[0]?.id ?? 1}
-                />
+
+                {activeViewKey === "topology" && (
+                  <>
+                    <F5AIAnalyzerViewer clusterId={scopedClusterId} />
+                    <SectionCard
+                      title="Dependency Fabric & Routing Topology"
+                      description="Gateway API Inference Extension (GAIE), F5EPP, InferencePool, and CNF Dependency Fabric"
+                      compact
+                    >
+                      <div className="rounded-lg border border-border bg-card overflow-hidden">
+                        <ResourceTopologyGraph
+                          nodes={fabricTopology?.nodes ?? []}
+                          edges={fabricTopology?.edges ?? []}
+                          info={fabricTopology?.info}
+                          defaultDomainFilter="all"
+                          heightClassName="h-[460px]"
+                          onDescribeResource={(res) => {
+                            setDescribeResource(res);
+                            setDescribeOpen(true);
+                          }}
+                        />
+                      </div>
+                    </SectionCard>
+                  </>
+                )}
+
+                {activeViewKey === "pools" && (
+                  <>
+                    <SectionCard
+                      title="Inference Pools (InferencePool)"
+                      description="Model server backend pools, endpoint picker references, vLLM replica readiness, and KV-cache utilization"
+                      action={
+                        <Badge variant="outline" className="text-xs">
+                          {inferencePools.length} pools
+                        </Badge>
+                      }
+                      compact
+                    >
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-xs">Pool Name</TableHead>
+                            <TableHead className="text-xs">Namespace</TableHead>
+                            <TableHead className="text-xs">
+                              Target Port
+                            </TableHead>
+                            <TableHead className="text-xs">
+                              Pod Selector
+                            </TableHead>
+                            <TableHead className="text-xs">
+                              Endpoint Picker Ref
+                            </TableHead>
+                            <TableHead className="text-xs">Status</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {inferencePools.length === 0 ? (
+                            <TableRow>
+                              <TableCell
+                                colSpan={6}
+                                className="text-center text-xs text-muted-foreground py-6"
+                              >
+                                No InferencePool resources found in this
+                                cluster.
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            inferencePools.map((pool) => {
+                              const spec = (pool.spec ?? {}) as Record<
+                                string,
+                                unknown
+                              >;
+                              const selectorObj =
+                                ((spec.selector as Record<string, unknown>)
+                                  ?.matchLabels as Record<string, string>) ??
+                                (spec.selector as Record<string, string>) ??
+                                {};
+                              const selectorText =
+                                Object.entries(selectorObj)
+                                  .map(([k, v]) => `${k}=${v}`)
+                                  .join(", ") || "—";
+                              const eppRef =
+                                ((
+                                  spec.endpointPickerRef as Record<
+                                    string,
+                                    unknown
+                                  >
+                                )?.name as string) ??
+                                ((spec.extensionRef as Record<string, unknown>)
+                                  ?.name as string) ??
+                                "default-epp";
+                              return (
+                                <TableRow
+                                  key={
+                                    pool.metadata?.uid ?? pool.metadata?.name
+                                  }
+                                >
+                                  <TableCell className="text-xs font-mono font-medium">
+                                    {pool.metadata?.name}
+                                  </TableCell>
+                                  <TableCell className="text-xs font-mono">
+                                    {pool.metadata?.namespace ?? "default"}
+                                  </TableCell>
+                                  <TableCell className="text-xs font-mono">
+                                    {String(spec.targetPortNumber ?? 8000)}
+                                  </TableCell>
+                                  <TableCell className="text-xs font-mono text-muted-foreground">
+                                    {selectorText}
+                                  </TableCell>
+                                  <TableCell className="text-xs font-mono">
+                                    {eppRef}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge
+                                      variant="default"
+                                      className="text-2xs"
+                                    >
+                                      Ready
+                                    </Badge>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })
+                          )}
+                        </TableBody>
+                      </Table>
+                    </SectionCard>
+
+                    <SectionCard
+                      title="Inference Models & LoRA Adapters (InferenceModel)"
+                      description="Model definitions, criticality tiers, target model weights, and LoRA adapter mappings"
+                      action={
+                        <Badge variant="outline" className="text-xs">
+                          {inferenceModels.length} models
+                        </Badge>
+                      }
+                      compact
+                    >
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-xs">Resource</TableHead>
+                            <TableHead className="text-xs">
+                              Model Name
+                            </TableHead>
+                            <TableHead className="text-xs">Pool Ref</TableHead>
+                            <TableHead className="text-xs">
+                              Criticality
+                            </TableHead>
+                            <TableHead className="text-xs">
+                              Target Models / LoRA Adapters
+                            </TableHead>
+                            <TableHead className="text-xs">Status</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {inferenceModels.length === 0 ? (
+                            <TableRow>
+                              <TableCell
+                                colSpan={6}
+                                className="text-center text-xs text-muted-foreground py-6"
+                              >
+                                No InferenceModel resources found in this
+                                cluster.
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            inferenceModels.map((model) => {
+                              const spec = (model.spec ?? {}) as Record<
+                                string,
+                                unknown
+                              >;
+                              const poolRef =
+                                ((spec.poolRef as Record<string, unknown>)
+                                  ?.name as string) ?? "—";
+                              const targets = Array.isArray(spec.targetModels)
+                                ? (
+                                    spec.targetModels as Array<
+                                      Record<string, unknown>
+                                    >
+                                  )
+                                    .map(
+                                      (t) =>
+                                        `${String(t.name ?? "adapter")} (${String(t.weight ?? 100)}%)`,
+                                    )
+                                    .join(", ")
+                                : "Primary base model (100%)";
+                              return (
+                                <TableRow
+                                  key={
+                                    model.metadata?.uid ?? model.metadata?.name
+                                  }
+                                >
+                                  <TableCell className="text-xs font-mono font-medium">
+                                    {model.metadata?.name}
+                                  </TableCell>
+                                  <TableCell className="text-xs font-mono">
+                                    {String(
+                                      spec.modelName ??
+                                        model.metadata?.name ??
+                                        "—",
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="text-xs font-mono">
+                                    {poolRef}
+                                  </TableCell>
+                                  <TableCell className="text-xs">
+                                    <Badge
+                                      variant="outline"
+                                      className="text-2xs"
+                                    >
+                                      {String(spec.criticality ?? "Standard")}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="text-xs font-mono text-muted-foreground">
+                                    {targets}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge
+                                      variant="default"
+                                      className="text-2xs"
+                                    >
+                                      Ready
+                                    </Badge>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })
+                          )}
+                        </TableBody>
+                      </Table>
+                    </SectionCard>
+
+                    <F5AIAnalyzerViewer clusterId={scopedClusterId} />
+                  </>
+                )}
+
+                {activeViewKey === "policies" && (
+                  <>
+                    {remediationBanner && (
+                      <div className="p-3 rounded-lg border border-primary/40 bg-primary/10 text-xs text-foreground flex items-center justify-between">
+                        <span>{remediationBanner}</span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 text-xs"
+                          onClick={() => setRemediationBanner(null)}
+                        >
+                          Dismiss
+                        </Button>
+                      </div>
+                    )}
+
+                    <SectionCard
+                      title="EPP Scoring Weights & Queue Policies"
+                      description="Queue depth thresholds, KV-cache affinity, prefix-cache scoring weights, block size, and routing mode configuration"
+                      action={
+                        <Badge variant="outline" className="text-xs">
+                          {eppResources.length} EPP policies
+                        </Badge>
+                      }
+                      compact
+                    >
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-xs">EPP Name</TableHead>
+                            <TableHead className="text-xs">Namespace</TableHead>
+                            <TableHead className="text-xs">
+                              Routing Mode
+                            </TableHead>
+                            <TableHead className="text-xs">Engine</TableHead>
+                            <TableHead className="text-xs">
+                              Block Size
+                            </TableHead>
+                            <TableHead className="text-xs">Pool Ref</TableHead>
+                            <TableHead className="text-xs">
+                              Scoring Policy
+                            </TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {eppResources.length === 0 ? (
+                            <TableRow>
+                              <TableCell
+                                colSpan={7}
+                                className="text-center text-xs text-muted-foreground py-6"
+                              >
+                                No F5EPP scoring policy resources found in this
+                                cluster. Default KV-cache, queue-depth, and
+                                prefix-affinity weights are active.
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            eppResources.map((epp) => {
+                              const spec = (epp.spec ?? {}) as Record<
+                                string,
+                                unknown
+                              >;
+                              const poolRef =
+                                typeof spec.poolRef === "string"
+                                  ? spec.poolRef
+                                  : (((spec.poolRef as Record<string, unknown>)
+                                      ?.name as string) ?? "—");
+                              return (
+                                <TableRow
+                                  key={epp.metadata?.uid ?? epp.metadata?.name}
+                                >
+                                  <TableCell className="text-xs font-mono font-medium">
+                                    {epp.metadata?.name}
+                                  </TableCell>
+                                  <TableCell className="text-xs font-mono">
+                                    {epp.metadata?.namespace ?? "default"}
+                                  </TableCell>
+                                  <TableCell className="text-xs">
+                                    <Badge
+                                      variant="secondary"
+                                      className="text-2xs capitalize"
+                                    >
+                                      {String(spec.mode ?? "kv-cache-aware")}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="text-xs font-mono">
+                                    {String(spec.engine ?? "vllm")}
+                                  </TableCell>
+                                  <TableCell className="text-xs font-mono">
+                                    {String(spec.blockSize ?? 16)}
+                                  </TableCell>
+                                  <TableCell className="text-xs font-mono">
+                                    {poolRef}
+                                  </TableCell>
+                                  <TableCell className="text-xs text-muted-foreground">
+                                    Queue Depth + KV-Cache Affinity + Prefix
+                                    Cache
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })
+                          )}
+                        </TableBody>
+                      </Table>
+                    </SectionCard>
+
+                    <SectionCard
+                      title="TMM Data-Plane & Infrastructure Readiness"
+                      description="Automated verification and 1-click remediation for TMM data-plane, DNS resolution, egress routing, and multi-NUMA spanning"
+                      compact
+                    >
+                      <div className="space-y-3 pt-1">
+                        {(govOverview?.diagnostics ?? []).length === 0 ? (
+                          <p className="text-xs text-muted-foreground py-4 text-center">
+                            No TMM data-plane readiness checks reported for this
+                            cluster.
+                          </p>
+                        ) : (
+                          (govOverview?.diagnostics ?? []).map((d) => (
+                            <div
+                              key={d.id}
+                              className="p-3 rounded-lg border border-border bg-card flex flex-wrap items-start justify-between gap-4"
+                            >
+                              <div className="space-y-1 max-w-3xl">
+                                <div className="flex items-center gap-2">
+                                  {d.status === "healthy" ? (
+                                    <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                                  ) : (
+                                    <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />
+                                  )}
+                                  <span className="text-xs font-semibold text-foreground">
+                                    {d.title}
+                                  </span>
+                                  <Badge variant="outline" className="text-2xs">
+                                    {d.category}
+                                  </Badge>
+                                  <Badge
+                                    variant={
+                                      d.status === "healthy"
+                                        ? "default"
+                                        : "secondary"
+                                    }
+                                    className="text-2xs"
+                                  >
+                                    {d.status}
+                                  </Badge>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  {d.summary}
+                                </p>
+                              </div>
+                              {d.remediation_action && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs gap-1.5"
+                                  disabled={remediateMut.isPending}
+                                  onClick={() =>
+                                    remediateMut.mutate(d.remediation_action!)
+                                  }
+                                >
+                                  <Wrench className="h-3.5 w-3.5" />
+                                  Auto-Remediate
+                                </Button>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </SectionCard>
+
+                    <F5AIAnalyzerViewer clusterId={scopedClusterId} />
+                  </>
+                )}
               </div>
             )}
           </>
         )}
       </div>
+
+      <ResourceDescribeViewer
+        resource={describeResource}
+        open={describeOpen}
+        onOpenChange={setDescribeOpen}
+        clusterId={scopedClusterId}
+      />
     </div>
   );
 }

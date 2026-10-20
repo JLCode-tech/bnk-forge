@@ -658,6 +658,33 @@ export default function LlmDashboard() {
 
   const lokiLive = llmStats?.available ? llmStats : undefined;
   const unifiedLive = useMemo(() => {
+    if (
+      lokiLive &&
+      lokiLive.total_requests > 0 &&
+      govStats &&
+      govStats.total_requests > 0
+    ) {
+      const totalReqs = lokiLive.total_requests + govStats.total_requests;
+      const totalToks = lokiLive.total_tokens + govStats.total_tokens;
+      const totalCost = lokiLive.total_cost + govStats.total_cost;
+      const weightedSuccess =
+        (lokiLive.success_rate * lokiLive.total_requests +
+          govStats.success_rate * govStats.total_requests) /
+        totalReqs;
+      const weightedLatency =
+        (lokiLive.avg_latency_ms * lokiLive.total_requests +
+          govStats.avg_latency_ms * govStats.total_requests) /
+        totalReqs;
+      return {
+        ...lokiLive,
+        total_requests: totalReqs,
+        total_tokens: totalToks,
+        total_cost: totalCost,
+        success_rate: weightedSuccess,
+        avg_latency_ms: weightedLatency,
+        models: Math.max(lokiLive.models, govStats.models),
+      };
+    }
     if (lokiLive && lokiLive.total_requests > 0) {
       return lokiLive;
     }
@@ -2509,15 +2536,28 @@ function HistogramCard({
   );
 
   const lokiSeries = data?.series ?? [];
-  const fallbackSeries = useMemo(
-    () =>
-      lokiSeries.length === 0
-        ? buildHistogramSeriesFromAuditLogs(auditLogs, metric)
-        : [],
-    [lokiSeries.length, auditLogs, metric],
+  const auditSeries = useMemo(
+    () => buildHistogramSeriesFromAuditLogs(auditLogs, metric),
+    [auditLogs, metric],
   );
-  const series = lokiSeries.length > 0 ? lokiSeries : fallbackSeries;
-  const available = (data?.available ?? true) || fallbackSeries.length > 0;
+  const series = useMemo(() => {
+    if (lokiSeries.length === 0) return auditSeries;
+    if (auditSeries.length === 0) return lokiSeries;
+    const byName = new Map<string, LlmSeries>();
+    for (const s of lokiSeries) {
+      byName.set(s.name, { name: s.name, points: [...s.points] });
+    }
+    for (const s of auditSeries) {
+      const existing = byName.get(s.name);
+      if (!existing) {
+        byName.set(s.name, s);
+      } else {
+        existing.points = [...existing.points, ...s.points];
+      }
+    }
+    return Array.from(byName.values());
+  }, [lokiSeries, auditSeries]);
+  const available = (data?.available ?? true) || auditSeries.length > 0;
   const colors = series.map((s, i) =>
     colorFor ? colorFor(s.name) : seriesColor(i),
   );
@@ -2587,8 +2627,29 @@ function RankingsTab({
       map.set(r.model, { ...r });
     }
     for (const gr of govRows) {
-      if (!map.has(gr.model)) {
+      const existing = map.get(gr.model);
+      if (!existing) {
         map.set(gr.model, gr);
+      } else if (gr.requests > 0) {
+        const totalReqs = existing.requests + gr.requests;
+        map.set(gr.model, {
+          ...existing,
+          requests: totalReqs,
+          tokens: existing.tokens + gr.tokens,
+          cost: existing.cost + gr.cost,
+          avg_latency_ms:
+            totalReqs > 0
+              ? (existing.avg_latency_ms * existing.requests +
+                  gr.avg_latency_ms * gr.requests) /
+                totalReqs
+              : existing.avg_latency_ms,
+          success_rate:
+            totalReqs > 0
+              ? (existing.success_rate * existing.requests +
+                  gr.success_rate * gr.requests) /
+                totalReqs
+              : existing.success_rate,
+        });
       }
     }
     return Array.from(map.values()).sort((a, b) => b[sortKey] - a[sortKey]);
@@ -2876,8 +2937,8 @@ function ProviderCard({
     active,
   );
 
-  const fallbackSeries = useMemo(() => {
-    if ((data?.series?.length ?? 0) > 0 || auditLogs.length === 0) return [];
+  const auditSeries = useMemo(() => {
+    if (auditLogs.length === 0) return [];
     const byProv = new Map<string, Array<{ ts: string; value: number }>>();
     for (const l of auditLogs) {
       const pName = l.provider_name || inferProvider(l.model_id);
@@ -2895,16 +2956,32 @@ function ProviderCard({
       name,
       points,
     }));
-  }, [data?.series?.length, auditLogs, metric]);
+  }, [auditLogs, metric]);
 
-  const rawSeries =
-    (data?.series?.length ?? 0) > 0 ? (data?.series ?? []) : fallbackSeries;
+  const rawSeries = useMemo(() => {
+    const lokiSeries = data?.series ?? [];
+    if (lokiSeries.length === 0) return auditSeries;
+    if (auditSeries.length === 0) return lokiSeries;
+    const byName = new Map<string, LlmSeries>();
+    for (const s of lokiSeries) {
+      byName.set(s.name, { name: s.name, points: [...s.points] });
+    }
+    for (const s of auditSeries) {
+      const existing = byName.get(s.name);
+      if (!existing) {
+        byName.set(s.name, s);
+      } else {
+        existing.points = [...existing.points, ...s.points];
+      }
+    }
+    return Array.from(byName.values());
+  }, [data?.series, auditSeries]);
 
   const series = rawSeries.filter(
     (s) =>
       !provider || inferProvider(s.name) === provider || s.name === provider,
   );
-  const available = (data?.available ?? true) || fallbackSeries.length > 0;
+  const available = (data?.available ?? true) || auditSeries.length > 0;
   const colors = series.map((s) =>
     providerColor(
       inferProvider(s.name) === "unknown" ? s.name : inferProvider(s.name),
@@ -2967,8 +3044,29 @@ function ChargebackTab({
       map.set(r.model, { ...r });
     }
     for (const gr of govRows) {
-      if (!map.has(gr.model)) {
+      const existing = map.get(gr.model);
+      if (!existing) {
         map.set(gr.model, gr);
+      } else if (gr.requests > 0) {
+        const totalReqs = existing.requests + gr.requests;
+        map.set(gr.model, {
+          ...existing,
+          requests: totalReqs,
+          tokens: existing.tokens + gr.tokens,
+          cost: existing.cost + gr.cost,
+          avg_latency_ms:
+            totalReqs > 0
+              ? (existing.avg_latency_ms * existing.requests +
+                  gr.avg_latency_ms * gr.requests) /
+                totalReqs
+              : existing.avg_latency_ms,
+          success_rate:
+            totalReqs > 0
+              ? (existing.success_rate * existing.requests +
+                  gr.success_rate * gr.requests) /
+                totalReqs
+              : existing.success_rate,
+        });
       }
     }
     return Array.from(map.values()).sort(
@@ -2984,17 +3082,18 @@ function ChargebackTab({
   const totalRequests = rows.reduce((acc, r) => acc + r.requests, 0);
   const degradedCount = rows.filter((r) => r.success_rate < 0.95).length;
   const overallSuccessRate =
-    statsData?.available && statsData.total_requests > 0
-      ? fmtPct(statsData.success_rate)
-      : rows.length > 0 && totalRequests > 0
-        ? fmtPct(
-            rows.reduce((acc, r) => acc + r.success_rate * r.requests, 0) /
-              totalRequests,
-          )
+    rows.length > 0 && totalRequests > 0
+      ? fmtPct(
+          rows.reduce((acc, r) => acc + r.success_rate * r.requests, 0) /
+            totalRequests,
+        )
+      : statsData?.available && statsData.total_requests > 0
+        ? fmtPct(statsData.success_rate)
         : "—";
 
   const hasOrgOrKeyBudgets =
     (govOverview?.organizations?.length ?? 0) > 0 ||
+    (govOverview?.teams?.length ?? 0) > 0 ||
     (govOverview?.virtual_keys?.length ?? 0) > 0;
 
   return (
@@ -3190,7 +3289,7 @@ function ChargebackTab({
       {hasOrgOrKeyBudgets && (
         <SectionCard
           title="Organization, Team & Virtual Key Budget Utilization"
-          description="Monthly spend enforcement across DSSM Organizations and issued f5vk_ Virtual Keys"
+          description="Monthly spend enforcement across DSSM Organizations, Teams, and issued f5vk_ Virtual Keys"
           compact
         >
           <Table>
@@ -3208,6 +3307,96 @@ function ChargebackTab({
               </TableRow>
             </TableHeader>
             <TableBody>
+              {(govOverview?.organizations ?? []).map((o) => {
+                const pct =
+                  o.monthly_budget_usd > 0
+                    ? Math.round(
+                        (o.current_spend_usd / o.monthly_budget_usd) * 100,
+                      )
+                    : 0;
+                return (
+                  <TableRow key={`org-${o.id}`}>
+                    <TableCell className="text-xs">
+                      <div className="font-semibold">{o.name}</div>
+                      <div className="text-2xs font-mono text-muted-foreground">
+                        Organization · AITenant: {o.tenant_ref}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      <div>{o.teams_count} team(s)</div>
+                      <div className="text-2xs text-muted-foreground">
+                        {o.name}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-xs font-mono text-right">
+                      {o.rpm_limit.toLocaleString()} /{" "}
+                      {o.tpm_limit.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-2xs font-mono">
+                          <span>
+                            ${o.current_spend_usd.toFixed(2)} / $
+                            {o.monthly_budget_usd.toFixed(0)}
+                          </span>
+                          <span className="text-muted-foreground">{pct}%</span>
+                        </div>
+                        <Progress value={Math.min(pct, 100)} className="h-1" />
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      <Badge variant="outline" className="text-2xs">
+                        organization
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+              {(govOverview?.teams ?? []).map((t) => {
+                const pct =
+                  t.monthly_budget_usd > 0
+                    ? Math.round(
+                        (t.current_spend_usd / t.monthly_budget_usd) * 100,
+                      )
+                    : 0;
+                return (
+                  <TableRow key={`team-${t.id}`}>
+                    <TableCell className="text-xs">
+                      <div className="font-semibold">{t.name}</div>
+                      <div className="text-2xs font-mono text-muted-foreground">
+                        Team · {t.allowed_models.length} allowed model(s)
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      <div>{t.name}</div>
+                      <div className="text-2xs text-muted-foreground">
+                        {t.org_name}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-xs font-mono text-right">
+                      {t.rpm_limit.toLocaleString()} /{" "}
+                      {t.tpm_limit.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-2xs font-mono">
+                          <span>
+                            ${t.current_spend_usd.toFixed(2)} / $
+                            {t.monthly_budget_usd.toFixed(0)}
+                          </span>
+                          <span className="text-muted-foreground">{pct}%</span>
+                        </div>
+                        <Progress value={Math.min(pct, 100)} className="h-1" />
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      <Badge variant="outline" className="text-2xs">
+                        team
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
               {(govOverview?.virtual_keys ?? []).map((vk) => {
                 const pct =
                   vk.monthly_budget_usd > 0
