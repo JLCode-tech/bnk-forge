@@ -315,8 +315,8 @@ describe("LlmDashboard (/ai/token-governance)", () => {
       screen.getByRole("tab", { name: /Provider Usage/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("tab", { name: /FinOps & Chargeback/i }),
-    ).toBeInTheDocument();
+      screen.queryByRole("tab", { name: /FinOps & Chargeback/i }),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("tab", { name: /Tenants & Profiles/i }),
     ).toBeInTheDocument();
@@ -337,7 +337,7 @@ describe("LlmDashboard (/ai/token-governance)", () => {
     ).toBeInTheDocument();
   });
 
-  it("fetches and renders rankings when the Model Rankings tab is selected", async () => {
+  it("fetches and renders rankings and Spend Share when the Model Rankings tab is selected", async () => {
     const user = userEvent.setup();
     render(<LlmDashboard />, {
       initialRoute: "/ai/token-governance?cluster=1",
@@ -349,6 +349,19 @@ describe("LlmDashboard (/ai/token-governance)", () => {
       expect(screen.getAllByText("gpt-4o").length).toBeGreaterThan(0),
     );
     expect(screen.getAllByText("new").length).toBeGreaterThan(0);
+    expect(screen.getByText("Spend Share")).toBeInTheDocument();
+    expect(screen.getAllByText("501").length).toBeGreaterThan(0);
+  });
+
+  it("maps legacy ?tab=chargeback deep-links to Model Rankings", async () => {
+    render(<LlmDashboard />, {
+      initialRoute: "/ai/token-governance?cluster=1&tab=chargeback",
+    });
+
+    await waitFor(() =>
+      expect(screen.getAllByText("gpt-4o").length).toBeGreaterThan(0),
+    );
+    expect(screen.getByText("Spend Share")).toBeInTheDocument();
   });
 
   it("propagates the URL model filter to the histogram request", async () => {
@@ -398,7 +411,7 @@ describe("LlmDashboard (/ai/token-governance)", () => {
     expect(screen.getByText("Cluster Beta")).toBeInTheDocument();
   });
 
-  it("switches across AI Gateway & DSSM Governance tabs and renders live CRD + DSSM objects", async () => {
+  it("switches across AI Gateway & DSSM Governance tabs and renders live CRD + DSSM objects and budget utilization", async () => {
     const user = userEvent.setup();
     render(<LlmDashboard />, {
       initialRoute: "/ai/token-governance?cluster=1",
@@ -418,7 +431,7 @@ describe("LlmDashboard (/ai/token-governance)", () => {
       );
     });
 
-    // Switch to Access & Virtual Keys tab
+    // Switch to Access & Virtual Keys tab (includes Org, Team & Virtual Key budget utilization)
     await user.click(
       screen.getByRole("tab", { name: /Access & Virtual Keys/i }),
     );
@@ -427,29 +440,21 @@ describe("LlmDashboard (/ai/token-governance)", () => {
         0,
       );
     });
-
-    // Switch to Request Audit Logs tab
-    await user.click(screen.getByRole("tab", { name: /Request Audit Logs/i }));
-    await waitFor(() => {
-      expect(screen.getAllByText(/req-audit-1/i).length).toBeGreaterThan(0);
-    });
-
-    // Switch to FinOps & Chargeback tab
-    await user.click(screen.getByRole("tab", { name: /FinOps & Chargeback/i }));
-    await waitFor(() => {
-      expect(
-        screen.getByText(
-          /Organization, Team & Virtual Key Budget Utilization/i,
-        ),
-      ).toBeInTheDocument();
-    });
     expect(
       screen.getAllByText(/Telco Core Engineering/i).length,
     ).toBeGreaterThan(0);
     expect(
       screen.getAllByText(/Packet Core AI Copilots/i).length,
     ).toBeGreaterThan(0);
-    expect(screen.getAllByText(/501 requests/i).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/Budget Utilization/i).length,
+    ).toBeGreaterThan(0);
+
+    // Switch to Request Audit Logs tab
+    await user.click(screen.getByRole("tab", { name: /Request Audit Logs/i }));
+    await waitFor(() => {
+      expect(screen.getAllByText(/req-audit-1/i).length).toBeGreaterThan(0);
+    });
 
     // Switch to Gateway Topology tab
     await user.click(screen.getByRole("tab", { name: /Gateway Topology/i }));

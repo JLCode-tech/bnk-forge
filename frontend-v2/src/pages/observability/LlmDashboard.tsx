@@ -2,7 +2,7 @@
  * LlmDashboard — Token Governance and Intelligence (/ai/token-governance).
  *
  * Unifies AI Gateway token telemetry (Loki + ClickHouse otel.aigw_requests),
- * model rankings, provider usage, FinOps chargeback, and multi-cluster AI Gateway
+ * model rankings & spend share, provider usage, and multi-cluster AI Gateway
  * & DSSM Governance (AITenant, AIGatewayProfile, AIModel, AIProvider, AICredential,
  * Organizations, Teams, Principals, Virtual Keys, Dependency Fabric Topology, and
  * Readiness Diagnostics).
@@ -30,8 +30,6 @@ import {
   Info,
   ArrowUpDown,
   Zap,
-  Bot,
-  ShieldCheck,
   BarChart3,
   Trophy,
   Layers,
@@ -272,19 +270,14 @@ const VIEW_META: Record<string, { title: string; subtitle: string }> = {
       "Request analytics, token throughput, latency, and spend across AI Gateway & Loki telemetry.",
   },
   rankings: {
-    title: "Model Rankings",
+    title: "Model Rankings & Spend Attribution",
     subtitle:
-      "Comparative token throughput, latency, and cost across governed LLM models.",
+      "Comparative token throughput, latency, cost, and relative spend share across governed LLM models.",
   },
   providers: {
     title: "Provider Usage",
     subtitle:
       "Aggregated token consumption, latency, and spend by inference provider.",
-  },
-  chargeback: {
-    title: "FinOps & Chargeback",
-    subtitle:
-      "Token budget governance, rate-limit enforcement, and tenant/team cost attribution.",
   },
   tenants: {
     title: "Tenants, Gateway Profiles & Route Policies",
@@ -786,11 +779,12 @@ export default function LlmDashboard() {
     fabricTopology?.edges,
   ]);
 
-  const activeViewMeta = VIEW_META[f.tab] ?? VIEW_META.overview;
+  const activeTab = f.tab === "chargeback" ? "rankings" : f.tab;
+  const activeViewMeta = VIEW_META[activeTab] ?? VIEW_META.overview;
 
   return (
     <Tabs
-      value={f.tab}
+      value={activeTab}
       onValueChange={f.setTab}
       orientation="vertical"
       className="flex min-h-[calc(100vh-3rem)]"
@@ -811,7 +805,7 @@ export default function LlmDashboard() {
           className="flex flex-col items-stretch h-auto bg-transparent p-0 gap-1"
         >
           <div className="px-2.5 py-1 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
-            TELEMETRY &amp; FINOPS
+            TELEMETRY &amp; ANALYTICS
           </div>
           <TabsTrigger
             value="overview"
@@ -833,13 +827,6 @@ export default function LlmDashboard() {
           >
             <Layers className="h-3.5 w-3.5 shrink-0" />
             <span className="truncate">Provider Usage</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="chargeback"
-            className="w-full justify-start gap-2 px-2.5 py-1.5 text-xs font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
-          >
-            <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">FinOps &amp; Chargeback</span>
           </TabsTrigger>
 
           <div className="px-2.5 pt-3 pb-1 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -1043,7 +1030,7 @@ export default function LlmDashboard() {
           <RankingsTab
             clusterId={f.clusterId}
             params={f.queryParams}
-            active={f.tab === "rankings"}
+            active={activeTab === "rankings"}
             govOverview={govOverview}
             modelFilter={f.model}
             statusFilter={f.status}
@@ -1054,21 +1041,9 @@ export default function LlmDashboard() {
           <ProviderUsageTab
             clusterId={f.clusterId}
             params={f.queryParams}
-            active={f.tab === "providers"}
+            active={activeTab === "providers"}
             auditLogs={filteredAuditLogs}
             govOverview={govOverview}
-          />
-        </TabsContent>
-
-        <TabsContent value="chargeback" className="mt-0">
-          <ChargebackTab
-            clusterId={f.clusterId}
-            scopeName={scopeName}
-            params={f.queryParams}
-            active={f.tab === "chargeback"}
-            govOverview={govOverview}
-            modelFilter={f.model}
-            statusFilter={f.status}
           />
         </TabsContent>
 
@@ -1985,8 +1960,8 @@ export default function LlmDashboard() {
                     <TableHead className="text-xs text-right">
                       RPM / TPM
                     </TableHead>
-                    <TableHead className="text-xs text-right">
-                      Spend / Budget
+                    <TableHead className="text-xs w-[190px]">
+                      Budget Utilization
                     </TableHead>
                     <TableHead className="text-xs">Status</TableHead>
                     <TableHead className="text-xs text-right">Action</TableHead>
@@ -2003,79 +1978,101 @@ export default function LlmDashboard() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    (govOverview?.virtual_keys ?? []).map((vk) => (
-                      <TableRow key={vk.id}>
-                        <TableCell className="text-xs font-semibold">
-                          {vk.name}
-                        </TableCell>
-                        <TableCell className="text-xs font-mono text-muted-foreground">
-                          {vk.masked_key}
-                        </TableCell>
-                        <TableCell className="text-xs">
-                          <div>{vk.principal_name}</div>
-                          <div className="text-2xs text-muted-foreground">
-                            {vk.principal_type} · {vk.team_name} ({vk.org_name})
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-xs">
-                          <div className="flex flex-wrap gap-1">
-                            {vk.allowed_models.map((m) => (
-                              <Badge
-                                key={m}
-                                variant="secondary"
-                                className="text-2xs font-mono"
-                              >
-                                {m}
-                              </Badge>
-                            ))}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-xs font-mono text-right">
-                          {vk.rpm_limit.toLocaleString()} /{" "}
-                          {vk.tpm_limit.toLocaleString()}
-                        </TableCell>
-                        <TableCell className="text-xs font-mono text-right">
-                          ${vk.spend_usd.toFixed(2)} / $
-                          {vk.monthly_budget_usd.toFixed(0)}
-                        </TableCell>
-                        <TableCell className="text-xs">
-                          <Badge
-                            variant={
-                              vk.status === "active" ? "default" : "outline"
-                            }
-                            className="text-2xs"
-                          >
-                            {vk.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-xs text-right">
-                          {vk.status === "active" && (
-                            <div className="flex items-center justify-end gap-1">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 px-2 text-2xs gap-1"
-                                title="Rotate Virtual Key in-place"
-                                disabled={rotateKeyMut.isPending}
-                                onClick={() => rotateKeyMut.mutate(vk.id)}
-                              >
-                                <RefreshCw className="h-3 w-3" />
-                                Rotate
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 px-2 text-xs text-destructive hover:text-destructive"
-                                title="Revoke Virtual Key"
-                                onClick={() => revokeKeyMut.mutate(vk.id)}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
+                    (govOverview?.virtual_keys ?? []).map((vk) => {
+                      const vkPct =
+                        vk.monthly_budget_usd > 0
+                          ? Math.round(
+                              (vk.spend_usd / vk.monthly_budget_usd) * 100,
+                            )
+                          : 0;
+                      return (
+                        <TableRow key={vk.id}>
+                          <TableCell className="text-xs font-semibold">
+                            {vk.name}
+                          </TableCell>
+                          <TableCell className="text-xs font-mono text-muted-foreground">
+                            {vk.masked_key}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            <div>{vk.principal_name}</div>
+                            <div className="text-2xs text-muted-foreground">
+                              {vk.principal_type} · {vk.team_name} (
+                              {vk.org_name})
                             </div>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            <div className="flex flex-wrap gap-1">
+                              {vk.allowed_models.map((m) => (
+                                <Badge
+                                  key={m}
+                                  variant="secondary"
+                                  className="text-2xs font-mono"
+                                >
+                                  {m}
+                                </Badge>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-xs font-mono text-right">
+                            {vk.rpm_limit.toLocaleString()} /{" "}
+                            {vk.tpm_limit.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-2xs font-mono">
+                                <span>
+                                  ${vk.spend_usd.toFixed(2)} / $
+                                  {vk.monthly_budget_usd.toFixed(0)}
+                                </span>
+                                <span className="text-muted-foreground">
+                                  {vkPct}%
+                                </span>
+                              </div>
+                              <Progress
+                                value={Math.min(vkPct, 100)}
+                                className="h-1"
+                              />
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            <Badge
+                              variant={
+                                vk.status === "active" ? "default" : "outline"
+                              }
+                              className="text-2xs"
+                            >
+                              {vk.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs text-right">
+                            {vk.status === "active" && (
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-2 text-2xs gap-1"
+                                  title="Rotate Virtual Key in-place"
+                                  disabled={rotateKeyMut.isPending}
+                                  onClick={() => rotateKeyMut.mutate(vk.id)}
+                                >
+                                  <RefreshCw className="h-3 w-3" />
+                                  Rotate
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                                  title="Revoke Virtual Key"
+                                  onClick={() => revokeKeyMut.mutate(vk.id)}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>
@@ -2092,8 +2089,8 @@ export default function LlmDashboard() {
                     <TableRow>
                       <TableHead className="text-xs">Organization</TableHead>
                       <TableHead className="text-xs">AITenant</TableHead>
-                      <TableHead className="text-xs text-right">
-                        Spend / Budget
+                      <TableHead className="text-xs w-[180px]">
+                        Budget Utilization
                       </TableHead>
                       <TableHead className="text-xs text-right">
                         RPM / TPM
@@ -2111,24 +2108,49 @@ export default function LlmDashboard() {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      (govOverview?.organizations ?? []).map((o) => (
-                        <TableRow key={o.id}>
-                          <TableCell className="text-xs font-semibold">
-                            {o.name}
-                          </TableCell>
-                          <TableCell className="text-xs font-mono">
-                            {o.tenant_ref}
-                          </TableCell>
-                          <TableCell className="text-xs font-mono text-right">
-                            ${o.current_spend_usd.toLocaleString()} / $
-                            {o.monthly_budget_usd.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-xs font-mono text-right">
-                            {o.rpm_limit.toLocaleString()} /{" "}
-                            {o.tpm_limit.toLocaleString()}
-                          </TableCell>
-                        </TableRow>
-                      ))
+                      (govOverview?.organizations ?? []).map((o) => {
+                        const orgPct =
+                          o.monthly_budget_usd > 0
+                            ? Math.round(
+                                (o.current_spend_usd / o.monthly_budget_usd) *
+                                  100,
+                              )
+                            : 0;
+                        return (
+                          <TableRow key={o.id}>
+                            <TableCell className="text-xs font-semibold">
+                              <div>{o.name}</div>
+                              <div className="text-2xs font-normal text-muted-foreground">
+                                {o.teams_count} team(s)
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-xs font-mono">
+                              {o.tenant_ref}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              <div className="space-y-1">
+                                <div className="flex justify-between text-2xs font-mono">
+                                  <span>
+                                    ${o.current_spend_usd.toFixed(2)} / $
+                                    {o.monthly_budget_usd.toFixed(0)}
+                                  </span>
+                                  <span className="text-muted-foreground">
+                                    {orgPct}%
+                                  </span>
+                                </div>
+                                <Progress
+                                  value={Math.min(orgPct, 100)}
+                                  className="h-1"
+                                />
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-xs font-mono text-right">
+                              {o.rpm_limit.toLocaleString()} /{" "}
+                              {o.tpm_limit.toLocaleString()}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>
@@ -2136,22 +2158,27 @@ export default function LlmDashboard() {
 
               <SectionCard
                 title="Teams & Principals"
-                description="Users, Services, and Autonomous Agents"
+                description="Team sub-budgets, Users, Services, and Autonomous Agents"
                 compact
               >
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="text-xs">Principal</TableHead>
+                      <TableHead className="text-xs">
+                        Team / Principal
+                      </TableHead>
                       <TableHead className="text-xs">Type</TableHead>
-                      <TableHead className="text-xs">Team</TableHead>
+                      <TableHead className="text-xs">
+                        Scope &amp; Budget
+                      </TableHead>
                       <TableHead className="text-xs text-right">
                         RPM / TPM
                       </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(govOverview?.principals ?? []).length === 0 ? (
+                    {(govOverview?.teams ?? []).length === 0 &&
+                    (govOverview?.principals ?? []).length === 0 ? (
                       <TableRow>
                         <TableCell
                           colSpan={4}
@@ -2161,25 +2188,72 @@ export default function LlmDashboard() {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      (govOverview?.principals ?? []).map((p) => (
-                        <TableRow key={p.id}>
-                          <TableCell className="text-xs font-semibold">
-                            {p.name}
-                          </TableCell>
-                          <TableCell className="text-xs">
-                            <Badge variant="outline" className="text-2xs">
-                              {p.principal_type}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-xs">
-                            {p.team_name}
-                          </TableCell>
-                          <TableCell className="text-xs font-mono text-right">
-                            {p.rpm_limit.toLocaleString()} /{" "}
-                            {p.tpm_limit.toLocaleString()}
-                          </TableCell>
-                        </TableRow>
-                      ))
+                      <>
+                        {(govOverview?.teams ?? []).map((t) => {
+                          const teamPct =
+                            t.monthly_budget_usd > 0
+                              ? Math.round(
+                                  (t.current_spend_usd / t.monthly_budget_usd) *
+                                    100,
+                                )
+                              : 0;
+                          return (
+                            <TableRow key={`team-${t.id}`}>
+                              <TableCell className="text-xs font-semibold">
+                                <div>{t.name}</div>
+                                <div className="text-2xs font-normal text-muted-foreground">
+                                  {t.org_name}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                <Badge variant="outline" className="text-2xs">
+                                  team
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                <div className="space-y-1">
+                                  <div className="flex justify-between text-2xs font-mono">
+                                    <span>
+                                      ${t.current_spend_usd.toFixed(2)} / $
+                                      {t.monthly_budget_usd.toFixed(0)}
+                                    </span>
+                                    <span className="text-muted-foreground">
+                                      {teamPct}%
+                                    </span>
+                                  </div>
+                                  <Progress
+                                    value={Math.min(teamPct, 100)}
+                                    className="h-1"
+                                  />
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-xs font-mono text-right">
+                                {t.rpm_limit.toLocaleString()} /{" "}
+                                {t.tpm_limit.toLocaleString()}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                        {(govOverview?.principals ?? []).map((p) => (
+                          <TableRow key={p.id}>
+                            <TableCell className="text-xs font-semibold">
+                              {p.name}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              <Badge variant="outline" className="text-2xs">
+                                {p.principal_type}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              {p.team_name}
+                            </TableCell>
+                            <TableCell className="text-xs font-mono text-right">
+                              {p.rpm_limit.toLocaleString()} /{" "}
+                              {p.tpm_limit.toLocaleString()}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </>
                     )}
                   </TableBody>
                 </Table>
@@ -2669,6 +2743,7 @@ function RankingsTab({
   }
 
   const colors = topSeries.map((_, i) => seriesColor(i));
+  const totalSpend = rows.reduce((acc, r) => acc + r.cost, 0);
 
   return (
     <div className="space-y-4">
@@ -2717,6 +2792,7 @@ function RankingsTab({
                   sortKey={sortKey}
                   onSort={setSortKey}
                 />
+                <TableHead className="w-[150px]">Spend Share</TableHead>
                 <SortHead
                   label="Avg Latency"
                   k="avg_latency_ms"
@@ -2726,43 +2802,65 @@ function RankingsTab({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((row, i) => (
-                <TableRow key={row.model}>
-                  <TableCell className="text-muted-foreground tabular-nums">
-                    {i + 1}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="h-2 w-2 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: providerColor(row.provider) }}
-                        title={row.provider}
-                      />
-                      <span className="font-medium text-foreground">
-                        {row.model}
-                      </span>
-                      <span className="text-2xs text-muted-foreground uppercase">
-                        {row.provider}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <NumCell
-                    value={fmtInt(row.requests)}
-                    delta={row.trend.requests}
-                  />
-                  <TableCell className="text-right tabular-nums text-foreground/80">
-                    {fmtPct(row.success_rate)}
-                  </TableCell>
-                  <NumCell
-                    value={fmtCompact(row.tokens)}
-                    delta={row.trend.tokens}
-                  />
-                  <NumCell value={fmtCost(row.cost)} delta={row.trend.cost} />
-                  <TableCell className="text-right tabular-nums text-foreground/80">
-                    {fmtLatencyMs(row.avg_latency_ms)}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {rows.map((row, i) => {
+                const sharePct =
+                  totalSpend > 0
+                    ? Math.round((row.cost / totalSpend) * 100)
+                    : 0;
+                return (
+                  <TableRow key={row.model}>
+                    <TableCell className="text-muted-foreground tabular-nums">
+                      {i + 1}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="h-2 w-2 rounded-full flex-shrink-0"
+                          style={{
+                            backgroundColor: providerColor(row.provider),
+                          }}
+                          title={row.provider}
+                        />
+                        <span className="font-medium text-foreground">
+                          {row.model}
+                        </span>
+                        <span className="text-2xs text-muted-foreground uppercase">
+                          {row.provider}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <NumCell
+                      value={fmtInt(row.requests)}
+                      delta={row.trend.requests}
+                    />
+                    <TableCell className="text-right tabular-nums text-foreground/80">
+                      {fmtPct(row.success_rate)}
+                    </TableCell>
+                    <NumCell
+                      value={fmtCompact(row.tokens)}
+                      delta={row.trend.tokens}
+                    />
+                    <NumCell value={fmtCost(row.cost)} delta={row.trend.cost} />
+                    <TableCell>
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-2xs font-mono">
+                          <span>{fmtCost(row.cost)}</span>
+                          <span className="text-muted-foreground">
+                            {sharePct}%
+                          </span>
+                        </div>
+                        <Progress
+                          value={Math.min(sharePct, 100)}
+                          className="h-1"
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-foreground/80">
+                      {fmtLatencyMs(row.avg_latency_ms)}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
@@ -3003,450 +3101,5 @@ function ProviderCard({
         valueFormatter={valueFormatter}
       />
     </ChartCard>
-  );
-}
-
-// ============================================================================
-// FinOps Chargeback & In-Line Quota Enforcement Tab
-// ============================================================================
-
-interface ChargebackTabProps extends TabProps {
-  scopeName: string;
-  govOverview: AiGatewayGovernanceOverviewResponse | undefined;
-  modelFilter: string;
-  statusFilter: string;
-}
-
-function ChargebackTab({
-  clusterId,
-  scopeName,
-  params,
-  active,
-  govOverview,
-  modelFilter,
-  statusFilter,
-}: ChargebackTabProps) {
-  const { data: rankingsData, isLoading } = useLlmRankings(
-    clusterId,
-    params,
-    active,
-  );
-  const { data: statsData } = useLlmStats(clusterId, params);
-
-  const govRows = useMemo(
-    () => buildRankingsFromGovernance(govOverview, modelFilter, statusFilter),
-    [govOverview, modelFilter, statusFilter],
-  );
-
-  const rows = useMemo(() => {
-    const map = new Map<string, LlmRankingRow>();
-    for (const r of rankingsData?.rows ?? []) {
-      map.set(r.model, { ...r });
-    }
-    for (const gr of govRows) {
-      const existing = map.get(gr.model);
-      if (!existing) {
-        map.set(gr.model, gr);
-      } else if (gr.requests > 0) {
-        const totalReqs = existing.requests + gr.requests;
-        map.set(gr.model, {
-          ...existing,
-          requests: totalReqs,
-          tokens: existing.tokens + gr.tokens,
-          cost: existing.cost + gr.cost,
-          avg_latency_ms:
-            totalReqs > 0
-              ? (existing.avg_latency_ms * existing.requests +
-                  gr.avg_latency_ms * gr.requests) /
-                totalReqs
-              : existing.avg_latency_ms,
-          success_rate:
-            totalReqs > 0
-              ? (existing.success_rate * existing.requests +
-                  gr.success_rate * gr.requests) /
-                totalReqs
-              : existing.success_rate,
-        });
-      }
-    }
-    return Array.from(map.values()).sort(
-      (a, b) => b.cost - a.cost || b.tokens - a.tokens,
-    );
-  }, [rankingsData?.rows, govRows]);
-
-  if (isLoading) return <Skeleton className="h-64 w-full" />;
-
-  const available = (rankingsData?.available ?? false) || rows.length > 0;
-  const totalSpend = rows.reduce((acc, r) => acc + r.cost, 0);
-  const totalTokens = rows.reduce((acc, r) => acc + r.tokens, 0);
-  const totalRequests = rows.reduce((acc, r) => acc + r.requests, 0);
-  const degradedCount = rows.filter((r) => r.success_rate < 0.95).length;
-  const overallSuccessRate =
-    rows.length > 0 && totalRequests > 0
-      ? fmtPct(
-          rows.reduce((acc, r) => acc + r.success_rate * r.requests, 0) /
-            totalRequests,
-        )
-      : statsData?.available && statsData.total_requests > 0
-        ? fmtPct(statsData.success_rate)
-        : "—";
-
-  const hasOrgOrKeyBudgets =
-    (govOverview?.organizations?.length ?? 0) > 0 ||
-    (govOverview?.teams?.length ?? 0) > 0 ||
-    (govOverview?.virtual_keys?.length ?? 0) > 0;
-
-  return (
-    <div className="space-y-4">
-      {/* FinOps Stat Strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <SectionCard compact className="border-border">
-          <span className="label-caps block">Active Model Workloads</span>
-          <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-xl font-bold tabular-nums text-foreground">
-              {available ? rows.length : "—"}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {available
-                ? `${fmtInt(totalRequests)} requests`
-                : "No live telemetry"}
-            </span>
-          </div>
-          <p className="text-2xs text-muted-foreground mt-0.5">
-            Scoped to {scopeName}
-          </p>
-        </SectionCard>
-
-        <SectionCard compact className="border-border">
-          <span className="label-caps block">Total Spend (Selected Range)</span>
-          <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-xl font-bold tabular-nums text-foreground">
-              {available ? fmtCost(totalSpend) : "—"}
-            </span>
-            <span className="text-xs font-semibold text-primary tabular-nums">
-              {available && rows.length > 0
-                ? `across ${rows.length} models`
-                : "0 active models"}
-            </span>
-          </div>
-          <p className="text-2xs text-muted-foreground mt-0.5">
-            Computed from live gateway token telemetry
-          </p>
-        </SectionCard>
-
-        <SectionCard compact className="border-border">
-          <span className="label-caps block">
-            Tokens Processed &amp; Success Rate
-          </span>
-          <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-xl font-bold tabular-nums text-foreground">
-              {available ? fmtCompact(totalTokens) : "—"}
-            </span>
-            <span className="text-xs text-success font-semibold tabular-nums">
-              {overallSuccessRate} Success
-            </span>
-          </div>
-          <p className="text-2xs text-muted-foreground mt-0.5">
-            Live request completion across {scopeName}
-          </p>
-        </SectionCard>
-      </div>
-
-      {/* Chargeback Table */}
-      <div className="rounded-md border border-border bg-card overflow-hidden">
-        <div className="p-3 border-b border-border bg-muted/20 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider">
-              Model &amp; Provider Cost Attribution
-            </h3>
-            <p className="text-2xs text-muted-foreground">
-              Live token consumption and spend attribution enforced by F5 BNK.
-            </p>
-          </div>
-          <Badge
-            variant="outline"
-            className="text-2xs font-mono gap-1 border-border"
-          >
-            <ShieldCheck className="h-3 w-3 text-success" />
-            {!available
-              ? "Telemetry Unavailable"
-              : degradedCount > 0
-                ? `${degradedCount} Model(s) Below 95% Success`
-                : "All Models Healthy"}
-          </Badge>
-        </div>
-
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent bg-muted/40">
-              <TableHead className="text-xs font-semibold">
-                Model Workload
-              </TableHead>
-              <TableHead className="text-xs font-semibold">Provider</TableHead>
-              <TableHead className="text-xs font-semibold">Scope</TableHead>
-              <TableHead className="text-xs font-semibold text-right">
-                Requests
-              </TableHead>
-              <TableHead className="text-xs font-semibold text-right">
-                Tokens
-              </TableHead>
-              <TableHead className="text-xs font-semibold text-right">
-                Avg Latency
-              </TableHead>
-              <TableHead className="text-xs font-semibold w-[160px]">
-                Spend Share
-              </TableHead>
-              <TableHead className="text-xs font-semibold">Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody className="text-xs">
-            {!available || rows.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={8}
-                  className="h-24 text-center text-xs text-muted-foreground"
-                >
-                  {rankingsData?.errors?.rankings ||
-                    "No live token spend or workload attribution recorded for the selected scope and time range."}
-                </TableCell>
-              </TableRow>
-            ) : (
-              rows.map((row) => {
-                const sharePct =
-                  totalSpend > 0
-                    ? Math.round((row.cost / totalSpend) * 100)
-                    : 0;
-                const isDegraded = row.success_rate < 0.95;
-
-                return (
-                  <TableRow key={row.model} className="hover:bg-muted/30">
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-1.5">
-                        <Bot className="h-3.5 w-3.5 text-primary shrink-0" />
-                        <span className="font-mono text-sm">{row.model}</span>
-                      </div>
-                    </TableCell>
-
-                    <TableCell>
-                      <span className="uppercase font-mono text-2xs text-muted-foreground">
-                        {row.provider}
-                      </span>
-                    </TableCell>
-
-                    <TableCell>
-                      <span className="font-mono text-2xs text-muted-foreground">
-                        {scopeName}
-                      </span>
-                    </TableCell>
-
-                    <TableCell className="text-right font-mono">
-                      {fmtInt(row.requests)}
-                    </TableCell>
-
-                    <TableCell className="text-right font-mono">
-                      {fmtCompact(row.tokens)}
-                    </TableCell>
-
-                    <TableCell className="text-right font-mono">
-                      {fmtLatencyMs(row.avg_latency_ms)}
-                    </TableCell>
-
-                    <TableCell>
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-2xs font-mono">
-                          <span>{fmtCost(row.cost)}</span>
-                          <span className="text-muted-foreground">
-                            {sharePct}%
-                          </span>
-                        </div>
-                        <Progress
-                          value={Math.min(sharePct, 100)}
-                          className={`h-1 ${isDegraded ? "[&>div]:bg-warning" : ""}`}
-                        />
-                      </div>
-                    </TableCell>
-
-                    <TableCell>
-                      {isDegraded ? (
-                        <Badge variant="warning" className="text-2xs font-mono">
-                          {fmtPct(row.success_rate)} OK
-                        </Badge>
-                      ) : (
-                        <Badge variant="success" className="text-2xs font-mono">
-                          {fmtPct(row.success_rate)} OK
-                        </Badge>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      {/* Organization, Team & Virtual Key Budget Attribution */}
-      {hasOrgOrKeyBudgets && (
-        <SectionCard
-          title="Organization, Team & Virtual Key Budget Utilization"
-          description="Monthly spend enforcement across DSSM Organizations, Teams, and issued f5vk_ Virtual Keys"
-          compact
-        >
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="text-xs">Principal / Key</TableHead>
-                <TableHead className="text-xs">
-                  Team &amp; Organization
-                </TableHead>
-                <TableHead className="text-xs text-right">RPM / TPM</TableHead>
-                <TableHead className="text-xs w-[200px]">
-                  Monthly Budget Utilization
-                </TableHead>
-                <TableHead className="text-xs">Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(govOverview?.organizations ?? []).map((o) => {
-                const pct =
-                  o.monthly_budget_usd > 0
-                    ? Math.round(
-                        (o.current_spend_usd / o.monthly_budget_usd) * 100,
-                      )
-                    : 0;
-                return (
-                  <TableRow key={`org-${o.id}`}>
-                    <TableCell className="text-xs">
-                      <div className="font-semibold">{o.name}</div>
-                      <div className="text-2xs font-mono text-muted-foreground">
-                        Organization · AITenant: {o.tenant_ref}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      <div>{o.teams_count} team(s)</div>
-                      <div className="text-2xs text-muted-foreground">
-                        {o.name}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-xs font-mono text-right">
-                      {o.rpm_limit.toLocaleString()} /{" "}
-                      {o.tpm_limit.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-2xs font-mono">
-                          <span>
-                            ${o.current_spend_usd.toFixed(2)} / $
-                            {o.monthly_budget_usd.toFixed(0)}
-                          </span>
-                          <span className="text-muted-foreground">{pct}%</span>
-                        </div>
-                        <Progress value={Math.min(pct, 100)} className="h-1" />
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      <Badge variant="outline" className="text-2xs">
-                        organization
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-              {(govOverview?.teams ?? []).map((t) => {
-                const pct =
-                  t.monthly_budget_usd > 0
-                    ? Math.round(
-                        (t.current_spend_usd / t.monthly_budget_usd) * 100,
-                      )
-                    : 0;
-                return (
-                  <TableRow key={`team-${t.id}`}>
-                    <TableCell className="text-xs">
-                      <div className="font-semibold">{t.name}</div>
-                      <div className="text-2xs font-mono text-muted-foreground">
-                        Team · {t.allowed_models.length} allowed model(s)
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      <div>{t.name}</div>
-                      <div className="text-2xs text-muted-foreground">
-                        {t.org_name}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-xs font-mono text-right">
-                      {t.rpm_limit.toLocaleString()} /{" "}
-                      {t.tpm_limit.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-2xs font-mono">
-                          <span>
-                            ${t.current_spend_usd.toFixed(2)} / $
-                            {t.monthly_budget_usd.toFixed(0)}
-                          </span>
-                          <span className="text-muted-foreground">{pct}%</span>
-                        </div>
-                        <Progress value={Math.min(pct, 100)} className="h-1" />
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      <Badge variant="outline" className="text-2xs">
-                        team
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-              {(govOverview?.virtual_keys ?? []).map((vk) => {
-                const pct =
-                  vk.monthly_budget_usd > 0
-                    ? Math.round((vk.spend_usd / vk.monthly_budget_usd) * 100)
-                    : 0;
-                return (
-                  <TableRow key={vk.id}>
-                    <TableCell className="text-xs">
-                      <div className="font-semibold">{vk.principal_name}</div>
-                      <div className="text-2xs font-mono text-muted-foreground">
-                        {vk.name} ({vk.masked_key})
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      <div>{vk.team_name}</div>
-                      <div className="text-2xs text-muted-foreground">
-                        {vk.org_name}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-xs font-mono text-right">
-                      {vk.rpm_limit.toLocaleString()} /{" "}
-                      {vk.tpm_limit.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-2xs font-mono">
-                          <span>
-                            ${vk.spend_usd.toFixed(2)} / $
-                            {vk.monthly_budget_usd.toFixed(0)}
-                          </span>
-                          <span className="text-muted-foreground">{pct}%</span>
-                        </div>
-                        <Progress value={Math.min(pct, 100)} className="h-1" />
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      <Badge
-                        variant={vk.status === "active" ? "default" : "outline"}
-                        className="text-2xs"
-                      >
-                        {vk.status}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </SectionCard>
-      )}
-    </div>
   );
 }
