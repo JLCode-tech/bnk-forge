@@ -902,7 +902,7 @@ class AiGatewayGovernanceService:
             ),
             AiReadinessCheckItem(
                 id=f"route-programmed-{cid}",
-                title="AIGatewayProfile & HTTPRoute Programmed Status (BNK 2.4.1 Check)",
+                title="AIGatewayProfile & HTTPRoute Programmed Status",
                 category="Gateway Attachment",
                 cluster_id=cid,
                 cluster_name=cname,
@@ -922,8 +922,8 @@ class AiGatewayGovernanceService:
             ),
             AiReadinessCheckItem(
                 id=f"numa-cache-{cid}",
-                title="BNK 2.4.1 Multi-NUMA Spanning & Semantic Cache Pooling",
-                category="BNK 2.4.1 Performance",
+                title="Multi-NUMA Spanning & Semantic Cache Pooling",
+                category="Data Plane Performance",
                 cluster_id=cid,
                 cluster_name=cname,
                 status="healthy" if numa_ok else "warning",
@@ -951,7 +951,21 @@ class AiGatewayGovernanceService:
         ]
         return checks
 
-    def overview(self, cluster_id: int | None = None, project_id: int | None = None) -> AiGovernanceOverviewResponse:
+    @staticmethod
+    def _filter_by_namespace(items: list[dict[str, Any]], namespace: str | None) -> list[dict[str, Any]]:
+        if not namespace or namespace == "all":
+            return items
+        matched = [item for item in items if (item.get("namespace") or "f5-bnk") == namespace]
+        if matched or namespace != "f5-bnk":
+            return matched
+        return items
+
+    def overview(
+        self,
+        cluster_id: int | None = None,
+        project_id: int | None = None,
+        namespace: str | None = None,
+    ) -> AiGovernanceOverviewResponse:
         """Aggregate multi-cluster AI Gateway catalog, routes, DSSM governance, readiness, and Dependency Fabric topology."""
         targets = self._target_clusters(cluster_id=cluster_id, project_id=project_id)
 
@@ -971,10 +985,13 @@ class AiGatewayGovernanceService:
         for cid, cname in targets:
             state = _ensure_cluster_seed(cid, cname)
             self._sync_live_cluster_resources(cid, cname, state)
+            ns_providers = self._filter_by_namespace(state["providers"], namespace)
+            ns_models = self._filter_by_namespace(state["models"], namespace)
+            ns_routes = self._filter_by_namespace(state["routes"], namespace)
             tenants.extend(AiTenantSummary(**t) for t in state["tenants"])
-            providers.extend(AiProviderSummary(**p) for p in state["providers"])
-            models.extend(AiModelSummary(**m) for m in state["models"])
-            routes.extend(AiGatewayRouteSummary(**r) for r in state["routes"])
+            providers.extend(AiProviderSummary(**p) for p in ns_providers)
+            models.extend(AiModelSummary(**m) for m in ns_models)
+            routes.extend(AiGatewayRouteSummary(**r) for r in ns_routes)
             orgs.extend(GovernanceOrgItem(**o) for o in state["orgs"])
             teams.extend(GovernanceTeamItem(**tm) for tm in state["teams"])
             principals.extend(GovernancePrincipalItem(**pr) for pr in state["principals"])
@@ -982,7 +999,13 @@ class AiGatewayGovernanceService:
             readiness_checks.extend(self._build_readiness_checks(state))
             request_audit_logs.extend(ClickHouseRequestAuditItem(**log) for log in state.get("request_audit_logs", []))
 
-            custom_res = _build_k8s_custom_resources_from_state(state)
+            filtered_state = {
+                **state,
+                "providers": ns_providers,
+                "models": ns_models,
+                "routes": ns_routes,
+            }
+            custom_res = _build_k8s_custom_resources_from_state(filtered_state)
             topo = assemble_topology(
                 pods=[],
                 services=[],
@@ -991,7 +1014,7 @@ class AiGatewayGovernanceService:
                 statefulsets=[],
                 daemonsets=[],
                 cluster_id=cid,
-                namespace=state.get("namespace", "f5-bnk"),
+                namespace=namespace if namespace and namespace != "all" else state.get("namespace", "f5-bnk"),
                 custom_resources=custom_res,
             )
             prefix = f"c{cid}:" if len(targets) > 1 else ""
@@ -1011,6 +1034,7 @@ class AiGatewayGovernanceService:
             available=True,
             endpoint="https://f5-cne-controller-api.f5-bnk.svc:8443/api/v1/tenants",
             updated_at=_now_iso(),
+            namespace=namespace or "f5-bnk",
             tenants=tenants,
             providers=providers,
             models=models,
@@ -1191,7 +1215,7 @@ class AiGatewayGovernanceService:
                 and existing.get("tenant") != req.tenant
             ):
                 raise ValueError(
-                    f"BNK 2.4.1 listener conflict ('The listener chooses the tenant'): Gateway '{req.gateway_name}' "
+                    f"Gateway listener conflict ('The listener chooses the tenant'): Gateway '{req.gateway_name}' "
                     f"listener port {req.listener_port} is already bound to AITenant '{existing.get('tenant')}'. "
                     f"Each Gateway listener serves one tenant; choose a dedicated port (e.g. {int(req.listener_port) + 1}) "
                     f"for AITenant '{req.tenant}'."
@@ -1690,7 +1714,7 @@ class AiGatewayGovernanceService:
                 model=req.model,
                 troubleshooting_hint=(
                     "AIGatewayProfile reports Programmed=False ('AI profile is not prepared yet'). "
-                    "Use 'Restart f5-cne-controller & Reconcile' in BNK 2.4.1 Diagnostics."
+                    "Use 'Restart f5-cne-controller & Reconcile' in Gateway Diagnostics."
                 ),
                 response_body={"error": {"message": "AI profile is not prepared yet", "code": 503}},
             )
@@ -1928,7 +1952,7 @@ class AiGatewayGovernanceService:
                         "message": {
                             "role": "assistant",
                             "content": (
-                                f"[BNK 2.4.1 AI Gateway -> {provider_name} ({cache_status})] "
+                                f"[AI Gateway -> {provider_name} ({cache_status})] "
                                 f"Routed via Gateway listener :{listener_port} (AITenant '{tenant}')."
                             ),
                         },

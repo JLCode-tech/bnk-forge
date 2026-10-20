@@ -288,7 +288,7 @@ export function CNFNetworkGraph({
             </div>
           </div>
           <Badge variant="outline" className="text-xs font-mono">
-            BNK 2.4.1 Cross-CRD Reference Graph ({effectiveNs})
+            Cross-CRD Reference Graph ({effectiveNs})
           </Badge>
         </div>
         <div className="flex-1 min-h-[540px]">

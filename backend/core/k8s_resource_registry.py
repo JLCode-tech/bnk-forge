@@ -521,13 +521,13 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         "AppPolicy",
         "apppolicies",
         "F5 App Policy",
-        "F5 BNK 2.4.1 application policy binding extension profiles (AIGatewayProfile) to Gateway listeners",
+        "F5 BNK application policy binding extension profiles (AIGatewayProfile) to Gateway listeners",
     ),
     # Same kind as the legacy l4route, so a distinct key.
     "l4route_24": _f5_gateway_resource(
         "L4Route",
         "l4routes",
-        "L4 Route (2.4)",
+        "L4 Route",
         "F5 BNK Layer 4 route for TCP/UDP traffic (gateway.k8s.f5.com)",
         api_version="v1",
     ),
@@ -553,7 +553,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         plural="aitenants",
         namespaced=False,
         display_name="F5 AI Tenant",
-        description="Cluster-scoped multi-tenant boundary for BNK 2.4.1 LLM Gateway providers, models, and governance",
+        description="Cluster-scoped multi-tenant boundary for AI Gateway providers, models, and governance",
         category=ResourceCategory.F5_BNK,
     ),
     "aicredential": K8sResourceType(
@@ -563,7 +563,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         plural="aicredentials",
         namespaced=True,
         display_name="F5 AI Credential",
-        description="Secret-backed API key reference for BNK 2.4.1 LLM Gateway upstream providers",
+        description="Secret-backed API key reference for AI Gateway upstream providers",
         category=ResourceCategory.F5_BNK,
     ),
     "aiprovider": K8sResourceType(
@@ -603,7 +603,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         plural="aigateways",
         namespaced=True,
         display_name="F5 AI Gateway Runtime",
-        description="BNK 2.4.1 AI Gateway runtime readiness and data-plane status resource",
+        description="AI Gateway runtime readiness and data-plane status resource",
         category=ResourceCategory.F5_BNK,
     ),
     "f5biganalyzer": _f5_resource(
@@ -640,7 +640,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         plural="scrapetemplates",
         namespaced=True,
         display_name="F5 Scrape Template",
-        description="BNK 2.4.1 Observer metric scrape template (metrics.f5.com)",
+        description="Observer metric scrape template (metrics.f5.com)",
         category=ResourceCategory.F5_BNK,
     ),
     "scrapeclass": K8sResourceType(
@@ -650,7 +650,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         plural="scrapeclasses",
         namespaced=False,
         display_name="F5 Scrape Class",
-        description="BNK 2.4.1 Observer cluster-wide metric scrape class (metrics.f5.com)",
+        description="Observer cluster-wide metric scrape class (metrics.f5.com)",
         category=ResourceCategory.F5_BNK,
     ),
     "scrape": K8sResourceType(
@@ -660,7 +660,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         plural="scrapes",
         namespaced=True,
         display_name="F5 Metric Scrape",
-        description="BNK 2.4.1 Observer metric scrape target definition (metrics.f5.com)",
+        description="Observer metric scrape target definition (metrics.f5.com)",
         category=ResourceCategory.F5_BNK,
     ),
     # --- IPAM (fic.f5.com) ---
@@ -980,7 +980,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         plural="f5-big-dns-caches",
         namespaced=True,
         display_name="F5 DNS Cache Resolver",
-        description="TMM DNS cache and resolver (required as aigw-dns-resolver for BNK 2.4.1 AI Gateway upstream resolution)",
+        description="TMM DNS cache and resolver (required as aigw-dns-resolver for AI Gateway upstream resolution)",
         category=ResourceCategory.F5_CNF,
     ),
     "f5biggslbinstance": K8sResourceType(
@@ -990,7 +990,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         plural="f5-big-gslb-instances",
         namespaced=True,
         display_name="F5 GSLB Instance",
-        description="BNK 2.4.1 GA Global Server Load Balancing (GSLB) engine instance",
+        description="Global Server Load Balancing (GSLB) engine instance",
         category=ResourceCategory.F5_CNF,
     ),
     "f5biggslbzone": K8sResourceType(
@@ -1000,7 +1000,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         plural="f5-big-gslb-zones",
         namespaced=True,
         display_name="F5 GSLB Zone",
-        description="BNK 2.4.1 GA Global Server Load Balancing DNS zone configuration",
+        description="Global Server Load Balancing DNS zone configuration",
         category=ResourceCategory.F5_CNF,
     ),
     "f5biggslbpool": K8sResourceType(
@@ -1010,7 +1010,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         plural="f5-big-gslb-pools",
         namespaced=True,
         display_name="F5 GSLB Pool",
-        description="BNK 2.4.1 GA Global Server Load Balancing multi-site endpoint pool",
+        description="Global Server Load Balancing multi-site endpoint pool",
         category=ResourceCategory.F5_CNF,
     ),
     "f5biggslbwideip": K8sResourceType(
@@ -1020,7 +1020,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         plural="f5-big-gslb-wideips",
         namespaced=True,
         display_name="F5 GSLB WideIP",
-        description="BNK 2.4.1 GA Global Server Load Balancing WideIP domain routing rule",
+        description="Global Server Load Balancing WideIP domain routing rule",
         category=ResourceCategory.F5_CNF,
     ),
 }

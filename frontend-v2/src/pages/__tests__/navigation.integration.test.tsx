@@ -174,7 +174,7 @@ describe("Navigation Integration", () => {
         "/bnk",
         "/cnf",
         "/ai/agents",
-        "/ai/mcp-gateway",
+        "/ai/token-governance",
         "/ai/llm-router",
         "/ai/logs",
         "/observability/ai-gateway",
@@ -216,7 +216,7 @@ describe("Navigation Integration", () => {
         { route: "/cnf", title: "F5 CNF" },
         { route: "/ai/agents", title: "Agent Fleet" },
         {
-          route: "/ai/mcp-gateway",
+          route: "/ai/token-governance",
           title: "Token Governance and Intelligence",
         },
         { route: "/ai/llm-router", title: "Intelligent Inference" },

@@ -328,7 +328,7 @@ async def get_llm_filterdata(
 
 
 # =============================================================================
-# BNK 2.4.1 Multi-Cluster AI Gateway & DSSM Governance Console Endpoints
+# Multi-Cluster AI Gateway & DSSM Governance Console Endpoints
 # =============================================================================
 
 
@@ -345,6 +345,7 @@ async def get_llm_filterdata(
 @handle_route_errors("get AI gateway governance overview")
 async def get_ai_governance_overview(
     cluster_id: int | None = None,
+    namespace: str | None = Query(default=None, description="Optional Kubernetes namespace filter"),
     project_id: int | None = Query(default=None, description="Optional project ID to filter clusters"),
     db: Session = Depends(get_db),
 ):
@@ -353,6 +354,7 @@ async def get_ai_governance_overview(
         AiGatewayGovernanceService(db).overview,
         cluster_id=cluster_id,
         project_id=project_id,
+        namespace=namespace,
     )
 
 
@@ -611,7 +613,7 @@ async def remediate_ai_gateway(
     cluster_id: int | None = None,
     db: Session = Depends(get_db),
 ):
-    """Execute automated remediation for BNK 2.4.1 readiness checks (controller restart, DNS resolver, Multi-NUMA)."""
+    """Execute automated remediation for AI Gateway readiness checks (controller restart, DNS resolver, Multi-NUMA)."""
     if cluster_id is not None:
         req.cluster_id = cluster_id
     return await asyncio.to_thread(AiGatewayGovernanceService(db).remediate, req)

@@ -43,7 +43,7 @@ const NAV_SHORTCUTS: Record<string, string> = {
   "/crds": "G R",
   "/infrastructure": "G I",
   "/benchmarks": "G E",
-  "/ai/mcp-gateway": "G G",
+  "/ai/token-governance": "G G",
   "/ai/agents": "G N",
   "/ai/llm-router": "G L",
   "/ai/logs": "G Y",

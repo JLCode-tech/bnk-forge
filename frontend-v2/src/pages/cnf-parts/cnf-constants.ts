@@ -32,7 +32,7 @@ export interface CnfCategoryItem {
   crdInfo: CRDInfo;
 }
 
-/** Curated CNF & BNK 2.4.1 category definitions for static reference and enrichment. */
+/** Curated CNF & BNK category definitions for static reference and enrichment. */
 export const CURATED_CNF_CATEGORIES: ReadonlyArray<{
   slug: string;
   category: string;
@@ -40,7 +40,7 @@ export const CURATED_CNF_CATEGORIES: ReadonlyArray<{
 }> = [
   {
     slug: "ai-gateway",
-    category: "AI Governance (2.4.1)",
+    category: "AI Governance",
     keys: [
       "apppolicy",
       "aigatewayprofile",
@@ -72,7 +72,7 @@ export const CURATED_CNF_CATEGORIES: ReadonlyArray<{
   },
   {
     slug: "metrics",
-    category: "Observability & Metrics (2.4.1)",
+    category: "Observability & Metrics",
     keys: ["scrapetemplate", "scrapeclass", "scrape"],
   },
 ];

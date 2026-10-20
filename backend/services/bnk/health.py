@@ -46,12 +46,12 @@ COMPONENT_EXPLANATIONS: dict[str, str] = {
     "controller": "Translates Gateway API resources into data-plane configuration. If unhealthy, config changes won't reach TMM.",
     "crdInstaller": "Installs Custom Resource Definitions required by BNK. If incomplete, some resource types may be unavailable.",
     "analyzer": "Runs traffic analysis for intelligent load balancing. If unhealthy, AI-based traffic distribution is unavailable.",
-    "aigatewayConsole": "Provides the BNK 2.4.1 AI Gateway management console (f5-aigateway-console). Optional unless CNEInstance spec.aiGateway.console is enabled.",
-    "llmGwPlugin": "Runs the BNK 2.4.1 LLM Gateway sidecar plugin (llm-gw-plugin) inside f5-tmm data-plane pods.",
+    "aigatewayConsole": "Provides the AI Gateway management console (f5-aigateway-console). Optional unless CNEInstance spec.aiGateway.console is enabled.",
+    "llmGwPlugin": "Runs the LLM Gateway sidecar plugin (llm-gw-plugin) inside f5-tmm data-plane pods.",
     "tmm": "Processes all network traffic (Traffic Management Microkernel). If unhealthy, traffic routing stops.",
     "gateways": "Kubernetes Gateway API entry point. If unhealthy, no ingress traffic is processed.",
     "vlans": "Provides L2 network segmentation for BNK traffic. If unhealthy, network isolation is broken.",
-    "infra": "Underlay network & IPAM infrastructure (2.4). If unhealthy, TMM has no external network interfaces or self-IPs.",
+    "infra": "Underlay network & IPAM infrastructure. If unhealthy, TMM has no external network interfaces or self-IPs.",
     "irules": "Programmable traffic steering rules. If not accepted, custom traffic logic won't execute.",
 }
 

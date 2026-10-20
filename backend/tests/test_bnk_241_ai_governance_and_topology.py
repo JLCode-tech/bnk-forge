@@ -691,3 +691,16 @@ def test_live_crd_sync_and_no_topology_pollution_without_ai_gateway(monkeypatch)
     assert custom_live["f5bigdnscache"][0]["metadata"]["name"] == "custom-dns-cache"
     assert len(custom_live["f5spkstaticroute"]) == 1
     assert custom_live["f5spkstaticroute"][0]["metadata"]["name"] == "custom-egress-route"
+
+    # Verify namespace filtering on overview()
+    ov_f5 = svc.overview(cluster_id=100, namespace="f5-bnk")
+    assert ov_f5.namespace == "f5-bnk"
+    assert len(ov_f5.providers) == 1
+    assert len(ov_f5.models) == 1
+    assert len(ov_f5.routes) == 1
+
+    ov_other = svc.overview(cluster_id=100, namespace="other-ns")
+    assert ov_other.namespace == "other-ns"
+    assert len(ov_other.providers) == 0
+    assert len(ov_other.models) == 0
+    assert len(ov_other.routes) == 0

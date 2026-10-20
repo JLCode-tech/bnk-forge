@@ -1211,6 +1211,49 @@ export const handlers = [
     });
   }),
 
+  http.get("*/api/k8s/llm-observability/governance/overview", () => {
+    return HttpResponse.json({
+      cluster_id: null,
+      namespace: "f5-bnk",
+      updated_at: "2026-07-01T12:00:00Z",
+      tenants: [],
+      providers: [],
+      models: [],
+      routes: [],
+      organizations: [],
+      teams: [],
+      principals: [],
+      virtual_keys: [],
+      diagnostics: [],
+      request_audit_logs: [],
+      topology_nodes: [],
+      topology_edges: [],
+    });
+  }),
+
+  http.get(
+    "*/api/k8s/clusters/:clusterId/llm-observability/governance/overview",
+    ({ params }) => {
+      return HttpResponse.json({
+        cluster_id: Number(params.clusterId),
+        namespace: "f5-bnk",
+        updated_at: "2026-07-01T12:00:00Z",
+        tenants: [],
+        providers: [],
+        models: [],
+        routes: [],
+        organizations: [],
+        teams: [],
+        principals: [],
+        virtual_keys: [],
+        diagnostics: [],
+        request_audit_logs: [],
+        topology_nodes: [],
+        topology_edges: [],
+      });
+    },
+  ),
+
   // ========================================================================
   // Helm
   // ========================================================================

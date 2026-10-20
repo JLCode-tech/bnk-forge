@@ -254,7 +254,7 @@ export function useNavigationShortcuts() {
     {
       leader: "g",
       followUp: "g",
-      action: () => navigate("/ai/mcp-gateway"),
+      action: () => navigate("/ai/token-governance"),
       description: "Go to Token Governance and Intelligence",
     },
     {

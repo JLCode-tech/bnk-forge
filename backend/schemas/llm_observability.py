@@ -723,7 +723,7 @@ class GatewayInferenceTestRequest(BaseModel):
     virtual_key: str | None = ""
     model: str = "gpt-4o"
     model_id: str | None = None
-    prompt: str = "Explain BNK 2.4.1 TMM + Envoy AI Gateway hybrid data plane."
+    prompt: str = "Explain the F5 TMM + Envoy AI Gateway hybrid data plane."
     simulate_primary_failure: bool = False
 
     @model_validator(mode="after")

@@ -140,9 +140,14 @@ export const navigationSections: NavSection[] = [
     items: [
       {
         name: "Token Governance and Intelligence",
-        href: "/ai/mcp-gateway",
-        matchPaths: ["/ai/mcp-gateway", "/ai/governance"],
-        description: "Model Context Protocol servers & tool governance",
+        href: "/ai/token-governance",
+        matchPaths: [
+          "/ai/token-governance",
+          "/ai/mcp-gateway",
+          "/ai/governance",
+        ],
+        description:
+          "AI Gateway token telemetry, virtual keys, budgets & tenant governance",
         icon: Layers,
         minRole: "viewer",
       },
