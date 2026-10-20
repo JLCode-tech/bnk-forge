@@ -7,10 +7,17 @@
  * Organizations, Teams, Principals, Virtual Keys, Dependency Fabric Topology, and
  * Readiness Diagnostics).
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 // eslint-disable-next-line no-restricted-imports -- Vertical flush sub-sidebar requires Radix TabsList + TabsTrigger
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SectionCard } from "@/components/ui/section-card";
@@ -78,7 +85,7 @@ import {
   type LlmClusterScope,
 } from "@/hooks/useLlmObservability";
 import { useBenchmarkSummary } from "@/hooks/useBenchmarks";
-import { useAllClusters } from "@/hooks/useK8sClusters";
+import { useAllClusters, useClusterNamespaces } from "@/hooks/useK8sClusters";
 import { useTopology } from "@/hooks/useTopology";
 import { ResourceTopologyGraph } from "@/components/k8s/ResourceTopologyGraph";
 import { ResourceDescribeViewer } from "@/components/k8s/ResourceDescribeViewer";
@@ -316,11 +323,14 @@ export default function LlmDashboard() {
   const f = useObservabilityFilters("overview");
   const { data: clustersData } = useAllClusters();
   const clusters = clustersData?.clusters ?? [];
-  const [namespace, setNamespace] = useState<string>("f5-bnk");
+  const [namespace, setNamespace] = useState<string>("all");
   const { data: filterData } = useLlmFilterData(f.clusterId, f.range);
   const { refresh, isRefreshing } = usePageRefresh(LLM_REFRESH_KEYS);
 
   const effectiveClusterId = f.clusterId ?? clusters[0]?.id ?? 1;
+  const { data: namespacesData } = useClusterNamespaces(f.clusterId ?? 0, {
+    enabled: !!f.clusterId,
+  });
 
   const {
     data: govOverview,
@@ -335,6 +345,70 @@ export default function LlmDashboard() {
       ),
   });
 
+  const discoveredNamespaces = useMemo(() => {
+    const nsSet = new Set<string>();
+    for (const ns of namespacesData?.namespaces ?? []) {
+      const nsName = typeof ns === "string" ? ns : ns?.name;
+      if (nsName) nsSet.add(nsName);
+    }
+    const targetClusters = f.clusterId
+      ? clusters.filter((c) => c.id === f.clusterId)
+      : clusters;
+    for (const c of targetClusters) {
+      const clusterNs = (c as { discovered_namespaces?: string[] })
+        .discovered_namespaces;
+      if (Array.isArray(clusterNs)) {
+        for (const ns of clusterNs) {
+          if (ns) nsSet.add(ns);
+        }
+      }
+    }
+    for (const p of govOverview?.providers ?? []) {
+      if (p.namespace) nsSet.add(p.namespace);
+    }
+    for (const m of govOverview?.models ?? []) {
+      if (m.namespace) nsSet.add(m.namespace);
+    }
+    for (const r of govOverview?.routes ?? []) {
+      if (r.namespace) nsSet.add(r.namespace);
+    }
+    return Array.from(nsSet).sort();
+  }, [
+    namespacesData?.namespaces,
+    clusters,
+    f.clusterId,
+    govOverview?.providers,
+    govOverview?.models,
+    govOverview?.routes,
+  ]);
+
+  useEffect(() => {
+    if (
+      namespace !== "all" &&
+      discoveredNamespaces.length > 0 &&
+      !discoveredNamespaces.includes(namespace)
+    ) {
+      setNamespace("all");
+    }
+  }, [f.clusterId, discoveredNamespaces, namespace]);
+
+  const targetNamespace = useMemo(() => {
+    if (namespace !== "all") return namespace;
+    const resourceNs =
+      govOverview?.routes?.[0]?.namespace ||
+      govOverview?.providers?.[0]?.namespace ||
+      govOverview?.models?.[0]?.namespace;
+    if (resourceNs) return resourceNs;
+    if (discoveredNamespaces.includes("f5-bnk")) return "f5-bnk";
+    return discoveredNamespaces[0] ?? "default";
+  }, [
+    namespace,
+    govOverview?.routes,
+    govOverview?.providers,
+    govOverview?.models,
+    discoveredNamespaces,
+  ]);
+
   const { data: llmStats } = useLlmStats(f.clusterId, {
     range: f.range,
     model: f.model,
@@ -347,7 +421,7 @@ export default function LlmDashboard() {
   const hasGovTopology = (govOverview?.topology_nodes?.length ?? 0) > 0;
   const { data: fabricTopology, refetch: refetchTopology } = useTopology(
     effectiveClusterId,
-    namespace,
+    targetNamespace,
     {
       enabled: f.tab === "topology" && !!effectiveClusterId && hasGovTopology,
     },
@@ -436,7 +510,7 @@ export default function LlmDashboard() {
     mutationFn: () =>
       llmObservabilityApi.createProvider(effectiveClusterId, {
         name: newProviderName.trim(),
-        namespace,
+        namespace: targetNamespace,
         tenant_ref: govOverview?.tenants[0]?.name ?? "",
         provider_type: newProviderType,
         endpoint_url: newProviderEndpoint.trim() || null,
@@ -453,7 +527,7 @@ export default function LlmDashboard() {
     mutationFn: () =>
       llmObservabilityApi.createModel(effectiveClusterId, {
         name: newModelName.trim(),
-        namespace,
+        namespace: targetNamespace,
         tenant_ref: govOverview?.tenants[0]?.name ?? "",
         model_id: newModelId.trim() || newModelName.trim(),
         deployments: [
@@ -477,7 +551,7 @@ export default function LlmDashboard() {
     mutationFn: () =>
       llmObservabilityApi.createRoute(effectiveClusterId, {
         name: newRouteName.trim(),
-        namespace,
+        namespace: targetNamespace,
         gateway_name: `${newRouteName.trim()}-gw`,
         vip_address: newRouteVip.trim(),
         port: Number(newRoutePort) || 8080,
@@ -607,7 +681,7 @@ export default function LlmDashboard() {
     mutationFn: (action: string) =>
       llmObservabilityApi.remediate(effectiveClusterId, {
         action,
-        namespace,
+        namespace: targetNamespace,
       }),
     onSuccess: (res) => {
       setRemediationBanner(res.message);
@@ -889,18 +963,33 @@ export default function LlmDashboard() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <Input
-              value={namespace}
-              onChange={(e) => setNamespace(e.target.value || "f5-bnk")}
-              placeholder="Namespace"
-              className="h-8 w-28 text-xs font-mono"
-              title="Kubernetes Namespace"
-            />
             <ClusterPicker
               value={f.clusterId}
               onChange={f.setClusterId}
               showProjectSelector
             />
+            <Select value={namespace} onValueChange={setNamespace}>
+              <SelectTrigger
+                className="h-8 w-44 text-xs"
+                aria-label="Namespace"
+              >
+                <SelectValue placeholder="All Namespaces" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-xs">
+                  All Namespaces
+                </SelectItem>
+                {discoveredNamespaces.map((ns) => (
+                  <SelectItem
+                    key={ns}
+                    value={ns}
+                    className="text-xs font-mono"
+                  >
+                    {ns}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               variant="outline"
               size="sm"
@@ -2379,8 +2468,17 @@ export default function LlmDashboard() {
                   {scopeName}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  · Cross-CRD Dependency Fabric in namespace{" "}
-                  <code className="font-mono text-foreground">{namespace}</code>
+                  · Cross-CRD Dependency Fabric{" "}
+                  {namespace === "all" ? (
+                    "across all namespaces"
+                  ) : (
+                    <>
+                      in namespace{" "}
+                      <code className="font-mono text-foreground">
+                        {namespace}
+                      </code>
+                    </>
+                  )}
                 </span>
               </div>
             </div>
