@@ -2,7 +2,7 @@
  * Tests for URL ?view synchronization in CNF and CRExplorer pages.
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@/test/test-utils";
+import { render, screen, waitFor, fireEvent } from "@/test/test-utils";
 import { STORAGE_KEYS } from "@/lib/storage-keys";
 import CNF from "../CNF";
 import { K8sCrdExplorerPanel } from "../kubernetes/K8sCrdExplorerPanel";
@@ -300,5 +300,146 @@ describe("CrdSchemaDrawerDialog kubectl explain inspector", () => {
       screen.getByText(/VIP \(string\) → \.spec\.ip/i),
     ).toBeInTheDocument();
     expect(screen.getAllByText("required").length).toBeGreaterThanOrEqual(2);
+
+    // Clicking a nested property updates the kubectl explain command path
+    fireEvent.click(screen.getByText("ip"));
+    expect(
+      screen.getByText(/kubectl explain f5bigdnsapps\.spec\.ip/i),
+    ).toBeInTheDocument();
+  });
+
+  it("handles composite allOf/oneOf/additionalProperties schemas and empty openAPIV3Schema", async () => {
+    const { vi } = await import("vitest");
+    const { api } = await import("@/lib/api");
+    const { CrdSchemaDrawerDialog } =
+      await import("../kubernetes/K8sCrdExplorerPanel");
+
+    const spy = vi.spyOn(api, "getCrdSchema").mockResolvedValueOnce({
+      name: "f5bigcgnats.k8s.f5net.com",
+      kind: "F5BigCgnat",
+      plural: "f5bigcgnats",
+      singular: "f5bigcgnat",
+      group: "k8s.f5net.com",
+      version: "v1",
+      scope: "Namespaced",
+      short_names: [],
+      versions: ["v1", "v1alpha1"],
+      open_apiv3_schema: {
+        type: "object",
+        properties: {
+          spec: {
+            type: "object",
+            allOf: [
+              {
+                required: ["sourcePool"],
+                properties: {
+                  sourcePool: {
+                    type: "string",
+                    description: "CGNAT source address pool",
+                  },
+                },
+              },
+            ],
+            properties: {
+              labelsMap: {
+                type: "object",
+                additionalProperties: {
+                  type: "object",
+                  properties: {
+                    tenantId: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      additional_printer_columns: [],
+      conditions: [],
+    });
+
+    const { unmount } = render(
+      <CrdSchemaDrawerDialog
+        open={true}
+        onOpenChange={() => {}}
+        clusterId={1}
+        crd={{
+          name: "f5bigcgnats.k8s.f5net.com",
+          kind: "F5BigCgnat",
+          plural: "f5bigcgnats",
+          group: "k8s.f5net.com",
+          version: "v1",
+          namespaced: true,
+          display_name: "F5BigCgnat",
+          category: "CGNAT",
+          source: "both",
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/CGNAT source address pool/i),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("sourcePool")).toBeInTheDocument();
+    expect(screen.getByText("labelsMap")).toBeInTheDocument();
+
+    unmount();
+
+    // Empty schema fallback
+    spy.mockResolvedValueOnce({
+      name: "empty.k8s.f5net.com",
+      kind: "EmptyCrd",
+      plural: "emptycrds",
+      singular: "emptycrd",
+      group: "k8s.f5net.com",
+      version: "v1",
+      scope: "Namespaced",
+      short_names: [],
+      versions: ["v1"],
+      open_apiv3_schema: {},
+      additional_printer_columns: [],
+      conditions: [],
+    });
+
+    render(
+      <CrdSchemaDrawerDialog
+        open={true}
+        onOpenChange={() => {}}
+        clusterId={1}
+        crd={{
+          name: "empty.k8s.f5net.com",
+          kind: "EmptyCrd",
+          plural: "emptycrds",
+          group: "k8s.f5net.com",
+          version: "v1",
+          namespaced: true,
+          display_name: "EmptyCrd",
+          category: "Other",
+          source: "cluster",
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          /No structural OpenAPIV3Schema properties published for this CRD version/i,
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("exports YAML_TEMPLATES from cnf-constants and cnf-parts barrel", async () => {
+    const { YAML_TEMPLATES, CNF_YAML_TEMPLATES, getCnfYamlTemplate } =
+      await import("../cnf-parts");
+    expect(YAML_TEMPLATES).toBe(CNF_YAML_TEMPLATES);
+    expect(YAML_TEMPLATES.f5bigdnsapps("cnf-ns")).toContain(
+      "kind: F5BigDnsApp",
+    );
+    expect(getCnfYamlTemplate("f5bigcgnats", "telco-ns")).toContain(
+      "kind: F5BigCgnat",
+    );
   });
 });

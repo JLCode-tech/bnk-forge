@@ -45,6 +45,7 @@ import {
   CNFDnsPanel,
   CNFTelcoPanel,
   CNFNetworkGraph,
+  YAML_TEMPLATES,
 } from "./cnf-parts";
 
 export default function CNF() {
@@ -231,6 +232,7 @@ export default function CNF() {
     selectedNamespace === "all" ? undefined : { namespace: selectedNamespace };
 
   const { data: crdsData } = useCrds(selectedCluster ?? 0, {
+    group: ["k8s.f5net.com"],
     enabled: !!selectedCluster && isClusterReachable && view === "overview",
   });
 
@@ -348,7 +350,16 @@ export default function CNF() {
     cgnatInstances.length +
     diameterInstances.length +
     ipamInstances.length;
-  const discoveredCrdsCount = crdsData?.count ?? crdsData?.crds?.length ?? 0;
+  const discoveredCrdsCount = useMemo(() => {
+    const crds = crdsData?.crds ?? [];
+    return crds.filter(
+      (crd) =>
+        crd.group === "k8s.f5net.com" ||
+        crd.group?.endsWith(".f5net.com") ||
+        crd.group?.endsWith(".f5.com") ||
+        Boolean(YAML_TEMPLATES[crd.plural]),
+    ).length;
+  }, [crdsData]);
 
   // ---------------------------------------------------------------------------
   // Refresh Handler

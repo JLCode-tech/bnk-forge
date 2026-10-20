@@ -129,7 +129,7 @@ class AiTenantSummary(BaseModel):
     providers_count: int = 0
 
     @model_validator(mode="after")
-    def _sync_aliases(self) -> "AiTenantSummary":
+    def _sync_aliases(self) -> AiTenantSummary:
         if not self.display_name:
             self.display_name = self.name
         self.status = "Ready" if self.ready else "Degraded"
@@ -157,7 +157,7 @@ class AiProviderSummary(BaseModel):
     status: str = "Ready"
 
     @model_validator(mode="after")
-    def _sync_aliases(self) -> "AiProviderSummary":
+    def _sync_aliases(self) -> AiProviderSummary:
         self.tenant_ref = self.tenant_ref or self.tenant
         self.provider_type = self.provider_type or self.vendor
         self.endpoint_url = self.endpoint_url or self.base_url
@@ -179,7 +179,7 @@ class AiModelDeploymentItem(BaseModel):
     output_per_mtok: int = 0
 
     @model_validator(mode="after")
-    def _sync_aliases(self) -> "AiModelDeploymentItem":
+    def _sync_aliases(self) -> AiModelDeploymentItem:
         if self.provider_ref and not self.provider:
             self.provider = self.provider_ref
         if self.provider and not self.provider_ref:
@@ -208,7 +208,7 @@ class AiModelSummary(BaseModel):
     status: str = "Ready"
 
     @model_validator(mode="after")
-    def _sync_aliases(self) -> "AiModelSummary":
+    def _sync_aliases(self) -> AiModelSummary:
         if not self.public_name and self.model_id:
             self.public_name = self.model_id
         self.model_id = self.model_id or self.public_name or self.name
@@ -262,7 +262,7 @@ class AiGatewayRouteSummary(BaseModel):
     status: str = "Programmed"
 
     @model_validator(mode="after")
-    def _sync_aliases(self) -> "AiGatewayRouteSummary":
+    def _sync_aliases(self) -> AiGatewayRouteSummary:
         self.tenant_ref = self.tenant_ref or self.tenant
         self.port = self.listener_port
         self.ai_gateway_profile = self.ai_gateway_profile or self.name
@@ -302,7 +302,7 @@ class GovernanceOrgItem(BaseModel):
     teams_count: int = 1
 
     @model_validator(mode="after")
-    def _sync_aliases(self) -> "GovernanceOrgItem":
+    def _sync_aliases(self) -> GovernanceOrgItem:
         self.tenant_ref = self.tenant_ref or self.tenant
         self.rpm_limit = self.rate_limit_rpm
         self.tpm_limit = self.rate_limit_tpm
@@ -326,7 +326,7 @@ class GovernanceTeamItem(BaseModel):
     tpm_limit: int = 200000
 
     @model_validator(mode="after")
-    def _sync_aliases(self) -> "GovernanceTeamItem":
+    def _sync_aliases(self) -> GovernanceTeamItem:
         self.rpm_limit = self.rate_limit_rpm
         self.tpm_limit = self.rate_limit_tpm
         return self
@@ -354,7 +354,7 @@ class GovernancePrincipalItem(BaseModel):
     active_keys: int = 1
 
     @model_validator(mode="after")
-    def _sync_aliases(self) -> "GovernancePrincipalItem":
+    def _sync_aliases(self) -> GovernancePrincipalItem:
         self.principal_type = self.kind
         self.rpm_limit = self.rate_limit_rpm
         self.tpm_limit = self.rate_limit_tpm
@@ -386,7 +386,7 @@ class GovernanceVirtualKeyItem(BaseModel):
     expires_at: str | None = None
 
     @model_validator(mode="after")
-    def _sync_aliases(self) -> "GovernanceVirtualKeyItem":
+    def _sync_aliases(self) -> GovernanceVirtualKeyItem:
         self.cleartext_key = self.cleartext_key or self.raw_key
         return self
 
@@ -405,7 +405,7 @@ class AiReadinessCheckItem(BaseModel):
     details: dict[str, str | int | bool | None] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def _sync_aliases(self) -> "AiReadinessCheckItem":
+    def _sync_aliases(self) -> AiReadinessCheckItem:
         self.remediation_hint = self.remediation_hint or self.remediation_label
         return self
 
@@ -442,7 +442,7 @@ class ClickHouseRequestAuditItem(BaseModel):
     error_reason: str | None = None
 
     @model_validator(mode="after")
-    def _sync_audit_aliases(self) -> "ClickHouseRequestAuditItem":
+    def _sync_audit_aliases(self) -> ClickHouseRequestAuditItem:
         if not self.id and self.request_id:
             self.id = self.request_id
         if not self.request_id and self.id:
@@ -478,7 +478,7 @@ class AiGovernanceOverviewResponse(_Envelope):
     topology_edges: list[dict] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _sync_aliases(self) -> "AiGovernanceOverviewResponse":
+    def _sync_aliases(self) -> AiGovernanceOverviewResponse:
         if not self.organizations and self.orgs:
             self.organizations = self.orgs
         if not self.orgs and self.organizations:
@@ -499,7 +499,7 @@ class CreateAiTenantRequest(BaseModel):
     oidc_client_id: str | None = None
 
     @model_validator(mode="after")
-    def _normalize(self) -> "CreateAiTenantRequest":
+    def _normalize(self) -> CreateAiTenantRequest:
         if not self.display_name:
             self.display_name = self.name
         return self
@@ -521,7 +521,7 @@ class CreateAiProviderRequest(BaseModel):
     enabled: bool = True
 
     @model_validator(mode="after")
-    def _normalize(self) -> "CreateAiProviderRequest":
+    def _normalize(self) -> CreateAiProviderRequest:
         if self.tenant_ref:
             self.tenant = self.tenant_ref
         if self.provider_type:
@@ -544,7 +544,7 @@ class CreateAiModelRequest(BaseModel):
     output_token_cost_micro_usd: int = 0
 
     @model_validator(mode="after")
-    def _normalize(self) -> "CreateAiModelRequest":
+    def _normalize(self) -> CreateAiModelRequest:
         if self.tenant_ref:
             self.tenant = self.tenant_ref
         if self.model_id and not self.public_name:
@@ -589,7 +589,7 @@ class CreateAiGatewayRouteRequest(BaseModel):
     providers: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _normalize(self) -> "CreateAiGatewayRouteRequest":
+    def _normalize(self) -> CreateAiGatewayRouteRequest:
         if self.tenant_ref:
             self.tenant = self.tenant_ref
         if self.port is not None:
@@ -615,7 +615,7 @@ class CreateGovernanceOrgRequest(BaseModel):
     tpm_limit: int | None = None
 
     @model_validator(mode="after")
-    def _normalize(self) -> "CreateGovernanceOrgRequest":
+    def _normalize(self) -> CreateGovernanceOrgRequest:
         if self.tenant_ref:
             self.tenant = self.tenant_ref
         if self.rpm_limit is not None:
@@ -638,7 +638,7 @@ class CreateGovernanceTeamRequest(BaseModel):
     tpm_limit: int | None = None
 
     @model_validator(mode="after")
-    def _normalize(self) -> "CreateGovernanceTeamRequest":
+    def _normalize(self) -> CreateGovernanceTeamRequest:
         if self.rpm_limit is not None:
             self.rate_limit_rpm = self.rpm_limit
         if self.tpm_limit is not None:
@@ -662,7 +662,7 @@ class CreateGovernancePrincipalRequest(BaseModel):
     tpm_limit: int | None = None
 
     @model_validator(mode="after")
-    def _normalize(self) -> "CreateGovernancePrincipalRequest":
+    def _normalize(self) -> CreateGovernancePrincipalRequest:
         if self.principal_type:
             self.kind = self.principal_type
         if self.rpm_limit is not None:
@@ -705,7 +705,7 @@ class UpdateAiGatewayRoutePoliciesRequest(BaseModel):
     model_routing_enabled: bool | None = None
 
     @model_validator(mode="after")
-    def _normalize(self) -> "UpdateAiGatewayRoutePoliciesRequest":
+    def _normalize(self) -> UpdateAiGatewayRoutePoliciesRequest:
         if self.semantic_cache_enabled is not None and self.prompt_cache_enabled is None:
             self.prompt_cache_enabled = self.semantic_cache_enabled
         if self.auth_mode:
@@ -727,7 +727,7 @@ class GatewayInferenceTestRequest(BaseModel):
     simulate_primary_failure: bool = False
 
     @model_validator(mode="after")
-    def _normalize_test_req(self) -> "GatewayInferenceTestRequest":
+    def _normalize_test_req(self) -> GatewayInferenceTestRequest:
         if self.model_id:
             self.model = self.model_id
         else:
@@ -767,7 +767,7 @@ class GatewayInferenceTestResponse(BaseModel):
     audit_record: ClickHouseRequestAuditItem | None = None
 
     @model_validator(mode="after")
-    def _sync_test_resp_aliases(self) -> "GatewayInferenceTestResponse":
+    def _sync_test_resp_aliases(self) -> GatewayInferenceTestResponse:
         if not self.semantic_cache_status:
             self.semantic_cache_status = self.cache_status
         self.estimated_cost_usd = self.cost_usd
@@ -801,7 +801,7 @@ class AiGovernanceMutationResponse(BaseModel):
     cleartext_key: str | None = None
 
     @model_validator(mode="after")
-    def _populate_entity_shortcuts(self) -> "AiGovernanceMutationResponse":
+    def _populate_entity_shortcuts(self) -> AiGovernanceMutationResponse:
         if self.manifests_applied and not self.applied_yaml:
             import yaml
 

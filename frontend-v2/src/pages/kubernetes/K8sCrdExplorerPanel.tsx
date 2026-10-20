@@ -777,6 +777,54 @@ interface SchemaNodeProps {
   properties?: Record<string, SchemaNodeProps>;
   items?: SchemaNodeProps;
   additionalProperties?: boolean | SchemaNodeProps;
+  allOf?: SchemaNodeProps[];
+  anyOf?: SchemaNodeProps[];
+  oneOf?: SchemaNodeProps[];
+}
+
+function extractSchemaChildren(node: SchemaNodeProps): {
+  childProps: Record<string, SchemaNodeProps>;
+  childRequired: Set<string>;
+} {
+  const mergedProps: Record<string, SchemaNodeProps> = {};
+  const requiredSet = new Set<string>(
+    node.required ?? node.items?.required ?? [],
+  );
+
+  const directProps =
+    node.properties ??
+    node.items?.properties ??
+    (typeof node.additionalProperties === "object" &&
+    node.additionalProperties !== null
+      ? node.additionalProperties.properties
+      : undefined);
+
+  if (directProps) {
+    Object.assign(mergedProps, directProps);
+  }
+  if (
+    typeof node.additionalProperties === "object" &&
+    node.additionalProperties !== null &&
+    Array.isArray(node.additionalProperties.required)
+  ) {
+    for (const r of node.additionalProperties.required) requiredSet.add(r);
+  }
+
+  const compositeBranches = [
+    ...(node.allOf ?? []),
+    ...(node.anyOf ?? []),
+    ...(node.oneOf ?? []),
+  ];
+  for (const branch of compositeBranches) {
+    if (branch?.properties) {
+      Object.assign(mergedProps, branch.properties);
+    }
+    if (Array.isArray(branch?.required)) {
+      for (const r of branch.required) requiredSet.add(r);
+    }
+  }
+
+  return { childProps: mergedProps, childRequired: requiredSet };
 }
 
 function schemaNodeMatchesFilter(
@@ -793,8 +841,8 @@ function schemaNodeMatchesFilter(
   ) {
     return true;
   }
-  const childProps = node.properties ?? node.items?.properties;
-  if (childProps) {
+  const { childProps } = extractSchemaChildren(node);
+  if (Object.keys(childProps).length > 0) {
     return Object.entries(childProps).some(([k, v]) =>
       schemaNodeMatchesFilter(k, v, query),
     );
@@ -821,9 +869,11 @@ function SchemaPropertyNode({
   selectedPath: string;
   onSelectPath: (path: string) => void;
 }) {
-  const childProps = node.properties ?? node.items?.properties;
-  const childRequired = new Set(node.required ?? node.items?.required ?? []);
-  const hasChildren = !!childProps && Object.keys(childProps).length > 0;
+  const { childProps, childRequired } = useMemo(
+    () => extractSchemaChildren(node),
+    [node],
+  );
+  const hasChildren = Object.keys(childProps).length > 0;
 
   const [expanded, setExpanded] = useState<boolean>(
     depth === 0 && (name === "spec" || name === "status"),
@@ -952,7 +1002,7 @@ export function CrdSchemaDrawerDialog({
   crd: CRDInfo | null;
 }) {
   const [selectedVersion, setSelectedVersion] = useState<string | undefined>(
-    undefined,
+    crd?.version ?? undefined,
   );
   const [fieldSearch, setFieldSearch] = useState("");
   const [selectedFieldPath, setSelectedFieldPath] = useState("spec");
@@ -996,9 +1046,15 @@ export function CrdSchemaDrawerDialog({
             {schemaData?.versions && schemaData.versions.length > 1 && (
               <Select
                 value={selectedVersion ?? schemaData.version ?? ""}
-                onValueChange={(v) => setSelectedVersion(v)}
+                onValueChange={(v) => {
+                  setSelectedVersion(v);
+                  setSelectedFieldPath("spec");
+                }}
               >
-                <SelectTrigger className="h-7 w-28 text-xs font-mono">
+                <SelectTrigger
+                  className="h-7 w-28 text-xs font-mono"
+                  aria-label="CRD Schema Version"
+                >
                   <SelectValue placeholder="Version" />
                 </SelectTrigger>
                 <SelectContent>

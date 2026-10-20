@@ -376,6 +376,8 @@ const CNF_TEMPLATE_ALIASES: Record<string, string> = {
   f5bigipam: "f5bigipams",
 };
 
+export const YAML_TEMPLATES = CNF_YAML_TEMPLATES;
+
 /**
  * Look up a YAML template for a CNF or BNK 2.4.1 resource key or `<plural>.<group>` CRD name.
  */

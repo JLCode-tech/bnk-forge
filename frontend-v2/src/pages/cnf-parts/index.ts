@@ -14,5 +14,9 @@ export { CNFOverview } from "./CNFOverview";
 export { CNFDnsPanel } from "./CNFDnsPanel";
 export { CNFTelcoPanel } from "./CNFTelcoPanel";
 export { CNFNetworkGraph } from "./CNFNetworkGraph";
-export { CNF_YAML_TEMPLATES, getCnfYamlTemplate } from "./cnf-constants";
+export {
+  CNF_YAML_TEMPLATES,
+  YAML_TEMPLATES,
+  getCnfYamlTemplate,
+} from "./cnf-constants";
 export type { CnfCategory, CnfCategoryItem, CRDInfo } from "./cnf-constants";

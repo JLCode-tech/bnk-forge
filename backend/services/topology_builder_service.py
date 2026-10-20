@@ -647,9 +647,9 @@ def _assemble_custom_fabric_topology(
                     a.get("value") for a in (status.get("addresses") or []) if isinstance(a, dict) and a.get("value")
                 ]
                 listeners = [
-                    f"{l.get('name', 'port')}:{l.get('port', '')}"
-                    for l in (spec.get("listeners") or [])
-                    if isinstance(l, dict)
+                    f"{listener.get('name', 'port')}:{listener.get('port', '')}"
+                    for listener in (spec.get("listeners") or [])
+                    if isinstance(listener, dict)
                 ]
                 meta.update(
                     {
