@@ -77,21 +77,35 @@ interface FleetAgent {
 type AgentFleetTab =
   | "fleet"
   | "discovery"
-  | "templates"
-  | "irules"
   | "reference";
+
+type ReferenceSection = "protocol" | "templates" | "irules";
 
 function resolveAgentFleetTab(raw: string | null): AgentFleetTab {
   if (raw === "scanner" || raw === "discovery") return "discovery";
+  if (
+    raw === "templates" ||
+    raw === "irules" ||
+    raw === "protocol" ||
+    raw === "reference"
+  ) {
+    return "reference";
+  }
+  return "fleet";
+}
+
+function resolveReferenceSection(raw: string | null): ReferenceSection {
   if (raw === "templates") return "templates";
   if (raw === "irules") return "irules";
-  if (raw === "protocol" || raw === "reference") return "reference";
-  return "fleet";
+  return "protocol";
 }
 
 export default function AgentFleetPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const urlTab = resolveAgentFleetTab(searchParams.get("tab"));
+  const [refSection, setRefSection] = useState<ReferenceSection>(() =>
+    resolveReferenceSection(searchParams.get("tab")),
+  );
   const { refresh, isRefreshing } = usePageRefresh([
     ["k8s", "clusters"],
     ["llm-observability"],
@@ -113,7 +127,11 @@ export default function AgentFleetPage() {
 
   useEffect(() => {
     setActiveTab(urlTab);
-  }, [urlTab]);
+    const rawTab = searchParams.get("tab");
+    if (rawTab === "templates" || rawTab === "irules" || rawTab === "protocol") {
+      setRefSection(resolveReferenceSection(rawTab));
+    }
+  }, [urlTab, searchParams]);
 
   const handleTabChange = (nextTab: string) => {
     const valid = resolveAgentFleetTab(nextTab);
@@ -135,8 +153,8 @@ export default function AgentFleetPage() {
 
   const agentQueries = useQueries({
     queries: targetClusterIds.map((cid) => ({
-      queryKey: queryKeys.k8s.clusters.a2aAgents(cid, { probe: false }),
-      queryFn: () => api.getA2AAgents(cid, { probe: false }),
+      queryKey: queryKeys.k8s.clusters.a2aAgents(cid, { probe: true }),
+      queryFn: () => api.getA2AAgents(cid, { probe: true }),
       enabled: !!cid && activeTab === "fleet",
     })),
   });
@@ -227,7 +245,7 @@ export default function AgentFleetPage() {
   // Query live observability stats for selected cluster scope
   const { data: llmStats, isLoading: statsLoading } = useLlmStats(
     selectedClusterId,
-    { range: "24h" },
+    { range: "6h" },
     activeTab === "fleet",
   );
 
@@ -248,31 +266,19 @@ export default function AgentFleetPage() {
       ? {
           title: "A2A Discovery Scanner",
           subtitle:
-            "Scan Kubernetes namespaces for A2A Agent Card endpoints and MCP tool servers.",
+            "Scan Kubernetes namespaces across clusters for A2A Agent Card endpoints and MCP tool servers.",
         }
-      : activeTab === "templates"
+      : activeTab === "reference"
         ? {
-            title: "Agent Deployment Templates",
+            title: "Reference, Templates & F5 iRules",
             subtitle:
-              "Ready-to-deploy A2A agent and gateway routing manifests for BNK.",
+              "Consolidated A2A Protocol Specification, Agent Deployment Templates, and Curated F5 In-Line iRules.",
           }
-        : activeTab === "irules"
-          ? {
-              title: "F5 In-Line iRules",
-              subtitle:
-                "Curated programmable traffic inspection and A2A policy iRules.",
-            }
-          : activeTab === "reference"
-            ? {
-                title: "A2A Protocol Reference",
-                subtitle:
-                  "Agent-to-Agent (A2A) specification, identity schemas, and capability cards.",
-              }
-            : {
-                title: "Discovered Agent Fleet",
-                subtitle:
-                  "Discovered A2A agents and MCP tool services behind F5 BIG-IP Next for Kubernetes gateways.",
-              };
+        : {
+            title: "Discovered Agent Fleet",
+            subtitle:
+              "Discovered A2A agents and MCP tool services behind F5 BIG-IP Next for Kubernetes gateways.",
+          };
 
   return (
     <Tabs
@@ -319,25 +325,11 @@ export default function AgentFleetPage() {
               <span className="truncate">A2A Discovery Scanner</span>
             </TabsTrigger>
             <TabsTrigger
-              value="templates"
-              className="w-full justify-start gap-2 px-2.5 py-1.5 text-xs font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
-            >
-              <Layers className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">Templates</span>
-            </TabsTrigger>
-            <TabsTrigger
-              value="irules"
-              className="w-full justify-start gap-2 px-2.5 py-1.5 text-xs font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
-            >
-              <Code2 className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">F5 In-Line iRules</span>
-            </TabsTrigger>
-            <TabsTrigger
               value="reference"
               className="w-full justify-start gap-2 px-2.5 py-1.5 text-xs font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
             >
               <BookOpen className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">A2A Protocol Reference</span>
+              <span className="truncate">Reference &amp; Templates</span>
             </TabsTrigger>
           </TabsList>
         </div>
@@ -406,7 +398,7 @@ export default function AgentFleetPage() {
                 icon={ShieldCheck}
                 tone="success"
                 loading={statsLoading}
-                subtext="Past 24 hours"
+                subtext="Past 6 hours"
               />
               <StatTile
                 label="Delivery Success Rate"
@@ -623,33 +615,62 @@ export default function AgentFleetPage() {
             {/* Tab 2: Discovery Scanner */}
             <TabsContent value="discovery" className="mt-0">
               <A2AAgentDiscovery
-                clusterId={effectiveClusterId}
+                clusterId={selectedClusterId}
+                clusters={clusters}
                 namespace={undefined}
               />
             </TabsContent>
 
-            {/* Tab 3: Templates */}
-            <TabsContent value="templates" className="mt-0">
-              <A2ATemplates
-                clusterId={effectiveClusterId}
-                namespace={undefined}
-              />
-            </TabsContent>
+            {/* Tab 3: Consolidated Reference, Templates & F5 iRules */}
+            <TabsContent value="reference" className="mt-0 space-y-4">
+              <div className="flex flex-wrap items-center gap-2 p-1.5 rounded-lg border border-border bg-muted/30 w-fit">
+                <Button
+                  size="sm"
+                  variant={refSection === "protocol" ? "default" : "ghost"}
+                  className="h-7 text-xs gap-1.5"
+                  onClick={() => setRefSection("protocol")}
+                >
+                  <BookOpen className="h-3.5 w-3.5" />
+                  A2A Protocol Reference
+                </Button>
+                <Button
+                  size="sm"
+                  variant={refSection === "templates" ? "default" : "ghost"}
+                  className="h-7 text-xs gap-1.5"
+                  onClick={() => setRefSection("templates")}
+                >
+                  <Layers className="h-3.5 w-3.5" />
+                  Agent Templates
+                </Button>
+                <Button
+                  size="sm"
+                  variant={refSection === "irules" ? "default" : "ghost"}
+                  className="h-7 text-xs gap-1.5"
+                  onClick={() => setRefSection("irules")}
+                >
+                  <Code2 className="h-3.5 w-3.5" />
+                  F5 In-Line iRules
+                </Button>
+              </div>
 
-            {/* Tab 4: Curated iRules */}
-            <TabsContent value="irules" className="mt-0">
-              <A2AIRuleLibrary
-                clusterId={effectiveClusterId}
-                namespace={undefined}
-              />
-            </TabsContent>
-
-            {/* Tab 5: Spec Reference */}
-            <TabsContent value="reference" className="mt-0">
-              <A2AProtocolReference
-                clusterId={effectiveClusterId}
-                namespace={undefined}
-              />
+              {refSection === "protocol" && (
+                <A2AProtocolReference
+                  clusterId={effectiveClusterId}
+                  namespace={undefined}
+                />
+              )}
+              {refSection === "templates" && (
+                <A2ATemplates
+                  clusterId={effectiveClusterId}
+                  namespace={undefined}
+                />
+              )}
+              {refSection === "irules" && (
+                <A2AIRuleLibrary
+                  clusterId={effectiveClusterId}
+                  namespace={undefined}
+                />
+              )}
             </TabsContent>
           </>
         )}
@@ -659,8 +680,8 @@ export default function AgentFleetPage() {
           open={!!selectedAgent}
           onOpenChange={(open) => !open && setSelectedAgent(null)}
         >
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
+          <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+            <DialogHeader className="shrink-0">
               <DialogTitle className="flex items-center gap-2 text-base tabular-nums">
                 <Bot className="h-4 w-4 text-primary" />
                 {selectedAgent?.name} (v{selectedAgent?.version})
@@ -668,7 +689,7 @@ export default function AgentFleetPage() {
             </DialogHeader>
 
             {selectedAgent && (
-              <div className="space-y-4 pt-2">
+              <div className="space-y-4 pt-2 overflow-y-auto pr-1 flex-1 min-h-0">
                 <div className="grid grid-cols-2 gap-3 text-xs border p-3 rounded-md bg-muted/20">
                   <div>
                     <span className="text-muted-foreground block text-2xs">
@@ -706,7 +727,7 @@ export default function AgentFleetPage() {
                   <p className="text-xs font-semibold mb-1 text-foreground">
                     A2A Agent Card Spec (JSON):
                   </p>
-                  <pre className="p-3 rounded-md bg-muted font-mono text-xs overflow-x-auto border text-foreground/90 max-h-72">
+                  <pre className="p-3 rounded-md bg-muted font-mono text-xs overflow-auto whitespace-pre-wrap break-words border text-foreground/90 max-h-80">
                     {JSON.stringify(selectedAgent.cardJson, null, 2)}
                   </pre>
                 </div>

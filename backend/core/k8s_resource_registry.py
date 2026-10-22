@@ -340,6 +340,13 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         "Gateway API Inference Extension model header rewriter",
         api_version="v1alpha2",
     ),
+    "inferencemodel": _gaie_resource(
+        "InferenceModelRewrite",
+        "inferencemodelrewrites",
+        "Inference Model (GAIE)",
+        "Gateway API Inference Extension model header rewriter",
+        api_version="v1alpha2",
+    ),
     # =========================================================================
     # CERT-MANAGER RESOURCES
     # =========================================================================

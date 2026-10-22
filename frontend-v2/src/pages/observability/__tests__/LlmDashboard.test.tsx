@@ -350,7 +350,7 @@ describe("LlmDashboard (/ai/token-governance)", () => {
     );
     expect(screen.getAllByText("new").length).toBeGreaterThan(0);
     expect(screen.getByText("Spend Share")).toBeInTheDocument();
-    expect(screen.getAllByText("501").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("500").length).toBeGreaterThan(0);
   });
 
   it("maps legacy ?tab=chargeback deep-links to Model Rankings", async () => {

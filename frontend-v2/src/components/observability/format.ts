@@ -22,6 +22,7 @@ export function fmtCost(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return '—';
   if (value === 0) return '$0.00';
   if (Math.abs(value) < 0.01) return `$${value.toFixed(4)}`;
+  if (Math.abs(value) < 1) return `$${value.toFixed(3)}`;
   return `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 

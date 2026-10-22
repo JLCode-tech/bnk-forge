@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -81,10 +82,132 @@ _VENDOR_SETTINGS_KEY_MAP: dict[str, str] = {
     "generic": "generic",
 }
 
+_CANONICAL_PROVIDER_TYPE_MAP: dict[str, str] = {
+    "openai": "OpenAI",
+    "anthropic": "Anthropic",
+    "azureopenai": "AzureOpenAI",
+    "azurefoundry": "AzureFoundry",
+    "bedrock": "Bedrock",
+    "gemini": "Gemini",
+    "generic": "Generic",
+}
+
 
 def _vendor_settings_key(vendor: str) -> str:
     """Return the BNK 2.4.1 AIProvider spec block name for the given vendor."""
     return _VENDOR_SETTINGS_KEY_MAP.get((vendor or "generic").strip().lower(), "generic")
+
+
+def _canonical_provider_type(vendor: str) -> str:
+    """Return the canonical BNK 2.4.1 AIProvider.spec.type value (Manual Section 4.2)."""
+    return _CANONICAL_PROVIDER_TYPE_MAP.get((vendor or "generic").strip().lower(), "Generic")
+
+
+def _canonical_dialect(dialect: str | None) -> str | None:
+    """Normalize AIProvider.spec.generic.dialect to OpenAIChat or AnthropicMessages."""
+    if not dialect:
+        return None
+    d_low = dialect.strip().lower()
+    if d_low in ("anthropicmessages", "anthropic", "messages"):
+        return "AnthropicMessages"
+    if d_low in ("openaichat", "openai", "chat"):
+        return "OpenAIChat"
+    return dialect.strip()
+
+
+def _build_profile_auth_spec(route: dict[str, Any]) -> dict[str, Any]:
+    """Build AIGatewayProfile.spec.auth per BNK 2.4.1 Manual Section 4.5.2."""
+    auth_spec: dict[str, Any] = {}
+    if route.get("virtual_keys_enabled", True):
+        auth_spec["virtualKeys"] = {"required": True}
+    if route.get("jwt_enabled"):
+        jwt_spec: dict[str, Any] = {}
+        if route.get("jwt_issuer"):
+            jwt_spec["issuer"] = route["jwt_issuer"]
+        jwt_spec["audiences"] = route.get("jwt_audiences") or ["ai-gateway"]
+        if route.get("jwks_uri"):
+            jwt_spec["jwksUri"] = route["jwks_uri"]
+        if route.get("jwks_refresh_interval"):
+            jwt_spec["jwksRefreshInterval"] = route["jwks_refresh_interval"]
+        if route.get("jwt_secret_ref"):
+            jwt_spec["secretRef"] = {"name": route["jwt_secret_ref"]}
+        if route.get("jwt_header"):
+            jwt_spec["header"] = route["jwt_header"]
+        if route.get("jwt_scheme"):
+            jwt_spec["scheme"] = route["jwt_scheme"]
+        if route.get("jwt_clock_skew"):
+            jwt_spec["clockSkew"] = route["jwt_clock_skew"]
+        if route.get("jwt_principal_claim"):
+            jwt_spec["principalClaim"] = route["jwt_principal_claim"]
+        if route.get("jwt_team_claim"):
+            jwt_spec["teamClaim"] = route["jwt_team_claim"]
+        if route.get("jwt_org_claim"):
+            jwt_spec["orgClaim"] = route["jwt_org_claim"]
+        auth_spec["jwt"] = jwt_spec
+    return auth_spec
+
+
+def _build_profile_model_routing_spec(route: dict[str, Any]) -> dict[str, Any] | None:
+    """Build AIGatewayProfile.spec.modelRouting per BNK 2.4.1 Manual Section 4.5.5."""
+    if not route.get("model_routing_enabled"):
+        return None
+    sem_port = int(route.get("semantic_router_port") or 8000)
+    sem_router: dict[str, Any] = {
+        "serviceRef": {
+            "name": "vllmsr",
+            "port": sem_port,
+        },
+        "timeout": str(route.get("semantic_router_timeout") or "5s"),
+    }
+    return {"semanticRouter": sem_router}
+
+
+def _build_vllmsr_externalname_service(route: dict[str, Any]) -> dict[str, Any] | None:
+    """Build a cross-namespace Service/vllmsr (type: ExternalName) when semantic routing targets an external namespace/service."""
+    if not route.get("model_routing_enabled"):
+        return None
+    r_ns = (route.get("namespace") or "f5-bnk").strip()
+    vsr_ns = (route.get("semantic_router_namespace") or "").strip()
+    vsr_svc = (route.get("semantic_router_service") or "").strip()
+    if not vsr_ns and not vsr_svc:
+        return None
+    target_svc = vsr_svc or "vsr-service"
+    target_ns = vsr_ns or r_ns
+    if target_ns == r_ns and target_svc == "vllmsr":
+        return None
+    sem_port = int(route.get("semantic_router_port") or 8000)
+    return {
+        "apiVersion": "v1",
+        "kind": "Service",
+        "metadata": {"name": "vllmsr", "namespace": r_ns},
+        "spec": {
+            "type": "ExternalName",
+            "externalName": f"{target_svc}.{target_ns}.svc.cluster.local",
+            "ports": [{"name": "extproc", "port": sem_port, "targetPort": sem_port, "protocol": "TCP"}],
+        },
+    }
+
+
+def _build_profile_providers_spec(route: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build route-scoped AIGatewayProfile.spec.providers filter with optional credentialRef (Manual Section 4.5.6)."""
+    prov_creds: dict[str, str] = dict(route.get("provider_credentials") or {})
+    for ov in route.get("provider_overrides") or []:
+        if isinstance(ov, dict) and ov.get("name") and ov.get("credential_ref"):
+            prov_creds[str(ov["name"])] = str(ov["credential_ref"])
+    prov_names: list[str] = list(route.get("providers") or [])
+    for pname in prov_creds:
+        if pname not in prov_names:
+            prov_names.append(pname)
+    entries: list[dict[str, Any]] = []
+    for pname in prov_names:
+        if not pname:
+            continue
+        entry: dict[str, Any] = {"name": pname}
+        cred = prov_creds.get(pname)
+        if cred:
+            entry["credentialRef"] = {"name": cred}
+        entries.append(entry)
+    return entries
 
 
 # ---------------------------------------------------------------------------
@@ -124,8 +247,9 @@ def _sync_derived_fields(state: dict[str, Any]) -> dict[str, Any]:
         )
 
     prin_by_id = {pr["id"]: pr for pr in principals}
+    prin_by_name = {pr["name"]: pr for pr in principals}
     for vk in vkeys:
-        pr = prin_by_id.get(vk.get("principal_id", ""))
+        pr = prin_by_id.get(vk.get("principal_id", "")) or prin_by_name.get(vk.get("principal_name", ""))
         if pr:
             vk["principal_name"] = pr["name"]
             vk["principal_type"] = pr.get("kind", "service")
@@ -136,7 +260,47 @@ def _sync_derived_fields(state: dict[str, Any]) -> dict[str, Any]:
             vk.setdefault("rpm_limit", pr.get("rate_limit_rpm", 120))
             vk.setdefault("tpm_limit", pr.get("rate_limit_tpm", 60000))
             vk.setdefault("monthly_budget_usd", pr.get("monthly_budget_usd", 50.0))
-        vk.setdefault("spend_usd", 0.0)
+        vk_spend = max(
+            float(vk.get("spend_usd") or 0.0),
+            float(vk.get("current_spend_usd") or 0.0),
+            float(pr.get("current_spend_usd") or 0.0) if pr and pr.get("active_keys", 1) <= 1 else 0.0,
+        )
+        vk["spend_usd"] = round(vk_spend, 4)
+        vk["current_spend_usd"] = round(vk_spend, 4)
+
+    for pr in principals:
+        pr_vk_spend = sum(
+            float(vk.get("current_spend_usd") or vk.get("spend_usd") or 0.0)
+            for vk in vkeys
+            if vk.get("principal_id") == pr["id"] or vk.get("principal_name") == pr["name"]
+        )
+        pr["current_spend_usd"] = round(max(float(pr.get("current_spend_usd") or 0.0), pr_vk_spend), 4)
+
+    for vk in vkeys:
+        pr = prin_by_id.get(vk.get("principal_id", "")) or prin_by_name.get(vk.get("principal_name", ""))
+        if pr and pr.get("active_keys", 1) <= 1:
+            best = round(max(float(vk.get("current_spend_usd") or 0.0), float(pr.get("current_spend_usd") or 0.0)), 4)
+            vk["spend_usd"] = best
+            vk["current_spend_usd"] = best
+
+    for tm in teams:
+        tm_prin_spend = sum(
+            float(pr.get("current_spend_usd") or 0.0)
+            for pr in principals
+            if pr.get("team_id") == tm["id"] or pr.get("team_name") == tm["name"]
+        )
+        tm["current_spend_usd"] = round(max(float(tm.get("current_spend_usd") or 0.0), tm_prin_spend), 4)
+
+    for o in state.get("orgs", []):
+        org_team_spend = sum(
+            float(tm.get("current_spend_usd") or 0.0)
+            for tm in teams
+            if tm.get("org_id") == o["id"] or tm.get("org_name") == o["name"]
+        )
+        org_prin_spend = sum(
+            float(pr.get("current_spend_usd") or 0.0) for pr in principals if pr.get("org_id") == o["id"]
+        )
+        o["current_spend_usd"] = round(max(float(o.get("current_spend_usd") or 0.0), org_team_spend, org_prin_spend), 4)
 
     return state
 
@@ -249,9 +413,20 @@ def _build_k8s_custom_resources_from_state(state: dict[str, Any]) -> dict[str, l
                 },
                 "spec": {
                     "cacheType": "net-resolver",
-                    "ipv4": True,
-                    "ipv6": False,
-                    "netResolver": {"forwardZones": [{"name": ".", "nameservers": ["10.96.0.10:53", "8.8.8.8:53"]}]},
+                    "netResolver": {
+                        "useIpv4": True,
+                        "useIpv6": False,
+                        "forwardZones": [
+                            {
+                                "forwardZone": ".",
+                                "nameServers": [
+                                    {"ipAddress": "10.96.0.10", "port": 53},
+                                    {"ipAddress": "8.8.8.8", "port": 53},
+                                    {"ipAddress": "1.1.1.1", "port": 53},
+                                ],
+                            }
+                        ],
+                    },
                 },
                 "status": {"conditions": [{"type": "Ready", "status": "True", "reason": "Programmed"}]},
             }
@@ -307,7 +482,20 @@ def _build_k8s_custom_resources_from_state(state: dict[str, Any]) -> dict[str, l
     for p in state.get("providers", []):
         cred_name = p.get("credential_name") or f"{p['name']}-cred"
         sec_name = p.get("secret_name") or f"{p['name']}-secret"
-        vkey = _vendor_settings_key(p.get("vendor", "Generic"))
+        canonical_type = _canonical_provider_type(p.get("vendor", "Generic"))
+        vkey = _vendor_settings_key(canonical_type)
+        vblock: dict[str, Any] = {"baseURL": p["base_url"]} if p.get("base_url") else {}
+        if canonical_type == "Generic" and p.get("dialect"):
+            vblock["dialect"] = _canonical_dialect(p.get("dialect")) or "OpenAIChat"
+        elif canonical_type == "Bedrock" and p.get("region"):
+            vblock["region"] = p["region"]
+        elif canonical_type == "AzureOpenAI":
+            if p.get("deployment"):
+                vblock["deployment"] = p["deployment"]
+            if p.get("api_version"):
+                vblock["apiVersion"] = p["api_version"]
+        elif canonical_type == "AzureFoundry" and p.get("api_version"):
+            vblock["apiVersion"] = p["api_version"]
         custom["aiprovider"].append(
             {
                 "metadata": {
@@ -317,8 +505,10 @@ def _build_k8s_custom_resources_from_state(state: dict[str, Any]) -> dict[str, l
                 },
                 "spec": {
                     "tenantRef": {"name": p["tenant"]},
+                    "type": canonical_type,
                     "vendor": p["vendor"],
-                    vkey: {"baseURL": p.get("base_url")} if p.get("base_url") else {},
+                    **({"endpointURL": p["base_url"]} if p.get("base_url") else {}),
+                    vkey: vblock,
                     "credentialRef": {"name": cred_name},
                     "enabled": p.get("enabled", True),
                 },
@@ -374,7 +564,7 @@ def _build_k8s_custom_resources_from_state(state: dict[str, Any]) -> dict[str, l
                             "name": d["name"],
                             "providerRef": {"name": d["provider"]},
                             "upstream": d["upstream"],
-                            "dialects": d.get("dialects", ["openai"]),
+                            "dialects": d.get("dialects", ["OpenAIChat"]),
                             "weight": d.get("weight", 100),
                             "state": d.get("state", "Active"),
                             "pricing": {
@@ -447,32 +637,42 @@ def _build_k8s_custom_resources_from_state(state: dict[str, Any]) -> dict[str, l
                 },
             }
         )
+        prof_mrouting = _build_profile_model_routing_spec(r)
+        prof_providers = _build_profile_providers_spec(r)
         custom["aigatewayprofile"].append(
             {
-                "metadata": {"name": prof_name, "namespace": r_ns, "uid": f"prof-{prof_name}-{state['cluster_id']}"},
-                "spec": {
-                    "tenantRef": {"name": r["tenant"]},
-                    "auth": {
-                        "virtualKeys": {} if r.get("virtual_keys_enabled", True) else None,
-                        "jwt": {"audiences": r.get("jwt_audiences", ["ai-gateway"])} if r.get("jwt_enabled") else None,
-                    },
-                    "failover": {
-                        "on429": r.get("failover_on_429", True),
-                        "on5xx": r.get("failover_on_5xx", True),
-                        "maxAttempts": r.get("failover_max_attempts", 3),
-                    }
-                    if r.get("failover_enabled", True)
-                    else None,
-                    "promptCache": {
-                        "poolMaxSize": r.get("semantic_cache_pool_max_size", 64),
-                        "poolIdleTimeout": r.get("semantic_cache_pool_idle_timeout", "300s"),
+                "metadata": {
+                    "name": prof_name,
+                    "namespace": r_ns,
+                    "uid": f"prof-{prof_name}-{state['cluster_id']}",
+                    "annotations": {
+                        "inference.k8s.f5.com/semantic_cache_pool_max_size": str(
+                            r.get("semantic_cache_pool_max_size") or 64
+                        ),
+                        "inference.k8s.f5.com/semantic_cache_pool_idle_timeout": str(
+                            r.get("semantic_cache_pool_idle_timeout") or "300s"
+                        ),
                     }
                     if r.get("prompt_cache_enabled")
-                    else None,
-                    "modelRouting": {"defaultModelRef": {"name": r["default_model_ref"]}}
-                    if r.get("model_routing_enabled") and r.get("default_model_ref")
-                    else None,
-                    "providers": [{"providerRef": {"name": pname}} for pname in r.get("providers", [])],
+                    else {},
+                },
+                "spec": {
+                    "tenantRef": {"name": r["tenant"]},
+                    "auth": _build_profile_auth_spec(r),
+                    **(
+                        {
+                            "failover": {
+                                "on429": r.get("failover_on_429", True),
+                                "on5xx": r.get("failover_on_5xx", True),
+                                "maxAttempts": r.get("failover_max_attempts", 3),
+                            }
+                        }
+                        if r.get("failover_enabled", True)
+                        else {}
+                    ),
+                    **({"promptCache": {}} if r.get("prompt_cache_enabled") else {}),
+                    **({"modelRouting": prof_mrouting} if prof_mrouting else {}),
+                    **({"providers": prof_providers} if prof_providers else {}),
                 },
                 "status": {
                     "conditions": [
@@ -486,6 +686,9 @@ def _build_k8s_custom_resources_from_state(state: dict[str, Any]) -> dict[str, l
                 },
             }
         )
+        vllmsr_svc = _build_vllmsr_externalname_service(r)
+        if vllmsr_svc is not None:
+            custom.setdefault("service", []).append(vllmsr_svc)
         custom["apppolicy"].append(
             {
                 "metadata": {
@@ -543,6 +746,9 @@ class AiGatewayGovernanceService:
         # Skip live K8s API calls if no real cluster rows exist in DB (e.g. unit test MagicMock)
         if self.db is None:
             return
+        now_ts = time.time()
+        if now_ts - float(state.get("_last_live_sync_ts") or 0.0) < 60.0:
+            return
         try:
             row = self.db.query(KubernetesCluster).filter(KubernetesCluster.id == cid).first()
             if not row or not isinstance(getattr(row, "id", None), int):
@@ -594,10 +800,17 @@ class AiGatewayGovernanceService:
                     pname = meta.get("name")
                     if not pname or pname in existing_p:
                         continue
-                    vendor = spec.get("vendor") or "Generic"
+                    raw_vendor = spec.get("type") or spec.get("vendor") or "Generic"
+                    vendor = _canonical_provider_type(str(raw_vendor))
                     vkey = _vendor_settings_key(vendor)
                     vblock = spec.get(vkey) if isinstance(spec.get(vkey), dict) else {}
-                    base_url = vblock.get("baseURL") or spec.get("baseURL") or ""
+                    base_url = (
+                        spec.get("endpointURL")
+                        or vblock.get("baseURL")
+                        or vblock.get("endpoint")
+                        or spec.get("baseURL")
+                        or ""
+                    )
                     conds = status.get("conditions") or []
                     ready_cond = next(
                         (c for c in conds if isinstance(c, dict) and c.get("type") in ("Ready", "Accepted")),
@@ -611,6 +824,14 @@ class AiGatewayGovernanceService:
                         "tenant": (spec.get("tenantRef") or {}).get("name") or default_tenant,
                         "vendor": vendor,
                         "base_url": base_url,
+                        "dialect": _canonical_dialect(vblock.get("dialect"))
+                        if vendor == "Generic"
+                        else _canonical_dialect(vblock.get("dialect"))
+                        if vblock.get("dialect")
+                        else None,
+                        "region": vblock.get("region"),
+                        "deployment": vblock.get("deployment"),
+                        "api_version": vblock.get("apiVersion"),
                         "credential_name": (spec.get("credentialRef") or {}).get("name") or f"{pname}-cred",
                         "secret_name": f"{pname}-secret",
                         "enabled": bool(spec.get("enabled", True)),
@@ -646,7 +867,7 @@ class AiGatewayGovernanceService:
                                 "name": d.get("name") or mname,
                                 "provider": (d.get("providerRef") or {}).get("name") or "",
                                 "upstream": d.get("upstream") or mname,
-                                "dialects": d.get("dialects") or ["openai"],
+                                "dialects": d.get("dialects") or ["OpenAIChat"],
                                 "weight": int(d.get("weight", 100)),
                                 "state": d.get("state") or "Active",
                                 "input_per_mtok": float(pricing.get("inputPerMtok", 0.0)),
@@ -678,74 +899,179 @@ class AiGatewayGovernanceService:
             pass
 
         try:
+            gw_vips: dict[str, str] = {}
+            try:
+                live_gws = self._k8s.get_resources(cid, "gateway", namespace=None)
+                if isinstance(live_gws, list):
+                    for gw in live_gws:
+                        if not isinstance(gw, dict):
+                            continue
+                        gname = (gw.get("metadata") or {}).get("name")
+                        addrs = (
+                            (gw.get("status") or {}).get("addresses") or ((gw.get("spec") or {}).get("addresses")) or []
+                        )
+                        if gname and isinstance(addrs, list) and addrs:
+                            first_addr = addrs[0]
+                            if isinstance(first_addr, dict) and first_addr.get("value"):
+                                gw_vips[gname] = str(first_addr["value"])
+            except Exception:
+                pass
+
             live_profiles = self._k8s.get_resources(cid, "aigatewayprofile", namespace=None)
             if isinstance(live_profiles, list):
                 existing_r = {r["name"]: r for r in state.get("routes", [])}
+                cluster_prov_names = [p["name"] for p in state.get("providers", []) if p.get("name")]
                 for item in live_profiles:
                     meta = item.get("metadata") or {}
+                    annotations = meta.get("annotations") or {}
                     spec = item.get("spec") or {}
                     status = item.get("status") or {}
                     rname = meta.get("name")
-                    if not rname or rname in existing_r:
+                    if not rname:
                         continue
                     auth = spec.get("auth") or {}
                     failover = spec.get("failover") or {}
-                    pcache = spec.get("promptCache") or {}
+                    has_pcache = "promptCache" in spec and spec.get("promptCache") is not None
+                    pcache = spec.get("promptCache") if isinstance(spec.get("promptCache"), dict) else {}
                     mrouting = spec.get("modelRouting") or {}
-                    provs = [
-                        (p.get("providerRef") or {}).get("name")
-                        for p in (spec.get("providers") or [])
-                        if isinstance(p, dict) and (p.get("providerRef") or {}).get("name")
-                    ]
+                    raw_provs = spec.get("providers") or []
+                    provs: list[str] = []
+                    prov_creds: dict[str, str] = {}
+                    for p in raw_provs:
+                        if not isinstance(p, dict):
+                            continue
+                        pname = p.get("name") or (p.get("providerRef") or {}).get("name")
+                        if pname:
+                            provs.append(str(pname))
+                            cred_ref = (
+                                (p.get("credentialRef") or {}).get("name")
+                                if isinstance(p.get("credentialRef"), dict)
+                                else None
+                            )
+                            if cred_ref:
+                                prov_creds[str(pname)] = str(cred_ref)
+                    if not provs:
+                        provs = cluster_prov_names
                     conds = status.get("conditions") or []
                     prog_cond = next(
                         (c for c in conds if isinstance(c, dict) and c.get("type") == "Programmed"),
                         None,
                     )
-                    programmed = (prog_cond.get("status") == "True") if prog_cond else True
+                    acc_cond = next(
+                        (c for c in conds if isinstance(c, dict) and c.get("type") == "Accepted"),
+                        None,
+                    )
+                    res_cond = next(
+                        (c for c in conds if isinstance(c, dict) and c.get("type") == "ResolvedRefs"),
+                        None,
+                    )
+                    programmed = (
+                        (prog_cond.get("status") == "True")
+                        if (prog_cond and prog_cond.get("reason") != "WaitingForTMM")
+                        else ((acc_cond or {}).get("status") == "True" and (res_cond or {}).get("status") == "True")
+                    )
+                    gw_name = (
+                        spec.get("gatewayName") or (existing_r.get(rname) or {}).get("gateway_name") or "ai-gateway"
+                    )
+                    vip_addr = (
+                        gw_vips.get(gw_name)
+                        or (existing_r.get(rname) or {}).get("vip_address")
+                        or (next(iter(gw_vips.values()), ""))
+                    )
+                    pool_max_raw = (
+                        pcache.get("poolMaxSize")
+                        or (pcache.get("connectionPool") or {}).get("maxSize")
+                        or annotations.get("inference.k8s.f5.com/semantic_cache_pool_max_size")
+                        or annotations.get("semantic_cache_pool_max_size")
+                        or annotations.get("bnk.f5.com/semantic-cache-pool-max-size")
+                        or (64 if has_pcache else 0)
+                    )
+                    try:
+                        pool_max = int(pool_max_raw)
+                    except (TypeError, ValueError):
+                        pool_max = 64 if has_pcache else 0
+                    pool_idle = str(
+                        pcache.get("poolIdleTimeout")
+                        or (pcache.get("connectionPool") or {}).get("idleTimeout")
+                        or annotations.get("inference.k8s.f5.com/semantic_cache_pool_idle_timeout")
+                        or annotations.get("semantic_cache_pool_idle_timeout")
+                        or annotations.get("bnk.f5.com/semantic-cache-pool-idle-timeout")
+                        or ("300s" if has_pcache else "0s")
+                    )
+                    if has_pcache and pool_max > 0:
+                        state["numa_spanning_enabled"] = True
+
+                    prev_r = existing_r.get(rname) or {}
+                    vk_cfg = auth.get("virtualKeys")
+                    virtual_keys_enabled = (
+                        bool(vk_cfg.get("required", True)) if isinstance(vk_cfg, dict) else bool(vk_cfg)
+                    )
+                    jwt_cfg = auth.get("jwt") if isinstance(auth.get("jwt"), dict) else {}
+                    sem_router = (
+                        mrouting.get("semanticRouter")
+                        if isinstance(mrouting, dict) and isinstance(mrouting.get("semanticRouter"), dict)
+                        else {}
+                    )
+                    sem_svc_ref = sem_router.get("serviceRef") if isinstance(sem_router.get("serviceRef"), dict) else {}
                     existing_r[rname] = {
+                        **prev_r,
                         "name": rname,
-                        "namespace": meta.get("namespace") or ns,
+                        "namespace": meta.get("namespace") or prev_r.get("namespace") or ns,
                         "cluster_id": cid,
                         "cluster_name": cname,
-                        "gateway_name": spec.get("gatewayName") or f"{rname}-gw",
-                        "route_name": f"{rname}-route",
-                        "app_policy_name": f"{rname}-apppolicy",
-                        "listener_name": "http",
-                        "listener_port": 8080,
-                        "vip_address": "",
-                        "path_prefix": "/v1",
-                        "tenant": (spec.get("tenantRef") or {}).get("name") or default_tenant,
-                        "virtual_keys_enabled": auth.get("virtualKeys") is not None,
+                        "gateway_name": gw_name,
+                        "route_name": prev_r.get("route_name") or f"{rname}-route",
+                        "app_policy_name": prev_r.get("app_policy_name") or f"{rname}-apppolicy",
+                        "listener_name": prev_r.get("listener_name") or "http",
+                        "listener_port": prev_r.get("listener_port") or 8080,
+                        "vip_address": vip_addr,
+                        "path_prefix": prev_r.get("path_prefix") or "/v1",
+                        "tenant": (spec.get("tenantRef") or {}).get("name") or prev_r.get("tenant") or default_tenant,
+                        "virtual_keys_enabled": virtual_keys_enabled,
                         "jwt_enabled": auth.get("jwt") is not None,
-                        "jwt_audiences": ((auth.get("jwt") or {}).get("audiences") or [])
-                        if isinstance(auth.get("jwt"), dict)
-                        else [],
+                        "jwt_issuer": jwt_cfg.get("issuer") or prev_r.get("jwt_issuer"),
+                        "jwt_audiences": (jwt_cfg.get("audiences") or prev_r.get("jwt_audiences") or []),
+                        "jwks_uri": jwt_cfg.get("jwksUri") or prev_r.get("jwks_uri"),
+                        "jwks_refresh_interval": jwt_cfg.get("jwksRefreshInterval")
+                        or prev_r.get("jwks_refresh_interval"),
+                        "jwt_secret_ref": (
+                            (jwt_cfg.get("secretRef") or {}).get("name")
+                            if isinstance(jwt_cfg.get("secretRef"), dict)
+                            else prev_r.get("jwt_secret_ref")
+                        ),
+                        "jwt_header": jwt_cfg.get("header") or prev_r.get("jwt_header"),
+                        "jwt_scheme": jwt_cfg.get("scheme") or prev_r.get("jwt_scheme"),
+                        "jwt_clock_skew": jwt_cfg.get("clockSkew") or prev_r.get("jwt_clock_skew"),
+                        "jwt_principal_claim": jwt_cfg.get("principalClaim") or prev_r.get("jwt_principal_claim"),
+                        "jwt_team_claim": jwt_cfg.get("teamClaim") or prev_r.get("jwt_team_claim"),
+                        "jwt_org_claim": jwt_cfg.get("orgClaim") or prev_r.get("jwt_org_claim"),
                         "failover_enabled": bool(failover),
                         "failover_on_429": bool(failover.get("on429", True)) if isinstance(failover, dict) else False,
                         "failover_on_5xx": bool(failover.get("on5xx", True)) if isinstance(failover, dict) else False,
                         "failover_max_attempts": int(failover.get("maxAttempts", 3))
                         if isinstance(failover, dict)
                         else 3,
-                        "prompt_cache_enabled": bool(pcache),
-                        "semantic_cache_pool_max_size": int(
-                            pcache.get("poolMaxSize") or (pcache.get("connectionPool") or {}).get("maxSize") or 0
-                        )
-                        if isinstance(pcache, dict) and pcache
-                        else 0,
-                        "semantic_cache_pool_idle_timeout": str(
-                            pcache.get("poolIdleTimeout")
-                            or (pcache.get("connectionPool") or {}).get("idleTimeout")
-                            or "0s"
-                        )
-                        if isinstance(pcache, dict) and pcache
-                        else "0s",
-                        "model_routing_enabled": bool(mrouting),
+                        "prompt_cache_enabled": has_pcache or bool(prev_r.get("prompt_cache_enabled")),
+                        "semantic_cache_pool_max_size": pool_max,
+                        "semantic_cache_pool_idle_timeout": pool_idle,
+                        "model_routing_enabled": bool(mrouting) or bool(prev_r.get("model_routing_enabled")),
                         "default_model_ref": ((mrouting.get("defaultModelRef") or {}).get("name"))
-                        if isinstance(mrouting, dict)
-                        else None,
+                        if isinstance(mrouting, dict) and (mrouting.get("defaultModelRef") or {}).get("name")
+                        else (
+                            sem_svc_ref.get("name")
+                            or prev_r.get("default_model_ref")
+                            or (state["models"][0]["name"] if state.get("models") else None)
+                        ),
+                        "semantic_router_service": sem_svc_ref.get("name") or prev_r.get("semantic_router_service"),
+                        "semantic_router_port": int(
+                            sem_svc_ref.get("port") or prev_r.get("semantic_router_port") or 8000
+                        ),
+                        "semantic_router_timeout": sem_router.get("timeout")
+                        or prev_r.get("semantic_router_timeout")
+                        or "5s",
                         "providers": provs,
-                        "request_timeout": "300s",
+                        "provider_credentials": prov_creds or prev_r.get("provider_credentials") or {},
+                        "request_timeout": prev_r.get("request_timeout") or "300s",
                         "accepted": True,
                         "programmed": programmed,
                         "status_message": (
@@ -791,20 +1117,175 @@ class AiGatewayGovernanceService:
             pass
 
         try:
+            route_names: list[str] = []
             live_sroute = self._k8s.get_resources(cid, "f5spkstaticroute", namespace=None)
             if isinstance(live_sroute, list) and live_sroute:
-                route_names = [
+                route_names.extend(
                     (x.get("metadata") or {}).get("name")
                     for x in live_sroute
                     if isinstance(x, dict) and (x.get("metadata") or {}).get("name")
-                ]
-                if route_names:
-                    state["live_static_routes"] = route_names
-                    state["egress_route_applied"] = True
+                )
+            if not route_names:
+                live_infra = self._k8s.get_resources(cid, "infra", namespace=None)
+                if isinstance(live_infra, list) and live_infra:
+                    for inf in live_infra:
+                        if not isinstance(inf, dict):
+                            continue
+                        inf_name = (inf.get("metadata") or {}).get("name") or "infra"
+                        sroutes = (inf.get("spec") or {}).get("staticRoutes") or []
+                        for sr in sroutes:
+                            if isinstance(sr, dict) and sr.get("name"):
+                                route_names.append(f"{inf_name}/{sr['name']}")
+            if route_names:
+                state["live_static_routes"] = route_names
+                state["egress_route_applied"] = True
         except Exception:
             pass
 
-        _sync_derived_fields(state)
+        # Sync ClickHouse otel.aigw_requests audit logs and live DSSM spend when available
+        try:
+            from services.llm_observability_service import LlmObservabilityService
+
+            obs_svc = LlmObservabilityService(self.db)
+            api_client = obs_svc._client(cid)
+            if api_client is not None:
+                ch_rows, _ = obs_svc._ch_query(
+                    cid,
+                    api_client,
+                    """
+                    SELECT
+                        request_id,
+                        formatDateTime(fromUnixTimestamp64Milli(ts_ms), '%Y-%m-%dT%H:%i:%SZ', 'UTC') AS ts,
+                        tenant,
+                        org_id,
+                        team_id,
+                        principal_id,
+                        vk_id,
+                        model,
+                        provider,
+                        toUInt16OrZero(toString(http_status)) AS status_code,
+                        round(latency_ms, 2) AS latency_ms,
+                        prompt_tokens,
+                        completion_tokens,
+                        cached_tokens,
+                        total_tokens,
+                        round(cost_usd_micros / 1000000.0, 6) AS cost_usd
+                    FROM otel.aigw_requests
+                    ORDER BY ts_ms DESC
+                    LIMIT 30
+                    """,
+                )
+                if ch_rows:
+                    route_name_default = state["routes"][0]["name"] if state.get("routes") else "llm-chat-route"
+                    vk_name_by_id = {
+                        vk["id"]: vk.get("name", vk["id"]) for vk in state.get("virtual_keys", []) if vk.get("id")
+                    }
+                    audit_logs: list[dict[str, Any]] = []
+                    for r in ch_rows:
+                        req_id = str(r.get("request_id") or "")
+                        vk_id = str(r.get("vk_id") or "")
+                        sc = "HIT" if int(r.get("cached_tokens") or 0) > 0 else "MISS"
+                        status_code = int(r.get("status_code") or 200)
+                        audit_logs.append(
+                            {
+                                "id": req_id,
+                                "request_id": req_id,
+                                "timestamp": str(r.get("ts") or _now_iso()),
+                                "cluster_id": cid,
+                                "cluster_name": cname,
+                                "tenant": str(r.get("tenant") or default_tenant),
+                                "route_name": route_name_default,
+                                "org_name": str(r.get("org_id") or ""),
+                                "team_name": str(r.get("team_id") or ""),
+                                "principal_name": str(r.get("principal_id") or ""),
+                                "virtual_key_id": vk_id,
+                                "virtual_key_name": vk_name_by_id.get(vk_id, vk_id),
+                                "method": "POST",
+                                "path": "/v1/chat/completions",
+                                "model": str(r.get("model") or ""),
+                                "provider": str(r.get("provider") or ""),
+                                "status_code": status_code,
+                                "latency_ms": float(r.get("latency_ms") or 0.0),
+                                "prompt_tokens": int(r.get("prompt_tokens") or 0),
+                                "completion_tokens": int(r.get("completion_tokens") or 0),
+                                "total_tokens": int(r.get("total_tokens") or 0),
+                                "cost_usd": float(r.get("cost_usd") or 0.0),
+                                "cache_status": sc,
+                                "semantic_cache_status": sc,
+                                "failover_used": False,
+                                "failover_triggered": False,
+                                "error_reason": f"HTTP {status_code}" if status_code >= 400 else None,
+                            }
+                        )
+                    state["request_audit_logs"] = audit_logs
+
+                spend_rows, _ = obs_svc._ch_query(
+                    cid,
+                    api_client,
+                    """
+                    SELECT
+                        org_id,
+                        team_id,
+                        principal_id,
+                        vk_id,
+                        round(sum(cost_usd_micros) / 1000000.0, 4) AS spend_usd,
+                        formatDateTime(fromUnixTimestamp64Milli(max(ts_ms)), '%Y-%m-%dT%H:%i:%SZ', 'UTC') AS last_used_at
+                    FROM otel.aigw_requests
+                    GROUP BY org_id, team_id, principal_id, vk_id
+                    """,
+                )
+                if spend_rows:
+                    org_spend: dict[str, float] = {}
+                    team_spend: dict[str, float] = {}
+                    prin_spend: dict[str, float] = {}
+                    vk_spend: dict[str, float] = {}
+                    vk_last_used: dict[str, str] = {}
+                    for sr in spend_rows:
+                        sp = float(sr.get("spend_usd") or 0.0)
+                        oid = str(sr.get("org_id") or "")
+                        tid = str(sr.get("team_id") or "")
+                        pid = str(sr.get("principal_id") or "")
+                        vid = str(sr.get("vk_id") or "")
+                        lu = str(sr.get("last_used_at") or "")
+                        if oid:
+                            org_spend[oid] = round(org_spend.get(oid, 0.0) + sp, 4)
+                        if tid:
+                            team_spend[tid] = round(team_spend.get(tid, 0.0) + sp, 4)
+                        if pid:
+                            prin_spend[pid] = round(prin_spend.get(pid, 0.0) + sp, 4)
+                        if vid:
+                            vk_spend[vid] = round(vk_spend.get(vid, 0.0) + sp, 4)
+                            if lu:
+                                vk_last_used[vid] = max(vk_last_used.get(vid, ""), lu)
+                    for o in state.get("orgs", []):
+                        val = org_spend.get(o.get("name", "")) or org_spend.get(o.get("id", ""))
+                        if val is not None:
+                            o["current_spend_usd"] = val
+                    for tm in state.get("teams", []):
+                        val = team_spend.get(tm.get("name", "")) or team_spend.get(tm.get("id", ""))
+                        if val is not None:
+                            tm["current_spend_usd"] = val
+                    for pr in state.get("principals", []):
+                        val = prin_spend.get(pr.get("name", "")) or prin_spend.get(pr.get("id", ""))
+                        if val is not None:
+                            pr["current_spend_usd"] = val
+                    for vk in state.get("virtual_keys", []):
+                        val = (
+                            vk_spend.get(vk.get("id", ""))
+                            or vk_spend.get(vk.get("name", ""))
+                            or prin_spend.get(vk.get("principal_name", ""))
+                        )
+                        if val is not None:
+                            vk["spend_usd"] = val
+                            vk["current_spend_usd"] = val
+                        lu = vk_last_used.get(vk.get("id", "")) or vk_last_used.get(vk.get("name", ""))
+                        if lu:
+                            vk["last_used_at"] = lu
+        except Exception:
+            pass
+
+        state["_last_live_sync_ts"] = time.time()
+        _save_cluster_state(cid, state)
 
     def _build_readiness_checks(self, state: dict[str, Any]) -> list[AiReadinessCheckItem]:
         cid = state["cluster_id"]
@@ -1089,14 +1570,35 @@ class AiGatewayGovernanceService:
         cid, cname = targets[0]
         state = _ensure_cluster_seed(cid, cname)
 
+        canonical_type = _canonical_provider_type(req.vendor)
+        dialect = req.dialect
         base_url = (req.base_url or "").strip() or None
-        # BNK 2.4.1 manual requirement: Generic vendor baseURL must include /v1
-        if req.vendor.lower() == "generic" and base_url and not base_url.rstrip("/").endswith("/v1"):
+        # BNK 2.4.1 manual requirement: Generic vendor OpenAIChat baseURL must include /v1
+        if (
+            canonical_type == "Generic"
+            and base_url
+            and dialect != "AnthropicMessages"
+            and not base_url.rstrip("/").endswith("/v1")
+        ):
             base_url = f"{base_url.rstrip('/')}/v1"
 
         cred_name = req.credential_name or f"{req.name}-cred"
         sec_name = req.secret_name or f"{req.name}-secret"
-        vendor_key = _vendor_settings_key(req.vendor)
+        vendor_key = _vendor_settings_key(canonical_type)
+        vendor_block: dict[str, Any] = {}
+        if base_url:
+            vendor_block["baseURL"] = base_url
+        if canonical_type == "Generic":
+            vendor_block["dialect"] = dialect or "OpenAIChat"
+        elif canonical_type == "Bedrock" and req.region:
+            vendor_block["region"] = req.region
+        elif canonical_type == "AzureOpenAI":
+            if req.deployment:
+                vendor_block["deployment"] = req.deployment
+            if req.api_version:
+                vendor_block["apiVersion"] = req.api_version
+        elif canonical_type == "AzureFoundry" and req.api_version:
+            vendor_block["apiVersion"] = req.api_version
 
         secret_manifest = {
             "apiVersion": "v1",
@@ -1120,8 +1622,10 @@ class AiGatewayGovernanceService:
             "metadata": {"name": req.name, "namespace": req.namespace},
             "spec": {
                 "tenantRef": {"name": req.tenant},
-                "vendor": req.vendor,
-                vendor_key: {"baseURL": base_url} if base_url else {},
+                "type": canonical_type,
+                "vendor": canonical_type,
+                **({"endpointURL": base_url} if base_url else {}),
+                vendor_key: vendor_block,
                 "credentialRef": {"name": cred_name},
                 "enabled": req.enabled,
             },
@@ -1132,8 +1636,12 @@ class AiGatewayGovernanceService:
             "tenant": req.tenant,
             "cluster_id": cid,
             "cluster_name": cname,
-            "vendor": req.vendor,
+            "vendor": canonical_type,
             "base_url": base_url,
+            "dialect": dialect or ("OpenAIChat" if canonical_type == "Generic" else None),
+            "region": req.region,
+            "deployment": req.deployment,
+            "api_version": req.api_version,
             "credential_name": cred_name,
             "secret_name": sec_name,
             "enabled": req.enabled,
@@ -1222,6 +1730,57 @@ class AiGatewayGovernanceService:
         route_name = f"{req.name}-route"
         app_pol_name = f"{req.name}-apppolicy"
 
+        entity = {
+            "name": req.name,
+            "namespace": req.namespace,
+            "tenant": req.tenant,
+            "cluster_id": cid,
+            "cluster_name": cname,
+            "gateway_name": req.gateway_name,
+            "listener_name": listener_name,
+            "listener_port": req.listener_port,
+            "vip_address": req.vip_address,
+            "route_name": route_name,
+            "path_prefix": req.path_prefix,
+            "app_policy_name": app_pol_name,
+            "virtual_keys_enabled": req.virtual_keys_enabled,
+            "jwt_enabled": req.jwt_enabled,
+            "jwt_issuer": req.jwt_issuer,
+            "jwt_audiences": req.jwt_audiences,
+            "jwks_uri": req.jwks_uri,
+            "jwks_refresh_interval": req.jwks_refresh_interval,
+            "jwt_secret_ref": req.jwt_secret_ref,
+            "jwt_header": req.jwt_header,
+            "jwt_scheme": req.jwt_scheme,
+            "jwt_clock_skew": req.jwt_clock_skew,
+            "jwt_principal_claim": req.jwt_principal_claim,
+            "jwt_team_claim": req.jwt_team_claim,
+            "jwt_org_claim": req.jwt_org_claim,
+            "failover_enabled": req.failover_enabled,
+            "failover_max_attempts": req.failover_max_attempts,
+            "failover_on_429": req.failover_on_429,
+            "failover_on_5xx": req.failover_on_5xx,
+            "prompt_cache_enabled": req.prompt_cache_enabled,
+            "semantic_cache_similarity_threshold": req.semantic_cache_similarity_threshold or 0.92,
+            "semantic_cache_pool_max_size": req.semantic_cache_pool_max_size if req.prompt_cache_enabled else None,
+            "semantic_cache_pool_idle_timeout": req.semantic_cache_pool_idle_timeout
+            if req.prompt_cache_enabled
+            else None,
+            "model_routing_enabled": req.model_routing_enabled,
+            "default_model_ref": req.default_model_ref,
+            "semantic_router_service": req.semantic_router_service,
+            "semantic_router_namespace": req.semantic_router_namespace,
+            "semantic_router_port": req.semantic_router_port,
+            "semantic_router_timeout": req.semantic_router_timeout,
+            "providers": req.providers,
+            "provider_credentials": req.provider_credentials,
+            "provider_overrides": [ov.model_dump() for ov in req.provider_overrides],
+            "accepted": True,
+            "programmed": True,
+            "stuck_profile_bug": False,
+            "status_message": f"Profile programmed on Gateway {req.gateway_name}:{req.listener_port}",
+        }
+
         gw_manifest = {
             "apiVersion": "gateway.networking.k8s.io/v1",
             "kind": "Gateway",
@@ -1246,6 +1805,8 @@ class AiGatewayGovernanceService:
                 ],
             },
         }
+        prof_mrouting = _build_profile_model_routing_spec(entity)
+        prof_providers = _build_profile_providers_spec(entity)
         prof_manifest = {
             "apiVersion": "inference.k8s.f5.com/v1alpha1",
             "kind": "AIGatewayProfile",
@@ -1261,10 +1822,7 @@ class AiGatewayGovernanceService:
             },
             "spec": {
                 "tenantRef": {"name": req.tenant},
-                "auth": {
-                    **({"virtualKeys": {}} if req.virtual_keys_enabled else {}),
-                    **({"jwt": {"audiences": req.jwt_audiences or ["ai-gateway"]}} if req.jwt_enabled else {}),
-                },
+                "auth": _build_profile_auth_spec(entity),
                 **(
                     {
                         "failover": {
@@ -1279,12 +1837,8 @@ class AiGatewayGovernanceService:
                     else {}
                 ),
                 **({"promptCache": {}} if req.prompt_cache_enabled else {}),
-                **(
-                    {"modelRouting": {"defaultModelRef": {"name": req.default_model_ref}}}
-                    if req.model_routing_enabled and req.default_model_ref
-                    else {}
-                ),
-                "providers": [{"providerRef": {"name": p}} for p in req.providers],
+                **({"modelRouting": prof_mrouting} if prof_mrouting else {}),
+                **({"providers": prof_providers} if prof_providers else {}),
             },
         }
         app_pol_manifest = {
@@ -1309,46 +1863,17 @@ class AiGatewayGovernanceService:
                 ],
             },
         }
-        entity = {
-            "name": req.name,
-            "namespace": req.namespace,
-            "tenant": req.tenant,
-            "cluster_id": cid,
-            "cluster_name": cname,
-            "gateway_name": req.gateway_name,
-            "listener_name": listener_name,
-            "listener_port": req.listener_port,
-            "vip_address": req.vip_address,
-            "route_name": route_name,
-            "path_prefix": req.path_prefix,
-            "app_policy_name": app_pol_name,
-            "virtual_keys_enabled": req.virtual_keys_enabled,
-            "jwt_enabled": req.jwt_enabled,
-            "jwt_audiences": req.jwt_audiences,
-            "failover_enabled": req.failover_enabled,
-            "failover_max_attempts": req.failover_max_attempts,
-            "failover_on_429": req.failover_on_429,
-            "failover_on_5xx": req.failover_on_5xx,
-            "prompt_cache_enabled": req.prompt_cache_enabled,
-            "semantic_cache_similarity_threshold": req.semantic_cache_similarity_threshold or 0.92,
-            "semantic_cache_pool_max_size": req.semantic_cache_pool_max_size if req.prompt_cache_enabled else None,
-            "semantic_cache_pool_idle_timeout": req.semantic_cache_pool_idle_timeout
-            if req.prompt_cache_enabled
-            else None,
-            "model_routing_enabled": req.model_routing_enabled,
-            "default_model_ref": req.default_model_ref,
-            "providers": req.providers,
-            "accepted": True,
-            "programmed": True,
-            "stuck_profile_bug": False,
-            "status_message": f"Profile programmed on Gateway {req.gateway_name}:{req.listener_port}",
-        }
+        manifests_applied = [gw_manifest, hr_manifest, prof_manifest, app_pol_manifest]
+        vllmsr_manifest = _build_vllmsr_externalname_service(entity)
+        if vllmsr_manifest is not None:
+            manifests_applied.append(vllmsr_manifest)
+
         state["routes"] = [r for r in state["routes"] if r["name"] != req.name] + [entity]
         _save_cluster_state(cid, state)
         return AiGovernanceMutationResponse(
             message=f"Gateway Route & AIGatewayProfile '{req.name}' attached via AppPolicy '{app_pol_name}' on {cname}",
             cluster_id=cid,
-            manifests_applied=[gw_manifest, hr_manifest, prof_manifest, app_pol_manifest],
+            manifests_applied=manifests_applied,
             entity=entity,
         )
 
@@ -1367,6 +1892,22 @@ class AiGatewayGovernanceService:
             route["virtual_keys_enabled"] = req.virtual_keys_enabled
         if req.jwt_enabled is not None:
             route["jwt_enabled"] = req.jwt_enabled
+        for jwt_field in (
+            "jwt_issuer",
+            "jwt_audiences",
+            "jwks_uri",
+            "jwks_refresh_interval",
+            "jwt_secret_ref",
+            "jwt_header",
+            "jwt_scheme",
+            "jwt_clock_skew",
+            "jwt_principal_claim",
+            "jwt_team_claim",
+            "jwt_org_claim",
+        ):
+            val = getattr(req, jwt_field, None)
+            if val is not None:
+                route[jwt_field] = val
         if req.failover_enabled is not None:
             route["failover_enabled"] = req.failover_enabled
         if req.prompt_cache_enabled is not None:
@@ -1378,6 +1919,38 @@ class AiGatewayGovernanceService:
             route["semantic_cache_similarity_threshold"] = req.semantic_cache_similarity_threshold
         if req.model_routing_enabled is not None:
             route["model_routing_enabled"] = req.model_routing_enabled
+        for sr_field in (
+            "default_model_ref",
+            "semantic_router_service",
+            "semantic_router_namespace",
+            "semantic_router_port",
+            "semantic_router_timeout",
+            "providers",
+            "provider_credentials",
+        ):
+            val = getattr(req, sr_field, None)
+            if val is not None:
+                route[sr_field] = val
+        if req.provider_overrides is not None:
+            route["provider_overrides"] = [ov.model_dump() for ov in req.provider_overrides]
+        if req.providers is not None:
+            allowed_set = set(req.providers)
+            if req.provider_credentials is None:
+                if not allowed_set:
+                    route["provider_credentials"] = {}
+                else:
+                    route["provider_credentials"] = {
+                        k: v for k, v in (route.get("provider_credentials") or {}).items() if k in allowed_set
+                    }
+            if req.provider_overrides is None:
+                if not allowed_set:
+                    route["provider_overrides"] = []
+                else:
+                    route["provider_overrides"] = [
+                        ov
+                        for ov in (route.get("provider_overrides") or [])
+                        if isinstance(ov, dict) and ov.get("name") in allowed_set
+                    ]
 
         _save_cluster_state(cid, state)
         return AiGovernanceMutationResponse(
@@ -1591,15 +2164,19 @@ class AiGatewayGovernanceService:
                 "metadata": {"name": "aigw-dns-resolver", "namespace": req.namespace},
                 "spec": {
                     "cacheType": "net-resolver",
-                    "ipv4": True,
-                    "ipv6": False,
                     "netResolver": {
+                        "useIpv4": True,
+                        "useIpv6": False,
                         "forwardZones": [
                             {
-                                "name": ".",
-                                "nameservers": ["10.96.0.10:53", "8.8.8.8:53", "1.1.1.1:53"],
+                                "forwardZone": ".",
+                                "nameServers": [
+                                    {"ipAddress": "10.96.0.10", "port": 53},
+                                    {"ipAddress": "8.8.8.8", "port": 53},
+                                    {"ipAddress": "1.1.1.1", "port": 53},
+                                ],
                             }
-                        ]
+                        ],
                     },
                 },
             }

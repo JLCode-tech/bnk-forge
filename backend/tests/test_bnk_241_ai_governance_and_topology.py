@@ -544,6 +544,9 @@ def test_ai_gateway_governance_service_end_to_end():
         assert res.success is True
         if action == "apply_dns_resolver":
             assert "cacheType: net-resolver" in (res.applied_yaml or "")
+            assert "useIpv4: true" in (res.applied_yaml or "")
+            assert "forwardZone: ." in (res.applied_yaml or "")
+            assert "ipAddress: 8.8.8.8" in (res.applied_yaml or "")
         if action == "apply_default_egress":
             assert "kind: F5SPKStaticRoute" in (res.applied_yaml or "")
 
@@ -691,6 +694,10 @@ def test_live_crd_sync_and_no_topology_pollution_without_ai_gateway(monkeypatch)
     custom_live = _build_k8s_custom_resources_from_state(state_live)
     assert len(custom_live["f5bigdnscache"]) == 1
     assert custom_live["f5bigdnscache"][0]["metadata"]["name"] == "custom-dns-cache"
+    assert custom_live["f5bigdnscache"][0]["spec"]["netResolver"]["useIpv4"] is True
+    assert custom_live["f5bigdnscache"][0]["spec"]["netResolver"]["useIpv6"] is False
+    assert custom_live["f5bigdnscache"][0]["spec"]["netResolver"]["forwardZones"][0]["forwardZone"] == "."
+    assert len(custom_live["f5bigdnscache"][0]["spec"]["netResolver"]["forwardZones"][0]["nameServers"]) == 3
     assert len(custom_live["f5spkstaticroute"]) == 1
     assert custom_live["f5spkstaticroute"][0]["metadata"]["name"] == "custom-egress-route"
 
@@ -742,3 +749,223 @@ def test_live_crd_sync_and_no_topology_pollution_without_ai_gateway(monkeypatch)
     assert len(ov_multi.providers) == 2
     assert {p.cluster_id for p in ov_multi.providers} == {100, 101}
     assert any(n["id"].startswith("c100:") for n in ov_multi.topology_nodes)
+
+
+def test_bnk_241_manual_full_feature_alignment():
+    """Verify BNK 2.4.1 Manual alignment: all 7 AIProvider types & dialects, full JWT auth,
+    semanticRouter.serviceRef + cross-namespace ExternalName Service/vllmsr, and route-scoped providers filter."""
+    import yaml
+
+    from schemas.llm_observability import AiRouteProviderOverride
+    from services.ai_gateway_governance_service import (
+        _build_k8s_custom_resources_from_state,
+        _ensure_cluster_seed,
+    )
+
+    db_mock = MagicMock()
+    db_mock.query.return_value.filter.return_value.all.return_value = []
+    db_mock.query.return_value.all.return_value = []
+    svc = AiGatewayGovernanceService(db=db_mock)
+
+    svc.create_tenant(
+        CreateAiTenantRequest(
+            cluster_id=202,
+            name="manual-241-tenant",
+            display_name="Manual 2.4.1 Tenant",
+        )
+    )
+
+    # 1. All 7 AIProvider types + dialect normalization (OpenAIChat & AnthropicMessages)
+    provider_cases = [
+        ("prov-openai", "OpenAI", "https://api.openai.com/v1", None, "openAI"),
+        ("prov-anthropic", "Anthropic", "https://api.anthropic.com", None, "anthropic"),
+        ("prov-azure-openai", "AzureOpenAI", "https://my-resource.openai.azure.com", None, "azureOpenAI"),
+        ("prov-azure-foundry", "AzureFoundry", "https://my-foundry.services.ai.azure.com/models", None, "azureFoundry"),
+        ("prov-bedrock", "Bedrock", "", None, "bedrock"),
+        ("prov-gemini", "Gemini", "https://generativelanguage.googleapis.com", None, "gemini"),
+        ("prov-generic-anthropic", "Generic", "http://claude-proxy.ai.svc:8080", "anthropic", "generic"),
+    ]
+    for p_name, p_type, base_url, dialect, expected_block in provider_cases:
+        res = svc.create_provider(
+            CreateAiProviderRequest(
+                cluster_id=202,
+                name=p_name,
+                namespace="default",
+                tenant="manual-241-tenant",
+                vendor=p_type,
+                base_url=base_url,
+                dialect=dialect,
+                region="us-east-1" if p_type == "Bedrock" else None,
+                deployment="gpt-4o" if p_type == "AzureOpenAI" else None,
+                api_version="2024-10-21" if p_type == "AzureOpenAI" else None,
+                api_key=f"key-{p_name}",
+            )
+        )
+        assert res.status == "success"
+        docs = [d for d in yaml.safe_load_all(res.applied_yaml or "") if d]
+        prov_doc = next(d for d in docs if d.get("kind") == "AIProvider")
+        assert prov_doc["spec"]["type"] == p_type
+        assert expected_block in prov_doc["spec"]
+        if p_name == "prov-generic-anthropic":
+            assert prov_doc["spec"]["generic"]["dialect"] == "AnthropicMessages"
+            # AnthropicMessages dialect does not force a /v1 suffix
+            assert prov_doc["spec"]["generic"]["baseURL"] == "http://claude-proxy.ai.svc:8080"
+
+    # 2. Route with omitted providers filter (all tenant providers active) + modelRouting + cross-ns vllmsr + full JWT
+    route_all_prov = svc.create_route(
+        CreateAiGatewayRouteRequest(
+            cluster_id=202,
+            name="route-all-providers",
+            namespace="default",
+            gateway_name="ai-gw-main",
+            vip_address="10.20.30.50",
+            listener_port=8080,
+            tenant="manual-241-tenant",
+            virtual_keys_enabled=True,
+            jwt_enabled=True,
+            jwt_issuer="https://idp.enterprise.internal",
+            jwt_audiences=["ai-gateway", "inference-clients"],
+            jwks_uri="https://idp.enterprise.internal/.well-known/jwks.json",
+            jwks_refresh_interval="10m",
+            jwt_secret_ref="jwt-hmac-secret",
+            jwt_header="X-Auth-Token",
+            jwt_scheme="Bearer",
+            jwt_clock_skew="30s",
+            jwt_principal_claim="sub",
+            jwt_team_claim="groups",
+            jwt_org_claim="org_id",
+            model_routing_enabled=True,
+            semantic_router_service="vllmsr",
+            semantic_router_port=8000,
+            semantic_router_timeout="5s",
+            semantic_router_namespace="f5-utils",
+        )
+    )
+    assert route_all_prov.status == "success"
+    route_docs = [d for d in yaml.safe_load_all(route_all_prov.applied_yaml or "") if d]
+    prof_doc = next(d for d in route_docs if d.get("kind") == "AIGatewayProfile")
+
+    # Verify spec.providers is omitted when no allowed_providers / provider_credentials are given
+    assert "providers" not in prof_doc["spec"]
+
+    # Verify full spec.auth.jwt and spec.auth.virtualKeys
+    auth_spec = prof_doc["spec"]["auth"]
+    assert auth_spec["virtualKeys"] == {"required": True}
+    jwt_spec = auth_spec["jwt"]
+    assert jwt_spec["issuer"] == "https://idp.enterprise.internal"
+    assert jwt_spec["audiences"] == ["ai-gateway", "inference-clients"]
+    assert jwt_spec["jwksUri"] == "https://idp.enterprise.internal/.well-known/jwks.json"
+    assert jwt_spec["jwksRefreshInterval"] == "10m"
+    assert jwt_spec["secretRef"] == {"name": "jwt-hmac-secret"}
+    assert jwt_spec["header"] == "X-Auth-Token"
+    assert jwt_spec["scheme"] == "Bearer"
+    assert jwt_spec["clockSkew"] == "30s"
+    assert jwt_spec["principalClaim"] == "sub"
+    assert jwt_spec["teamClaim"] == "groups"
+    assert jwt_spec["orgClaim"] == "org_id"
+
+    # Verify modelRouting.semanticRouter.serviceRef & cross-namespace ExternalName Service/vllmsr
+    assert prof_doc["spec"]["modelRouting"] == {
+        "semanticRouter": {
+            "serviceRef": {"name": "vllmsr", "port": 8000},
+            "timeout": "5s",
+        }
+    }
+    svc_doc = next((d for d in route_docs if d.get("kind") == "Service"), None)
+    assert svc_doc is not None
+    assert svc_doc["metadata"] == {"name": "vllmsr", "namespace": "default"}
+    assert svc_doc["spec"]["type"] == "ExternalName"
+    assert svc_doc["spec"]["externalName"] == "vllmsr.f5-utils.svc.cluster.local"
+
+    # 3. Route with explicit route-scoped providers filter and credentialRef overrides
+    route_filtered = svc.create_route(
+        CreateAiGatewayRouteRequest(
+            cluster_id=202,
+            name="route-filtered-providers",
+            namespace="default",
+            gateway_name="ai-gw-filtered",
+            vip_address="10.20.30.51",
+            listener_port=8081,
+            tenant="manual-241-tenant",
+            allowed_providers=["prov-openai", "prov-anthropic"],
+            provider_credentials={"prov-openai": "alt-openai-cred"},
+            provider_overrides=[
+                AiRouteProviderOverride(name="prov-openai", credential_ref="alt-openai-cred"),
+                AiRouteProviderOverride(name="prov-anthropic"),
+            ],
+        )
+    )
+    filtered_docs = [d for d in yaml.safe_load_all(route_filtered.applied_yaml or "") if d]
+    filtered_prof = next(d for d in filtered_docs if d.get("kind") == "AIGatewayProfile")
+    assert filtered_prof["spec"]["providers"] == [
+        {"name": "prov-openai", "credentialRef": {"name": "alt-openai-cred"}},
+        {"name": "prov-anthropic"},
+    ]
+
+    # 4. Verify _build_k8s_custom_resources_from_state and topology assembly for both routes
+    state_202 = _ensure_cluster_seed(202, "manual-241-cluster")
+    custom_res = _build_k8s_custom_resources_from_state(state_202)
+    nodes = []
+    edges = []
+    _assemble_custom_fabric_topology(
+        custom_resources=custom_res,
+        namespace="default",
+        nodes=nodes,
+        edges=edges,
+    )
+    node_ids = {n.id for n in nodes}
+    edge_pairs = {(e.source, e.target, e.kind) for e in edges}
+
+    assert "Service/default/vllmsr" in node_ids
+    assert (
+        "AIGatewayProfile/default/route-all-providers",
+        "Service/default/vllmsr",
+        "routes",
+    ) in edge_pairs
+    # Omitted providers filter still links profile to tenant providers
+    assert (
+        "AIGatewayProfile/default/route-all-providers",
+        "AIProvider/default/prov-openai",
+        "references",
+    ) in edge_pairs
+    # Explicit providers filter links profile to selected providers
+    assert (
+        "AIGatewayProfile/default/route-filtered-providers",
+        "AIProvider/default/prov-anthropic",
+        "references",
+    ) in edge_pairs
+
+    # Verify _build_k8s_custom_resources_from_state preserves vendor-specific AIProvider fields
+    prov_by_name = {p["metadata"]["name"]: p for p in custom_res["aiprovider"]}
+    assert prov_by_name["prov-generic-anthropic"]["spec"]["generic"]["dialect"] == "AnthropicMessages"
+    assert prov_by_name["prov-bedrock"]["spec"]["bedrock"]["region"] == "us-east-1"
+    assert prov_by_name["prov-azure-openai"]["spec"]["azureOpenAI"]["deployment"] == "gpt-4o"
+    assert prov_by_name["prov-azure-openai"]["spec"]["azureOpenAI"]["apiVersion"] == "2024-10-21"
+
+    # 5. Verify default semantic_router_timeout="5s" & default_model_ref fallback alias
+    alias_req = CreateAiGatewayRouteRequest(
+        cluster_id=202,
+        name="route-alias-test",
+        namespace="default",
+        gateway_name="ai-gw-alias",
+        vip_address="10.20.30.52",
+        listener_port=8082,
+        tenant="manual-241-tenant",
+        model_routing_enabled=True,
+        default_model_ref="vsr-service",
+    )
+    assert alias_req.semantic_router_timeout == "5s"
+    assert alias_req.semantic_router_port == 8000
+    assert alias_req.semantic_router_service == "vsr-service"
+
+    # 6. Verify update_route_policies clearing providers=[] also clears stale provider_credentials/overrides
+    cleared = svc.update_route_policies(
+        "route-filtered-providers",
+        UpdateAiGatewayRoutePoliciesRequest(
+            cluster_id=202,
+            providers=[],
+        ),
+    )
+    assert cleared.entity["providers"] == []
+    assert cleared.entity["provider_credentials"] == {}
+    assert cleared.entity["provider_overrides"] == []

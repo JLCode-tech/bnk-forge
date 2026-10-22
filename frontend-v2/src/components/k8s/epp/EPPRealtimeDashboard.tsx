@@ -143,20 +143,48 @@ export function EPPRealtimeDashboard({
   const [history, setHistory] = useState<RollingPoint[]>([]);
 
   useEffect(() => {
+    setHistory([]);
+  }, [clusterId, eppNamespace, eppName]);
+
+  useEffect(() => {
     if (!metrics?.summary) return;
+    if (metrics.history && metrics.history.length > 0) {
+      setHistory(
+        metrics.history.map((pt) => ({
+          time: pt.ts,
+          outputTps: pt.output_tps,
+          promptTps: pt.prompt_tps,
+          totalTps: pt.total_tps,
+          ttftMs: pt.ttft_ms,
+          itlMs: pt.itl_ms,
+          cacheHitPct: pt.cache_hit_pct,
+          kvUsedPct: pt.kv_used_pct,
+        })),
+      );
+      return;
+    }
     const now = new Date();
-    const timeLabel = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}`;
+    const fmtTime = (d: Date) =>
+      `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}:${d.getSeconds().toString().padStart(2, "0")}`;
 
     setHistory((prev) => {
+      const baseOut = metrics.summary?.output_tps || 0;
+      const basePrompt = metrics.summary?.prompt_tps || 0;
+      const baseTot = metrics.summary?.total_tps || 0;
+      const baseTtft = metrics.summary?.ttft_p95_ms || 0;
+      const baseItl = metrics.summary?.itl_p95_ms || 0;
+      const baseCache = metrics.summary?.cache_hit_rate_pct || 0;
+      const baseKv = metrics.summary?.kv_cache_usage_pct || 0;
+
       const newPoint: RollingPoint = {
-        time: timeLabel,
-        outputTps: metrics.summary?.output_tps || 0,
-        promptTps: Math.round((metrics.summary?.prompt_tps || 0) / 1000), // in kTPS
-        totalTps: metrics.summary?.total_tps || 0,
-        ttftMs: metrics.summary?.ttft_p95_ms || 0,
-        itlMs: metrics.summary?.itl_p95_ms || 0,
-        cacheHitPct: metrics.summary?.cache_hit_rate_pct || 0,
-        kvUsedPct: metrics.summary?.kv_cache_usage_pct || 0,
+        time: fmtTime(now),
+        outputTps: baseOut,
+        promptTps: basePrompt,
+        totalTps: baseTot,
+        ttftMs: baseTtft,
+        itlMs: baseItl,
+        cacheHitPct: baseCache,
+        kvUsedPct: baseKv,
       };
 
       const next = [...prev, newPoint];
@@ -165,7 +193,7 @@ export function EPPRealtimeDashboard({
       }
       return next;
     });
-  }, [metrics?.updated_at, metrics?.summary]);
+  }, [metrics?.updated_at, metrics?.summary, metrics?.history]);
 
   // Spec & Pool Lookups
   const spec = activeEpp?.spec || {};

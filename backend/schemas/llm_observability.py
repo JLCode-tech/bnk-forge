@@ -136,6 +136,16 @@ class AiTenantSummary(BaseModel):
         return self
 
 
+_DIALECT_CANONICAL_MAP: dict[str, str] = {
+    "openai": "OpenAIChat",
+    "openaichat": "OpenAIChat",
+    "chat": "OpenAIChat",
+    "anthropic": "AnthropicMessages",
+    "anthropicmessages": "AnthropicMessages",
+    "messages": "AnthropicMessages",
+}
+
+
 class AiProviderSummary(BaseModel):
     name: str
     namespace: str
@@ -147,6 +157,10 @@ class AiProviderSummary(BaseModel):
     provider_type: str = ""
     base_url: str | None = None
     endpoint_url: str | None = None
+    dialect: str | None = None
+    region: str | None = None
+    deployment: str | None = None
+    api_version: str | None = None
     credential_name: str | None = None
     credential_ref: str | None = None
     secret_name: str | None = None
@@ -161,6 +175,8 @@ class AiProviderSummary(BaseModel):
         self.tenant_ref = self.tenant_ref or self.tenant
         self.provider_type = self.provider_type or self.vendor
         self.endpoint_url = self.endpoint_url or self.base_url
+        if self.dialect:
+            self.dialect = _DIALECT_CANONICAL_MAP.get(self.dialect.strip().lower(), self.dialect.strip())
         self.credential_ref = self.credential_ref or self.credential_name
         self.secret_ref = self.secret_ref or self.secret_name
         self.status = "Ready" if self.ready else "Degraded"
@@ -172,7 +188,7 @@ class AiModelDeploymentItem(BaseModel):
     provider: str = ""
     provider_ref: str = ""
     upstream: str = ""
-    dialects: list[str] = Field(default_factory=lambda: ["openai"])
+    dialects: list[str] = Field(default_factory=lambda: ["OpenAIChat"])
     weight: int = 100
     state: str = "Active"
     input_per_mtok: int = 0
@@ -188,6 +204,15 @@ class AiModelDeploymentItem(BaseModel):
             self.name = self.provider or "primary"
         if not self.upstream:
             self.upstream = self.provider or "default"
+        normalized_dialects: list[str] = []
+        for d in self.dialects or ["OpenAIChat"]:
+            raw = str(d).strip()
+            if not raw:
+                continue
+            canonical = _DIALECT_CANONICAL_MAP.get(raw.lower(), raw)
+            if canonical not in normalized_dialects:
+                normalized_dialects.append(canonical)
+        self.dialects = normalized_dialects or ["OpenAIChat"]
         return self
 
 
@@ -222,6 +247,11 @@ class AiModelSummary(BaseModel):
         return self
 
 
+class AiRouteProviderOverride(BaseModel):
+    name: str
+    credential_ref: str | None = None
+
+
 class AiGatewayRouteSummary(BaseModel):
     name: str
     namespace: str
@@ -241,7 +271,17 @@ class AiGatewayRouteSummary(BaseModel):
     app_policy: str | None = None
     virtual_keys_enabled: bool = True
     jwt_enabled: bool = False
+    jwt_issuer: str | None = None
     jwt_audiences: list[str] = Field(default_factory=list)
+    jwks_uri: str | None = None
+    jwks_refresh_interval: str | None = None
+    jwt_secret_ref: str | None = None
+    jwt_header: str | None = None
+    jwt_scheme: str | None = None
+    jwt_clock_skew: str | None = None
+    jwt_principal_claim: str | None = None
+    jwt_team_claim: str | None = None
+    jwt_org_claim: str | None = None
     auth_mode: str = "virtual_key"
     failover_enabled: bool = True
     failover_max_attempts: int = 3
@@ -254,7 +294,13 @@ class AiGatewayRouteSummary(BaseModel):
     semantic_cache_pool_idle_timeout: str | None = None
     model_routing_enabled: bool = False
     default_model_ref: str | None = None
+    semantic_router_service: str | None = None
+    semantic_router_namespace: str | None = None
+    semantic_router_port: int = 8000
+    semantic_router_timeout: str | None = "5s"
     providers: list[str] = Field(default_factory=list)
+    provider_credentials: dict[str, str] = Field(default_factory=dict)
+    provider_overrides: list[AiRouteProviderOverride] = Field(default_factory=list)
     accepted: bool = True
     programmed: bool = True
     stuck_profile_bug: bool = False
@@ -268,6 +314,19 @@ class AiGatewayRouteSummary(BaseModel):
         self.ai_gateway_profile = self.ai_gateway_profile or self.name
         self.app_policy = self.app_policy or self.app_policy_name
         self.semantic_cache_enabled = self.prompt_cache_enabled
+        if self.default_model_ref and not self.semantic_router_service:
+            self.semantic_router_service = self.default_model_ref
+        elif self.semantic_router_service and not self.default_model_ref:
+            self.default_model_ref = self.semantic_router_service
+        if self.provider_overrides and not self.provider_credentials:
+            self.provider_credentials = {
+                item.name: item.credential_ref for item in self.provider_overrides if item.name and item.credential_ref
+            }
+        elif self.provider_credentials and not self.provider_overrides:
+            self.provider_overrides = [
+                AiRouteProviderOverride(name=p, credential_ref=self.provider_credentials.get(p))
+                for p in (self.providers or list(self.provider_credentials.keys()))
+            ]
         if self.virtual_keys_enabled and self.jwt_enabled:
             self.auth_mode = "virtual_key+jwt"
         elif self.jwt_enabled:
@@ -380,6 +439,7 @@ class GovernanceVirtualKeyItem(BaseModel):
     tpm_limit: int = 60000
     monthly_budget_usd: float = 50.0
     spend_usd: float = 0.0
+    current_spend_usd: float = 0.0
     status: str = "active"  # active | revoked
     created_at: str
     last_used_at: str | None = None
@@ -388,6 +448,9 @@ class GovernanceVirtualKeyItem(BaseModel):
     @model_validator(mode="after")
     def _sync_aliases(self) -> GovernanceVirtualKeyItem:
         self.cleartext_key = self.cleartext_key or self.raw_key
+        best_spend = max(float(self.current_spend_usd or 0.0), float(self.spend_usd or 0.0))
+        self.current_spend_usd = best_spend
+        self.spend_usd = best_spend
         return self
 
 
@@ -515,6 +578,10 @@ class CreateAiProviderRequest(BaseModel):
     provider_type: str | None = None
     base_url: str | None = None
     endpoint_url: str | None = None
+    dialect: str | None = None
+    region: str | None = None
+    deployment: str | None = None
+    api_version: str | None = None
     api_key: str = "sk-configured-via-console"
     credential_name: str | None = None
     secret_name: str | None = None
@@ -528,6 +595,8 @@ class CreateAiProviderRequest(BaseModel):
             self.vendor = self.provider_type
         if self.endpoint_url:
             self.base_url = self.endpoint_url
+        if self.dialect:
+            self.dialect = _DIALECT_CANONICAL_MAP.get(self.dialect.strip().lower(), self.dialect.strip())
         return self
 
 
@@ -574,7 +643,17 @@ class CreateAiGatewayRouteRequest(BaseModel):
     auth_mode: str | None = None
     virtual_keys_enabled: bool = True
     jwt_enabled: bool = False
+    jwt_issuer: str | None = None
     jwt_audiences: list[str] = Field(default_factory=list)
+    jwks_uri: str | None = None
+    jwks_refresh_interval: str | None = None
+    jwt_secret_ref: str | None = None
+    jwt_header: str | None = None
+    jwt_scheme: str | None = None
+    jwt_clock_skew: str | None = None
+    jwt_principal_claim: str | None = None
+    jwt_team_claim: str | None = None
+    jwt_org_claim: str | None = None
     failover_enabled: bool = True
     failover_max_attempts: int = 3
     failover_on_429: bool = True
@@ -586,7 +665,14 @@ class CreateAiGatewayRouteRequest(BaseModel):
     semantic_cache_pool_idle_timeout: str = "300s"
     model_routing_enabled: bool = False
     default_model_ref: str | None = None
+    semantic_router_service: str | None = None
+    semantic_router_namespace: str | None = None
+    semantic_router_port: int = 8000
+    semantic_router_timeout: str | None = "5s"
     providers: list[str] = Field(default_factory=list)
+    allowed_providers: list[str] = Field(default_factory=list)
+    provider_credentials: dict[str, str] = Field(default_factory=dict)
+    provider_overrides: list[AiRouteProviderOverride] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _normalize(self) -> CreateAiGatewayRouteRequest:
@@ -599,6 +685,25 @@ class CreateAiGatewayRouteRequest(BaseModel):
         if self.auth_mode:
             self.virtual_keys_enabled = "virtual_key" in self.auth_mode
             self.jwt_enabled = "jwt" in self.auth_mode
+        if self.default_model_ref and not self.semantic_router_service:
+            self.semantic_router_service = self.default_model_ref
+        elif self.semantic_router_service and not self.default_model_ref:
+            self.default_model_ref = self.semantic_router_service
+        if self.allowed_providers and not self.providers:
+            self.providers = list(self.allowed_providers)
+        if self.provider_overrides and not self.provider_credentials:
+            self.provider_credentials = {
+                item.name: item.credential_ref for item in self.provider_overrides if item.name and item.credential_ref
+            }
+            if not self.providers:
+                self.providers = [item.name for item in self.provider_overrides if item.name]
+        elif self.provider_credentials and not self.provider_overrides:
+            for pname in self.provider_credentials:
+                if pname not in self.providers:
+                    self.providers.append(pname)
+            self.provider_overrides = [
+                AiRouteProviderOverride(name=p, credential_ref=self.provider_credentials.get(p)) for p in self.providers
+            ]
         return self
 
 
@@ -696,6 +801,17 @@ class UpdateAiGatewayRoutePoliciesRequest(BaseModel):
     auth_mode: str | None = None
     virtual_keys_enabled: bool | None = None
     jwt_enabled: bool | None = None
+    jwt_issuer: str | None = None
+    jwt_audiences: list[str] | None = None
+    jwks_uri: str | None = None
+    jwks_refresh_interval: str | None = None
+    jwt_secret_ref: str | None = None
+    jwt_header: str | None = None
+    jwt_scheme: str | None = None
+    jwt_clock_skew: str | None = None
+    jwt_principal_claim: str | None = None
+    jwt_team_claim: str | None = None
+    jwt_org_claim: str | None = None
     failover_enabled: bool | None = None
     prompt_cache_enabled: bool | None = None
     semantic_cache_enabled: bool | None = None
@@ -703,6 +819,14 @@ class UpdateAiGatewayRoutePoliciesRequest(BaseModel):
     semantic_cache_pool_max_size: int | None = None
     semantic_cache_pool_idle_timeout: str | None = None
     model_routing_enabled: bool | None = None
+    default_model_ref: str | None = None
+    semantic_router_service: str | None = None
+    semantic_router_namespace: str | None = None
+    semantic_router_port: int | None = None
+    semantic_router_timeout: str | None = None
+    providers: list[str] | None = None
+    provider_credentials: dict[str, str] | None = None
+    provider_overrides: list[AiRouteProviderOverride] | None = None
 
     @model_validator(mode="after")
     def _normalize(self) -> UpdateAiGatewayRoutePoliciesRequest:
@@ -711,6 +835,16 @@ class UpdateAiGatewayRoutePoliciesRequest(BaseModel):
         if self.auth_mode:
             self.virtual_keys_enabled = "virtual_key" in self.auth_mode
             self.jwt_enabled = "jwt" in self.auth_mode
+        if self.default_model_ref and not self.semantic_router_service:
+            self.semantic_router_service = self.default_model_ref
+        elif self.semantic_router_service and not self.default_model_ref:
+            self.default_model_ref = self.semantic_router_service
+        if self.provider_overrides is not None and self.provider_credentials is None:
+            self.provider_credentials = {
+                item.name: item.credential_ref for item in self.provider_overrides if item.name and item.credential_ref
+            }
+            if self.providers is None:
+                self.providers = [item.name for item in self.provider_overrides if item.name]
         return self
 
 

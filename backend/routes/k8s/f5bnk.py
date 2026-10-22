@@ -370,7 +370,7 @@ def get_a2a_agents(
     """
     k8s_service = KubernetesService(db)
     cluster = k8s_service.get_cluster(cluster_id)
-    api_client = k8s_service.load_kubeconfig(cluster) if probe else None
+    api_client = k8s_service.load_kubeconfig(cluster)
 
     # include_nodes=True aligns the cache key with the other BNK insight endpoints.
     data = fetch_all_bnk_data(k8s_service, cluster_id, namespace, include_nodes=True)
@@ -379,7 +379,7 @@ def get_a2a_agents(
     agents = discover_a2a_agents(
         data, topo["topology"],
         api_client=api_client,
-        probe=probe,
+        probe=True,
     )
 
     return {

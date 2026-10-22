@@ -98,7 +98,10 @@ const INFERENCE_VIEWS: Array<{
 export default function SmartLlmRouterPage() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const urlView = resolveInferenceView(searchParams.get("tab"));
+  const urlView = resolveInferenceView(
+    searchParams.get("tab") ?? searchParams.get("view"),
+  );
+  const urlCluster = searchParams.get("cluster");
 
   const {
     data: clustersData,
@@ -120,17 +123,38 @@ export default function SmartLlmRouterPage() {
   );
 
   useEffect(() => {
+    if (urlCluster === "all") {
+      if (selectedClusterId !== null) {
+        setSelectedClusterId(null);
+      }
+    } else if (urlCluster && Number(urlCluster) > 0) {
+      const parsedClusterId = Number(urlCluster);
+      if (selectedClusterId !== parsedClusterId) {
+        setSelectedClusterId(parsedClusterId);
+      }
+    }
+  }, [urlCluster, selectedClusterId, setSelectedClusterId]);
+
+  useEffect(() => {
     if (urlView) {
       setSelectedSubView(urlView);
       if (urlView === "overview") {
         if (selectedClusterId !== null) {
           setSelectedClusterId(null);
         }
-      } else if (selectedClusterId === null && clusters.length > 0) {
-        setSelectedClusterId(clusters[0].id);
+      } else if (
+        selectedClusterId === null &&
+        urlCluster !== "all" &&
+        clusters.length > 0
+      ) {
+        const parsedClusterId =
+          urlCluster && Number(urlCluster) > 0
+            ? Number(urlCluster)
+            : clusters[0].id;
+        setSelectedClusterId(parsedClusterId);
       }
     }
-  }, [urlView, clusters, selectedClusterId, setSelectedClusterId]);
+  }, [urlView, urlCluster, clusters, selectedClusterId, setSelectedClusterId]);
 
   const activeViewKey: InferenceViewKey =
     urlView ?? (selectedClusterId === null ? "overview" : selectedSubView);
@@ -173,7 +197,7 @@ export default function SmartLlmRouterPage() {
 
   const { data: llmStats, isLoading: statsLoading } = useLlmStats(
     selectedClusterId,
-    { range: "24h" },
+    { range: "6h" },
   );
   const live = llmStats?.available ? llmStats : undefined;
   const pending = statsLoading ? "…" : "—";
@@ -197,8 +221,9 @@ export default function SmartLlmRouterPage() {
   });
 
   const { data: modelData } = useQuery({
-    queryKey: ["bnk-resources", scopedClusterId, "inferencemodel", "all"],
-    queryFn: () => api.getClusterResources(scopedClusterId, "inferencemodel"),
+    queryKey: ["bnk-resources", scopedClusterId, "inferencemodelrewrite", "all"],
+    queryFn: () =>
+      api.getClusterResources(scopedClusterId, "inferencemodelrewrite"),
     enabled: activeViewKey === "pools" && Boolean(scopedClusterId),
     staleTime: 10000,
   });
@@ -349,7 +374,7 @@ export default function SmartLlmRouterPage() {
                 icon={Zap}
                 tone="primary"
                 loading={statsLoading}
-                subtext="Past 24 hours"
+                subtext="Past 6 hours"
               />
               <StatTile
                 label="Success Rate"
@@ -359,7 +384,7 @@ export default function SmartLlmRouterPage() {
                 icon={Layers}
                 tone="primary"
                 loading={statsLoading}
-                subtext="Past 24 hours"
+                subtext="Past 6 hours"
               />
               <StatTile
                 label="Average Latency"
@@ -390,7 +415,7 @@ export default function SmartLlmRouterPage() {
             {activeViewKey === "overview" ? (
               <SectionCard
                 title="Clusters"
-                description="Gateway telemetry per cluster, last 24h. Select one to inspect its Intelligent Inference router."
+                description="Gateway telemetry per cluster, last 6h. Select one to inspect its Intelligent Inference router."
                 action={
                   <Badge variant="outline" className="text-xs">
                     {clusters.length} clusters
@@ -573,7 +598,18 @@ export default function SmartLlmRouterPage() {
                                     {pool.metadata?.namespace ?? "default"}
                                   </TableCell>
                                   <TableCell className="text-xs font-mono">
-                                    {String(spec.targetPortNumber ?? 8000)}
+                                    {String(
+                                      spec.targetPortNumber ??
+                                        (Array.isArray(spec.targetPorts)
+                                          ? (
+                                              spec.targetPorts[0] as Record<
+                                                string,
+                                                unknown
+                                              >
+                                            )?.number
+                                          : undefined) ??
+                                        8000,
+                                    )}
                                   </TableCell>
                                   <TableCell className="text-xs font-mono text-muted-foreground">
                                     {selectorText}
@@ -641,9 +677,28 @@ export default function SmartLlmRouterPage() {
                                 string,
                                 unknown
                               >;
+                              const rules = Array.isArray(spec.rules)
+                                ? (spec.rules as Array<Record<string, unknown>>)
+                                : [];
+                              const firstRule = rules[0] ?? {};
+                              const matches = Array.isArray(firstRule.matches)
+                                ? (firstRule.matches as Array<
+                                    Record<string, unknown>
+                                  >)
+                                : [];
+                              const matchModelVal = (
+                                matches[0]?.model as Record<string, unknown>
+                              )?.value as string | undefined;
+                              const ruleTargets = Array.isArray(
+                                firstRule.targets,
+                              )
+                                ? (firstRule.targets as Array<
+                                    Record<string, unknown>
+                                  >)
+                                : [];
                               const poolRef =
                                 ((spec.poolRef as Record<string, unknown>)
-                                  ?.name as string) ?? "—";
+                                  ?.name as string) ?? "llm-inference-pool";
                               const targets = Array.isArray(spec.targetModels)
                                 ? (
                                     spec.targetModels as Array<
@@ -655,7 +710,20 @@ export default function SmartLlmRouterPage() {
                                         `${String(t.name ?? "adapter")} (${String(t.weight ?? 100)}%)`,
                                     )
                                     .join(", ")
-                                : "Primary base model (100%)";
+                                : ruleTargets.length > 0
+                                  ? ruleTargets
+                                      .map(
+                                        (t) =>
+                                          `${String(t.modelRewrite ?? t.name ?? "adapter")} (${String(t.weight ?? 100)}%)`,
+                                      )
+                                      .join(", ")
+                                  : "Primary base model (100%)";
+                              const modelDisplayName = String(
+                                spec.modelName ??
+                                  matchModelVal ??
+                                  model.metadata?.name ??
+                                  "—",
+                              );
                               return (
                                 <TableRow
                                   key={
@@ -666,11 +734,7 @@ export default function SmartLlmRouterPage() {
                                     {model.metadata?.name}
                                   </TableCell>
                                   <TableCell className="text-xs font-mono">
-                                    {String(
-                                      spec.modelName ??
-                                        model.metadata?.name ??
-                                        "—",
-                                    )}
+                                    {modelDisplayName}
                                   </TableCell>
                                   <TableCell className="text-xs font-mono">
                                     {poolRef}
@@ -680,7 +744,7 @@ export default function SmartLlmRouterPage() {
                                       variant="outline"
                                       className="text-2xs"
                                     >
-                                      {String(spec.criticality ?? "Standard")}
+                                      {String(spec.criticality ?? "Critical")}
                                     </Badge>
                                   </TableCell>
                                   <TableCell className="text-xs font-mono text-muted-foreground">

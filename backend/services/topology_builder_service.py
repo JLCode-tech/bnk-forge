@@ -48,25 +48,6 @@ _OPTIONAL_FABRIC_CRD_KEYS: tuple[str, ...] = (
     "aicredential",
     "aigateway",
     "cneinstance",
-    "f5spkvlan",
-    "f5spkstaticroute",
-    "f5bigdns",
-    "f5bigdnscache",
-    "f5bigcgnat",
-    "f5bignatpool",
-    "f5bignatpolicy",
-    "f5bigfwpolicy",
-    "f5bigsfwpolicy",
-    "f5bigddospolicy",
-    "f5bignetpolicy",
-    "f5bigdiameter",
-    "f5biggslbzone",
-    "f5biggslbwideip",
-    "f5biggslbpool",
-    "scrape",
-    "scrapeclass",
-    "scrapetemplate",
-    "observer",
     "secret",
 )
 
@@ -74,7 +55,7 @@ _OPTIONAL_FABRIC_CRD_KEYS: tuple[str, ...] = (
 def _safe_fetch_optional_resources(
     k8s_service: KubernetesService,
     cluster_id: int,
-    namespace: str,
+    namespace: str | None,
 ) -> dict[str, list[dict[str, Any]]]:
     """Best-effort fetch of optional Gateway, AI Gateway, and CNF resources.
 
@@ -95,13 +76,23 @@ def _safe_fetch_optional_resources(
         if hasattr(get_res, "assert_called"):
             return extra
 
-    for key in _OPTIONAL_FABRIC_CRD_KEYS:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def _fetch_one(key: str) -> tuple[str, list[dict[str, Any]]]:
         try:
             items = k8s_service.get_resources(cluster_id, key, namespace=namespace)
             if isinstance(items, list) and items:
-                extra[key] = items
+                return key, items
         except Exception:
-            continue
+            pass
+        return key, []
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = [pool.submit(_fetch_one, key) for key in _OPTIONAL_FABRIC_CRD_KEYS]
+        for fut in as_completed(futures):
+            k, items = fut.result()
+            if items:
+                extra[k] = items
     return extra
 
 
@@ -119,6 +110,9 @@ def build_namespace_topology(
     Raises BreakerOpenError (503) automatically via @with_breaker on get_resources
     if the cluster is unreachable.  The route just needs @handle_route_errors.
     """
+    is_all = namespace in ("all", "", None)
+    workload_ns = "f5-bnk" if is_all else namespace
+    crd_ns = None if is_all else namespace
     cache_key = f"k8s:topology:{cluster_id}:{namespace}"
     cached = None if force else cache.get(cache_key)
     if isinstance(cached, dict):
@@ -127,13 +121,13 @@ def build_namespace_topology(
         except Exception:
             pass
 
-    pods = k8s_service.get_resources(cluster_id, "pod", namespace=namespace)
-    services = k8s_service.get_resources(cluster_id, "service", namespace=namespace)
-    deployments = k8s_service.get_resources(cluster_id, "deployment", namespace=namespace)
-    replicasets = k8s_service.get_resources(cluster_id, "replicaset", namespace=namespace)
-    statefulsets = k8s_service.get_resources(cluster_id, "statefulset", namespace=namespace)
-    daemonsets = k8s_service.get_resources(cluster_id, "daemonset", namespace=namespace)
-    custom_resources = _safe_fetch_optional_resources(k8s_service, cluster_id, namespace)
+    pods = k8s_service.get_resources(cluster_id, "pod", namespace=workload_ns)
+    services = k8s_service.get_resources(cluster_id, "service", namespace=workload_ns)
+    deployments = k8s_service.get_resources(cluster_id, "deployment", namespace=workload_ns)
+    replicasets = k8s_service.get_resources(cluster_id, "replicaset", namespace=workload_ns)
+    statefulsets = k8s_service.get_resources(cluster_id, "statefulset", namespace=workload_ns)
+    daemonsets = k8s_service.get_resources(cluster_id, "daemonset", namespace=workload_ns)
+    custom_resources = _safe_fetch_optional_resources(k8s_service, cluster_id, crd_ns)
 
     result = assemble_topology(
         pods=pods,
@@ -143,7 +137,7 @@ def build_namespace_topology(
         statefulsets=statefulsets,
         daemonsets=daemonsets,
         cluster_id=cluster_id,
-        namespace=namespace,
+        namespace=workload_ns,
         custom_resources=custom_resources,
     )
     cache.set(cache_key, result.model_dump(), ttl_seconds=_TOPOLOGY_CACHE_TTL_SEC)
@@ -629,6 +623,14 @@ def _assemble_custom_fabric_topology(
                 if isinstance(cert_ref, dict) and cert_ref.get("name"):
                     referenced_secrets.add(str(cert_ref["name"]))
 
+    for prof in custom_resources.get("aigatewayprofile") or []:
+        spec = prof.get("spec") or {}
+        jwt_cfg = ((spec.get("auth") or {}).get("jwt")) or {}
+        if isinstance(jwt_cfg, dict):
+            sec_ref = _get_field(jwt_cfg, "secretRef", "secret_ref") or {}
+            if isinstance(sec_ref, dict) and sec_ref.get("name"):
+                referenced_secrets.add(str(sec_ref["name"]))
+
     # 1. Add all CRD nodes first so cross-references can resolve in any order
     for key, (kind_name, category) in _FABRIC_KIND_META.items():
         for item in custom_resources.get(key) or []:
@@ -678,7 +680,7 @@ def _assemble_custom_fabric_topology(
                     }
                 )
             elif key == "aiprovider":
-                vendor = spec.get("vendor", "Generic")
+                vendor = spec.get("type") or spec.get("vendor") or "Generic"
                 vendor_cfg = (
                     spec.get("generic")
                     or spec.get("openAI")
@@ -700,10 +702,12 @@ def _assemble_custom_fabric_topology(
                 )
             elif key == "aigatewayprofile":
                 auth = spec.get("auth") or {}
+                vk_cfg = _get_field(auth, "virtualKeys", "virtual_keys")
+                vk_enabled = bool(vk_cfg.get("required", True)) if isinstance(vk_cfg, dict) else bool(vk_cfg)
                 meta.update(
                     {
                         "tenant": (_get_field(spec, "tenantRef", "tenant_ref") or {}).get("name"),
-                        "virtual_keys_enabled": _get_field(auth, "virtualKeys", "virtual_keys") is not None,
+                        "virtual_keys_enabled": vk_enabled,
                         "jwt_enabled": auth.get("jwt") is not None,
                         "failover_enabled": spec.get("failover") is not None,
                         "prompt_cache_enabled": _get_field(spec, "promptCache", "prompt_cache") is not None,
@@ -743,6 +747,29 @@ def _assemble_custom_fabric_topology(
                     meta={"type": sec.get("type", "Opaque")},
                 )
             )
+
+    # Add custom Service nodes (e.g. cross-namespace vllmsr ExternalName Service)
+    for svc_item in custom_resources.get("service") or []:
+        svc_name = _meta_name(svc_item)
+        if not svc_name:
+            continue
+        svc_ns = _meta_ns(svc_item, namespace)
+        svc_spec = svc_item.get("spec") or {}
+        add_node_if_missing(
+            TopologyNode(
+                id=_node_id("Service", svc_name, svc_ns),
+                kind="Service",
+                name=svc_name,
+                namespace=svc_ns,
+                uid=_uid(svc_item) or None,
+                severity="healthy",
+                category="networking",
+                meta={
+                    "type": svc_spec.get("type", "ClusterIP"),
+                    "external_name": _get_field(svc_spec, "externalName", "external_name"),
+                },
+            )
+        )
 
     # 2. Wire Cross-CRD Dependency Fabric Edges
     # AppPolicy / SecPolicy / NetPolicy -> Gateway & AIGatewayProfile
@@ -794,27 +821,76 @@ def _assemble_custom_fabric_topology(
                     b_ns = bref.get("namespace") or hr_ns
                     add_edge_if_valid(hr_id, _node_id(b_kind, str(bref["name"]), b_ns), "routes", "backendRef")
 
-    # AIGatewayProfile -> AITenant, AIProvider, AIModel
+    # AIGatewayProfile -> AITenant, AIProvider, AICredential, AIModel, Service (semanticRouter), Secret (jwt)
     for prof in custom_resources.get("aigatewayprofile") or []:
         prof_name = _meta_name(prof)
         prof_ns = _meta_ns(prof, namespace)
         prof_id = _node_id("AIGatewayProfile", prof_name, prof_ns)
         spec = prof.get("spec") or {}
         t_ref = _get_field(spec, "tenantRef", "tenant_ref") or {}
-        if isinstance(t_ref, dict) and t_ref.get("name"):
-            add_edge_if_valid(prof_id, _node_id("AITenant", str(t_ref["name"]), "cluster"), "references", "tenantRef")
-        for p_entry in spec.get("providers") or []:
-            if isinstance(p_entry, dict):
-                p_ref = _get_field(p_entry, "providerRef", "provider_ref") or {}
-                if isinstance(p_ref, dict) and p_ref.get("name"):
-                    add_edge_if_valid(
-                        prof_id,
-                        _node_id("AIProvider", str(p_ref["name"]), prof_ns),
-                        "references",
-                        "providerRef",
-                    )
+        prof_tenant = str(t_ref["name"]) if isinstance(t_ref, dict) and t_ref.get("name") else ""
+        if prof_tenant:
+            add_edge_if_valid(prof_id, _node_id("AITenant", prof_tenant, "cluster"), "references", "tenantRef")
+        prof_providers = spec.get("providers") or []
+        if prof_providers:
+            for p_entry in prof_providers:
+                if isinstance(p_entry, dict):
+                    p_ref = _get_field(p_entry, "providerRef", "provider_ref") or {}
+                    p_name = p_entry.get("name") or (p_ref.get("name") if isinstance(p_ref, dict) else None)
+                    if p_name:
+                        add_edge_if_valid(
+                            prof_id,
+                            _node_id("AIProvider", str(p_name), prof_ns),
+                            "references",
+                            "providerRef",
+                        )
+                    c_ref = _get_field(p_entry, "credentialRef", "credential_ref") or {}
+                    if isinstance(c_ref, dict) and c_ref.get("name"):
+                        add_edge_if_valid(
+                            prof_id,
+                            _node_id("AICredential", str(c_ref["name"]), prof_ns),
+                            "references",
+                            "credentialRef",
+                        )
+        elif prof_tenant:
+            # Manual Section 4.5.6: omitting spec.providers activates all tenant providers on this route
+            for prov in custom_resources.get("aiprovider") or []:
+                p_spec = prov.get("spec") or {}
+                pt_ref = _get_field(p_spec, "tenantRef", "tenant_ref") or {}
+                if isinstance(pt_ref, dict) and str(pt_ref.get("name") or "") == prof_tenant:
+                    p_name = _meta_name(prov)
+                    p_ns = _meta_ns(prov, namespace)
+                    if p_name:
+                        add_edge_if_valid(
+                            prof_id,
+                            _node_id("AIProvider", p_name, p_ns),
+                            "references",
+                            "tenantProvider",
+                        )
+
+        jwt_cfg = ((spec.get("auth") or {}).get("jwt")) or {}
+        if isinstance(jwt_cfg, dict):
+            sec_ref = _get_field(jwt_cfg, "secretRef", "secret_ref") or {}
+            if isinstance(sec_ref, dict) and sec_ref.get("name"):
+                add_edge_if_valid(
+                    prof_id,
+                    _node_id("Secret", str(sec_ref["name"]), prof_ns),
+                    "references",
+                    "jwt.secretRef",
+                )
+
         mr = _get_field(spec, "modelRouting", "model_routing") or {}
         if isinstance(mr, dict):
+            sem_router = _get_field(mr, "semanticRouter", "semantic_router") or {}
+            if isinstance(sem_router, dict):
+                svc_ref = _get_field(sem_router, "serviceRef", "service_ref") or {}
+                if isinstance(svc_ref, dict) and svc_ref.get("name"):
+                    add_edge_if_valid(
+                        prof_id,
+                        _node_id("Service", str(svc_ref["name"]), prof_ns),
+                        "routes",
+                        "semanticRouter",
+                    )
             def_m = _get_field(mr, "defaultModelRef", "default_model_ref") or {}
             if isinstance(def_m, dict) and def_m.get("name"):
                 add_edge_if_valid(

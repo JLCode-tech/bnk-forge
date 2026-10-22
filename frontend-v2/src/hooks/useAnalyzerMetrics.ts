@@ -57,6 +57,17 @@ export interface EppInfo {
   status_conditions: Array<{ type: string; status: string; reason?: string; message?: string }>;
 }
 
+export interface EppHistoryPoint {
+  ts: string;
+  output_tps: number;
+  prompt_tps: number;
+  total_tps: number;
+  ttft_ms: number;
+  itl_ms: number;
+  cache_hit_pct: number;
+  kv_used_pct: number;
+}
+
 export interface AnalyzerRuntimeMetrics {
   available: boolean;
   reason?: string;
@@ -69,6 +80,7 @@ export interface AnalyzerRuntimeMetrics {
   epp_info?: EppInfo;
   summary?: EppSummaryMetrics;
   endpoints?: EppEndpointMetric[];
+  history?: EppHistoryPoint[];
   errors?: Record<string, string>;
   updated_at?: string;
 }

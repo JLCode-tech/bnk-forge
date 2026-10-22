@@ -1414,6 +1414,105 @@ export default function LlmDashboard() {
             </SectionCard>
 
             <SectionCard
+              title="Tenant, Organization & Team Budget Consumption"
+              description="Live monthly budget utilization rolled up from ClickHouse otel.aigw_requests across AITenants, Organizations, Teams & Principals"
+              compact
+            >
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs">AITenant / Organization</TableHead>
+                    <TableHead className="text-xs">Teams &amp; Principals</TableHead>
+                    <TableHead className="text-xs w-[240px]">Monthly Budget Utilization</TableHead>
+                    <TableHead className="text-xs text-right">RPM / TPM Quota</TableHead>
+                    <TableHead className="text-xs">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(govOverview?.organizations ?? []).length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={5}
+                        className="text-center text-xs text-muted-foreground py-6"
+                      >
+                        No tenant organizations configured on this scope.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    (govOverview?.organizations ?? []).map((o) => {
+                      const orgPct =
+                        o.monthly_budget_usd > 0
+                          ? Math.round(
+                              (o.current_spend_usd / o.monthly_budget_usd) * 100,
+                            )
+                          : 0;
+                      const orgTeams = (govOverview?.teams ?? []).filter(
+                        (t) => t.org_id === o.id || t.org_name === o.name,
+                      );
+                      const orgPrincipals = (govOverview?.principals ?? []).filter(
+                        (p) => p.org_id === o.id || p.org_name === o.name,
+                      );
+                      return (
+                        <TableRow key={`tenant-org-${o.id}`}>
+                          <TableCell className="text-xs">
+                            <div className="font-semibold">{o.name}</div>
+                            <div className="text-2xs font-mono text-muted-foreground">
+                              AITenant: {o.tenant_ref}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            <div className="flex flex-wrap gap-1">
+                              {orgTeams.map((t) => (
+                                <Badge
+                                  key={t.id}
+                                  variant="secondary"
+                                  className="text-2xs font-mono"
+                                >
+                                  {t.name}: ${t.current_spend_usd.toFixed(0)}/${t.monthly_budget_usd.toFixed(0)}
+                                </Badge>
+                              ))}
+                              {orgPrincipals.length > 0 && (
+                                <Badge variant="outline" className="text-2xs">
+                                  {orgPrincipals.length} principal(s)
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-2xs font-mono">
+                                <span>
+                                  ${o.current_spend_usd.toFixed(2)} / $
+                                  {o.monthly_budget_usd.toFixed(0)}
+                                </span>
+                                <span className="text-muted-foreground">
+                                  {orgPct}%
+                                </span>
+                              </div>
+                              <Progress
+                                value={Math.min(orgPct, 100)}
+                                className="h-1.5"
+                              />
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-xs font-mono text-right">
+                            {o.rpm_limit.toLocaleString()} /{" "}
+                            {o.tpm_limit.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            <Badge variant="default" className="text-2xs">
+                              Active
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </SectionCard>
+
+            <SectionCard
               title="Live Gateway Request & Policy Tester"
               description="Verify /v1 path routing, VirtualKey ACL & budget enforcement, Semantic Prompt Cache HIT/MISS, and automatic provider failover with ClickHouse otel.aigw_requests audit attribution"
               compact
@@ -2323,25 +2422,66 @@ export default function LlmDashboard() {
                             </TableRow>
                           );
                         })}
-                        {(govOverview?.principals ?? []).map((p) => (
-                          <TableRow key={p.id}>
-                            <TableCell className="text-xs font-semibold">
-                              {p.name}
-                            </TableCell>
-                            <TableCell className="text-xs">
-                              <Badge variant="outline" className="text-2xs">
-                                {p.principal_type}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-xs">
-                              {p.team_name}
-                            </TableCell>
-                            <TableCell className="text-xs font-mono text-right">
-                              {p.rpm_limit.toLocaleString()} /{" "}
-                              {p.tpm_limit.toLocaleString()}
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                        {(govOverview?.principals ?? []).map((p) => {
+                          const pVks = (govOverview?.virtual_keys ?? []).filter(
+                            (k) =>
+                              k.principal_id === p.id ||
+                              k.principal_name === p.name,
+                          );
+                          const pBudget =
+                            pVks.reduce(
+                              (acc, k) => acc + (k.monthly_budget_usd || 0),
+                              0,
+                            ) ||
+                            (govOverview?.teams ?? []).find(
+                              (t) =>
+                                t.id === p.team_id || t.name === p.team_name,
+                            )?.monthly_budget_usd ||
+                            500;
+                          const pSpend =
+                            p.current_spend_usd ||
+                            pVks.reduce((acc, k) => acc + (k.spend_usd || 0), 0);
+                          const pPct =
+                            pBudget > 0
+                              ? Math.round((pSpend / pBudget) * 100)
+                              : 0;
+                          return (
+                            <TableRow key={p.id}>
+                              <TableCell className="text-xs font-semibold">
+                                <div>{p.name}</div>
+                                <div className="text-2xs font-normal text-muted-foreground">
+                                  {p.team_name}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                <Badge variant="outline" className="text-2xs">
+                                  {p.principal_type}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                <div className="space-y-1">
+                                  <div className="flex justify-between text-2xs font-mono">
+                                    <span>
+                                      ${pSpend.toFixed(2)} / $
+                                      {pBudget.toFixed(0)}
+                                    </span>
+                                    <span className="text-muted-foreground">
+                                      {pPct}%
+                                    </span>
+                                  </div>
+                                  <Progress
+                                    value={Math.min(pPct, 100)}
+                                    className="h-1"
+                                  />
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-xs font-mono text-right">
+                                {p.rpm_limit.toLocaleString()} /{" "}
+                                {p.tpm_limit.toLocaleString()}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </>
                     )}
                   </TableBody>
@@ -2713,21 +2853,8 @@ function HistogramCard({
     [auditLogs, metric],
   );
   const series = useMemo(() => {
-    if (lokiSeries.length === 0) return auditSeries;
-    if (auditSeries.length === 0) return lokiSeries;
-    const byName = new Map<string, LlmSeries>();
-    for (const s of lokiSeries) {
-      byName.set(s.name, { name: s.name, points: [...s.points] });
-    }
-    for (const s of auditSeries) {
-      const existing = byName.get(s.name);
-      if (!existing) {
-        byName.set(s.name, s);
-      } else {
-        existing.points = [...existing.points, ...s.points];
-      }
-    }
-    return Array.from(byName.values());
+    if (lokiSeries.length > 0) return lokiSeries;
+    return auditSeries;
   }, [lokiSeries, auditSeries]);
   const available = (data?.available ?? true) || auditSeries.length > 0;
   const colors = series.map((s, i) =>
@@ -2786,6 +2913,11 @@ function RankingsTab({
   statusFilter: string;
 }) {
   const { data, isLoading } = useLlmRankings(clusterId, params, active);
+  const { data: modelsHist } = useLlmHistogram(
+    clusterId,
+    { ...params, metric: "models" },
+    active,
+  );
   const [sortKey, setSortKey] = useState<SortKey>("requests");
 
   const govRows = useMemo(
@@ -2802,32 +2934,22 @@ function RankingsTab({
       const existing = map.get(gr.model);
       if (!existing) {
         map.set(gr.model, gr);
-      } else if (gr.requests > 0) {
-        const totalReqs = existing.requests + gr.requests;
-        map.set(gr.model, {
-          ...existing,
-          requests: totalReqs,
-          tokens: existing.tokens + gr.tokens,
-          cost: existing.cost + gr.cost,
-          avg_latency_ms:
-            totalReqs > 0
-              ? (existing.avg_latency_ms * existing.requests +
-                  gr.avg_latency_ms * gr.requests) /
-                totalReqs
-              : existing.avg_latency_ms,
-          success_rate:
-            totalReqs > 0
-              ? (existing.success_rate * existing.requests +
-                  gr.success_rate * gr.requests) /
-                totalReqs
-              : existing.success_rate,
-        });
+      } else if (existing.requests === 0 && gr.requests > 0) {
+        map.set(gr.model, gr);
       }
     }
     return Array.from(map.values()).sort((a, b) => b[sortKey] - a[sortKey]);
   }, [data?.rows, govRows, sortKey]);
 
-  const topSeries = useMemo(() => buildTopModelsSeries(rows), [rows]);
+  const topSeries = useMemo(() => {
+    const histSeries = modelsHist?.series ?? [];
+    if (histSeries.length > 0) {
+      return [...histSeries]
+        .sort((a, b) => sumSeries([b]) - sumSeries([a]))
+        .slice(0, 6);
+    }
+    return buildTopModelsSeries(rows);
+  }, [modelsHist?.series, rows]);
 
   if (isLoading) return <Skeleton className="h-64 w-full" />;
   if (!data?.available && rows.length === 0) {
@@ -3156,21 +3278,8 @@ function ProviderCard({
 
   const rawSeries = useMemo(() => {
     const lokiSeries = data?.series ?? [];
-    if (lokiSeries.length === 0) return auditSeries;
-    if (auditSeries.length === 0) return lokiSeries;
-    const byName = new Map<string, LlmSeries>();
-    for (const s of lokiSeries) {
-      byName.set(s.name, { name: s.name, points: [...s.points] });
-    }
-    for (const s of auditSeries) {
-      const existing = byName.get(s.name);
-      if (!existing) {
-        byName.set(s.name, s);
-      } else {
-        existing.points = [...existing.points, ...s.points];
-      }
-    }
-    return Array.from(byName.values());
+    if (lokiSeries.length > 0) return lokiSeries;
+    return auditSeries;
   }, [data?.series, auditSeries]);
 
   const series = rawSeries.filter(
@@ -3178,11 +3287,10 @@ function ProviderCard({
       !provider || inferProvider(s.name) === provider || s.name === provider,
   );
   const available = (data?.available ?? true) || auditSeries.length > 0;
-  const colors = series.map((s) =>
-    providerColor(
-      inferProvider(s.name) === "unknown" ? s.name : inferProvider(s.name),
-    ),
-  );
+  const colors = series.map((s, i) => {
+    const inferred = inferProvider(s.name);
+    return inferred !== "unknown" ? providerColor(inferred) : seriesColor(i);
+  });
 
   return (
     <ChartCard

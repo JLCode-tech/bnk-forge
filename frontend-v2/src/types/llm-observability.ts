@@ -214,9 +214,11 @@ export interface DssmPrincipal {
   team_id: string;
   team_name: string;
   org_id: string;
+  org_name?: string;
   cluster_id: number;
   rpm_limit: number;
   tpm_limit: number;
+  current_spend_usd?: number;
   active_keys: number;
 }
 
