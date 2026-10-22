@@ -128,6 +128,9 @@ from models.f5_device import F5BIGIPDevice
 # --- Fleet membership + label layer (D-022) ---
 from models.fleet import FleetMember
 
+# --- Fleet deployable configs ---
+from models.fleet_config import FleetDeployableConfig
+
 # --- Fleet policy + compliance (D-022 Phase 3) ---
 from models.fleet_policy import FleetPolicy, PolicyEvaluation
 
@@ -139,10 +142,6 @@ from models.fleet_targeting import (
     FleetOperationStrategy,
     FleetTarget,
 )
-
-# --- Fleet deployable configs ---
-from models.fleet_config import FleetDeployableConfig
-
 
 # --- Kubernetes and F5 BNK networking ---
 from models.kubernetes import (

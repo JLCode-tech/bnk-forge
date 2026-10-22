@@ -12,7 +12,7 @@ import { useClusterReachable } from "@/hooks/useConnectivity";
 import type { components } from "@/types/api-generated";
 
 export type TopologyNode = components["schemas"]["TopologyNode"] & {
-  category?: string;
+  category?: string | null;
 };
 export type TopologyEdge = components["schemas"]["TopologyEdge"] & {
   label?: string | null;

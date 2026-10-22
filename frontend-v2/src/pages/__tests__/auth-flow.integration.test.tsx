@@ -143,7 +143,7 @@ describe("Auth Flow Integration", () => {
   // 4. Admin sees all navigation items including System
   // -------------------------------------------------------------------------
   describe("admin navigation visibility", () => {
-    it("shows Settings & Access section with System, Users, Auth & SSO, and Credentials & Registries for admin users", async () => {
+    it("shows Settings & Access section with System, Users, and Credentials & Registries for admin users", async () => {
       act(() => {
         useAuthStore.getState().login("mock-jwt-token", mockUser);
       });
@@ -156,7 +156,6 @@ describe("Auth Flow Integration", () => {
 
       expect(screen.getByText("System")).toBeInTheDocument();
       expect(screen.getByText("Users")).toBeInTheDocument();
-      expect(screen.getByText("Auth & SSO")).toBeInTheDocument();
       expect(screen.getByText("Credentials & Registries")).toBeInTheDocument();
     });
   });
@@ -165,7 +164,7 @@ describe("Auth Flow Integration", () => {
   // 5. Viewer cannot see admin-only Settings items
   // -------------------------------------------------------------------------
   describe("viewer navigation restrictions", () => {
-    it("hides admin-only Settings items (System, Users, Auth & SSO) while keeping Credentials & Registries for viewer users", async () => {
+    it("hides admin-only Settings items (System, Users) while keeping Credentials & Registries for viewer users", async () => {
       act(() => {
         useAuthStore.getState().login("mock-jwt-token", mockViewerUser);
       });
@@ -174,7 +173,7 @@ describe("Auth Flow Integration", () => {
 
       // Wait for sidebar to render non-restricted content
       await waitFor(() => {
-        expect(screen.getByText("Workspaces & IaC")).toBeInTheDocument();
+        expect(screen.getByText("Workspaces")).toBeInTheDocument();
       });
 
       // Viewer can see Credentials & Registries under Settings & Access, but not admin-only items
@@ -182,7 +181,6 @@ describe("Auth Flow Integration", () => {
       expect(screen.getByText("Credentials & Registries")).toBeInTheDocument();
       expect(screen.queryByText("System")).not.toBeInTheDocument();
       expect(screen.queryByText("Users")).not.toBeInTheDocument();
-      expect(screen.queryByText("Auth & SSO")).not.toBeInTheDocument();
     });
   });
 });

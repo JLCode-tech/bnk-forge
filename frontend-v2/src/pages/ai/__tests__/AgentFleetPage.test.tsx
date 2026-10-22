@@ -15,19 +15,17 @@ describe("AgentFleetPage", () => {
     const tabList = screen.getByRole("tablist", { name: /Agent fleet tabs/i });
     expect(tabList).toBeInTheDocument();
 
-    // Verify all 4 tabs exist
+    // Verify all 3 top-level tabs exist
     const fleetTab = screen.getByRole("tab", { name: /Discovered Fleet/i });
     const discoveryTab = screen.getByRole("tab", {
       name: /A2A Discovery Scanner/i,
     });
-    const irulesTab = screen.getByRole("tab", { name: /F5 In-Line iRules/i });
     const referenceTab = screen.getByRole("tab", {
-      name: /A2A Protocol Reference/i,
+      name: /Reference & Templates/i,
     });
 
     expect(fleetTab).toBeInTheDocument();
     expect(discoveryTab).toBeInTheDocument();
-    expect(irulesTab).toBeInTheDocument();
     expect(referenceTab).toBeInTheDocument();
 
     // Default tab is 'fleet'
@@ -40,19 +38,23 @@ describe("AgentFleetPage", () => {
       expect(fleetTab).toHaveAttribute("aria-selected", "false");
     });
 
-    // Click iRules tab
-    await user.click(irulesTab);
-    await waitFor(() => {
-      expect(irulesTab).toHaveAttribute("aria-selected", "true");
-      expect(discoveryTab).toHaveAttribute("aria-selected", "false");
-    });
-
-    // Click Reference tab
+    // Click Reference & Templates tab
     await user.click(referenceTab);
     await waitFor(() => {
       expect(referenceTab).toHaveAttribute("aria-selected", "true");
-      expect(irulesTab).toHaveAttribute("aria-selected", "false");
+      expect(discoveryTab).toHaveAttribute("aria-selected", "false");
     });
+
+    // Verify consolidated sub-section buttons inside Reference & Templates tab
+    expect(
+      screen.getByRole("button", { name: /A2A Protocol Reference/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Agent Templates/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /F5 In-Line iRules/i }),
+    ).toBeInTheDocument();
   });
 
   it("does not render demo badge and renders discovered agent data", async () => {

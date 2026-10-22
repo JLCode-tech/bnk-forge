@@ -496,6 +496,7 @@ class TestNetworkUnreachableAndUrllib3:
     @pytest.mark.asyncio
     async def test_general_exception_handler_urllib3(self):
         from unittest.mock import MagicMock
+
         import urllib3.exceptions
 
         req = MagicMock()
