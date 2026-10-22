@@ -23,6 +23,7 @@ Design notes:
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import threading
@@ -43,10 +44,21 @@ from services.reachability import registry as reachability_registry
 
 logger = logging.getLogger(__name__)
 
+_CH_PW_CACHE: dict[int, str] = {}
+_CH_NAMESPACE = "f5-cne-system"
+_CH_SERVICE = "f5-aigateway-clickhouse"
+_CH_PORT = 8123
+_CH_ENDPOINT = f"http://{_CH_SERVICE}.{_CH_NAMESPACE}:{_CH_PORT}"
+
+
+def _esc_sql(value: str) -> str:
+    """Escape a string literal for ClickHouse SQL single-quoted strings."""
+    return value.replace("\\", "\\\\").replace("'", "\\'")
+
 # Presets → window length in seconds, and the query_range step used to bucket
-# that window into ~100–200 points. Unknown ranges fall back to 1h.
-_RANGE_SECONDS: dict[str, int] = {"1h": 3600, "6h": 21600, "24h": 86400, "7d": 604800}
-_STEP_SECONDS: dict[str, int] = {"1h": 60, "6h": 300, "24h": 900, "7d": 3600}
+# that window into ~100–200 points. Capped at 6 hours (21600s) for storage retention.
+_RANGE_SECONDS: dict[str, int] = {"1h": 3600, "6h": 21600, "24h": 21600, "7d": 21600}
+_STEP_SECONDS: dict[str, int] = {"1h": 60, "6h": 300, "24h": 300, "7d": 300}
 
 _JOB = 'job="llm-gateway"'
 
@@ -435,6 +447,10 @@ class LlmObservabilityService:
             )
 
         api_client = _api_client if _api_client is not None else self._client(cluster_id)
+        if cluster_id in _CH_PW_CACHE:
+            ch_res = self._stats_clickhouse(cluster_id, api_client, range_, model, status)
+            if ch_res is not None:
+                return ch_res
         end_ns = time.time_ns()
         rng = f"{self._range_s(range_)}s"
         sel = self._selector(model, status)
@@ -462,6 +478,9 @@ class LlmObservabilityService:
                 values[key] = _scalar(data)
 
         if len(errors) == len(queries):
+            ch_res = self._stats_clickhouse(cluster_id, api_client, range_, model, status)
+            if ch_res is not None:
+                return ch_res
             return self._unavailable(next(iter(errors.values())))
 
         total = values.get("total_requests", 0.0)
@@ -515,21 +534,35 @@ class LlmObservabilityService:
             step_s = valid[0][1].get("step_s", self._step_s(range_))
 
             if metric == "latency":
-                # For latency across all clusters, emit one line/series per cluster
-                # representing its average latency over time.
-                cluster_series = []
-                for c, r in valid:
-                    avg_s = next((s for s in r.get("series", []) if s.get("name") == "avg"), None)
-                    if not avg_s and r.get("series"):
-                        avg_s = r["series"][0]
-                    if avg_s:
-                        cluster_series.append(
-                            {
-                                "name": c.name,
-                                "points": avg_s.get("points", []),
-                            }
-                        )
-                return self._ok(metric=metric, step_s=step_s, series=cluster_series, errors=errors)
+                # Aggregate real latency percentiles and TTFT across all active clusters without forward-fill.
+                lat_buckets: dict[str, dict[str, list[float]]] = {}
+                for _, r in valid:
+                    for s in r.get("series", []):
+                        s_name = s.get("name", "")
+                        if not s_name:
+                            continue
+                        bmap = lat_buckets.setdefault(s_name, {})
+                        for p in s.get("points", []):
+                            ts = p.get("ts", "")
+                            val = float(p.get("value") or 0.0)
+                            if ts and val > 0:
+                                bmap.setdefault(ts, []).append(val)
+                ordered_keys = ["p95", "p50", "avg", "ttft_ms"]
+                for k in lat_buckets:
+                    if k not in ordered_keys:
+                        ordered_keys.append(k)
+                fleet_lat_series = []
+                for k in ordered_keys:
+                    bmap = lat_buckets.get(k)
+                    if not bmap:
+                        continue
+                    pts = [
+                        {"ts": ts, "value": round(sum(vals) / len(vals), 2)}
+                        for ts, vals in sorted(bmap.items())
+                        if vals
+                    ]
+                    fleet_lat_series.append({"name": k, "points": pts})
+                return self._ok(metric=metric, step_s=step_s, series=fleet_lat_series, errors=errors)
 
             series_map: dict[str, dict[str, float]] = {}
             for _, r in valid:
@@ -540,16 +573,18 @@ class LlmObservabilityService:
                     for p in s.get("points", []):
                         ts = p.get("ts", "")
                         series_map[s_name][ts] = series_map[s_name].get(ts, 0.0) + p.get("value", 0.0)
+            all_ts = sorted({ts for pts in series_map.values() for ts in pts if ts})
             merged_series = []
-            for s_name, points_dict in series_map.items():
-                points = [{"ts": ts, "value": val} for ts, val in sorted(points_dict.items())]
+            for s_name, points_dict in sorted(series_map.items()):
+                points = [{"ts": ts, "value": points_dict.get(ts, 0.0)} for ts in all_ts]
                 merged_series.append({"name": s_name, "points": points})
             return self._ok(metric=metric, step_s=step_s, series=merged_series, errors=errors)
 
         api_client = _api_client if _api_client is not None else self._client(cluster_id)
-        end_ns = time.time_ns()
-        start_ns = end_ns - self._range_s(range_) * 1_000_000_000
         step_s = self._step_s(range_)
+        end_s = (int(time.time()) // step_s) * step_s
+        end_ns = end_s * 1_000_000_000
+        start_ns = (end_s - self._range_s(range_)) * 1_000_000_000
         step = f"{step_s}s"
         sel = self._selector(model, status)
 
@@ -576,8 +611,16 @@ class LlmObservabilityService:
         if metric not in specs:
             return self._unavailable(f"unknown metric: {metric}")
 
+        if cluster_id in _CH_PW_CACHE:
+            ch_res = self._histogram_clickhouse(cluster_id, api_client, range_, metric, model, status)
+            if ch_res is not None:
+                return ch_res
+
         series, errors = self._collect_series(api_client, specs[metric], start_ns, end_ns, step_s)
         if series is None:
+            ch_res = self._histogram_clickhouse(cluster_id, api_client, range_, metric, model, status)
+            if ch_res is not None:
+                return ch_res
             return self._unavailable(next(iter(errors.values())))
         return self._ok(metric=metric, step_s=step_s, series=series, errors=errors)
 
@@ -690,12 +733,24 @@ class LlmObservabilityService:
                         for p in s.get("points", []):
                             ts = p.get("ts", "")
                             series_vals[s_name].setdefault(ts, []).append(p.get("value", 0.0))
+                all_ts = sorted({ts for pts in series_vals.values() for ts in pts if ts})
                 merged_series = []
-                for s_name, points_dict in series_vals.items():
-                    points = [
-                        {"ts": ts, "value": (sum(vals) / len(vals)) if vals else 0.0}
-                        for ts, vals in sorted(points_dict.items())
-                    ]
+                for s_name, points_dict in sorted(series_vals.items()):
+                    first_nz = next(
+                        ((sum(v) / len(v)) for _, v in sorted(points_dict.items()) if v and sum(v) > 0),
+                        0.0,
+                    )
+                    last_v = first_nz
+                    points = []
+                    for ts in all_ts:
+                        vals = points_dict.get(ts)
+                        if vals:
+                            v = sum(vals) / len(vals)
+                            if v > 0:
+                                last_v = v
+                            points.append({"ts": ts, "value": v})
+                        else:
+                            points.append({"ts": ts, "value": last_v})
                     merged_series.append({"name": s_name, "points": points})
                 return self._ok(metric=metric, step_s=step_s, series=merged_series, errors=errors)
 
@@ -708,16 +763,18 @@ class LlmObservabilityService:
                     for p in s.get("points", []):
                         ts = p.get("ts", "")
                         series_map[s_name][ts] = series_map[s_name].get(ts, 0.0) + p.get("value", 0.0)
+            all_ts = sorted({ts for pts in series_map.values() for ts in pts if ts})
             merged_series = []
-            for s_name, points_dict in series_map.items():
-                points = [{"ts": ts, "value": val} for ts, val in sorted(points_dict.items())]
+            for s_name, points_dict in sorted(series_map.items()):
+                points = [{"ts": ts, "value": points_dict.get(ts, 0.0)} for ts in all_ts]
                 merged_series.append({"name": s_name, "points": points})
             return self._ok(metric=metric, step_s=step_s, series=merged_series, errors=errors)
 
         api_client = _api_client if _api_client is not None else self._client(cluster_id)
-        end_ns = time.time_ns()
-        start_ns = end_ns - self._range_s(range_) * 1_000_000_000
         step_s = self._step_s(range_)
+        end_s = (int(time.time()) // step_s) * step_s
+        end_ns = end_s * 1_000_000_000
+        start_ns = (end_s - self._range_s(range_)) * 1_000_000_000
         step = f"{step_s}s"
         sel = self._selector(model, status)
 
@@ -728,6 +785,11 @@ class LlmObservabilityService:
         }
         if metric not in by_model:
             return self._unavailable(f"unknown metric: {metric}")
+
+        if cluster_id in _CH_PW_CACHE:
+            ch_res = self._provider_usage_clickhouse(cluster_id, api_client, range_, metric, model, status)
+            if ch_res is not None:
+                return ch_res
 
         # latency folds by mean across models of a provider; cost/tokens sum.
         series, errors = self._collect_series(
@@ -740,6 +802,9 @@ class LlmObservabilityService:
             fold_mean=(metric == "latency"),
         )
         if series is None:
+            ch_res = self._provider_usage_clickhouse(cluster_id, api_client, range_, metric, model, status)
+            if ch_res is not None:
+                return ch_res
             return self._unavailable(next(iter(errors.values())))
         return self._ok(metric=metric, step_s=step_s, series=series, errors=errors)
 
@@ -819,6 +884,10 @@ class LlmObservabilityService:
             return self._ok(rows=rows, errors=errors)
 
         api_client = _api_client if _api_client is not None else self._client(cluster_id)
+        if cluster_id in _CH_PW_CACHE:
+            ch_res = self._rankings_clickhouse(cluster_id, api_client, range_, model, status)
+            if ch_res is not None:
+                return ch_res
         rng_s = self._range_s(range_)
         rng = f"{rng_s}s"
         cur_ns = time.time_ns()
@@ -851,6 +920,9 @@ class LlmObservabilityService:
                 prev[key] = _by_label(_pdata)
 
         if len(errors) == len(metrics):
+            ch_res = self._rankings_clickhouse(cluster_id, api_client, range_, model, status)
+            if ch_res is not None:
+                return ch_res
             return self._unavailable(next(iter(errors.values())))
 
         rows = self._rank_rows(cur, prev)
@@ -1000,6 +1072,11 @@ class LlmObservabilityService:
             extra=[("limit", str(limit)), ("direction", "backward")],
         )
         if err:
+            ch_res = self._logs_clickhouse(
+                cluster_id, api_client, cluster_name, range_, model, status, limit, content_search, end
+            )
+            if ch_res is not None:
+                return ch_res
             return self._unavailable(err)
 
         rows, oldest_ns = self._parse_log_lines(data)
@@ -1104,9 +1181,467 @@ class LlmObservabilityService:
                 result[label] = sorted(str(v) for v in (values or []))
 
         if len(errors) == 2:
+            ch_res = self._filterdata_clickhouse(cluster_id, api_client, range_)
+            if ch_res is not None:
+                return ch_res
             return self._unavailable(next(iter(errors.values())))
         return self._ok(
             models=result.get("model", []),
             statuses=result.get("status", []),
             errors=errors,
         )
+
+    # -- BNK 2.4.1 ClickHouse (otel.aigw_requests) fallback ---------------
+
+    def _ch_password(self, cluster_id: int, api_client: Any) -> str | None:
+        if cluster_id in _CH_PW_CACHE:
+            return _CH_PW_CACHE[cluster_id]
+        for ns, sec_name, key in (
+            (_CH_NAMESPACE, "f5-aigateway-clickhouse-auth", "password"),
+            ("default", "bnk-aigw-virtual-keys", "CLICKHOUSE_PASSWORD"),
+        ):
+            try:
+                sec = api_client.call_api(
+                    resource_path=f"/api/v1/namespaces/{ns}/secrets/{sec_name}",
+                    method="GET",
+                    response_type="object",
+                    auth_settings=["BearerToken"],
+                    _return_http_data_only=True,
+                    _request_timeout=(5, 10),
+                )
+                b64 = ((sec or {}).get("data") or {}).get(key)
+                if b64:
+                    pw = base64.b64decode(b64).decode("utf-8").strip()
+                    if pw:
+                        _CH_PW_CACHE[cluster_id] = pw
+                        return pw
+            except Exception:
+                continue
+        return None
+
+    def _ch_query(
+        self, cluster_id: int, api_client: Any, sql: str
+    ) -> tuple[list[dict[str, Any]] | None, str | None]:
+        pw = self._ch_password(cluster_id, api_client)
+        if not pw:
+            return None, "ClickHouse auth secret not found"
+        path = _proxy_path("http", _CH_NAMESPACE, _CH_SERVICE, _CH_PORT, "")
+        params = [("user", "otel"), ("password", pw), ("query", f"{sql} FORMAT JSON")]
+        try:
+            raw = api_client.call_api(
+                resource_path=path,
+                method="GET",
+                query_params=params,
+                response_type="object",
+                auth_settings=["BearerToken"],
+                _return_http_data_only=True,
+                _request_timeout=(5, 15),
+            )
+            if isinstance(raw, str):
+                raw = json.loads(raw)
+            if isinstance(raw, dict) and isinstance(raw.get("data"), list):
+                return raw["data"], None
+            return None, "unexpected ClickHouse response"
+        except Exception as e:
+            return None, str(e)
+
+    def _ch_where(
+        self,
+        range_: str,
+        model: str | None = None,
+        status: str | None = None,
+        end_ms: int | None = None,
+        start_ms: int | None = None,
+        content_search: str | None = None,
+    ) -> str:
+        end_v = int(end_ms) if end_ms is not None else int(time.time() * 1000)
+        start_v = int(start_ms) if start_ms is not None else (end_v - self._range_s(range_) * 1000)
+        clauses = [f"ts_ms >= {start_v}", f"ts_ms <= {end_v}"]
+        if model:
+            clauses.append(f"model = '{_esc_sql(model)}'")
+        if status:
+            clauses.append(f"toString(http_status) = '{_esc_sql(status)}'")
+        if content_search:
+            esc = _esc_sql(content_search)
+            clauses.append(
+                f"(positionCaseInsensitive(model, '{esc}') > 0 "
+                f"OR positionCaseInsensitive(provider, '{esc}') > 0 "
+                f"OR positionCaseInsensitive(principal_id, '{esc}') > 0 "
+                f"OR positionCaseInsensitive(org_id, '{esc}') > 0 "
+                f"OR positionCaseInsensitive(request_id, '{esc}') > 0)"
+            )
+        return " AND ".join(clauses)
+
+    def _ok_ch(self, **data: Any) -> dict[str, Any]:
+        return {
+            "available": True,
+            "endpoint": _CH_ENDPOINT,
+            "updated_at": datetime.now(UTC).isoformat(),
+            **data,
+        }
+
+    def _stats_clickhouse(
+        self,
+        cluster_id: int,
+        api_client: Any,
+        range_: str,
+        model: str | None,
+        status: str | None,
+    ) -> dict[str, Any] | None:
+        where = self._ch_where(range_, model=model, status=status)
+        sql = (
+            "SELECT "
+            "count() AS total_requests, "
+            "countIf(http_status >= 200 AND http_status < 300) AS success, "
+            "avgOrDefault(latency_ms) AS avg_latency_ms, "
+            "sum(total_tokens) AS total_tokens, "
+            "sum(cost_usd_micros) / 1000000.0 AS total_cost, "
+            "uniqExact(model) AS models "
+            f"FROM otel.aigw_requests WHERE {where}"
+        )
+        rows, err = self._ch_query(cluster_id, api_client, sql)
+        if err or not rows:
+            return None
+        r = rows[0]
+        total = int(r.get("total_requests") or 0)
+        success = int(r.get("success") or 0)
+        return self._ok_ch(
+            total_requests=total,
+            success_rate=(success / total) if total else 0.0,
+            avg_latency_ms=float(r.get("avg_latency_ms") or 0.0),
+            total_tokens=int(r.get("total_tokens") or 0),
+            total_cost=float(r.get("total_cost") or 0.0),
+            models=int(r.get("models") or 0),
+            errors={},
+        )
+
+    def _histogram_clickhouse(
+        self,
+        cluster_id: int,
+        api_client: Any,
+        range_: str,
+        metric: str,
+        model: str | None,
+        status: str | None,
+    ) -> dict[str, Any] | None:
+        step_s = self._step_s(range_)
+        step_ms = step_s * 1000
+        end_s = (int(time.time()) // step_s) * step_s
+        where = self._ch_where(range_, model=model, status=status)
+        bucket_expr = f"least(intDiv(ts_ms, {step_ms}) * {step_s}, {end_s})"
+
+        def _all_buckets(rs: list[dict[str, Any]]) -> list[int]:
+            if not rs:
+                return []
+            min_b = min(int(r["bucket_s"]) for r in rs)
+            max_b = max(end_s, max(int(r["bucket_s"]) for r in rs))
+            return list(range(min_b, max_b + 1, step_s))
+
+        if metric == "requests":
+            sql = (
+                f"SELECT {bucket_expr} AS bucket_s, "
+                "countIf(http_status >= 200 AND http_status < 300) AS success, "
+                "countIf(http_status < 200 OR http_status >= 300) AS error "
+                f"FROM otel.aigw_requests WHERE {where} "
+                "GROUP BY bucket_s ORDER BY bucket_s ASC"
+            )
+            rows, err = self._ch_query(cluster_id, api_client, sql)
+            if err or rows is None:
+                return None
+            buckets = _all_buckets(rows)
+            by_b = {int(r["bucket_s"]): r for r in rows}
+            series = [
+                {
+                    "name": "success",
+                    "points": [{"ts": _iso(float(b)), "value": float((by_b.get(b) or {}).get("success") or 0)} for b in buckets],
+                },
+                {
+                    "name": "error",
+                    "points": [{"ts": _iso(float(b)), "value": float((by_b.get(b) or {}).get("error") or 0)} for b in buckets],
+                },
+            ]
+            return self._ok_ch(metric=metric, step_s=step_s, series=series, errors={})
+
+        if metric == "tokens":
+            sql = (
+                f"SELECT {bucket_expr} AS bucket_s, "
+                "sum(prompt_tokens) AS prompt, "
+                "sum(completion_tokens) AS completion, "
+                "sum(cached_tokens) AS cached "
+                f"FROM otel.aigw_requests WHERE {where} "
+                "GROUP BY bucket_s ORDER BY bucket_s ASC"
+            )
+            rows, err = self._ch_query(cluster_id, api_client, sql)
+            if err or rows is None:
+                return None
+            buckets = _all_buckets(rows)
+            by_b = {int(r["bucket_s"]): r for r in rows}
+            series = [
+                {
+                    "name": k,
+                    "points": [{"ts": _iso(float(b)), "value": float((by_b.get(b) or {}).get(k) or 0)} for b in buckets],
+                }
+                for k in ("prompt", "completion", "cached")
+            ]
+            return self._ok_ch(metric=metric, step_s=step_s, series=series, errors={})
+
+        if metric in ("cost", "models"):
+            agg = "sum(cost_usd_micros) / 1000000.0" if metric == "cost" else "count()"
+            sql = (
+                f"SELECT {bucket_expr} AS bucket_s, model, {agg} AS val "
+                f"FROM otel.aigw_requests WHERE {where} "
+                "GROUP BY bucket_s, model ORDER BY bucket_s ASC"
+            )
+            rows, err = self._ch_query(cluster_id, api_client, sql)
+            if err or rows is None:
+                return None
+            buckets = _all_buckets(rows)
+            by_m: dict[str, dict[int, float]] = {}
+            for r in rows:
+                m = str(r.get("model") or "unknown")
+                b = int(r["bucket_s"])
+                by_m.setdefault(m, {})[b] = by_m.get(m, {}).get(b, 0.0) + float(r.get("val") or 0.0)
+            series = [
+                {
+                    "name": m,
+                    "points": [{"ts": _iso(float(b)), "value": round(bmap.get(b, 0.0), 6)} for b in buckets],
+                }
+                for m, bmap in sorted(by_m.items())
+            ]
+            return self._ok_ch(metric=metric, step_s=step_s, series=series, errors={})
+
+        if metric == "latency":
+            sql = (
+                f"SELECT {bucket_expr} AS bucket_s, "
+                "quantileOrDefault(0.95)(latency_ms) AS p95, "
+                "quantileOrDefault(0.50)(latency_ms) AS p50, "
+                "avgOrDefault(latency_ms) AS avg, "
+                "avgOrDefault(`gen_ai.f5.latency_ttft_us` / 1000.0) AS ttft_ms "
+                f"FROM otel.aigw_requests WHERE {where} "
+                "GROUP BY bucket_s ORDER BY bucket_s ASC"
+            )
+            rows, err = self._ch_query(cluster_id, api_client, sql)
+            if err or rows is None:
+                return None
+            series = []
+            for k in ("p95", "p50", "avg", "ttft_ms"):
+                pts = [
+                    {"ts": _iso(float(int(r["bucket_s"]))), "value": round(float(r.get(k) or 0.0), 2)}
+                    for r in rows
+                    if float(r.get(k) or 0.0) > 0
+                ]
+                series.append({"name": k, "points": pts})
+            return self._ok_ch(metric=metric, step_s=step_s, series=series, errors={})
+
+        return None
+
+    def _provider_usage_clickhouse(
+        self,
+        cluster_id: int,
+        api_client: Any,
+        range_: str,
+        metric: str,
+        model: str | None,
+        status: str | None,
+    ) -> dict[str, Any] | None:
+        step_s = self._step_s(range_)
+        step_ms = step_s * 1000
+        end_s = (int(time.time()) // step_s) * step_s
+        where = self._ch_where(range_, model=model, status=status)
+        bucket_expr = f"least(intDiv(ts_ms, {step_ms}) * {step_s}, {end_s})"
+        agg_map = {
+            "cost": "sum(cost_usd_micros) / 1000000.0",
+            "tokens": "sum(total_tokens)",
+            "latency": "avgOrDefault(latency_ms)",
+        }
+        if metric not in agg_map:
+            return None
+        sql = (
+            f"SELECT {bucket_expr} AS bucket_s, model, {agg_map[metric]} AS val "
+            f"FROM otel.aigw_requests WHERE {where} "
+            "GROUP BY bucket_s, model ORDER BY bucket_s ASC"
+        )
+        rows, err = self._ch_query(cluster_id, api_client, sql)
+        if err or rows is None:
+            return None
+        if not rows:
+            return self._ok_ch(metric=metric, step_s=step_s, series=[], errors={})
+        min_b = min(int(r["bucket_s"]) for r in rows)
+        max_b = max(end_s, max(int(r["bucket_s"]) for r in rows))
+        buckets = list(range(min_b, max_b + 1, step_s))
+        by_m: dict[str, dict[int, float]] = {}
+        for r in rows:
+            m = str(r.get("model") or "unknown")
+            b = int(r["bucket_s"])
+            by_m.setdefault(m, {})[b] = float(r.get("val") or 0.0)
+        matrix = []
+        for m, bmap in by_m.items():
+            pts = []
+            last_v = 0.0
+            for b in buckets:
+                v = bmap.get(b, 0.0)
+                if metric == "latency":
+                    if v > 0:
+                        last_v = v
+                    else:
+                        v = last_v
+                pts.append({"ts": _iso(float(b)), "value": v})
+            matrix.append(({"model": m}, pts))
+        series = self._fold(matrix, by_provider=True, mean=(metric == "latency"))
+        return self._ok_ch(metric=metric, step_s=step_s, series=series, errors={})
+
+    def _rankings_clickhouse(
+        self,
+        cluster_id: int,
+        api_client: Any,
+        range_: str,
+        model: str | None,
+        status: str | None,
+    ) -> dict[str, Any] | None:
+        rng_ms = self._range_s(range_) * 1000
+        cur_end = int(time.time() * 1000)
+        cur_start = cur_end - rng_ms
+        prev_start = cur_start - rng_ms
+
+        def _query_window(s_ms: int, e_ms: int) -> dict[str, dict[str, float]] | None:
+            where = self._ch_where(range_, model=model, status=status, start_ms=s_ms, end_ms=e_ms)
+            sql = (
+                "SELECT model, "
+                "count() AS requests, "
+                "sum(total_tokens) AS tokens, "
+                "sum(cost_usd_micros) / 1000000.0 AS cost, "
+                "avgOrDefault(latency_ms) AS latency, "
+                "countIf(http_status >= 200 AND http_status < 300) AS success "
+                f"FROM otel.aigw_requests WHERE {where} GROUP BY model"
+            )
+            rows, err = self._ch_query(cluster_id, api_client, sql)
+            if err or rows is None:
+                return None
+            out: dict[str, dict[str, float]] = {
+                "requests": {},
+                "tokens": {},
+                "cost": {},
+                "latency": {},
+                "success": {},
+            }
+            for r in rows:
+                m = str(r.get("model") or "")
+                if not m:
+                    continue
+                for k in out:
+                    out[k][m] = float(r.get(k) or 0.0)
+            return out
+
+        cur = _query_window(cur_start, cur_end)
+        if cur is None:
+            return None
+        prev = _query_window(prev_start, cur_start) or {}
+        rows = self._rank_rows(cur, prev)
+        return self._ok_ch(rows=rows, errors={})
+
+    def _logs_clickhouse(
+        self,
+        cluster_id: int,
+        api_client: Any,
+        cluster_name: str,
+        range_: str,
+        model: str | None,
+        status: str | None,
+        limit: int,
+        content_search: str | None,
+        end: int | None,
+    ) -> dict[str, Any] | None:
+        end_ms = (end // 1_000_000) if end else None
+        where = self._ch_where(range_, model=model, status=status, end_ms=end_ms, content_search=content_search)
+        sql = (
+            "SELECT ts_ms, request_id, tenant, org_id, team_id, principal_id, vk_id, "
+            "model, provider, served_model, deployment_upstream, "
+            "prompt_tokens, completion_tokens, cached_tokens, total_tokens, "
+            "cost_usd_micros, cost_no_cache_usd_micros, finish_reason, http_status, latency_ms, "
+            "`gen_ai.f5.identity_state` AS identity_state "
+            f"FROM otel.aigw_requests WHERE {where} "
+            f"ORDER BY ts_ms DESC LIMIT {int(limit)}"
+        )
+        ch_rows, err = self._ch_query(cluster_id, api_client, sql)
+        if err or ch_rows is None:
+            return None
+        rows: list[dict[str, Any]] = []
+        oldest_ns: int | None = None
+        for rec in ch_rows:
+            ts_ms = int(rec.get("ts_ms") or 0)
+            ts_ns = ts_ms * 1_000_000
+            oldest_ns = ts_ns
+            st = str(rec.get("http_status") or 200)
+            mdl = str(rec.get("model") or "")
+            prov = str(rec.get("provider") or "")
+            served = str(rec.get("served_model") or mdl)
+            org = str(rec.get("org_id") or "default")
+            princ = str(rec.get("principal_id") or "anonymous")
+            ptk = int(rec.get("prompt_tokens") or 0)
+            ctk = int(rec.get("completion_tokens") or 0)
+            cached = int(rec.get("cached_tokens") or 0)
+            ttk = int(rec.get("total_tokens") or (ptk + ctk))
+            cost_usd = float(rec.get("cost_usd_micros") or 0) / 1_000_000.0
+            cost_nocache = float(rec.get("cost_no_cache_usd_micros") or 0) / 1_000_000.0
+            cache_tag = f" [CACHE HIT: {cached} tk]" if cached > 0 else ""
+            msg = f"[{org}/{princ}] {mdl} -> {prov} ({served}){cache_tag}"
+            req_payload = {
+                "request_id": rec.get("request_id"),
+                "tenant": rec.get("tenant"),
+                "org_id": org,
+                "team_id": rec.get("team_id"),
+                "principal_id": princ,
+                "vk_id": rec.get("vk_id"),
+                "identity_state": rec.get("identity_state") or "verified",
+                "model": mdl,
+                "provider": prov,
+                "deployment_upstream": rec.get("deployment_upstream"),
+                "prompt_tokens": ptk,
+                "cached_tokens": cached,
+            }
+            resp_payload = {
+                "served_model": served,
+                "http_status": int(rec.get("http_status") or 200),
+                "finish_reason": rec.get("finish_reason") or "stop",
+                "completion_tokens": ctk,
+                "total_tokens": ttk,
+                "cost_usd": round(cost_usd, 6),
+                "cost_no_cache_usd": round(cost_nocache, 6),
+                "latency_ms": float(rec.get("latency_ms") or 0),
+            }
+            rows.append(
+                {
+                    "ts": _iso(ts_ms / 1000.0),
+                    "ts_ns": ts_ns,
+                    "type": "success" if st.startswith("2") else "error",
+                    "message": msg,
+                    "model": mdl,
+                    "latency_ms": float(rec.get("latency_ms") or 0),
+                    "prompt_tk": ptk,
+                    "comp_tk": ctk,
+                    "total_tk": ttk,
+                    "cost": cost_usd,
+                    "status": st,
+                    "req_body": json.dumps(req_payload, indent=2),
+                    "resp_body": json.dumps(resp_payload, indent=2),
+                    "cluster_id": cluster_id,
+                    "cluster_name": cluster_name,
+                }
+            )
+        next_end = str(oldest_ns - 1) if (oldest_ns is not None and len(rows) >= limit) else None
+        return self._ok_ch(rows=rows, next_end=next_end, errors={})
+
+    def _filterdata_clickhouse(
+        self,
+        cluster_id: int,
+        api_client: Any,
+        range_: str,
+    ) -> dict[str, Any] | None:
+        where = self._ch_where(range_)
+        sql = f"SELECT DISTINCT model, toString(http_status) AS status FROM otel.aigw_requests WHERE {where}"
+        rows, err = self._ch_query(cluster_id, api_client, sql)
+        if err or rows is None:
+            return None
+        models = sorted({str(r.get("model")) for r in rows if r.get("model")})
+        statuses = sorted({str(r.get("status")) for r in rows if r.get("status")})
+        return self._ok_ch(models=models, statuses=statuses, errors={})

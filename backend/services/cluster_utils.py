@@ -173,8 +173,10 @@ def _write_kubeconfig(cluster: KubernetesCluster, db: Session) -> str:
             raise ValueError(f"Cluster {cluster.name} has no kubeconfig configured")
 
     ca_bundle = "/home/bnkforge/.bnk-forge-ca-bundle.crt"
-    if os.path.exists(ca_bundle) and "SSL_CERT_FILE" not in os.environ:
-        os.environ["SSL_CERT_FILE"] = ca_bundle
+    if os.path.exists(ca_bundle):
+        for env_var in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"):
+            if env_var not in os.environ:
+                os.environ[env_var] = ca_bundle
 
     # Decrypt kubeconfig
     kubeconfig_content = decrypt_value(cluster.kubeconfig_encrypted)

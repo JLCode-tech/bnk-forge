@@ -423,13 +423,13 @@ class TestMultiClusterObservability:
         out = svc.histogram(cluster_id=None, range_="1h", metric="latency")
         assert out["available"] is True
         assert out["metric"] == "latency"
-        assert len(out["series"]) == 2
+        assert len(out["series"]) == 4
         names = [s["name"] for s in out["series"]]
-        assert "us-east-cluster" in names
-        assert "eu-west-cluster" in names
-        east = next(s for s in out["series"] if s["name"] == "us-east-cluster")
-        assert len(east["points"]) == 2
-        assert east["points"][0]["value"] == 120.0
+        assert "p95" in names
+        assert "avg" in names
+        avg_series = next(s for s in out["series"] if s["name"] == "avg")
+        assert len(avg_series["points"]) == 2
+        assert avg_series["points"][0]["value"] == 120.0
 
     def test_multi_cluster_histogram_requests_sums_clusters(self):
         def _router(sub, query, params):

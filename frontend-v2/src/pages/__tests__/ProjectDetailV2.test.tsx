@@ -154,18 +154,15 @@ describe("ProjectDetailV2", () => {
       expect(screen.getByText("test-project")).toBeInTheDocument();
     });
 
-    // "Destroy all" now lives inside the More dropdown — open it first.
-    await user.click(screen.getByRole("button", { name: /more/i }));
-    const destroyAll = await screen.findByRole("menuitem", {
+    // On the default Modules tab, "Destroy all" is rendered as a toolbar button.
+    const destroyAll = await screen.findByRole("button", {
       name: /destroy all/i,
     });
-    expect(destroyAll).toHaveAttribute("aria-disabled", "true");
+    expect(destroyAll).toBeDisabled();
     expect(
       screen.getByText(/some modules don't support destroy/i),
     ).toBeInTheDocument();
 
-    // Close the More dropdown before interacting with per-row module menu.
-    await user.keyboard("{Escape}");
     await user.click(screen.getByTestId("module-actions-menu"));
     expect(screen.queryByText("Destroy")).not.toBeInTheDocument();
   });

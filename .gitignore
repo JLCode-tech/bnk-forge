@@ -296,3 +296,7 @@ handoffs/
 *.syncbak
 # Generated secret material (JWT/encryption keys, initial admin password)
 backend/keys/
+
+# Local working/reference directory
+agy-working/
+

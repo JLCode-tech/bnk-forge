@@ -15,6 +15,7 @@ from services.bnk_upgrade_service import (
     STEP_HEALTH_GATE,
     STEP_HELM_UPGRADE,
     STEP_MANIFEST_APPLY,
+    evaluate_bnk_241_pre_upgrade_checks,
     get_known_version_info,
     parse_version,
     version_eq,
@@ -48,63 +49,73 @@ class BnkUpgradePlanMixin:
 
         # 1. BNK must be installed
         bnk_status = bnk_install.get("status", "not_installed")
-        checks.append({
-            "name": "bnk_installed",
-            "label": "BNK Installation",
-            "status": "pass" if bnk_status == "installed" else "fail",
-            "detail": (
-                f"BNK is {bnk_status}"
-                if bnk_status != "installed"
-                else f"BNK is installed (version {current_version or 'unknown'})"
-            ),
-            "critical": True,
-        })
+        checks.append(
+            {
+                "name": "bnk_installed",
+                "label": "BNK Installation",
+                "status": "pass" if bnk_status == "installed" else "fail",
+                "detail": (
+                    f"BNK is {bnk_status}"
+                    if bnk_status != "installed"
+                    else f"BNK is installed (version {current_version or 'unknown'})"
+                ),
+                "critical": True,
+            }
+        )
 
         # 2. Current version must be detected — install-shape-aware (#389).
         # Version comes from FLO's pod image when present, or the Helm release
         # chart version on a helm/manual install (see
         # bnk_upgrade_service.detect_current_bnk_version). Only "detected by
         # neither method" is treated as a blocking failure.
-        checks.append({
-            "name": "version_detected",
-            "label": "Current Version Detection",
-            "status": "pass" if current_version else "fail",
-            "detail": (
-                f"Current version: {current_version}"
-                if current_version
-                else "Cannot detect current BNK version — checked FLO pods and Helm release chart"
-            ),
-            "critical": True,
-        })
+        checks.append(
+            {
+                "name": "version_detected",
+                "label": "Current Version Detection",
+                "status": "pass" if current_version else "fail",
+                "detail": (
+                    f"Current version: {current_version}"
+                    if current_version
+                    else "Cannot detect current BNK version — checked FLO pods and Helm release chart"
+                ),
+                "critical": True,
+            }
+        )
 
         # 3. Target version must be different from current
         if current_version and target_version:
             is_upgrade = version_gt(target_version, current_version)
             is_same = version_eq(target_version, current_version)
             if is_same:
-                checks.append({
-                    "name": "version_change",
-                    "label": "Version Change",
-                    "status": "fail",
-                    "detail": f"Target version ({target_version}) is the same as current ({current_version})",
-                    "critical": True,
-                })
+                checks.append(
+                    {
+                        "name": "version_change",
+                        "label": "Version Change",
+                        "status": "fail",
+                        "detail": f"Target version ({target_version}) is the same as current ({current_version})",
+                        "critical": True,
+                    }
+                )
             elif not is_upgrade:
-                checks.append({
-                    "name": "version_change",
-                    "label": "Version Change (Downgrade)",
-                    "status": "warn",
-                    "detail": f"Target version ({target_version}) is older than current ({current_version}). This is a downgrade.",
-                    "critical": False,
-                })
+                checks.append(
+                    {
+                        "name": "version_change",
+                        "label": "Version Change (Downgrade)",
+                        "status": "warn",
+                        "detail": f"Target version ({target_version}) is older than current ({current_version}). This is a downgrade.",
+                        "critical": False,
+                    }
+                )
             else:
-                checks.append({
-                    "name": "version_change",
-                    "label": "Version Change",
-                    "status": "pass",
-                    "detail": f"Upgrade: {current_version} → {target_version}",
-                    "critical": True,
-                })
+                checks.append(
+                    {
+                        "name": "version_change",
+                        "label": "Version Change",
+                        "status": "pass",
+                        "detail": f"Upgrade: {current_version} → {target_version}",
+                        "critical": True,
+                    }
+                )
 
         # 4. BNK health should be healthy
         # Scan values can be explicit None (K8s API returns null, not missing
@@ -121,43 +132,51 @@ class BnkUpgradePlanMixin:
         if install_shape == "helm":
             # FLO isn't part of a direct-helm/manual install — its absence
             # isn't a health signal here (mirrors bnk/health.py's rollup gate).
-            checks.append({
-                "name": "flo_health",
-                "label": "FLO Health",
-                "status": "pass",
-                "detail": "FLO not used on a helm/manual install (install shape: helm) — check skipped",
-                "critical": False,
-            })
+            checks.append(
+                {
+                    "name": "flo_health",
+                    "label": "FLO Health",
+                    "status": "pass",
+                    "detail": "FLO not used on a helm/manual install (install shape: helm) — check skipped",
+                    "critical": False,
+                }
+            )
         else:
-            checks.append({
-                "name": "flo_health",
-                "label": "FLO Health",
-                "status": "pass" if flo_running == flo_pods and flo_pods > 0 else "warn",
-                "detail": f"FLO pods: {flo_running}/{flo_pods} running",
+            checks.append(
+                {
+                    "name": "flo_health",
+                    "label": "FLO Health",
+                    "status": "pass" if flo_running == flo_pods and flo_pods > 0 else "warn",
+                    "detail": f"FLO pods: {flo_running}/{flo_pods} running",
+                    "critical": False,
+                }
+            )
+        checks.append(
+            {
+                "name": "tmm_health",
+                "label": "TMM Health",
+                "status": "pass" if tmm_running == tmm_pods and tmm_pods > 0 else "warn",
+                "detail": f"TMM pods: {tmm_running}/{tmm_pods} running",
                 "critical": False,
-            })
-        checks.append({
-            "name": "tmm_health",
-            "label": "TMM Health",
-            "status": "pass" if tmm_running == tmm_pods and tmm_pods > 0 else "warn",
-            "detail": f"TMM pods: {tmm_running}/{tmm_pods} running",
-            "critical": False,
-        })
+            }
+        )
 
         # 5. VLANs should be programmed
         vlans = bnk_install.get("vlans") or []
         all_programmed = all(v.get("programmed", False) for v in vlans) if vlans else True
-        checks.append({
-            "name": "vlans_programmed",
-            "label": "VLAN Status",
-            "status": "pass" if all_programmed else "warn",
-            "detail": (
-                f"All {len(vlans)} VLANs programmed"
-                if all_programmed
-                else "Some VLANs not programmed — upgrade may cause transient connectivity loss"
-            ),
-            "critical": False,
-        })
+        checks.append(
+            {
+                "name": "vlans_programmed",
+                "label": "VLAN Status",
+                "status": "pass" if all_programmed else "warn",
+                "detail": (
+                    f"All {len(vlans)} VLANs programmed"
+                    if all_programmed
+                    else "Some VLANs not programmed — upgrade may cause transient connectivity loss"
+                ),
+                "critical": False,
+            }
+        )
 
         # 6. Kubernetes version compatibility
         k8s_version_str = cluster_info.get("version", "")
@@ -179,7 +198,9 @@ class BnkUpgradePlanMixin:
                 if k8s_tuple < min_tuple:
                     status = "fail"
                     critical = True
-                    detail = f"K8s {k8s_ver} is older than the minimum supported version ({min_k8s}) for target BNK version"
+                    detail = (
+                        f"K8s {k8s_ver} is older than the minimum supported version ({min_k8s}) for target BNK version"
+                    )
                 elif k8s_tuple > max_tuple:
                     # Newer-than-tested is a warning, not a hard fail — k8s is
                     # backward-compatible for BNK's purposes.
@@ -191,13 +212,15 @@ class BnkUpgradePlanMixin:
                     critical = True
                     detail = f"K8s {k8s_ver} is compatible with target BNK version (requires {min_k8s}-{max_k8s})"
 
-                checks.append({
-                    "name": "k8s_compat",
-                    "label": "Kubernetes Compatibility",
-                    "status": status,
-                    "detail": detail,
-                    "critical": critical,
-                })
+                checks.append(
+                    {
+                        "name": "k8s_compat",
+                        "label": "Kubernetes Compatibility",
+                        "status": status,
+                        "detail": detail,
+                        "critical": critical,
+                    }
+                )
 
         # 7. Helm release exists (for rollback) — install-shape-aware wording (#389).
         # On a helm/manual install this is the discovered release backing the
@@ -209,13 +232,18 @@ class BnkUpgradePlanMixin:
             detail = "No Helm release found — FLO may have been installed outside BNK-Forge"
         else:
             detail = "No Helm release discovered for this install — rollback via Helm may not be available"
-        checks.append({
-            "name": "helm_release",
-            "label": "Helm Release",
-            "status": "pass" if helm_release else "warn",
-            "detail": detail,
-            "critical": False,
-        })
+        checks.append(
+            {
+                "name": "helm_release",
+                "label": "Helm Release",
+                "status": "pass" if helm_release else "warn",
+                "detail": detail,
+                "critical": False,
+            }
+        )
+
+        # 8. BNK 2.4.1 Release Note Known Issue pre-upgrade checks (2455985-2, 2471977-2, 2569605-1)
+        checks.extend(evaluate_bnk_241_pre_upgrade_checks(bnk_install, target_version))
 
         return checks
 
@@ -251,14 +279,16 @@ class BnkUpgradePlanMixin:
 
         # Step 1: Pre-health snapshot
         step += 1
-        plan.append({
-            "step": step,
-            "action": STEP_HEALTH_GATE,
-            "label": "Capture pre-upgrade health snapshot",
-            "module": None,
-            "phase": "pre_upgrade",
-            "timeout": 30,
-        })
+        plan.append(
+            {
+                "step": step,
+                "action": STEP_HEALTH_GATE,
+                "label": "Capture pre-upgrade health snapshot",
+                "module": None,
+                "phase": "pre_upgrade",
+                "timeout": 30,
+            }
+        )
 
         # Step 2: Helm upgrade — FLO on a FLO install, or the discovered
         # controller/ingress Helm release on a helm/manual install. Both
@@ -285,8 +315,7 @@ class BnkUpgradePlanMixin:
                 release_name_for_chart = release_name or "f5-lifecycle-operator"
                 flo_chart = f"oci://repo.f5.com/charts/{release_name_for_chart}"
                 logger.warning(
-                    "FLO helm_release.chart missing — falling back to %s. "
-                    "Airgapped-registry override may be required.",
+                    "FLO helm_release.chart missing — falling back to %s. Airgapped-registry override may be required.",
                     flo_chart,
                 )
             else:
@@ -318,66 +347,76 @@ class BnkUpgradePlanMixin:
                 )
             if namespace_fallback:
                 missing_fields.append(
-                    f"namespace (using fallback: {flo_namespace})" if flo_namespace else "namespace (no fallback available)"
+                    f"namespace (using fallback: {flo_namespace})"
+                    if flo_namespace
+                    else "namespace (no fallback available)"
                 )
             step += 1
-            plan.append({
-                "step": step,
-                "action": "warn",
-                "label": "Helm release reference could not be fully read",
-                "module": None,
-                "phase": "pre_upgrade",
-                "detail": (
-                    "The installed Helm release secret could not be fully decoded "
-                    f"(missing: {', '.join(missing_fields)}). "
-                    + (
-                        "The plan uses a best-effort fallback. If this cluster uses an "
-                        "airgapped registry, override the chart reference before executing."
-                        if install_shape == "flo"
-                        else "This install shape has no well-known chart to fall back to — "
-                        "confirm the chart/namespace before executing this step."
-                    )
-                ),
-                "severity": "warn",
-                "timeout": 0,
-            })
+            plan.append(
+                {
+                    "step": step,
+                    "action": "warn",
+                    "label": "Helm release reference could not be fully read",
+                    "module": None,
+                    "phase": "pre_upgrade",
+                    "detail": (
+                        "The installed Helm release secret could not be fully decoded "
+                        f"(missing: {', '.join(missing_fields)}). "
+                        + (
+                            "The plan uses a best-effort fallback. If this cluster uses an "
+                            "airgapped registry, override the chart reference before executing."
+                            if install_shape == "flo"
+                            else "This install shape has no well-known chart to fall back to — "
+                            "confirm the chart/namespace before executing this step."
+                        )
+                    ),
+                    "severity": "warn",
+                    "timeout": 0,
+                }
+            )
 
         step += 1
-        plan.append({
-            "step": step,
-            "action": STEP_HELM_UPGRADE,
-            "label": f"Upgrade {'FLO' if install_shape == 'flo' else (release_name or 'BNK release')} to {target_version}",
-            "module": "bnk/flo",
-            "release_name": release_name or "flo",
-            "namespace": flo_namespace,
-            "chart": flo_chart,
-            "version": target_version,
-            "phase": "flo_upgrade",
-            "timeout": 600,
-        })
+        plan.append(
+            {
+                "step": step,
+                "action": STEP_HELM_UPGRADE,
+                "label": f"Upgrade {'FLO' if install_shape == 'flo' else (release_name or 'BNK release')} to {target_version}",
+                "module": "bnk/flo",
+                "release_name": release_name or "flo",
+                "namespace": flo_namespace,
+                "chart": flo_chart,
+                "version": target_version,
+                "phase": "flo_upgrade",
+                "timeout": 600,
+            }
+        )
 
         # Step 3: Wait for CRD migration
         step += 1
-        plan.append({
-            "step": step,
-            "action": STEP_CRD_WAIT,
-            "label": "Wait for CRD installer to complete",
-            "module": None,
-            "phase": "crd_migration",
-            "timeout": 120,
-        })
+        plan.append(
+            {
+                "step": step,
+                "action": STEP_CRD_WAIT,
+                "label": "Wait for CRD installer to complete",
+                "module": None,
+                "phase": "crd_migration",
+                "timeout": 120,
+            }
+        )
 
         # Step 4: Health gate — FLO pods ready
         step += 1
-        plan.append({
-            "step": step,
-            "action": STEP_HEALTH_GATE,
-            "label": "Verify FLO pods healthy",
-            "module": None,
-            "phase": "flo_health",
-            "checks": ["flo_pods_ready", "controller_pods_ready"],
-            "timeout": 120,
-        })
+        plan.append(
+            {
+                "step": step,
+                "action": STEP_HEALTH_GATE,
+                "label": "Verify FLO pods healthy",
+                "module": None,
+                "phase": "flo_health",
+                "checks": ["flo_pods_ready", "controller_pods_ready"],
+                "timeout": 120,
+            }
+        )
 
         # Step 5: Re-apply CNEInstance
         # cne_instance is explicit None on a helm/manual scan (no CNEInstance
@@ -385,64 +424,77 @@ class BnkUpgradePlanMixin:
         cne = bnk_install.get("cne_instance") or {}
         if cne.get("name"):
             step += 1
-            plan.append({
-                "step": step,
-                "action": STEP_MANIFEST_APPLY,
-                "label": "Re-apply CNEInstance (triggers TMM rolling restart)",
-                "module": "bnk/cneinstance",
-                "phase": "cneinstance_update",
-                "timeout": 300,
-            })
+            plan.append(
+                {
+                    "step": step,
+                    "action": STEP_MANIFEST_APPLY,
+                    "label": "Re-apply CNEInstance (triggers TMM rolling restart)",
+                    "module": "bnk/cneinstance",
+                    "phase": "cneinstance_update",
+                    "timeout": 300,
+                }
+            )
 
         # Step 6: Health gate — TMM ready
         step += 1
-        plan.append({
-            "step": step,
-            "action": STEP_HEALTH_GATE,
-            "label": "Verify TMM pods healthy (all containers ready)",
-            "module": None,
-            "phase": "tmm_health",
-            "checks": ["tmm_pods_ready", "tmm_containers_ready"],
-            "timeout": 300,
-        })
+        plan.append(
+            {
+                "step": step,
+                "action": STEP_HEALTH_GATE,
+                "label": "Verify TMM pods healthy (all containers ready)",
+                "module": None,
+                "phase": "tmm_health",
+                "checks": ["tmm_pods_ready", "tmm_containers_ready"],
+                "timeout": 300,
+            }
+        )
 
         # Step 7: Re-apply VLANs (pick up CRD schema changes)
         vlans = bnk_install.get("vlans") or []
         if vlans:
             step += 1
-            plan.append({
-                "step": step,
-                "action": STEP_MANIFEST_APPLY,
-                "label": "Re-apply VLANs (pick up CRD schema changes)",
-                "module": "bnk/bnk-vlans",
-                "phase": "vlans_update",
-                "timeout": 120,
-            })
+            plan.append(
+                {
+                    "step": step,
+                    "action": STEP_MANIFEST_APPLY,
+                    "label": "Re-apply VLANs (pick up CRD schema changes)",
+                    "module": "bnk/bnk-vlans",
+                    "phase": "vlans_update",
+                    "timeout": 120,
+                }
+            )
 
         # Step 8: Re-apply GatewayClass
         step += 1
-        plan.append({
-            "step": step,
-            "action": STEP_MANIFEST_APPLY,
-            "label": "Re-apply GatewayClass",
-            "module": "bnk/bnk-gatewayclass",
-            "phase": "gatewayclass_update",
-            "timeout": 60,
-        })
+        plan.append(
+            {
+                "step": step,
+                "action": STEP_MANIFEST_APPLY,
+                "label": "Re-apply GatewayClass",
+                "module": "bnk/bnk-gatewayclass",
+                "phase": "gatewayclass_update",
+                "timeout": 60,
+            }
+        )
 
         # Step 9: Post-upgrade health verification
         step += 1
-        plan.append({
-            "step": step,
-            "action": STEP_HEALTH_GATE,
-            "label": "Post-upgrade health verification",
-            "module": None,
-            "phase": "post_upgrade",
-            "checks": [
-                "flo_pods_ready", "tmm_pods_ready", "tmm_containers_ready",
-                "vlans_programmed", "gatewayclass_accepted",
-            ],
-            "timeout": 120,
-        })
+        plan.append(
+            {
+                "step": step,
+                "action": STEP_HEALTH_GATE,
+                "label": "Post-upgrade health verification",
+                "module": None,
+                "phase": "post_upgrade",
+                "checks": [
+                    "flo_pods_ready",
+                    "tmm_pods_ready",
+                    "tmm_containers_ready",
+                    "vlans_programmed",
+                    "gatewayclass_accepted",
+                ],
+                "timeout": 120,
+            }
+        )
 
         return plan

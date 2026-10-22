@@ -14,9 +14,10 @@ export function ClusterRouterRow({
   onInspect,
 }: {
   cluster: K8sCluster;
+  aiGatewayDeployed?: boolean;
   onInspect: () => void;
 }) {
-  const { data, isLoading } = useLlmStats(cluster.id, { range: "24h" });
+  const { data, isLoading } = useLlmStats(cluster.id, { range: "6h" });
   const live = data?.available ? data : undefined;
   const empty = isLoading ? "…" : "—";
 

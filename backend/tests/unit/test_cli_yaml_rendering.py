@@ -306,6 +306,7 @@ class TestCliPlanDryRunNoUsecases:
 
     def test_plan_usecases_none_returns_has_changes_false_and_skipped_true(self):
         from unittest.mock import MagicMock
+
         from services.execution.cli_engine import BnkctlEngine
 
         engine = BnkctlEngine()

@@ -101,6 +101,7 @@ def analyze_topology(data: dict[str, Any]) -> dict[str, Any]:
     referencegrants = resources.get("referencegrant", [])
     all_sec_policies = resources.get("secpolicy", []) + resources.get("bnksecpolicy", [])
     all_net_policies = resources.get("netpolicy", []) + resources.get("bnknetpolicy", [])
+    app_policies = resources.get("apppolicy", [])
     gatewaysettings = resources.get("gatewaysettings", [])
 
     # Unify all route types for topology matching
@@ -117,7 +118,20 @@ def analyze_topology(data: dict[str, Any]) -> dict[str, Any]:
     addr_map = make_resource_map(resources.get("f5bigcneaddresslist", []))
     port_map = make_resource_map(resources.get("f5bigcneportlist", []))
     gs_map = make_resource_map(gatewaysettings)
+    ai_profile_map = make_resource_map(resources.get("aigatewayprofile", []))
+    ai_model_map = make_resource_map(resources.get("aimodel", []))
+    ai_provider_map = make_resource_map(resources.get("aiprovider", []))
+    ai_cred_map = make_resource_map(resources.get("aicredential", []))
+    ai_tenant_map = make_resource_map(resources.get("aitenant", []))
     analyzers = resources.get("f5biganalyzer", [])
+
+    ai_maps = {
+        "profile": ai_profile_map,
+        "model": ai_model_map,
+        "provider": ai_provider_map,
+        "credential": ai_cred_map,
+        "tenant": ai_tenant_map,
+    }
 
     # Build topology per gateway
     topology = [
@@ -132,12 +146,16 @@ def analyze_topology(data: dict[str, Any]) -> dict[str, Any]:
             addr_map,
             port_map,
             gs_map,
+            app_policies=app_policies,
+            ai_maps=ai_maps,
         )
         for gw in gateways
     ]
 
     # Data Plane section
     data_plane = _build_data_plane(resources)
+    ai_gateway_chain = _build_ai_gateway_topology(resources, app_policies, ai_maps)
+    data_plane["aiGateway"] = ai_gateway_chain
 
     # ReferenceGrant summary
     ref_grants = [
@@ -153,6 +171,7 @@ def analyze_topology(data: dict[str, Any]) -> dict[str, Any]:
     return {
         "topology": topology,
         "dataPlane": data_plane,
+        "aiGateway": ai_gateway_chain,
         "referenceGrants": ref_grants,
         "counts": _build_counts(resources, gateways, route_counts, referencegrants, data_plane),
     }
@@ -174,6 +193,8 @@ def _build_gateway_node(
     addr_map: dict[str, dict],
     port_map: dict[str, dict],
     gs_map: dict[str, dict] | None = None,
+    app_policies: list[dict] | None = None,
+    ai_maps: dict[str, dict[str, dict]] | None = None,
 ) -> dict[str, Any]:
     """Build a single gateway topology node with listeners, policies, and tenant settings."""
     gw_meta = gw.get("metadata", {})
@@ -192,6 +213,8 @@ def _build_gateway_node(
             gw_name,
             gw_ns,
             gw_status,
+            app_policies=app_policies,
+            ai_maps=ai_maps,
         )
         for listener in gw_spec.get("listeners", [])
     ]
@@ -202,6 +225,13 @@ def _build_gateway_node(
         addr_map,
         port_map,
         gw_name,
+    )
+    app_policies_data = _match_app_policies(
+        app_policies or [],
+        irule_map,
+        ai_maps or {},
+        target_name=gw_name,
+        target_kind="Gateway",
     )
 
     # Resolve 2.4 GatewaySettings (a Gateway parametersRef is local to its namespace)
@@ -230,6 +260,7 @@ def _build_gateway_node(
         "conditions": gw_status.get("conditions", []) or [],
         "listeners": listeners_data,
         "securityPolicies": sec_policies_data,
+        "appPolicies": app_policies_data,
         "gatewaySettings": gw_settings_data,
     }
 
@@ -248,6 +279,8 @@ def _build_listener_node(
     gw_name: str,
     gw_ns: str,
     gw_status: dict,
+    app_policies: list[dict] | None = None,
+    ai_maps: dict[str, dict[str, dict]] | None = None,
 ) -> dict[str, Any]:
     """Build a single listener node with routes and network policies."""
     listener_name = listener.get("name", "")
@@ -264,12 +297,23 @@ def _build_listener_node(
             gw_name,
             gw_ns,
             listener_name,
+            app_policies=app_policies,
+            irule_map=irule_map,
+            ai_maps=ai_maps,
         ),
         "networkPolicies": _match_net_policies(
             bnknetpolicies,
             irule_map,
             gw_name,
             listener_name,
+        ),
+        "appPolicies": _match_app_policies(
+            app_policies or [],
+            irule_map,
+            ai_maps or {},
+            target_name=gw_name,
+            target_kind="Gateway",
+            section_name=listener_name,
         ),
     }
 
@@ -285,6 +329,9 @@ def _match_routes_to_listener(
     gw_name: str,
     gw_ns: str,
     listener_name: str,
+    app_policies: list[dict] | None = None,
+    irule_map: dict[str, dict] | None = None,
+    ai_maps: dict[str, dict[str, dict]] | None = None,
 ) -> list[dict]:
     """Find all routes (HTTP, GRPC, TCP, UDP, TLS, L4) targeting a gateway/listener."""
     routes_data: list[dict] = []
@@ -347,6 +394,14 @@ def _match_routes_to_listener(
                     "tools": tools,
                 }
 
+            route_app_policies = _match_app_policies(
+                app_policies or [],
+                irule_map or {},
+                ai_maps or {},
+                target_name=route_name,
+                target_kind=route_kind,
+            )
+
             routes_data.append(
                 {
                     "name": route_name,
@@ -362,6 +417,7 @@ def _match_routes_to_listener(
                         route_ns,
                         gw_ns,
                     ),
+                    "appPolicies": route_app_policies,
                     "accepted": accepted,
                     "conditions": parent_conditions,
                     "conditionMessage": _first_condition_message(parent_conditions) if not accepted else "",
@@ -457,13 +513,235 @@ def _match_net_policies(
     return result
 
 
+def _resolve_ai_gateway_profile(
+    profile_obj: dict,
+    ai_maps: dict[str, dict[str, dict]],
+) -> dict[str, Any]:
+    """Resolve an AIGatewayProfile CR into its full BNK 2.4.1 LLM Gateway chain."""
+    p_name = resource_name(profile_obj)
+    p_ns = resource_ns(profile_obj)
+    p_spec = profile_obj.get("spec") or {}
+    model_map = ai_maps.get("model") or {}
+    provider_map = ai_maps.get("provider") or {}
+    cred_map = ai_maps.get("credential") or {}
+    tenant_map = ai_maps.get("tenant") or {}
+
+    resolved_models: list[dict[str, Any]] = []
+    raw_model_refs = p_spec.get("modelRefs") or p_spec.get("models") or []
+    for m_ref in raw_model_refs:
+        m_name = m_ref.get("name", "") if isinstance(m_ref, dict) else str(m_ref)
+        m_ns = (m_ref.get("namespace") if isinstance(m_ref, dict) else None) or p_ns
+        m_obj = model_map.get(f"{m_ns}/{m_name}") or model_map.get(f"/{m_name}")
+        m_spec = (m_obj or {}).get("spec") or {}
+        resolved_providers: list[dict[str, Any]] = []
+        for pr_ref in m_spec.get("providerRefs") or m_spec.get("providers") or []:
+            pr_name = pr_ref.get("name", "") if isinstance(pr_ref, dict) else str(pr_ref)
+            pr_ns = (pr_ref.get("namespace") if isinstance(pr_ref, dict) else None) or m_ns
+            pr_obj = provider_map.get(f"{pr_ns}/{pr_name}") or provider_map.get(f"/{pr_name}")
+            pr_spec = (pr_obj or {}).get("spec") or {}
+            cred_ref = pr_spec.get("credentialRef") or {}
+            cred_name = cred_ref.get("name", "") if isinstance(cred_ref, dict) else str(cred_ref or "")
+            cred_ns = (cred_ref.get("namespace") if isinstance(cred_ref, dict) else None) or pr_ns
+            cred_obj = cred_map.get(f"{cred_ns}/{cred_name}") if cred_name else None
+            cred_spec = (cred_obj or {}).get("spec") or {}
+            resolved_providers.append(
+                {
+                    "name": pr_name,
+                    "namespace": pr_ns,
+                    "type": pr_spec.get("type", ""),
+                    "endpoint": pr_spec.get("endpoint", ""),
+                    "credential": {
+                        "name": cred_name,
+                        "namespace": cred_ns,
+                        "secretRef": cred_spec.get("secretRef"),
+                        "resolved": cred_obj is not None,
+                    }
+                    if cred_name
+                    else None,
+                    "resolved": pr_obj is not None,
+                }
+            )
+        resolved_models.append(
+            {
+                "name": m_name,
+                "namespace": m_ns,
+                "modelName": m_spec.get("modelName", m_name),
+                "routingMode": m_spec.get("routingMode", ""),
+                "providers": resolved_providers,
+                "resolved": m_obj is not None,
+            }
+        )
+
+    resolved_tenants: list[dict[str, Any]] = []
+    for t_ref in p_spec.get("tenantRefs") or p_spec.get("tenants") or []:
+        t_name = t_ref.get("name", "") if isinstance(t_ref, dict) else str(t_ref)
+        t_ns = (t_ref.get("namespace") if isinstance(t_ref, dict) else None) or p_ns
+        t_obj = tenant_map.get(f"{t_ns}/{t_name}") or tenant_map.get(f"/{t_name}")
+        t_spec = (t_obj or {}).get("spec") or {}
+        resolved_tenants.append(
+            {
+                "name": t_name,
+                "namespace": t_ns,
+                "rateLimits": t_spec.get("rateLimits") or {},
+                "tokenBudget": t_spec.get("tokenBudget") or {},
+                "resolved": t_obj is not None,
+            }
+        )
+
+    return {
+        "name": p_name,
+        "namespace": p_ns,
+        "defaultModelRef": p_spec.get("defaultModelRef"),
+        "smartRouting": p_spec.get("smartRouting") or {},
+        "models": resolved_models,
+        "tenants": resolved_tenants,
+        "ready": has_condition(profile_obj, "Accepted")
+        or has_condition(profile_obj, "Programmed")
+        or has_condition(profile_obj, "Ready"),
+    }
+
+
+def _match_app_policies(
+    app_policies: list[dict],
+    irule_map: dict[str, dict],
+    ai_maps: dict[str, dict[str, dict]],
+    target_name: str,
+    target_kind: str,
+    section_name: str | None = None,
+) -> list[dict[str, Any]]:
+    """Find BNK 2.4.1 AppPolicies targeting a Gateway, Listener, or Route and resolve extensionRefs -> AIGatewayProfile."""
+    result: list[dict[str, Any]] = []
+    profile_map = ai_maps.get("profile") or {}
+    for ap in app_policies:
+        ap_spec = ap.get("spec") or {}
+        ap_ns = resource_ns(ap)
+        for target in ap_spec.get("targetRefs") or []:
+            if target.get("name") != target_name or target.get("kind") != target_kind:
+                continue
+            target_sec = target.get("sectionName")
+            if section_name is not None and target_sec != section_name:
+                continue
+            if section_name is None and target_kind == "Gateway" and target_sec:
+                continue
+
+            ext_refs = ap_spec.get("extensionRefs") or []
+            extensions = _build_extensions(ext_refs, ap_ns, irule_map, ai_maps=ai_maps)
+            ai_profiles: list[dict[str, Any]] = []
+            for ext in ext_refs:
+                if ext.get("kind") == "AIGatewayProfile":
+                    ext_ns = ext.get("namespace") or ap_ns
+                    prof_obj = profile_map.get(f"{ext_ns}/{ext.get('name', '')}")
+                    if prof_obj:
+                        ai_profiles.append(_resolve_ai_gateway_profile(prof_obj, ai_maps))
+
+            status = _policy_status(ap)
+            result.append(
+                {
+                    "name": resource_name(ap),
+                    "kind": ap.get("kind", "AppPolicy"),
+                    "namespace": ap_ns,
+                    "targetSectionName": target_sec or "",
+                    "extensions": extensions,
+                    "aiGatewayProfiles": ai_profiles,
+                    "resolved": status["resolved"],
+                    "programmed": status["programmed"],
+                    "messages": status["messages"],
+                }
+            )
+    return result
+
+
+def _build_ai_gateway_topology(
+    resources: dict[str, list],
+    app_policies: list[dict],
+    ai_maps: dict[str, dict[str, dict]],
+) -> dict[str, Any]:
+    """Build the BNK 2.4.1 LLM Gateway chain summary (AppPolicy -> AIGatewayProfile -> AITenant/AIModel -> AIProvider -> AICredential)."""
+    profiles = [_resolve_ai_gateway_profile(p, ai_maps) for p in resources.get("aigatewayprofile", [])]
+    irule_map = make_resource_map(resources.get("f5bigcneirule", []))
+    resolved_app_policies: list[dict[str, Any]] = []
+    profile_map = ai_maps.get("profile") or {}
+    for ap in app_policies:
+        ap_spec = ap.get("spec") or {}
+        ap_ns = resource_ns(ap)
+        ext_refs = ap_spec.get("extensionRefs") or []
+        ai_profiles = []
+        for ext in ext_refs:
+            if ext.get("kind") == "AIGatewayProfile":
+                ext_ns = ext.get("namespace") or ap_ns
+                prof_obj = profile_map.get(f"{ext_ns}/{ext.get('name', '')}")
+                if prof_obj:
+                    ai_profiles.append(_resolve_ai_gateway_profile(prof_obj, ai_maps))
+        status = _policy_status(ap)
+        resolved_app_policies.append(
+            {
+                "name": resource_name(ap),
+                "namespace": ap_ns,
+                "targetRefs": ap_spec.get("targetRefs") or [],
+                "extensions": _build_extensions(ext_refs, ap_ns, irule_map, ai_maps=ai_maps),
+                "aiGatewayProfiles": ai_profiles,
+                "resolved": status["resolved"],
+                "programmed": status["programmed"],
+            }
+        )
+    return {
+        "appPolicies": resolved_app_policies,
+        "profiles": profiles,
+        "models": [
+            {
+                "name": resource_name(m),
+                "namespace": resource_ns(m),
+                "modelName": (m.get("spec") or {}).get("modelName", resource_name(m)),
+                "providerRefs": (m.get("spec") or {}).get("providerRefs") or [],
+            }
+            for m in resources.get("aimodel", [])
+        ],
+        "providers": [
+            {
+                "name": resource_name(pr),
+                "namespace": resource_ns(pr),
+                "type": (pr.get("spec") or {}).get("type", ""),
+                "endpoint": (pr.get("spec") or {}).get("endpoint", ""),
+                "credentialRef": (pr.get("spec") or {}).get("credentialRef"),
+            }
+            for pr in resources.get("aiprovider", [])
+        ],
+        "tenants": [
+            {
+                "name": resource_name(t),
+                "namespace": resource_ns(t),
+                "rateLimits": (t.get("spec") or {}).get("rateLimits") or {},
+            }
+            for t in resources.get("aitenant", [])
+        ],
+        "credentials": [
+            {
+                "name": resource_name(c),
+                "namespace": resource_ns(c),
+                "secretRef": (c.get("spec") or {}).get("secretRef"),
+            }
+            for c in resources.get("aicredential", [])
+        ],
+        "gateways": [
+            {
+                "name": resource_name(g),
+                "namespace": resource_ns(g),
+                "profileRef": (g.get("spec") or {}).get("profileRef"),
+            }
+            for g in resources.get("aigateway", [])
+        ],
+    }
+
+
 def _build_extensions(
     extension_refs: list[dict],
     policy_ns: str,
     irule_map: dict[str, dict],
+    ai_maps: dict[str, dict[str, dict]] | None = None,
 ) -> list[dict[str, Any]]:
-    """Build extension data with optional iRule enrichment."""
+    """Build extension data with optional iRule and AIGatewayProfile enrichment."""
     extensions: list[dict[str, Any]] = []
+    profile_map = (ai_maps or {}).get("profile") or {}
     for ext in extension_refs:
         ext_data: dict[str, Any] = {
             "kind": ext.get("kind", ""),
@@ -476,6 +754,11 @@ def _build_extensions(
                 code = irule_obj.get("spec", {}).get("iRule", "")
                 ext_data["lineCount"] = len(code.split("\n")) if code else 0
                 ext_data["eventHandlers"] = re.findall(r"when\s+(\w+)", code)
+        elif ext.get("kind") == "AIGatewayProfile":
+            ext_ns = ext.get("namespace") or policy_ns
+            prof_obj = profile_map.get(f"{ext_ns}/{ext.get('name', '')}")
+            if prof_obj and ai_maps:
+                ext_data["aiGatewayProfile"] = _resolve_ai_gateway_profile(prof_obj, ai_maps)
         extensions.append(ext_data)
     return extensions
 
@@ -890,4 +1173,11 @@ def _build_counts(
         "egressGateways": len(resources.get("egressgateway", [])),
         "inferencePools": len(resources.get("inferencepool", [])),
         "f5epps": len(resources.get("f5epp", [])),
+        "appPolicies": len(resources.get("apppolicy", [])),
+        "aiGatewayProfiles": len(resources.get("aigatewayprofile", [])),
+        "aiModels": len(resources.get("aimodel", [])),
+        "aiProviders": len(resources.get("aiprovider", [])),
+        "aiTenants": len(resources.get("aitenant", [])),
+        "aiCredentials": len(resources.get("aicredential", [])),
+        "aiGateways": len(resources.get("aigateway", [])),
     }

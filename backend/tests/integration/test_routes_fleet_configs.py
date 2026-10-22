@@ -1,6 +1,7 @@
 """Integration tests for Fleet Deployable Configs API."""
 
 from unittest.mock import MagicMock, patch
+
 import pytest
 from starlette.testclient import TestClient
 

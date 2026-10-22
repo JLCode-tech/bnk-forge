@@ -17,7 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Eye } from "lucide-react";
+import { Eye, Pencil, Trash2 } from "lucide-react";
 import { getSeverityConfig } from "@/lib/health-severity";
 import { formatAge } from "@/lib/time-utils";
 import type { K8sResource, K8sCondition } from "@/types/kubernetes";
@@ -32,6 +32,8 @@ interface CNFResourceTableProps {
   selectedResource: K8sResource | null;
   onSelectResource: (resource: K8sResource) => void;
   onDescribe: (resource: K8sResource) => void;
+  onEdit?: (resource: K8sResource) => void;
+  onDelete?: (resource: K8sResource) => void;
   borderDefault: string;
 }
 
@@ -40,6 +42,8 @@ export function CNFResourceTable({
   selectedResource,
   onSelectResource,
   onDescribe,
+  onEdit,
+  onDelete,
   borderDefault,
 }: CNFResourceTableProps) {
   return (
@@ -63,7 +67,7 @@ export function CNFResourceTable({
           <TableHead className="py-3 px-4 font-medium text-muted-foreground">
             Age
           </TableHead>
-          <TableHead className="text-right py-3 px-4 font-medium w-24 text-muted-foreground">
+          <TableHead className="text-right py-3 px-4 font-medium w-32 text-muted-foreground">
             Actions
           </TableHead>
         </TableRow>
@@ -115,18 +119,48 @@ export function CNFResourceTable({
                 </span>
               </TableCell>
               <TableCell className="py-3 px-4 text-right">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                  aria-label="View details"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDescribe(resource);
-                  }}
-                >
-                  <Eye className="h-3.5 w-3.5" />
-                </Button>
+                <div className="inline-flex items-center justify-end gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    aria-label="View details"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDescribe(resource);
+                    }}
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                  </Button>
+                  {onEdit && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      aria-label={`Edit ${resource.metadata?.name ?? "resource"}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEdit(resource);
+                      }}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                  {onDelete && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                      aria-label={`Delete ${resource.metadata?.name ?? "resource"}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete(resource);
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
               </TableCell>
             </TableRow>
           );

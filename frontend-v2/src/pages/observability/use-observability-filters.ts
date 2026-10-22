@@ -11,7 +11,7 @@ import type { LlmClusterScope } from '@/hooks/useLlmObservability';
 import { readClusterScope, writeClusterScope } from '@/hooks/useClusterScope';
 import type { LlmTimeRange } from '@/types/llm-observability';
 
-const RANGES: LlmTimeRange[] = ['1h', '6h', '24h', '7d'];
+const RANGES: LlmTimeRange[] = ['1h', '6h'];
 
 export interface ObservabilityFilters {
   clusterId: LlmClusterScope;
@@ -36,7 +36,7 @@ export function useObservabilityFilters(defaultTab: string): ObservabilityFilter
   const rangeParam = params.get('range');
   const range: LlmTimeRange = RANGES.includes(rangeParam as LlmTimeRange)
     ? (rangeParam as LlmTimeRange)
-    : '1h';
+    : '6h';
   const model = params.get('model') ?? '';
   const status = params.get('status') ?? '';
   const tab = params.get('tab') ?? defaultTab;

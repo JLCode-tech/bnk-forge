@@ -102,6 +102,10 @@ export const ROUTE_HANDLES: Record<string, RouteHandle> = {
     title: "Agent Fleet",
     breadcrumbs: [{ label: "AI Service Plane" }],
   },
+  "/ai/token-governance": {
+    title: "Token Governance and Intelligence",
+    breadcrumbs: [{ label: "AI Service Plane" }],
+  },
   "/ai/mcp-gateway": {
     title: "Token Governance and Intelligence",
     breadcrumbs: [{ label: "AI Service Plane" }],
@@ -323,13 +327,18 @@ export const router = createBrowserRouter(
           handle: ROUTE_HANDLES["/ai/agents"],
         },
         {
-          path: "ai/mcp-gateway",
+          path: "ai/token-governance",
           element: <LlmDashboard />,
+          handle: ROUTE_HANDLES["/ai/token-governance"],
+        },
+        {
+          path: "ai/mcp-gateway",
+          element: <Navigate to="/ai/token-governance" replace />,
           handle: ROUTE_HANDLES["/ai/mcp-gateway"],
         },
         {
           path: "ai/governance",
-          element: <Navigate to="/ai/mcp-gateway" replace />,
+          element: <Navigate to="/ai/token-governance" replace />,
         },
         {
           path: "ai/llm-router",

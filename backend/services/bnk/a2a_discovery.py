@@ -60,9 +60,14 @@ def discover_a2a_agents(
     """
     route_ref_map = build_route_ref_map(topology)
     services = data["resources"].get("service", [])
+    gateways = [
+        (gw.get("metadata") or {}).get("name", "")
+        for gw in (data["resources"].get("gateway", []) or [])
+        if isinstance(gw, dict) and (gw.get("metadata") or {}).get("name")
+    ]
 
-    # Build a lookup of services that are behind HTTPRoutes
-    candidates = _find_http_backend_services(services, route_ref_map)
+    # Build a lookup of services that are behind HTTPRoutes or discovered MCP/A2A services
+    candidates = _find_http_backend_services(services, route_ref_map, gateways)
 
     if probe and api_client and candidates:
         _probe_agent_cards(candidates, api_client)
@@ -78,14 +83,16 @@ def discover_a2a_agents(
 def _find_http_backend_services(
     services: list[dict],
     route_ref_map: dict[tuple[str, str], list[dict]],
+    gateways: list[str] | None = None,
 ) -> list[dict]:
     """
-    Find services that are backends of HTTPRoutes — A2A agent candidates.
+    Find services that are backends of HTTPRoutes or MCP/A2A agent services.
 
-    Only includes services referenced by at least one HTTPRoute (not TCP/UDP/etc.)
-    since A2A is an HTTP-based protocol (JSON-RPC over HTTP).
+    Includes services referenced by at least one HTTPRoute (not TCP/UDP/etc.)
+    or explicitly named/labeled as MCP/A2A services in non-system namespaces.
     """
     candidates: list[dict] = []
+    default_gw = gateways[0] if gateways else "bnk-ai-gateway"
 
     for svc in services:
         meta = svc.get("metadata", {})
@@ -94,10 +101,27 @@ def _find_http_backend_services(
         svc_ns = meta.get("namespace", "")
         route_refs = route_ref_map.get((svc_ns, svc_name), [])
 
-        # Only include services behind HTTPRoutes (A2A uses HTTP)
+        # Include services behind HTTPRoutes (A2A uses HTTP)
         http_refs = [r for r in route_refs if r.get("kind") == "HTTPRoute"]
         if not http_refs:
-            continue
+            labels_str = " ".join(str(v).lower() for v in (meta.get("labels") or {}).values())
+            name_lower = svc_name.lower()
+            if (
+                not svc_ns.startswith(("kube-", "f5-", "gke-", "calico-"))
+                and any(tok in name_lower or tok in labels_str for tok in ("mcp", "a2a", "agent-card"))
+            ):
+                first_port = ((spec.get("ports") or [{}])[0]).get("port") or 8080
+                http_refs = [
+                    {
+                        "kind": "HTTPRoute",
+                        "namespace": svc_ns,
+                        "name": f"{svc_name}-route",
+                        "port": first_port,
+                        "gatewayName": default_gw,
+                    }
+                ]
+            else:
+                continue
 
         # Deduplicate route refs while preserving uniqueness of (kind, namespace, name, port, gatewayName)
         seen_refs: set[tuple[str, str, str, Any, str]] = set()

@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SectionCard } from "@/components/ui/section-card";
 import { ErrorState } from "@/components/ui/error-state";
+// eslint-disable-next-line no-restricted-imports -- Vertical flush sub-sidebar requires Radix TabsList + TabsTrigger
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ResourceViewTabs } from "@/components/layout/ResourceViewTabs";
 import { CollapsibleInnerSidebar } from "@/components/layout/InnerSidebar";

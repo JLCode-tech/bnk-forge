@@ -51,6 +51,13 @@ class HealthPlatformComponent(HealthComponentEnrichment):
     severity: HealthSeverityV1
 
 
+class HealthLlmGwPluginComponent(BaseModel):
+    podsWithPlugin: int = 0
+    ready: int = 0
+    severity: HealthSeverityV1 = "unknown"
+    explanation: str = ""
+
+
 class HealthTmmComponent(HealthComponentEnrichment):
     pods: int
     running: int
@@ -58,6 +65,7 @@ class HealthTmmComponent(HealthComponentEnrichment):
     containersReady: int
     totalRestarts: int
     severity: HealthSeverityV1
+    llmGwPlugin: HealthLlmGwPluginComponent | None = None
 
 
 class HealthGatewayComponent(BaseModel):
@@ -142,8 +150,14 @@ class HealthCounts(BaseModel):
     httpRoutes: int
     vlans: int
     firewallPolicies: int
+    appPolicies: int = 0
     irules: int
     analyzers: int
+    aiGatewayProfiles: int = 0
+    aiModels: int = 0
+    aiProviders: int = 0
+    aiTenants: int = 0
+    aiCredentials: int = 0
     cneInstances: int
     tmm_pods: int
     tmm_running: int
@@ -171,6 +185,7 @@ class BnkHealthPlatformSection(BaseModel):
     controller: HealthPlatformComponent
     crdInstaller: HealthPlatformComponent
     analyzer: HealthPlatformComponent
+    aigatewayConsole: HealthPlatformComponent | None = None
 
 
 class BnkHealthDataPlaneSection(BaseModel):
@@ -197,6 +212,7 @@ class BnkHealthSecuritySection(BaseModel):
     firewallPolicies: int
     securityPolicies: int
     networkPolicies: int
+    appPolicies: int = 0
     addressLists: int
     portLists: int
     irules: HealthIRulesComponent
@@ -209,6 +225,23 @@ class BnkHealthAISection(BaseModel):
     f5epps: int = 0
     inferencePools: int = 0
     inferencePoolDetails: list[HealthInferencePoolDetail] = Field(default_factory=list)
+    appPolicies: int = 0
+    aiGatewayProfiles: int = 0
+    aiModels: int = 0
+    aiProviders: int = 0
+    aiTenants: int = 0
+    aiCredentials: int = 0
+    aiGateways: int = 0
+    llmGatewayEnabled: bool = False
+    llmGatewayConsoleEnabled: bool = False
+    llmGwPluginPods: int = 0
+    llmGwPluginReady: int = 0
+    aigatewayConsolePods: int = 0
+    aigatewayConsoleRunning: int = 0
+    aiGatewayProfileDetails: list[dict[str, Any]] = Field(default_factory=list)
+    aiModelDetails: list[dict[str, Any]] = Field(default_factory=list)
+    aiProviderDetails: list[dict[str, Any]] = Field(default_factory=list)
+    aiTenantDetails: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class BnkHealthResponse(BaseModel):

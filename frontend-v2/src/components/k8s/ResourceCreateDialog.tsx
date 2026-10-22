@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -6,12 +6,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
-import { YamlEditor } from './YamlEditor';
-import { Loader2, FileCode } from 'lucide-react';
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { YamlEditor } from "./YamlEditor";
+import { Loader2, FileCode } from "lucide-react";
+import { getCnfYamlTemplate } from "@/pages/cnf-parts/cnf-constants";
 
 interface ResourceCreateDialogProps {
   open: boolean;
@@ -22,7 +23,13 @@ interface ResourceCreateDialogProps {
   namespace?: string;
 }
 
-const getDefaultYaml = (resourceType: string = 'pod', namespace: string = 'default') => {
+export const getDefaultYaml = (
+  resourceType: string = "pod",
+  namespace: string = "default",
+) => {
+  const cnfTemplate = getCnfYamlTemplate(resourceType, namespace);
+  if (cnfTemplate) return cnfTemplate;
+
   const templates: Record<string, string> = {
     pod: `apiVersion: v1
 kind: Pod
@@ -715,10 +722,12 @@ export function ResourceCreateDialog({
   onOpenChange,
   onSubmit,
   isLoading = false,
-  resourceType = 'pod',
-  namespace = 'default',
+  resourceType = "pod",
+  namespace = "default",
 }: ResourceCreateDialogProps) {
-  const [resourceYaml, setResourceYaml] = useState(getDefaultYaml(resourceType, namespace));
+  const [resourceYaml, setResourceYaml] = useState(
+    getDefaultYaml(resourceType, namespace),
+  );
   const [dryRun, setDryRun] = useState(false);
 
   // Update YAML when resourceType or namespace changes
@@ -736,9 +745,13 @@ export function ResourceCreateDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>Create {resourceType.charAt(0).toUpperCase() + resourceType.slice(1)}</DialogTitle>
+          <DialogTitle>
+            Create{" "}
+            {resourceType.charAt(0).toUpperCase() + resourceType.slice(1)}
+          </DialogTitle>
           <DialogDescription>
-            Define your {resourceType} resource using YAML. The resource will be created in namespace <code>{namespace}</code>.
+            Define your {resourceType} resource using YAML. The resource will be
+            created in namespace <code>{namespace}</code>.
           </DialogDescription>
         </DialogHeader>
 
@@ -758,7 +771,10 @@ export function ResourceCreateDialog({
               checked={dryRun}
               onCheckedChange={(checked) => setDryRun(checked as boolean)}
             />
-            <Label htmlFor="dryRun" className="text-sm text-muted-foreground cursor-pointer">
+            <Label
+              htmlFor="dryRun"
+              className="text-sm text-muted-foreground cursor-pointer"
+            >
               Dry run (preview changes without applying)
             </Label>
           </div>
@@ -775,12 +791,12 @@ export function ResourceCreateDialog({
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {dryRun ? 'Validating...' : 'Creating...'}
+                  {dryRun ? "Validating..." : "Creating..."}
                 </>
               ) : (
                 <>
                   <FileCode className="mr-2 h-4 w-4" />
-                  {dryRun ? 'Dry Run' : 'Create Resource'}
+                  {dryRun ? "Dry Run" : "Create Resource"}
                 </>
               )}
             </Button>

@@ -19,7 +19,7 @@ from typing import Any
 # Components whose absence (zero pods) is not a failure — they're optional or
 # one-shot. Centralised here so FE-visible "show" logic and rollup exclusions
 # stay in sync.
-_OPTIONAL_COMPONENTS: frozenset[str] = frozenset({"analyzer", "crdInstaller"})
+_OPTIONAL_COMPONENTS: frozenset[str] = frozenset({"analyzer", "crdInstaller", "aigatewayConsole"})
 
 from services.bnk.helpers import (
     calc_severity,
@@ -31,8 +31,10 @@ from services.bnk.helpers import (
 )
 from services.bnk_pod_discovery import (
     detect_install_shape,
+    pod_has_llm_gw_plugin,
     pod_is_completed,
     pod_is_healthy,
+    pod_llm_gw_plugin_ready,
 )
 
 # ---------------------------------------------------------------------------
@@ -44,10 +46,12 @@ COMPONENT_EXPLANATIONS: dict[str, str] = {
     "controller": "Translates Gateway API resources into data-plane configuration. If unhealthy, config changes won't reach TMM.",
     "crdInstaller": "Installs Custom Resource Definitions required by BNK. If incomplete, some resource types may be unavailable.",
     "analyzer": "Runs traffic analysis for intelligent load balancing. If unhealthy, AI-based traffic distribution is unavailable.",
+    "aigatewayConsole": "Provides the AI Gateway management console (f5-aigateway-console). Optional unless CNEInstance spec.aiGateway.console is enabled.",
+    "llmGwPlugin": "Runs the LLM Gateway sidecar plugin (llm-gw-plugin) inside f5-tmm data-plane pods.",
     "tmm": "Processes all network traffic (Traffic Management Microkernel). If unhealthy, traffic routing stops.",
     "gateways": "Kubernetes Gateway API entry point. If unhealthy, no ingress traffic is processed.",
     "vlans": "Provides L2 network segmentation for BNK traffic. If unhealthy, network isolation is broken.",
-    "infra": "Underlay network & IPAM infrastructure (2.4). If unhealthy, TMM has no external network interfaces or self-IPs.",
+    "infra": "Underlay network & IPAM infrastructure. If unhealthy, TMM has no external network interfaces or self-IPs.",
     "irules": "Programmable traffic steering rules. If not accepted, custom traffic logic won't execute.",
 }
 
@@ -173,10 +177,16 @@ def _extract_cne_features(cneinstances: list[dict]) -> dict[str, Any]:
         return {}
     cne = cneinstances[0]
     spec = cne.get("spec") if isinstance(cne.get("spec"), dict) else {}
-    return {
+    features: dict[str, Any] = {
         "name": safe_get(cne, "metadata", "name", default=""),
         **_derive_spec_feature_flags(spec),
     }
+    ai_gw = spec.get("aiGateway")
+    if isinstance(ai_gw, dict):
+        console = ai_gw.get("console")
+        if isinstance(console, dict) and "enabled" in console:
+            features["aiGatewayConsole"] = bool(console.get("enabled"))
+    return features
 
 
 # ---------------------------------------------------------------------------
@@ -238,17 +248,18 @@ def _build_platform_health(
     install_shape: str = "unknown",
     nodes_by_name: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Build the platform health section (FLO, controller, CRD installer, analyzer)."""
+    """Build the platform health section (FLO, controller, CRD installer, analyzer, AI gateway console)."""
     sections = {
         "flo": ("flo", pod_is_healthy),
         "controller": ("controller", pod_is_healthy),
         "crdInstaller": ("crd_installer", lambda p: pod_is_completed(p) or pod_is_healthy(p)),
         "analyzer": ("analyzer", pod_is_healthy),
+        "aigatewayConsole": ("aigateway_console", pod_is_healthy),
     }
     platform: dict[str, Any] = {"severity": "unknown"}
     rollup_inputs: list[str] = []
     for key, (pod_key, health_fn) in sections.items():
-        pods = classified[pod_key]
+        pods = classified.get(pod_key, [])
         healthy = [p for p in pods if health_fn(p)]
         count_key = "completed" if key == "crdInstaller" else "running"
 
@@ -272,7 +283,7 @@ def _build_platform_health(
             **_build_component_health(key, pods, healthy, sev, nodes_by_name),
         }
 
-        # Analyzer is optional; its absence shouldn't degrade rollup.
+        # Analyzer and AI Gateway console are optional; their absence shouldn't degrade rollup.
         if key in _OPTIONAL_COMPONENTS and len(pods) == 0:
             continue
         # FLO is optional when the install shape isn't FLO-based (e.g. direct
@@ -291,12 +302,16 @@ def _build_data_plane_health(
     cneinstances: list[dict],
     nodes_by_name: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Build the data plane health section (TMM pods, CNE features)."""
-    tmm_pods = classified["tmm"]
+    """Build the data plane health section (TMM pods, llm-gw-plugin sidecars, CNE features)."""
+    tmm_pods = classified.get("tmm", [])
     tmm_running = [p for p in tmm_pods if pod_is_healthy(p)]
     tmm_containers_total = sum(len(p.get("containers", [])) for p in tmm_pods)
     tmm_containers_ready = sum(sum(1 for c in p.get("containers", []) if c.get("ready")) for p in tmm_pods)
     tmm_restarts = sum(sum(c.get("restartCount", 0) for c in p.get("containers", [])) for p in tmm_pods)
+
+    llm_gw_pods = [p for p in tmm_pods if pod_has_llm_gw_plugin(p)]
+    llm_gw_ready = [p for p in llm_gw_pods if pod_llm_gw_plugin_ready(p)]
+    llm_gw_sev = calc_severity(len(llm_gw_ready), len(llm_gw_pods)) if llm_gw_pods else "unknown"
 
     tmm_sev = calc_severity(len(tmm_running), len(tmm_pods))
     return {
@@ -308,6 +323,12 @@ def _build_data_plane_health(
             "containersReady": tmm_containers_ready,
             "totalRestarts": tmm_restarts,
             "severity": tmm_sev,
+            "llmGwPlugin": {
+                "podsWithPlugin": len(llm_gw_pods),
+                "ready": len(llm_gw_ready),
+                "severity": llm_gw_sev,
+                "explanation": COMPONENT_EXPLANATIONS.get("llmGwPlugin", ""),
+            },
             **_build_component_health("tmm", tmm_pods, tmm_running, tmm_sev, nodes_by_name),
         },
         "cneInstance": _extract_cne_features(cneinstances),
@@ -406,11 +427,12 @@ def _build_networking_health(resources: dict[str, list]) -> dict[str, Any]:
 
 
 def _build_security_health(resources: dict[str, list]) -> dict[str, Any]:
-    """Build the security health section (firewall, iRules, policies)."""
+    """Build the security health section (firewall, iRules, policies, AppPolicy)."""
     irules = resources.get("f5bigcneirule", [])
     fwpolicies = resources.get("f5bigfwpolicy", [])
     secpolicies = resources.get("secpolicy", []) + resources.get("bnksecpolicy", [])
     netpolicies = resources.get("netpolicy", []) + resources.get("bnknetpolicy", [])
+    apppolicies = resources.get("apppolicy", [])
 
     irules_accepted = [ir for ir in irules if has_condition(ir, "Accepted")]
     irules_programmed = [ir for ir in irules if has_condition(ir, "Programmed")]
@@ -420,6 +442,7 @@ def _build_security_health(resources: dict[str, list]) -> dict[str, Any]:
         "firewallPolicies": len(fwpolicies),
         "securityPolicies": len(secpolicies),
         "networkPolicies": len(netpolicies),
+        "appPolicies": len(apppolicies),
         "addressLists": len(resources.get("f5bigcneaddresslist", [])),
         "portLists": len(resources.get("f5bigcneportlist", [])),
         "irules": {
@@ -441,7 +464,7 @@ def _build_security_health(resources: dict[str, list]) -> dict[str, Any]:
     }
     if irules:
         security_h["severity"] = security_h["irules"]["severity"]
-    elif fwpolicies or secpolicies or netpolicies:
+    elif fwpolicies or secpolicies or netpolicies or apppolicies:
         security_h["severity"] = "healthy"
 
     return security_h
@@ -450,17 +473,47 @@ def _build_security_health(resources: dict[str, list]) -> dict[str, Any]:
 def _build_ai_health(
     resources: dict[str, list],
     _cne_features: dict[str, Any],
+    classified: dict[str, list] | None = None,
 ) -> dict[str, Any]:
-    """Build the AI / intelligent LB health section."""
+    """Build the AI / intelligent LB and BNK 2.4.1 LLM Gateway health section."""
     analyzers = resources.get("f5biganalyzer", [])
     f5epps = resources.get("f5epp", [])
     inferencepools = resources.get("inferencepool", [])
+
+    # BNK 2.4.1 AI Governance & LLM Gateway CRDs
+    apppolicies = resources.get("apppolicy", [])
+    aigatewayprofiles = resources.get("aigatewayprofile", [])
+    aimodels = resources.get("aimodel", [])
+    aiproviders = resources.get("aiprovider", [])
+    aitenants = resources.get("aitenant", [])
+    aicredentials = resources.get("aicredential", [])
+    aigateways = resources.get("aigateway", [])
+
+    tmm_pods = (classified or {}).get("tmm", [])
+    console_pods = (classified or {}).get("aigateway_console", [])
+    llm_gw_pods = [p for p in tmm_pods if pod_has_llm_gw_plugin(p)]
+    llm_gw_ready = [p for p in llm_gw_pods if pod_llm_gw_plugin_ready(p)]
+    console_running = [p for p in console_pods if pod_is_healthy(p)]
+
     ai_health: dict[str, Any] = {
         # Informational-only section. Optional AI config presence must not drive severity.
         "severity": "unknown",
         "analyzers": len(analyzers),
         "f5epps": len(f5epps),
         "inferencePools": len(inferencepools),
+        "appPolicies": len(apppolicies),
+        "aiGatewayProfiles": len(aigatewayprofiles),
+        "aiModels": len(aimodels),
+        "aiProviders": len(aiproviders),
+        "aiTenants": len(aitenants),
+        "aiCredentials": len(aicredentials),
+        "aiGateways": len(aigateways),
+        "llmGatewayEnabled": bool(_cne_features.get("aiGateway")),
+        "llmGatewayConsoleEnabled": bool(_cne_features.get("aiGatewayConsole")),
+        "llmGwPluginPods": len(llm_gw_pods),
+        "llmGwPluginReady": len(llm_gw_ready),
+        "aigatewayConsolePods": len(console_pods),
+        "aigatewayConsoleRunning": len(console_running),
         "analyzerDetails": [
             {
                 "name": safe_get(a, "metadata", "name", default=""),
@@ -481,6 +534,45 @@ def _build_ai_health(
                 "endpointPicker": safe_get(ip, "spec", "endpointPickerRef", "name", default=""),
             }
             for ip in inferencepools
+        ],
+        "aiGatewayProfileDetails": [
+            {
+                "name": safe_get(p, "metadata", "name", default=""),
+                "namespace": safe_get(p, "metadata", "namespace", default=""),
+                "programmed": has_condition(p, "Programmed")
+                or has_condition(p, "Accepted")
+                or has_condition(p, "Ready"),
+            }
+            for p in aigatewayprofiles
+        ],
+        "aiModelDetails": [
+            {
+                "name": safe_get(m, "metadata", "name", default=""),
+                "namespace": safe_get(m, "metadata", "namespace", default=""),
+                "modelName": safe_get(m, "spec", "modelName", default=safe_get(m, "spec", "model", default="")),
+                "provider": (
+                    safe_get(m, "spec", "providerRef", "name", default="")
+                    if isinstance(safe_get(m, "spec", "providerRef"), dict)
+                    else str(safe_get(m, "spec", "provider", default="") or "")
+                ),
+            }
+            for m in aimodels
+        ],
+        "aiProviderDetails": [
+            {
+                "name": safe_get(pr, "metadata", "name", default=""),
+                "namespace": safe_get(pr, "metadata", "namespace", default=""),
+                "type": safe_get(pr, "spec", "type", default=safe_get(pr, "spec", "providerType", default="")),
+                "endpoint": safe_get(pr, "spec", "endpoint", default=safe_get(pr, "spec", "baseUrl", default="")),
+            }
+            for pr in aiproviders
+        ],
+        "aiTenantDetails": [
+            {
+                "name": safe_get(t, "metadata", "name", default=""),
+                "namespace": safe_get(t, "metadata", "namespace", default=""),
+            }
+            for t in aitenants
         ],
     }
     return ai_health
@@ -564,7 +656,7 @@ def analyze_health(data: dict[str, Any]) -> dict[str, Any]:
     networking = _build_networking_health(resources)
     security = _build_security_health(resources)
     cne_features = data_plane["cneInstance"]
-    ai = _build_ai_health(resources, cne_features)
+    ai = _build_ai_health(resources, cne_features, classified)
 
     # Readiness-aware overall severity:
     # - Always include platform + data-plane readiness.
@@ -598,6 +690,7 @@ def analyze_health(data: dict[str, Any]) -> dict[str, Any]:
             "netpolicy",
             "bnksecpolicy",
             "bnknetpolicy",
+            "apppolicy",
         )
     )
     if has_security_resources:
@@ -607,7 +700,7 @@ def analyze_health(data: dict[str, Any]) -> dict[str, Any]:
 
     # Summary counts
     gateways = resources.get("gateway", [])
-    tmm_pods = classified["tmm"]
+    tmm_pods = classified.get("tmm", [])
     tmm_running = [p for p in tmm_pods if pod_is_healthy(p)]
     tmm_containers_total = sum(len(p.get("containers", [])) for p in tmm_pods)
     tmm_containers_ready = sum(sum(1 for c in p.get("containers", []) if c.get("ready")) for p in tmm_pods)
@@ -640,8 +733,14 @@ def analyze_health(data: dict[str, Any]) -> dict[str, Any]:
             "vlans": len(resources.get("f5spkvlan", []))
             or sum(len(safe_get(i, "spec", "networks", default=[]) or []) for i in resources.get("infra", [])),
             "firewallPolicies": len(resources.get("f5bigfwpolicy", [])),
+            "appPolicies": len(resources.get("apppolicy", [])),
             "irules": len(resources.get("f5bigcneirule", [])),
             "analyzers": len(resources.get("f5biganalyzer", [])),
+            "aiGatewayProfiles": len(resources.get("aigatewayprofile", [])),
+            "aiModels": len(resources.get("aimodel", [])),
+            "aiProviders": len(resources.get("aiprovider", [])),
+            "aiTenants": len(resources.get("aitenant", [])),
+            "aiCredentials": len(resources.get("aicredential", [])),
             "cneInstances": len(cneinstances),
             "tmm_pods": len(tmm_pods),
             "tmm_running": len(tmm_running),

@@ -75,7 +75,7 @@ export const bnkResourceCategories = [
     icon: Settings,
     items: [
       { key: VIEW_CONFIG_BUILDER, label: "Configuration Builder", icon: Wand2 },
-      { key: "infra", label: "Infra Underlay (2.4)", icon: Layers },
+      { key: "infra", label: "Infra Underlay", icon: Layers },
       { key: "cneinstance", label: "CNE Instances", icon: Server },
       { key: "f5spkglobaloptions", label: "Global Options", icon: Settings },
       { key: "f5spkvlan", label: "VLANs (Legacy)", icon: Network },
@@ -100,7 +100,7 @@ export const bnkResourceCategories = [
       { key: "gateway", label: "Gateways", icon: Globe },
       {
         key: "gatewaysettings",
-        label: "Gateway Settings (2.4)",
+        label: "Gateway Settings",
         icon: Settings,
       },
       { key: "gatewayclass", label: "Gateway Classes", icon: Shield },
@@ -110,7 +110,7 @@ export const bnkResourceCategories = [
       { key: "udproute", label: "UDP Routes", icon: Network },
       { key: "tlsroute", label: "TLS Routes", icon: Lock },
       { key: "l4route", label: "L4 Routes", icon: Route },
-      { key: "l4route_24", label: "L4 Routes (2.4)", icon: Route },
+      { key: "l4route_24", label: "L4 Routes (Gateway API)", icon: Route },
       { key: VIEW_BACKENDS, label: "Backends", icon: Server },
       { key: "referencegrant", label: "Reference Grants", icon: Shield },
     ],
@@ -120,9 +120,10 @@ export const bnkResourceCategories = [
     icon: Shield,
     items: [
       { key: VIEW_POLICY_BUILDER, label: "Policy Builder", icon: Wand2 },
-      { key: "secpolicy", label: "Security Policies (2.4)", icon: Shield },
-      { key: "netpolicy", label: "Network Policies (2.4)", icon: Network },
-      { key: "egressgateway", label: "Egress Gateways (2.4)", icon: Network },
+      { key: "secpolicy", label: "Security Policies", icon: Shield },
+      { key: "netpolicy", label: "Network Policies", icon: Network },
+      { key: "apppolicy", label: "App Policies", icon: Shield },
+      { key: "egressgateway", label: "Egress Gateways", icon: Network },
       {
         key: "bnksecpolicy",
         label: "Security Policies (Legacy)",
@@ -165,12 +166,29 @@ export const bnkResourceCategories = [
         icon: Stethoscope,
       },
       { key: VIEW_UPGRADE, label: "Release & Upgrade", icon: ArrowUpCircle },
+      {
+        key: "scrapetemplate",
+        label: "Scrape Templates",
+        icon: Activity,
+      },
+      { key: "scrapeclass", label: "Scrape Classes", icon: Settings },
+      { key: "scrape", label: "Scrapes", icon: FileText },
     ],
   },
   {
     category: "AI Gateway & A2A",
     icon: Bot,
     items: [
+      {
+        key: "aigatewayprofile",
+        label: "AI Gateway Profiles",
+        icon: Bot,
+      },
+      { key: "aitenant", label: "AI Tenants", icon: Layers },
+      { key: "aimodel", label: "AI Models", icon: Cpu },
+      { key: "aiprovider", label: "AI Providers", icon: Server },
+      { key: "aicredential", label: "AI Credentials", icon: Lock },
+      { key: "aigateway", label: "AI Gateways", icon: Globe },
       { key: "inferencepool", label: "Inference Pools (GAIE)", icon: Cpu },
       {
         key: "inferencemodelrewrite",

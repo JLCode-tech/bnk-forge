@@ -5,17 +5,19 @@ Mocks CrdDiscoveryService._discover (the I/O boundary) so tests
 exercise the full HTTP → service → cache → merge → filter → response
 chain without a real cluster.
 """
+
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.errors import NetworkUnreachableError
-from schemas.k8s import CRDInfo, CrdListEnvelope
+from core.errors import NetworkUnreachableError, NotFoundError
+from schemas.k8s import CRDInfo, CrdListEnvelope, CrdSchemaResponse
 from services.crd_discovery_service import CrdDiscoveryService
 
 # ---------------------------------------------------------------------------
 # Helpers: raw CRD dicts as ApiextensionsV1Api would return (after .to_dict())
 # ---------------------------------------------------------------------------
+
 
 def _raw_crd(group: str, kind: str, plural: str, scope: str = "Namespaced") -> dict:
     return {
@@ -40,8 +42,8 @@ SAMPLE_CRDS = [
 # Tests
 # ---------------------------------------------------------------------------
 
-class TestCrdDiscoveryRoute:
 
+class TestCrdDiscoveryRoute:
     def test_success_returns_crd_list_envelope(
         self, client, admin_headers, sample_user, make_k8s_cluster, sample_project
     ):
@@ -88,9 +90,7 @@ class TestCrdDiscoveryRoute:
         assert body["count"] == 1
         assert body["crds"][0]["kind"] == "FWPolicy"
 
-    def test_group_filter_narrows_results(
-        self, client, admin_headers, sample_user, make_k8s_cluster, sample_project
-    ):
+    def test_group_filter_narrows_results(self, client, admin_headers, sample_user, make_k8s_cluster, sample_project):
         """?group= filter is forwarded to the service and restricts results."""
         cluster = make_k8s_cluster(project=sample_project, name="filter-cluster")
 
@@ -123,9 +123,7 @@ class TestCrdDiscoveryRoute:
         assert resp.status_code == 200, resp.text
         body = resp.json()
         # service was called with the filter
-        MockSvc.return_value.list_crds.assert_called_once_with(
-            cluster.id, group_filter=["k8s.f5net.com"]
-        )
+        MockSvc.return_value.list_crds.assert_called_once_with(cluster.id, group_filter=["k8s.f5net.com"])
         assert body["group_filter"] == ["k8s.f5net.com"]
 
     def test_unreachable_cluster_returns_503(
@@ -244,3 +242,190 @@ class TestCrdDiscoveryDiscoverPath:
         # All CRDs should have version resolved — not None
         for crd in body["crds"]:
             assert crd["version"] == "v1", f"Expected v1 but got {crd['version']} for {crd['name']}"
+
+
+class TestCrdSchemaRoute:
+    """Tests for GET /api/k8s/clusters/{cluster_id}/crds/{crd_name}/schema."""
+
+    @staticmethod
+    def _sample_crd_dict_with_schema() -> dict:
+        return {
+            "metadata": {"name": "f5bigdnsapps.k8s.f5net.com"},
+            "spec": {
+                "group": "k8s.f5net.com",
+                "names": {
+                    "kind": "F5BigDnsApp",
+                    "plural": "f5bigdnsapps",
+                    "short_names": ["dnsapp"],
+                },
+                "scope": "Namespaced",
+                "versions": [
+                    {
+                        "name": "v1",
+                        "served": True,
+                        "storage": True,
+                        "additional_printer_columns": [
+                            {
+                                "name": "VIP",
+                                "type": "string",
+                                "json_path": ".spec.ip",
+                                "description": "Virtual IP address",
+                            }
+                        ],
+                        "schema": {
+                            "open_apiv3_schema": {
+                                "type": "object",
+                                "description": "F5 BIG-IP Next CNF DNS Application",
+                                "required": ["spec"],
+                                "properties": {
+                                    "spec": {
+                                        "type": "object",
+                                        "required": ["ip", "port"],
+                                        "properties": {
+                                            "ip": {
+                                                "type": "string",
+                                                "description": "Anycast or unicast VIP",
+                                                "default": None,
+                                            },
+                                            "port": {
+                                                "type": "integer",
+                                                "default": 53,
+                                            },
+                                            "protocol": {
+                                                "type": "string",
+                                                "enum": ["udp", "tcp"],
+                                            },
+                                        },
+                                    }
+                                },
+                            }
+                        },
+                    },
+                    {
+                        "name": "v1beta1",
+                        "served": True,
+                        "storage": False,
+                        "schema": {
+                            "open_apiv3_schema": {
+                                "type": "object",
+                                "description": "Beta schema",
+                            }
+                        },
+                    },
+                ],
+            },
+            "status": {"conditions": [{"type": "Established", "status": "True", "reason": "InitialNamesAccepted"}]},
+        }
+
+    def test_get_crd_schema_extracts_openapi_and_strips_none(
+        self, client, admin_headers, sample_user, make_k8s_cluster, sample_project
+    ):
+        """GET /crds/{crd_name}/schema extracts openAPIV3Schema, printer columns, shortNames, conditions."""
+        cluster = make_k8s_cluster(project=sample_project, name="schema-cluster")
+
+        with (
+            patch.object(
+                CrdDiscoveryService,
+                "_discover",
+                return_value=[self._sample_crd_dict_with_schema()],
+            ),
+            patch("services.crd_discovery_service.cache") as mock_cache,
+        ):
+            mock_cache.get.return_value = None
+            mock_cache.set.return_value = True
+            resp = client.get(
+                f"/api/k8s/clusters/{cluster.id}/crds/f5bigdnsapps.k8s.f5net.com/schema",
+                headers=admin_headers,
+            )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["name"] == "f5bigdnsapps.k8s.f5net.com"
+        assert body["kind"] == "F5BigDnsApp"
+        assert body["version"] == "v1"
+        assert body["versions"] == ["v1", "v1beta1"]
+        assert body["short_names"] == ["dnsapp"]
+        assert len(body["additional_printer_columns"]) == 1
+        assert body["additional_printer_columns"][0]["name"] == "VIP"
+        assert body["additional_printer_columns"][0]["json_path"] == ".spec.ip"
+        schema = body["open_apiv3_schema"]
+        assert schema is not None
+        assert schema["type"] == "object"
+        # Verify _strip_none removed the None default from ip property
+        ip_prop = schema["properties"]["spec"]["properties"]["ip"]
+        assert "default" not in ip_prop
+        assert schema["properties"]["spec"]["properties"]["port"]["default"] == 53
+        assert schema["properties"]["spec"]["properties"]["protocol"]["enum"] == ["udp", "tcp"]
+        assert body["conditions"][0]["type"] == "Established"
+
+    def test_get_crd_schema_explicit_version(
+        self, client, admin_headers, sample_user, make_k8s_cluster, sample_project
+    ):
+        """?version=v1beta1 selects that specific version's schema."""
+        cluster = make_k8s_cluster(project=sample_project, name="schema-v-cluster")
+
+        with (
+            patch.object(
+                CrdDiscoveryService,
+                "_discover",
+                return_value=[self._sample_crd_dict_with_schema()],
+            ),
+            patch("services.crd_discovery_service.cache") as mock_cache,
+        ):
+            mock_cache.get.return_value = None
+            mock_cache.set.return_value = True
+            resp = client.get(
+                f"/api/k8s/clusters/{cluster.id}/crds/f5bigdnsapps.k8s.f5net.com/schema?version=v1beta1",
+                headers=admin_headers,
+            )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["version"] == "v1beta1"
+        assert body["open_apiv3_schema"]["description"] == "Beta schema"
+
+    def test_get_crd_schema_unknown_version_returns_404(
+        self, client, admin_headers, sample_user, make_k8s_cluster, sample_project
+    ):
+        """?version=v999 raises NotFoundError -> 404."""
+        cluster = make_k8s_cluster(project=sample_project, name="schema-404-cluster")
+
+        with (
+            patch.object(
+                CrdDiscoveryService,
+                "_discover",
+                return_value=[self._sample_crd_dict_with_schema()],
+            ),
+            patch("services.crd_discovery_service.cache") as mock_cache,
+        ):
+            mock_cache.get.return_value = None
+            mock_cache.set.return_value = True
+            resp = client.get(
+                f"/api/k8s/clusters/{cluster.id}/crds/f5bigdnsapps.k8s.f5net.com/schema?version=v999",
+                headers=admin_headers,
+            )
+
+        assert resp.status_code == 404, resp.text
+
+    def test_get_crd_schema_unknown_crd_returns_404(
+        self, client, admin_headers, sample_user, make_k8s_cluster, sample_project
+    ):
+        """Requesting schema for an uninstalled CRD returns 404."""
+        cluster = make_k8s_cluster(project=sample_project, name="schema-missing-crd-cluster")
+
+        with (
+            patch.object(
+                CrdDiscoveryService,
+                "_discover",
+                return_value=[self._sample_crd_dict_with_schema()],
+            ),
+            patch("services.crd_discovery_service.cache") as mock_cache,
+        ):
+            mock_cache.get.return_value = None
+            mock_cache.set.return_value = True
+            resp = client.get(
+                f"/api/k8s/clusters/{cluster.id}/crds/nonexistent.k8s.f5net.com/schema",
+                headers=admin_headers,
+            )
+
+        assert resp.status_code == 404, resp.text

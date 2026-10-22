@@ -9,8 +9,8 @@
  * topology analysis via the /f5bnk/a2a/agents endpoint.
  */
 
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo } from "react";
+import { useQueries } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,7 +36,12 @@ import type { A2AAgentCandidate } from "@/types/f5bnk";
 // Agent Card Component
 // ---------------------------------------------------------------------------
 
-function AgentCard({ agent }: { agent: A2AAgentCandidate }) {
+type DiscoveredAgentWithCluster = A2AAgentCandidate & {
+  clusterId?: number;
+  clusterName?: string;
+};
+
+function AgentCard({ agent }: { agent: DiscoveredAgentWithCluster }) {
   const [expanded, setExpanded] = useState(false);
   const card = agent.agentCard;
   const isConfirmed = agent.probeStatus === "success" && card;
@@ -65,12 +70,18 @@ function AgentCard({ agent }: { agent: A2AAgentCandidate }) {
           <div className="min-w-0">
             <h3 className="font-medium truncate">{card?.name || agent.name}</h3>
             <p className="text-xs truncate text-muted-foreground">
+              {agent.clusterName ? `${agent.clusterName} · ` : ""}
               {agent.namespace}/{agent.name}
               {agent.ports.length > 0 && `:${agent.ports[0].port}`}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
+          {agent.clusterName && (
+            <Badge variant="outline" className="text-xs font-mono">
+              {agent.clusterName}
+            </Badge>
+          )}
           <ProbeStatusBadge status={agent.probeStatus} />
         </div>
       </div>
@@ -266,27 +277,59 @@ function SummaryCard({
 // ---------------------------------------------------------------------------
 
 interface A2AAgentDiscoveryProps {
-  clusterId: number;
+  clusterId: number | null;
+  clusters?: Array<{ id: number; name: string }>;
   namespace: string | undefined;
 }
 
 export function A2AAgentDiscovery({
   clusterId,
+  clusters = [],
   namespace,
 }: A2AAgentDiscoveryProps) {
-  const [probeEnabled, setProbeEnabled] = useState(false);
+  const [probeEnabled, setProbeEnabled] = useState(true);
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: queryKeys.k8s.clusters.a2aAgents(clusterId, {
-      namespace,
-      probe: probeEnabled,
-    }),
-    queryFn: () =>
-      api.getA2AAgents(clusterId, { namespace, probe: probeEnabled }),
-    enabled: !!clusterId,
+  const targetClusters = useMemo(() => {
+    if (clusterId !== null) {
+      const match = clusters.find((c) => c.id === clusterId);
+      return [{ id: clusterId, name: match?.name || `Cluster ${clusterId}` }];
+    }
+    return clusters.map((c) => ({ id: c.id, name: c.name }));
+  }, [clusterId, clusters]);
+
+  const agentQueries = useQueries({
+    queries: targetClusters.map((c) => ({
+      queryKey: queryKeys.k8s.clusters.a2aAgents(c.id, {
+        namespace,
+        probe: probeEnabled,
+      }),
+      queryFn: () =>
+        api.getA2AAgents(c.id, { namespace, probe: probeEnabled }),
+      enabled: !!c.id,
+    })),
   });
 
-  const agents = data?.agents ?? [];
+  const isLoading = agentQueries.some((q) => q.isLoading);
+  const error =
+    agentQueries.length > 0 && agentQueries.every((q) => q.error)
+      ? agentQueries[0].error
+      : null;
+
+  const agents = useMemo((): DiscoveredAgentWithCluster[] => {
+    const all: DiscoveredAgentWithCluster[] = [];
+    targetClusters.forEach((c, idx) => {
+      const items = agentQueries[idx]?.data?.agents ?? [];
+      for (const item of items) {
+        all.push({
+          ...item,
+          clusterId: c.id,
+          clusterName: c.name,
+        });
+      }
+    });
+    return all;
+  }, [targetClusters, agentQueries]);
+
   const confirmedCount = agents.filter(
     (a) => a.probeStatus === "success",
   ).length;
@@ -321,7 +364,13 @@ export function A2AAgentDiscovery({
         />
         <SummaryCard
           label="Gateways"
-          value={new Set(agents.flatMap((a) => a.gateways)).size}
+          value={
+            new Set(
+              agents.flatMap((a) =>
+                a.gateways.map((g) => `${a.clusterId ?? 0}:${g}`),
+              ),
+            ).size
+          }
           icon={Globe}
         />
       </div>
@@ -331,7 +380,7 @@ export function A2AAgentDiscovery({
         <p className="text-sm text-muted-foreground">
           {agents.length === 0
             ? "No services found behind HTTPRoutes."
-            : `${agents.length} service${agents.length !== 1 ? "s" : ""} behind HTTPRoutes — `}
+            : `${agents.length} service${agents.length !== 1 ? "s" : ""} behind HTTPRoutes across ${targetClusters.length} cluster${targetClusters.length !== 1 ? "s" : ""} — `}
           {agents.length > 0 && !probeEnabled && (
             <span>
               click <strong>Probe Agents</strong> to check for agent cards.
@@ -369,7 +418,10 @@ export function A2AAgentDiscovery({
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {agents.map((agent) => (
-            <AgentCard key={`${agent.namespace}/${agent.name}`} agent={agent} />
+            <AgentCard
+              key={`${agent.clusterId ?? 0}/${agent.namespace}/${agent.name}`}
+              agent={agent}
+            />
           ))}
         </div>
       )}

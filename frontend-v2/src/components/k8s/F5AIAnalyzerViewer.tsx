@@ -755,9 +755,9 @@ export function F5AIAnalyzerViewer({
         <CardDescription>
           No F5BigAnalyzer resources in this cluster yet
           {namespace && namespace !== "all" && ` (namespace: ${namespace})`}.
-          Once an F5EPP (BNK 2.4+) or F5BigAnalyzer is applied, its monitored
-          applications, inference pools, prefix cache hit telemetry, real-time
-          token metrics, and dynamic traffic distribution will appear here.
+          Once an F5EPP or F5BigAnalyzer is applied, its monitored applications,
+          inference pools, prefix cache hit telemetry, real-time token metrics,
+          and dynamic traffic distribution will appear here.
         </CardDescription>
       </CardHeader>
     </Card>

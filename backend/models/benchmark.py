@@ -13,6 +13,8 @@ with proxy deployments (envoy, nginx, haproxy, f5-bnk) managed via Helm.
   - ProxyDeployment = a proxy (envoy/nginx/etc.) deployed to a target cluster via Helm
 """
 
+from typing import Any
+
 from sqlalchemy import (
     JSON,
     BigInteger,
@@ -317,7 +319,7 @@ class BenchmarkAgent(Base):
     @property
     def project_name(self) -> str | None:
         if self.project:
-            return self.project.name
+            return str(self.project.name)
         conns = self.connected_projects
         if conns and len(conns) == 1 and not conns[0].startswith("All Projects"):
             return conns[0]
@@ -325,7 +327,7 @@ class BenchmarkAgent(Base):
 
     @property
     def infra(self) -> str:
-        tags = self.tags or {}
+        tags: dict[str, Any] = self.tags if isinstance(self.tags, dict) else {}
         if tags.get("infra"):
             return str(tags["infra"])
         if tags.get("cloud"):
@@ -335,7 +337,7 @@ class BenchmarkAgent(Base):
             return "Built-in (Docker)"
 
         if self.project and self.project.cloud_provider:
-            cp = self.project.cloud_provider.lower()
+            cp = str(self.project.cloud_provider).lower()
             if cp == "aws":
                 return "AWS"
             elif cp in ("azure", "azr"):
@@ -361,11 +363,11 @@ class BenchmarkAgent(Base):
 
     @property
     def connected_projects(self) -> list[str]:
-        tags = self.tags or {}
+        tags: dict[str, Any] = self.tags if isinstance(self.tags, dict) else {}
         if tags.get("connected_projects") and isinstance(tags["connected_projects"], list):
-            return tags["connected_projects"]
+            return [str(p) for p in tags["connected_projects"]]
         if self.project:
-            return [self.project.name]
+            return [str(self.project.name)]
         if tags.get("project_name"):
             return [str(tags["project_name"])]
         if tags.get("builtin") or self.name == "forge-local":

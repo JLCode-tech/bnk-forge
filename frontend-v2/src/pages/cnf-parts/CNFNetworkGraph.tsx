@@ -12,6 +12,7 @@
 import React, { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Network,
   Cpu,
@@ -24,21 +25,26 @@ import {
   Sliders,
   Pause,
 } from "lucide-react";
+import { useTopology } from "@/hooks/useTopology";
+import { ResourceTopologyGraph } from "@/components/k8s/ResourceTopologyGraph";
 import type { K8sResource } from "@/types/kubernetes";
 
 interface CNFNetworkGraphProps {
   clusterId?: number | null;
+  namespace?: string;
   dnsApps?: K8sResource[];
   cgnatInstances?: K8sResource[];
   diameterInstances?: K8sResource[];
+  onDescribeResource?: (resource: K8sResource) => void;
 }
 
-type FunctionFilter = "all" | "dns" | "cgnat" | "diameter";
+type FunctionFilter = "all" | "dns" | "cgnat" | "diameter" | "gslb";
+type GraphViewMode = "pipeline" | "fabric";
 
 interface TopologyNode {
   id: string;
   category: "uplink" | "sriov" | "tmm" | "cnf" | "downlink";
-  subCategory?: "dns" | "cgnat" | "diameter" | "core";
+  subCategory?: "dns" | "cgnat" | "diameter" | "gslb" | "core";
   title: string;
   subtitle: string;
   status: "healthy" | "active" | "standby" | "warning";
@@ -60,187 +66,184 @@ interface TopologyNode {
 }
 
 export function CNFNetworkGraph({
-  clusterId: _clusterId,
+  clusterId,
+  namespace = "default",
   dnsApps = [],
   cgnatInstances = [],
   diameterInstances = [],
+  onDescribeResource,
 }: CNFNetworkGraphProps) {
+  const [graphMode, setGraphMode] = useState<GraphViewMode>("pipeline");
   const [filter, setFilter] = useState<FunctionFilter>("all");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
     "tmm-core",
   );
   const [isLiveTraffic, setIsLiveTraffic] = useState(true);
 
+  const effectiveNs = !namespace || namespace === "all" ? "default" : namespace;
+  const { data: fabricData } = useTopology(clusterId ?? 0, effectiveNs, {
+    enabled: !!clusterId && graphMode === "fabric",
+  });
+
   const hasRealResources =
     dnsApps.length > 0 ||
     cgnatInstances.length > 0 ||
     diameterInstances.length > 0;
 
-  // Construct topology nodes from real deployed resources
+  // Construct topology nodes strictly from real deployed resources on the cluster
   const nodes: TopologyNode[] = useMemo(() => {
+    const totalNfs =
+      dnsApps.length + cgnatInstances.length + diameterInstances.length;
+    const cnfNodes: TopologyNode[] = [];
+
+    for (const app of dnsApps) {
+      const name = app.metadata?.name ?? "dns-listener";
+      const ns = app.metadata?.namespace ?? effectiveNs;
+      const ip = app.spec?.ip || "Cluster VIP";
+      const port = app.spec?.port ?? 53;
+      const proto = (app.spec?.protocol ?? "udp").toUpperCase();
+      const poolName = app.spec?.pool?.name ?? "default-pool";
+      cnfNodes.push({
+        id: `cnf-dns-${ns}-${name}`,
+        category: "cnf",
+        subCategory: "dns",
+        title: name,
+        subtitle: `F5BigDnsApp • ${ns}`,
+        status: "active",
+        icon: Radio,
+        ipCidr: `${ip}:${port} (${proto})`,
+        crdKind: "F5BigDnsApp",
+        crdName: name,
+        stats: {
+          throughput: `Pool: ${poolName}`,
+          pps: `${proto}/${port}`,
+        },
+        details: `Deployed F5BigDnsApp listener '${name}' in namespace '${ns}' serving ${ip}:${port} (${proto}) backed by pool '${poolName}'.`,
+      });
+    }
+
+    for (const cgnat of cgnatInstances) {
+      const name = cgnat.metadata?.name ?? "cgnat-rule";
+      const ns = cgnat.metadata?.namespace ?? effectiveNs;
+      const srcAddrs =
+        cgnat.spec?.sourceAddresses?.join(", ") || "Configured subnet";
+      const transPool = cgnat.spec?.translationPool || "Configured NAT pool";
+      cnfNodes.push({
+        id: `cnf-cgnat-${ns}-${name}`,
+        category: "cnf",
+        subCategory: "cgnat",
+        title: name,
+        subtitle: `F5BigCgnat • ${ns}`,
+        status: "active",
+        icon: Cpu,
+        ipCidr: `${srcAddrs} → ${transPool}`,
+        crdKind: "F5BigCgnat",
+        crdName: name,
+        stats: {
+          throughput: `Pool: ${transPool}`,
+          pps: `Source: ${srcAddrs}`,
+        },
+        details: `Deployed F5BigCgnat instance '${name}' in namespace '${ns}' translating subscriber source addresses (${srcAddrs}) via pool '${transPool}'.`,
+      });
+    }
+
+    for (const diam of diameterInstances) {
+      const name = diam.metadata?.name ?? "diameter-profile";
+      const ns = diam.metadata?.namespace ?? effectiveNs;
+      const originHost = diam.spec?.originHost || "Configured Origin-Host";
+      const originRealm = diam.spec?.originRealm || "Configured Origin-Realm";
+      const peerCount = diam.spec?.peers?.length ?? 0;
+      cnfNodes.push({
+        id: `cnf-diameter-${ns}-${name}`,
+        category: "cnf",
+        subCategory: "diameter",
+        title: name,
+        subtitle: `F5BigDiameter • ${ns}`,
+        status: "active",
+        icon: Server,
+        ipCidr: `${originHost} (${originRealm})`,
+        crdKind: "F5BigDiameter",
+        crdName: name,
+        stats: {
+          throughput: `${peerCount} peer(s)`,
+          pps: originRealm,
+        },
+        details: `Deployed F5BigDiameter signaling profile '${name}' in namespace '${ns}' with Origin-Host '${originHost}', Origin-Realm '${originRealm}', and ${peerCount} configured peer(s).`,
+      });
+    }
+
     return [
       // 1. Uplink Stage
       {
         id: "bgp-gw-1",
         category: "uplink",
-        title: "BGP ToR Gateway A",
-        subtitle: "AS 65001 • Direct Connect",
+        title: "External Ingress Uplink",
+        subtitle: `Namespace: ${effectiveNs}`,
         status: "healthy",
         icon: Globe,
-        ipCidr: "10.50.10.1/24",
-        vlan: 100,
-        mtu: 9000,
-        stats: { throughput: "28.4 Gbps", pps: "3.8 Mpps", latency: "0.12 ms" },
+        crdKind: "F5SPKStaticRoute",
+        stats: {
+          throughput: `${totalNfs} active NF(s)`,
+          pps: "BGP / Static Uplink",
+        },
         details:
-          "Upstream Provider Top-of-Rack BGP router advertising Anycast VIP prefixes and default telco subscriber route.",
-      },
-      {
-        id: "bgp-gw-2",
-        category: "uplink",
-        title: "BGP ToR Gateway B",
-        subtitle: "AS 65002 • Redundant Peer",
-        status: "healthy",
-        icon: Globe,
-        ipCidr: "10.50.10.2/24",
-        vlan: 101,
-        mtu: 9000,
-        stats: { throughput: "14.2 Gbps", pps: "1.9 Mpps", latency: "0.14 ms" },
-        details:
-          "Secondary BGP peer for ECMP uplink distribution and sub-millisecond BFD failure detection.",
+          "Upstream network ingress feeding deployed CNF listeners in the selected cluster namespace.",
       },
 
-      // 2. Physical Acceleration (SR-IOV & DPDK)
+      // 2. Physical Acceleration (SR-IOV / DPDK)
       {
         id: "sriov-vf0",
         category: "sriov",
-        title: "SR-IOV net1 (vf0_0)",
-        subtitle: "Intel E810 • vfio-pci",
+        title: "Network Attachment / VLAN",
+        subtitle: `Namespace: ${effectiveNs}`,
         status: "active",
         icon: Layers,
-        ipCidr: "10.50.10.10/24",
-        vlan: 100,
-        mtu: 9000,
-        driver: "vfio-pci (DPDK 23.11)",
-        stats: { throughput: "24.1 Gbps", pps: "3.2 Mpps" },
+        crdKind: "F5SPKVlan",
+        stats: {
+          throughput: "L2/L3 Binding",
+          pps: "CNI / SR-IOV",
+        },
         details:
-          "Direct hardware NIC queue bypass into user-space via SR-IOV Virtual Function with 1GB Hugepage ring buffers.",
-      },
-      {
-        id: "sriov-vf1",
-        category: "sriov",
-        title: "SR-IOV net2 (vf0_1)",
-        subtitle: "Intel E810 • vfio-pci",
-        status: "active",
-        icon: Layers,
-        ipCidr: "10.50.10.11/24",
-        vlan: 101,
-        mtu: 9000,
-        driver: "vfio-pci (DPDK 23.11)",
-        stats: { throughput: "18.5 Gbps", pps: "2.5 Mpps" },
-        details:
-          "Secondary SR-IOV interface attached via Multus CNI directly into the TMM packet container.",
+          "Cluster network attachment and F5SPKVlan binding delivering ingress traffic into TMM data-plane pods.",
       },
 
       // 3. TMM Packet Core
       {
         id: "tmm-core",
         category: "tmm",
-        title: "F5 TMM Core Engine",
-        subtitle: "Micro-Kernel Fastpath (6 Cores)",
+        title: "F5 TMM Proxy Engine",
+        subtitle: `Serving ${totalNfs} CNF resource(s)`,
         status: "active",
         icon: Zap,
-        driver: "TMM 2.4.0-dpdk",
+        crdKind: "CNEInstance",
         stats: {
-          throughput: "42.6 Gbps",
-          pps: "5.7 Mpps",
-          sessions: "1,420,000",
+          throughput: `${dnsApps.length} DNS`,
+          pps: `${cgnatInstances.length} CGNAT • ${diameterInstances.length} DSR`,
         },
         details:
-          "High-speed Traffic Management Microkernel running in kernel-bypass mode with dedicated core isolation (isolcpus) and zero-copy packet dispatching.",
+          "Traffic Management Microkernel (TMM) data plane executing deployed DNS, CGNAT, and Diameter custom resources.",
       },
 
-      // 4. CNF Micro-Engines
-      {
-        id: "cnf-dns",
-        category: "cnf",
-        subCategory: "dns",
-        title: "DNS Express Engine",
-        subtitle: "In-Memory Ultra-Fast Resolver",
-        status: "active",
-        icon: Radio,
-        ipCidr: "10.50.10.53:53",
-        vlan: 100,
-        crdKind: "F5BigDnsApp",
-        crdName: dnsApps[0]?.metadata?.name ?? "dns-express-default",
-        stats: {
-          throughput: "4.8 Gbps",
-          pps: "820 Kpps",
-          qps: "380,000 QPS",
-          latency: "0.04 ms",
-        },
-        details:
-          "In-memory authoritative DNS fast-path capable of absorbing volumetric DNS floods (NXDOMAIN/DDoS) directly at line rate without consulting backend nameservers.",
-      },
-      {
-        id: "cnf-cgnat",
-        category: "cnf",
-        subCategory: "cgnat",
-        title: "CGNAT Translation Engine",
-        subtitle: "Deterministic LSN / NAT44/64",
-        status: "active",
-        icon: Cpu,
-        ipCidr: "10.50.10.100-10.50.10.120",
-        crdKind: "F5BigCgnat",
-        crdName: cgnatInstances[0]?.metadata?.name ?? "cgnat-core-pool",
-        stats: {
-          throughput: "26.8 Gbps",
-          pps: "3.4 Mpps",
-          sessions: "1,280,000 translations",
-        },
-        details:
-          "Carrier-Grade Large-Scale NAT supporting Deterministic Port Block Allocation (PBA), Endpoint-Independent Mapping (EIM), and SIP/RTSP Telco ALGs.",
-      },
-      {
-        id: "cnf-diameter",
-        category: "cnf",
-        subCategory: "diameter",
-        title: "Diameter Signaling Router",
-        subtitle: "RFC 6733 DSR Peer Agent",
-        status: "active",
-        icon: Server,
-        ipCidr: "10.50.10.38:3868",
-        crdKind: "F5BigDiameter",
-        crdName: diameterInstances[0]?.metadata?.name ?? "dsr-gateway",
-        stats: {
-          throughput: "11.0 Gbps",
-          pps: "1.48 Mpps",
-          sessions: "24,500 TPS",
-        },
-        details:
-          "Diameter Relay/Proxy Agent interconnecting 4G EPC and 5G Service-Based Architecture (S6a, Gx, Gy, Rx, N7/N40) with SLA-aware load balancing.",
-      },
+      // 4. Deployed CNF Micro-Engines
+      ...cnfNodes,
 
       // 5. Downlink Stage
       {
         id: "downlink-core",
         category: "downlink",
-        title: "5G Core UPF / AMF",
-        subtitle: "User Plane & Access Management",
+        title: "Upstream Pools & Peers",
+        subtitle: `Namespace: ${effectiveNs}`,
         status: "healthy",
         icon: Network,
-        ipCidr: "10.50.20.0/24",
-        vlan: 200,
-        mtu: 9000,
         stats: {
-          throughput: "36.5 Gbps",
-          pps: "4.9 Mpps",
-          sessions: "850,000",
+          throughput: `${totalNfs} target binding(s)`,
+          pps: "Backend Service Mesh",
         },
         details:
-          "Internal telco core network fabric feeding 5G UPF (User Plane Function) datapaths, SMF control sessions, and internal cluster workloads.",
+          "Downstream backend pools, translated egress subnets, and Diameter signaling peers referenced by deployed CNF resources.",
       },
     ];
-  }, [dnsApps, cgnatInstances, diameterInstances]);
+  }, [dnsApps, cgnatInstances, diameterInstances, effectiveNs]);
 
   // Filter nodes based on active selection
   const isNodeVisible = (node: TopologyNode) => {
@@ -259,6 +262,49 @@ export function CNFNetworkGraph({
     return nodes.find((n) => n.id === selectedNodeId) ?? nodes[0];
   }, [nodes, selectedNodeId]);
 
+  if (graphMode === "fabric") {
+    return (
+      <div className="flex flex-col h-full bg-background overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-3 border-b border-border bg-card/60">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              CNF Topology Mode:
+            </span>
+            <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
+              <button
+                type="button"
+                onClick={() => setGraphMode("pipeline")}
+                className="px-2.5 py-1 text-xs font-medium rounded-sm text-muted-foreground hover:text-foreground cursor-pointer"
+              >
+                Data Plane Pipeline
+              </button>
+              <button
+                type="button"
+                onClick={() => setGraphMode("fabric")}
+                className="px-2.5 py-1 text-xs font-medium rounded-sm bg-background text-foreground shadow-xs cursor-pointer"
+              >
+                CRD Dependency Fabric
+              </button>
+            </div>
+          </div>
+          <Badge variant="outline" className="text-xs font-mono">
+            Cross-CRD Reference Graph ({effectiveNs})
+          </Badge>
+        </div>
+        <div className="flex-1 min-h-[540px]">
+          <ResourceTopologyGraph
+            nodes={fabricData?.nodes ?? []}
+            edges={fabricData?.edges ?? []}
+            info={fabricData?.info}
+            defaultDomainFilter="all"
+            heightClassName="h-full min-h-[540px]"
+            onDescribeResource={onDescribeResource ?? (() => undefined)}
+          />
+        </div>
+      </div>
+    );
+  }
+
   if (!hasRealResources) {
     return (
       <div className="flex items-center justify-center h-full p-12 bg-background">
@@ -271,10 +317,21 @@ export function CNFNetworkGraph({
               No Active CNF Pipeline Detected
             </h3>
             <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
-              No F5 CNF resources (DNS Express, CGNAT, or Diameter) are
-              currently deployed on this cluster. Deployed CNF custom resources
-              and their packet pipeline will appear here automatically.
+              No F5 CNF resources (DNS Express, CGNAT, Diameter, or GSLB v1) are
+              currently deployed on this cluster in namespace{" "}
+              <code className="font-mono text-foreground">{effectiveNs}</code>.
+              Deploy a CNF resource or switch to the CRD Dependency Fabric to
+              inspect live cluster custom resources.
             </p>
+          </div>
+          <div className="flex items-center justify-center gap-2 pt-2">
+            <Button
+              size="sm"
+              variant="default"
+              onClick={() => setGraphMode("fabric")}
+            >
+              Open CRD Dependency Fabric
+            </Button>
           </div>
         </div>
       </div>
@@ -285,9 +342,25 @@ export function CNFNetworkGraph({
     <div className="flex flex-col h-full bg-background overflow-hidden">
       {/* Top Controls Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-3 border-b border-border bg-card/60 backdrop-blur-xs">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5 mr-2">
+            <button
+              type="button"
+              onClick={() => setGraphMode("pipeline")}
+              className="px-2.5 py-1 text-xs font-medium rounded-sm bg-background text-foreground shadow-xs cursor-pointer"
+            >
+              Data Plane Pipeline
+            </button>
+            <button
+              type="button"
+              onClick={() => setGraphMode("fabric")}
+              className="px-2.5 py-1 text-xs font-medium rounded-sm text-muted-foreground hover:text-foreground cursor-pointer"
+            >
+              CRD Dependency Fabric
+            </button>
+          </div>
           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mr-1">
-            Data Plane View:
+            Function Filter:
           </span>
           <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
             <button
@@ -313,7 +386,7 @@ export function CNFNetworkGraph({
               )}
             >
               <Radio className="h-3 w-3 text-success" />
-              DNS Express
+              DNS Express ({dnsApps.length})
             </button>
             <button
               type="button"
@@ -326,7 +399,7 @@ export function CNFNetworkGraph({
               )}
             >
               <Cpu className="h-3 w-3 text-info" />
-              CGNAT
+              CGNAT ({cgnatInstances.length})
             </button>
             <button
               type="button"
@@ -339,7 +412,7 @@ export function CNFNetworkGraph({
               )}
             >
               <Server className="h-3 w-3 text-primary" />
-              Diameter
+              Diameter ({diameterInstances.length})
             </button>
           </div>
         </div>
@@ -368,7 +441,7 @@ export function CNFNetworkGraph({
           </button>
 
           <Badge variant="outline" className="text-xs font-mono">
-            Line Rate: 100 Gbps NIC
+            Namespace: {effectiveNs}
           </Badge>
         </div>
       </div>
@@ -387,7 +460,7 @@ export function CNFNetworkGraph({
                     Stage 1: Ingress Uplink
                   </span>
                   <Badge variant="outline" className="text-xs">
-                    BGP Anycast
+                    External
                   </Badge>
                 </div>
                 <div className="space-y-3 mt-3">
@@ -406,7 +479,7 @@ export function CNFNetworkGraph({
               </div>
               <div className="text-center pt-2">
                 <span className="text-xs font-mono text-muted-foreground">
-                  VLAN 100/101 (10.50.10.0/24)
+                  Namespace: {effectiveNs}
                 </span>
               </div>
             </div>
@@ -419,7 +492,7 @@ export function CNFNetworkGraph({
                     Stage 2: Acceleration
                   </span>
                   <Badge variant="outline" className="text-xs">
-                    SR-IOV / DPDK
+                    SR-IOV / VLAN
                   </Badge>
                 </div>
                 <div className="space-y-3 mt-3">
@@ -438,7 +511,7 @@ export function CNFNetworkGraph({
               </div>
               <div className="text-center pt-2">
                 <span className="text-xs font-mono text-muted-foreground">
-                  vfio-pci • 1GB Hugepages
+                  F5SPKVlan / Multus CNI
                 </span>
               </div>
             </div>
@@ -455,7 +528,7 @@ export function CNFNetworkGraph({
                     Stage 3: TMM Core
                   </span>
                   <Badge variant="default" className="text-xs font-mono">
-                    Kernel Bypass
+                    Data Plane
                   </Badge>
                 </div>
                 <div className="mt-6">
@@ -475,10 +548,10 @@ export function CNFNetworkGraph({
               </div>
               <div className="text-center pt-2 space-y-1">
                 <div className="text-xs font-semibold text-foreground">
-                  Zero-Copy Fastpath
+                  TMM Proxy Fastpath
                 </div>
                 <div className="text-xs font-mono text-muted-foreground">
-                  Flow Classifier & micro-dispatcher
+                  Flow Classifier & Dispatcher
                 </div>
               </div>
             </div>
@@ -491,7 +564,10 @@ export function CNFNetworkGraph({
                     Stage 4: CNF Services
                   </span>
                   <Badge variant="outline" className="text-xs">
-                    L4–L7 Functions
+                    {dnsApps.length +
+                      cgnatInstances.length +
+                      diameterInstances.length}{" "}
+                    Deployed
                   </Badge>
                 </div>
                 <div className="space-y-3 mt-3">
@@ -510,7 +586,7 @@ export function CNFNetworkGraph({
               </div>
               <div className="text-center pt-2">
                 <span className="text-xs font-mono text-muted-foreground">
-                  In-Memory Telco Engines
+                  Active CNF Custom Resources
                 </span>
               </div>
             </div>
@@ -523,7 +599,7 @@ export function CNFNetworkGraph({
                     Stage 5: Telco Core
                   </span>
                   <Badge variant="outline" className="text-xs">
-                    5G Service Mesh
+                    Target Pools
                   </Badge>
                 </div>
                 <div className="space-y-3 mt-3">
@@ -542,7 +618,7 @@ export function CNFNetworkGraph({
               </div>
               <div className="text-center pt-2">
                 <span className="text-xs font-mono text-muted-foreground">
-                  VLAN 200 (10.50.20.0/24)
+                  Pools & Signaling Peers
                 </span>
               </div>
             </div>
@@ -557,12 +633,12 @@ export function CNFNetworkGraph({
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-success" />
-                BGP Ingress (Anycast)
+                External Ingress
               </span>
               <ArrowRight className="h-3 w-3 text-muted-foreground" />
               <span className="flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-info" />
-                SR-IOV vfio-pci Driver
+                Network Attachment
               </span>
               <ArrowRight className="h-3 w-3 text-muted-foreground" />
               <span className="flex items-center gap-1.5">
@@ -577,11 +653,11 @@ export function CNFNetworkGraph({
               <ArrowRight className="h-3 w-3 text-muted-foreground" />
               <span className="flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-info" />
-                5G Core UPF / Downlink
+                Upstream Pools / Peers
               </span>
             </div>
             <span className="font-mono text-xs text-muted-foreground">
-              Latency: &lt; 0.05ms hardware cut-through
+              Live Kubernetes CRD State
             </span>
           </div>
         </div>

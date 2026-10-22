@@ -57,6 +57,7 @@ class TestOwnsAgentConnection:
 class TestCheckAgentConnection:
     def test_check_heals_disconnected_when_ws_active(self):
         from unittest.mock import MagicMock, patch
+
         from models.enums import BenchmarkAgentStatus
         from routes.benchmarks import check_benchmark_agent_connection
 
@@ -87,6 +88,7 @@ class TestCheckAgentConnection:
 
     def test_check_marks_disconnected_when_ws_inactive(self):
         from unittest.mock import MagicMock, patch
+
         from models.enums import BenchmarkAgentStatus
         from routes.benchmarks import check_benchmark_agent_connection
 
@@ -123,6 +125,7 @@ class TestConnectAgentConnection:
 
     def test_connect_already_connected(self):
         from unittest.mock import MagicMock, patch
+
         from models.enums import BenchmarkAgentStatus
         from routes.benchmarks import connect_benchmark_agent
 
@@ -149,6 +152,7 @@ class TestConnectAgentConnection:
 
     def test_connect_via_ssh_success(self):
         from unittest.mock import MagicMock, patch
+
         from models.enums import BenchmarkAgentStatus
         from routes.benchmarks import connect_benchmark_agent
 
@@ -192,6 +196,7 @@ class TestConnectAgentConnection:
 
     def test_connect_via_ssh_failure(self):
         from unittest.mock import MagicMock, patch
+
         from models.enums import BenchmarkAgentStatus
         from routes.benchmarks import connect_benchmark_agent
 
@@ -230,6 +235,7 @@ class TestConnectAgentConnection:
 
     def test_connect_unmanaged_without_credentials(self):
         from unittest.mock import MagicMock, patch
+
         from models.enums import BenchmarkAgentStatus
         from routes.benchmarks import connect_benchmark_agent
 
@@ -259,6 +265,7 @@ class TestConnectAgentConnection:
 
     def test_connect_ec2_instance_id_handled_gracefully(self):
         from unittest.mock import MagicMock, patch
+
         from models.enums import BenchmarkAgentStatus
         from routes.benchmarks import connect_benchmark_agent
 

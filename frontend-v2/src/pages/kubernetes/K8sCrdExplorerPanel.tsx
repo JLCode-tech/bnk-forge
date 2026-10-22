@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useCrds, type CRDInfo } from "@/hooks/useCrds";
+import { useCrds, useCrdSchema, type CRDInfo } from "@/hooks/useCrds";
 import { useClusterResources, useClusterNamespaces } from "@/hooks/useK8s";
 import { useTopology } from "@/hooks/useTopology";
 import { api } from "@/lib/api";
@@ -9,6 +9,13 @@ import { notify } from "@/lib/notify";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -35,6 +42,12 @@ import {
   Plus,
   Pencil,
   Trash2,
+  FileCode,
+  Copy,
+  Check,
+  ChevronRight,
+  ChevronDown,
+  Terminal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { K8sResource } from "@/types";
@@ -76,6 +89,13 @@ export function K8sCrdExplorerPanel({
   const [resourceToDelete, setResourceToDelete] = useState<K8sResource | null>(
     null,
   );
+  const [schemaOpen, setSchemaOpen] = useState(false);
+  const [schemaCrd, setSchemaCrd] = useState<CRDInfo | null>(null);
+
+  const handleOpenSchema = useCallback((crd: CRDInfo) => {
+    setSchemaCrd(crd);
+    setSchemaOpen(true);
+  }, []);
 
   const handleDescribe = useCallback((resource: K8sResource) => {
     setResourceToDescribe(resource);
@@ -296,9 +316,23 @@ export function K8sCrdExplorerPanel({
         <div className="rounded-lg border border-border bg-card overflow-hidden">
           <div className="px-4 py-2.5 border-b border-border bg-muted/30 text-xs text-muted-foreground flex items-center justify-between">
             <span>
-              CRD Relationship Topology in namespace:{" "}
+              Cross-CRD Dependency Fabric in namespace:{" "}
               <strong className="text-foreground">{topologyNamespace}</strong>
+              <span className="ml-2 text-muted-foreground/80">
+                (AppPolicy → Gateway ↔ HTTPRoute &amp; AIGatewayProfile →
+                AIModel → AIProvider → AICredential → Secret)
+              </span>
             </span>
+            {topologyData && (
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-2xs">
+                  {topologyData.nodes.length} resources
+                </Badge>
+                <Badge variant="outline" className="text-2xs">
+                  {topologyData.edges.length} references
+                </Badge>
+              </div>
+            )}
           </div>
           {topologyLoading ? (
             <div className="space-y-4 p-6">
@@ -347,15 +381,23 @@ export function K8sCrdExplorerPanel({
               {filteredCrds.map((crd) => {
                 const isSelected = selectedCrd?.name === crd.name;
                 return (
-                  <button
+                  <div
                     key={crd.name}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => {
                       setSelectedCrd(crd);
                       setSelectedInstance(null);
                     }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setSelectedCrd(crd);
+                        setSelectedInstance(null);
+                      }
+                    }}
                     className={cn(
-                      "w-full text-left p-3 transition-colors flex items-start justify-between gap-2",
+                      "w-full text-left p-3 transition-colors flex items-start justify-between gap-2 cursor-pointer",
                       isSelected
                         ? "bg-primary/10 border-l-4 border-l-primary"
                         : "hover:bg-muted/40",
@@ -381,7 +423,19 @@ export function K8sCrdExplorerPanel({
                         <span className="text-foreground/80">{crd.group}</span>
                       </div>
                     </div>
-                  </button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 px-2 text-2xs shrink-0"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenSchema(crd);
+                      }}
+                    >
+                      <FileCode className="h-3 w-3 mr-1" />
+                      Schema
+                    </Button>
+                  </div>
                 );
               })}
             </div>
@@ -424,6 +478,15 @@ export function K8sCrdExplorerPanel({
                         </SelectContent>
                       </Select>
                     )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8"
+                      onClick={() => handleOpenSchema(selectedCrd)}
+                    >
+                      <FileCode className="h-3.5 w-3.5 mr-1" />
+                      Schema
+                    </Button>
                     <Button
                       variant="default"
                       size="sm"
@@ -691,9 +754,456 @@ export function K8sCrdExplorerPanel({
               }}
             />
           )}
+
+          <CrdSchemaDrawerDialog
+            open={schemaOpen}
+            onOpenChange={setSchemaOpen}
+            clusterId={clusterId}
+            crd={schemaCrd}
+          />
         </>
       )}
     </div>
+  );
+}
+
+interface SchemaNodeProps {
+  type?: string;
+  format?: string;
+  description?: string;
+  default?: unknown;
+  enum?: unknown[];
+  required?: string[];
+  properties?: Record<string, SchemaNodeProps>;
+  items?: SchemaNodeProps;
+  additionalProperties?: boolean | SchemaNodeProps;
+  allOf?: SchemaNodeProps[];
+  anyOf?: SchemaNodeProps[];
+  oneOf?: SchemaNodeProps[];
+}
+
+function extractSchemaChildren(node: SchemaNodeProps): {
+  childProps: Record<string, SchemaNodeProps>;
+  childRequired: Set<string>;
+} {
+  const mergedProps: Record<string, SchemaNodeProps> = {};
+  const requiredSet = new Set<string>(
+    node.required ?? node.items?.required ?? [],
+  );
+
+  const directProps =
+    node.properties ??
+    node.items?.properties ??
+    (typeof node.additionalProperties === "object" &&
+    node.additionalProperties !== null
+      ? node.additionalProperties.properties
+      : undefined);
+
+  if (directProps) {
+    Object.assign(mergedProps, directProps);
+  }
+  if (
+    typeof node.additionalProperties === "object" &&
+    node.additionalProperties !== null &&
+    Array.isArray(node.additionalProperties.required)
+  ) {
+    for (const r of node.additionalProperties.required) requiredSet.add(r);
+  }
+
+  const compositeBranches = [
+    ...(node.allOf ?? []),
+    ...(node.anyOf ?? []),
+    ...(node.oneOf ?? []),
+  ];
+  for (const branch of compositeBranches) {
+    if (branch?.properties) {
+      Object.assign(mergedProps, branch.properties);
+    }
+    if (Array.isArray(branch?.required)) {
+      for (const r of branch.required) requiredSet.add(r);
+    }
+  }
+
+  return { childProps: mergedProps, childRequired: requiredSet };
+}
+
+function schemaNodeMatchesFilter(
+  fieldName: string,
+  node: SchemaNodeProps,
+  query: string,
+): boolean {
+  if (!query) return true;
+  const q = query.toLowerCase();
+  if (
+    fieldName.toLowerCase().includes(q) ||
+    (node.type && node.type.toLowerCase().includes(q)) ||
+    (node.description && node.description.toLowerCase().includes(q))
+  ) {
+    return true;
+  }
+  const { childProps } = extractSchemaChildren(node);
+  if (Object.keys(childProps).length > 0) {
+    return Object.entries(childProps).some(([k, v]) =>
+      schemaNodeMatchesFilter(k, v, query),
+    );
+  }
+  return false;
+}
+
+function SchemaPropertyNode({
+  name,
+  path,
+  node,
+  isRequired,
+  depth,
+  filterQuery,
+  selectedPath,
+  onSelectPath,
+}: {
+  name: string;
+  path: string;
+  node: SchemaNodeProps;
+  isRequired: boolean;
+  depth: number;
+  filterQuery: string;
+  selectedPath: string;
+  onSelectPath: (path: string) => void;
+}) {
+  const { childProps, childRequired } = useMemo(
+    () => extractSchemaChildren(node),
+    [node],
+  );
+  const hasChildren = Object.keys(childProps).length > 0;
+
+  const [expanded, setExpanded] = useState<boolean>(
+    depth === 0 && (name === "spec" || name === "status"),
+  );
+
+  const isExpanded = filterQuery ? true : expanded;
+
+  const typeLabel = useMemo(() => {
+    if (node.type === "array") {
+      const itemType = node.items?.type ?? "any";
+      return `array<${itemType}>`;
+    }
+    if (node.format) {
+      return `${node.type ?? "string"} (${node.format})`;
+    }
+    return node.type ?? (hasChildren ? "object" : "any");
+  }, [node.type, node.items?.type, node.format, hasChildren]);
+
+  const enumValues = node.enum ?? node.items?.enum;
+
+  if (!schemaNodeMatchesFilter(name, node, filterQuery)) {
+    return null;
+  }
+
+  return (
+    <div className="text-xs">
+      <div
+        className={cn(
+          "flex items-start gap-2 py-1.5 px-2 rounded-md transition-colors cursor-pointer",
+          selectedPath === path
+            ? "bg-primary/10 border border-primary/30"
+            : "hover:bg-muted/50",
+        )}
+        style={{ paddingLeft: `${depth * 16 + 8}px` }}
+        onClick={() => {
+          onSelectPath(path);
+          if (hasChildren) setExpanded((prev) => !prev);
+        }}
+      >
+        <span className="mt-0.5 w-4 h-4 flex items-center justify-center shrink-0 text-muted-foreground">
+          {hasChildren ? (
+            isExpanded ? (
+              <ChevronDown className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5" />
+            )
+          ) : (
+            <span className="w-1.5 h-1.5 rounded-full bg-border" />
+          )}
+        </span>
+
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="font-mono font-semibold text-foreground">
+              {name}
+            </span>
+            <Badge
+              variant="outline"
+              className="text-2xs px-1.5 py-0 font-mono text-info border-info/30 bg-info/5"
+            >
+              {typeLabel}
+            </Badge>
+            {isRequired && (
+              <Badge
+                variant="outline"
+                className="text-2xs px-1.5 py-0 font-semibold text-warning border-warning/40 bg-warning/10"
+              >
+                required
+              </Badge>
+            )}
+            {node.default !== undefined && (
+              <Badge
+                variant="secondary"
+                className="text-2xs px-1.5 py-0 font-mono"
+              >
+                default: {JSON.stringify(node.default)}
+              </Badge>
+            )}
+            {Array.isArray(enumValues) && enumValues.length > 0 && (
+              <Badge
+                variant="secondary"
+                className="text-2xs px-1.5 py-0 font-mono"
+              >
+                enum: {enumValues.map((v) => String(v)).join(" | ")}
+              </Badge>
+            )}
+          </div>
+          {node.description && (
+            <p className="text-muted-foreground leading-relaxed line-clamp-2">
+              {node.description}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {hasChildren && isExpanded && childProps && (
+        <div className="border-l border-border/50 ml-3">
+          {Object.entries(childProps).map(([childKey, childSchema]) => (
+            <SchemaPropertyNode
+              key={childKey}
+              name={childKey}
+              path={`${path}.${childKey}`}
+              node={childSchema}
+              isRequired={childRequired.has(childKey)}
+              depth={depth + 1}
+              filterQuery={filterQuery}
+              selectedPath={selectedPath}
+              onSelectPath={onSelectPath}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function CrdSchemaDrawerDialog({
+  open,
+  onOpenChange,
+  clusterId,
+  crd,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  clusterId: number;
+  crd: CRDInfo | null;
+}) {
+  const [selectedVersion, setSelectedVersion] = useState<string | undefined>(
+    crd?.version ?? undefined,
+  );
+  const [fieldSearch, setFieldSearch] = useState("");
+  const [selectedFieldPath, setSelectedFieldPath] = useState("spec");
+  const [copiedExplain, setCopiedExplain] = useState(false);
+
+  useEffect(() => {
+    setSelectedVersion(crd?.version ?? undefined);
+    setFieldSearch("");
+    setSelectedFieldPath("spec");
+  }, [crd?.name, crd?.version]);
+
+  const {
+    data: schemaData,
+    isLoading,
+    error,
+  } = useCrdSchema(clusterId, crd?.name ?? null, selectedVersion, {
+    enabled: open && !!crd,
+  });
+
+  const rootSchema = (schemaData?.open_apiv3_schema ?? {}) as SchemaNodeProps;
+  const rootProps = rootSchema.properties ?? {};
+  const rootRequired = new Set(rootSchema.required ?? []);
+  const explainTarget = crd?.plural || crd?.kind?.toLowerCase() || "crd";
+  const explainCommand = `kubectl explain ${explainTarget}.${selectedFieldPath}`;
+
+  const handleCopyExplain = useCallback(() => {
+    void navigator.clipboard?.writeText(explainCommand);
+    setCopiedExplain(true);
+    setTimeout(() => setCopiedExplain(false), 1800);
+  }, [explainCommand]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center justify-between gap-3 pr-6">
+            <span className="flex items-center gap-2">
+              <FileCode className="h-5 w-5 text-primary" />
+              CRD Schema Inspector ({crd?.kind ?? "CRD"})
+            </span>
+            {schemaData?.versions && schemaData.versions.length > 1 && (
+              <Select
+                value={selectedVersion ?? schemaData.version ?? ""}
+                onValueChange={(v) => {
+                  setSelectedVersion(v);
+                  setSelectedFieldPath("spec");
+                }}
+              >
+                <SelectTrigger
+                  className="h-7 w-28 text-xs font-mono"
+                  aria-label="CRD Schema Version"
+                >
+                  <SelectValue placeholder="Version" />
+                </SelectTrigger>
+                <SelectContent>
+                  {schemaData.versions.map((v) => (
+                    <SelectItem key={v} value={v} className="font-mono text-xs">
+                      {v}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </DialogTitle>
+          <DialogDescription asChild>
+            <div className="flex flex-wrap items-center gap-2 text-xs pt-1">
+              <span className="font-mono">{crd?.name}</span>
+              {schemaData?.version && (
+                <Badge variant="secondary" className="text-2xs font-mono">
+                  {schemaData.version}
+                </Badge>
+              )}
+              {schemaData?.scope && (
+                <Badge variant="outline" className="text-2xs">
+                  {schemaData.scope}
+                </Badge>
+              )}
+              {schemaData?.short_names?.map((sn) => (
+                <Badge
+                  key={sn}
+                  variant="outline"
+                  className="text-2xs font-mono"
+                >
+                  short: {sn}
+                </Badge>
+              ))}
+              {schemaData?.conditions?.map((cond, idx) => (
+                <Badge
+                  key={String(cond.type ?? idx)}
+                  variant="outline"
+                  className={cn(
+                    "text-2xs",
+                    cond.status === "True"
+                      ? "text-success border-success/30 bg-success/5"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {String(cond.type)}: {String(cond.status)}
+                </Badge>
+              ))}
+            </div>
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* Copyable kubectl explain command bar */}
+        <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs font-mono">
+          <div className="flex items-center gap-2 truncate">
+            <Terminal className="h-3.5 w-3.5 text-primary shrink-0" />
+            <code className="truncate text-foreground">{explainCommand}</code>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-2xs shrink-0"
+            onClick={handleCopyExplain}
+          >
+            {copiedExplain ? (
+              <>
+                <Check className="h-3 w-3 mr-1 text-success" />
+                Copied
+              </>
+            ) : (
+              <>
+                <Copy className="h-3 w-3 mr-1" />
+                Copy
+              </>
+            )}
+          </Button>
+        </div>
+
+        {/* Additional Printer Columns summary */}
+        {schemaData?.additional_printer_columns &&
+          schemaData.additional_printer_columns.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
+              <span className="font-semibold uppercase tracking-wider">
+                Printer Columns:
+              </span>
+              {schemaData.additional_printer_columns.map((col) => (
+                <Badge
+                  key={col.name}
+                  variant="secondary"
+                  className="text-2xs font-mono"
+                  title={col.description ?? col.json_path}
+                >
+                  {col.name} ({col.type}) → {col.json_path}
+                </Badge>
+              ))}
+            </div>
+          )}
+
+        {/* Field search input */}
+        <div className="relative">
+          <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            value={fieldSearch}
+            onChange={(e) => setFieldSearch(e.target.value)}
+            placeholder="Filter schema fields by name, type, or description..."
+            className="h-8 pl-8 text-xs"
+          />
+        </div>
+
+        {/* OpenAPIV3Schema property tree */}
+        <div className="flex-1 min-h-0 overflow-y-auto rounded-md border border-border bg-card p-2 space-y-1">
+          {isLoading ? (
+            <div className="space-y-2 p-4">
+              <Skeleton className="h-5 w-1/3" />
+              <Skeleton className="h-5 w-2/3" />
+              <Skeleton className="h-5 w-1/2" />
+            </div>
+          ) : error ? (
+            <ErrorState error={error} title="Failed to load CRD schema" />
+          ) : Object.keys(rootProps).length === 0 ? (
+            <div className="p-6 text-center text-xs text-muted-foreground">
+              No structural OpenAPIV3Schema properties published for this CRD
+              version.
+            </div>
+          ) : (
+            <>
+              {rootSchema.description && (
+                <div className="px-2 py-1.5 text-xs text-muted-foreground border-b border-border/50 mb-1">
+                  {rootSchema.description}
+                </div>
+              )}
+              {Object.entries(rootProps).map(([propKey, propSchema]) => (
+                <SchemaPropertyNode
+                  key={propKey}
+                  name={propKey}
+                  path={propKey}
+                  node={propSchema}
+                  isRequired={rootRequired.has(propKey)}
+                  depth={0}
+                  filterQuery={fieldSearch}
+                  selectedPath={selectedFieldPath}
+                  onSelectPath={setSelectedFieldPath}
+                />
+              ))}
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

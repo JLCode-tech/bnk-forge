@@ -40,7 +40,9 @@ describe("System Administration — Integration", () => {
       ).toBeInTheDocument();
     });
 
-    expect(screen.getByText(/Monitor system health/i)).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Monitor system health/i)[0],
+    ).toBeInTheDocument();
 
     // Tabs visible now that Module Library + Helm Repos moved to /catalog.
     const tabs = screen.getAllByRole("tab");

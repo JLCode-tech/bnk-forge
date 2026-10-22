@@ -60,6 +60,16 @@ def _get_cluster_health(cluster_id: int, db) -> dict[str, Any] | None:
         if not cluster.kubeconfig_encrypted:
             return None
 
+        from services.kubernetes_service import KubernetesService
+
+        k8s_svc = KubernetesService(db)
+        conn_res = k8s_svc.test_connection(cluster_id)
+        if not isinstance(conn_res, dict) or not conn_res.get("success"):
+            logger.debug(
+                f"Skipping health check for unreachable cluster {cluster.name} (id={cluster_id})"
+            )
+            return None
+
         with kubeconfig_for_cluster(cluster, db) as kubeconfig_path:
             api = kr8s.api(kubeconfig=kubeconfig_path)
 
@@ -156,13 +166,19 @@ def check_cluster_health():
 
     with get_db_context() as db:
         try:
+            from sqlalchemy import or_
+
             from models import KubernetesCluster, Project
 
-            # Get all clusters that belong to active-ish projects (have modules or deployments)
-            clusters = db.query(KubernetesCluster).join(
+            # Get all clusters that have kubeconfig credentials or belong to active projects
+            clusters = db.query(KubernetesCluster).outerjoin(
                 Project, KubernetesCluster.project_id == Project.id
             ).filter(
-                (Project.module_count > 0) | (Project.deployed_count > 0)
+                or_(
+                    KubernetesCluster.kubeconfig_encrypted.isnot(None),
+                    Project.module_count > 0,
+                    Project.deployed_count > 0,
+                )
             ).all()
 
             if not clusters:
