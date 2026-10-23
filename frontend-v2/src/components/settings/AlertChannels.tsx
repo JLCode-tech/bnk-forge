@@ -289,11 +289,11 @@ export function AlertChannels() {
                           <span className="text-sm font-medium truncate text-foreground">
                             {channel.name}
                           </span>
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                          <Badge variant="outline" className="text-2xs px-1.5 py-0">
                             {typeInfo?.label || channel.channel_type}
                           </Badge>
                           {!channel.enabled && (
-                            <Badge variant="muted" className="text-[10px] px-1.5 py-0">
+                            <Badge variant="muted" className="text-2xs px-1.5 py-0">
                               Disabled
                             </Badge>
                           )}

@@ -16,7 +16,7 @@ export interface ProcessMetrics {
 }
 
 export interface ServiceStatus {
-  status: 'healthy' | 'degraded' | 'offline';
+  status: "healthy" | "degraded" | "offline";
   response_time_ms?: number | null;
   workers?: number;
   active_tasks?: number;
@@ -117,13 +117,12 @@ export interface CleanupResult {
 }
 
 export interface VacuumResult {
-  status: 'success' | 'skipped';
+  status: "success" | "skipped";
   duration_seconds: number;
   message?: string;
 }
 
-export type CleanupType = 'deployment_logs' | 'audit_logs' | 'completed_tasks';
-
+export type CleanupType = "deployment_logs" | "audit_logs" | "completed_tasks";
 
 // ============================================================================
 // System Upgrade types (UP-013)
@@ -134,7 +133,7 @@ export interface UpgradeReadiness {
   docker_socket_available: boolean;
   upgrade_ready: boolean;
   upgrade_in_progress: boolean;
-  deployment_mode?: 'local' | 'server' | string;
+  deployment_mode?: "local" | "server" | string;
   recommended_command?: string | null;
   recommended_label?: string | null;
   gui_upgrade_supported?: boolean;
@@ -143,6 +142,7 @@ export interface UpgradeReadiness {
 export interface VersionInfo {
   current_version: string;
   latest_version: string;
+  min_upgrade_from?: string;
   update_available: boolean;
   commits_behind: number;
   error?: string;
@@ -172,7 +172,79 @@ export interface UpgradeState {
 }
 
 export interface UpgradeVerification {
-  verdict: 'healthy' | 'degraded' | 'unhealthy';
-  checks: Record<string, { status: string; error?: string; note?: string; [key: string]: unknown }>;
+  verdict: "healthy" | "degraded" | "unhealthy";
+  checks: Record<
+    string,
+    { status: string; error?: string; note?: string; [key: string]: unknown }
+  >;
   timestamp: string;
+}
+
+// ============================================================================
+// BNK Resource Consumption Dashboard
+// ============================================================================
+
+export interface BnkPlaneConsumption {
+  count: number;
+  cpu_millicores: number;
+  memory_bytes: number;
+}
+
+export interface BnkTopPod {
+  name: string;
+  namespace: string;
+  role: string;
+  cpu_millicores: number;
+  memory_bytes: number;
+}
+
+export interface BnkClusterDpfSummary {
+  detected: boolean;
+  dpu_count: number;
+}
+
+export interface BnkNodeCapacity {
+  cpu_millicores: number;
+  memory_bytes: number;
+}
+
+export interface BnkClusterConsumption {
+  cluster_id: number;
+  cluster_name: string;
+  cloud_provider?: string | null;
+  region?: string | null;
+  reachable: boolean;
+  bnk_installed: boolean;
+  bnk_version: string | null;
+  status: string;
+  node_count: number | null;
+  control_plane: BnkPlaneConsumption;
+  data_plane: BnkPlaneConsumption;
+  total: BnkPlaneConsumption;
+  node_capacity: BnkNodeCapacity;
+  metrics_available: boolean;
+  metrics_error: string | null;
+  dpf: BnkClusterDpfSummary;
+  top_pods: BnkTopPod[];
+}
+
+export interface BnkFleetSummary {
+  total_clusters: number;
+  reachable_clusters: number;
+  bnk_installed_clusters: number;
+  total_bnk_pods: number;
+  control_plane_pods: number;
+  data_plane_pods: number;
+  total_cpu_millicores: number;
+  total_memory_bytes: number;
+  node_capacity_cpu_millicores: number;
+  node_capacity_memory_bytes: number;
+  dpf_detected_clusters: number;
+  dpu_count: number;
+}
+
+export interface BnkConsumptionResponse {
+  timestamp: string;
+  fleet_summary: BnkFleetSummary;
+  clusters: BnkClusterConsumption[];
 }

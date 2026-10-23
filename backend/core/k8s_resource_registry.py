@@ -17,12 +17,12 @@ Organization:
 12. F5 BNK resources
 """
 
-
 from core.k8s_types import ApiGroups, K8sResourceType, ResourceCategory
 
 
-def _core_resource(kind: str, plural: str, display_name: str,
-                   description: str, namespaced: bool = True) -> K8sResourceType:
+def _core_resource(
+    kind: str, plural: str, display_name: str, description: str, namespaced: bool = True
+) -> K8sResourceType:
     """Helper for core API (v1) resources."""
     return K8sResourceType(
         api_group=ApiGroups.CORE,
@@ -32,7 +32,7 @@ def _core_resource(kind: str, plural: str, display_name: str,
         namespaced=namespaced,
         display_name=display_name,
         description=description,
-        category=ResourceCategory.CORE
+        category=ResourceCategory.CORE,
     )
 
 
@@ -46,12 +46,11 @@ def _apps_resource(kind: str, plural: str, display_name: str, description: str) 
         namespaced=True,
         display_name=display_name,
         description=description,
-        category=ResourceCategory.WORKLOADS
+        category=ResourceCategory.WORKLOADS,
     )
 
 
-def _rbac_resource(kind: str, plural: str, display_name: str,
-                   description: str, namespaced: bool) -> K8sResourceType:
+def _rbac_resource(kind: str, plural: str, display_name: str, description: str, namespaced: bool) -> K8sResourceType:
     """Helper for RBAC resources."""
     return K8sResourceType(
         api_group=ApiGroups.RBAC,
@@ -61,13 +60,13 @@ def _rbac_resource(kind: str, plural: str, display_name: str,
         namespaced=namespaced,
         display_name=display_name,
         description=description,
-        category=ResourceCategory.RBAC
+        category=ResourceCategory.RBAC,
     )
 
 
-def _gateway_resource(kind: str, plural: str, display_name: str,
-                      description: str, api_version: str = "v1",
-                      namespaced: bool = True) -> K8sResourceType:
+def _gateway_resource(
+    kind: str, plural: str, display_name: str, description: str, api_version: str = "v1", namespaced: bool = True
+) -> K8sResourceType:
     """Helper for Gateway API resources."""
     return K8sResourceType(
         api_group=ApiGroups.GATEWAY,
@@ -77,13 +76,19 @@ def _gateway_resource(kind: str, plural: str, display_name: str,
         namespaced=namespaced,
         display_name=display_name,
         description=description,
-        category=ResourceCategory.GATEWAY_API
+        category=ResourceCategory.GATEWAY_API,
     )
 
 
-def _f5_resource(kind: str, plural: str, display_name: str,
-                 description: str, namespaced: bool = True,
-                 api_group: str | None = None, api_version: str = "v1") -> K8sResourceType:
+def _f5_resource(
+    kind: str,
+    plural: str,
+    display_name: str,
+    description: str,
+    namespaced: bool = True,
+    api_group: str | None = None,
+    api_version: str = "v1",
+) -> K8sResourceType:
     """Helper for F5 BNK resources. Default API group is k8s.f5net.com (data-plane CRDs)."""
     return K8sResourceType(
         api_group=api_group or ApiGroups.F5_NET,
@@ -93,12 +98,45 @@ def _f5_resource(kind: str, plural: str, display_name: str,
         namespaced=namespaced,
         display_name=display_name,
         description=description,
-        category=ResourceCategory.F5_BNK
+        category=ResourceCategory.F5_BNK,
     )
 
 
-def _certmanager_resource(kind: str, plural: str, display_name: str,
-                          description: str, namespaced: bool = True) -> K8sResourceType:
+def _f5_gateway_resource(
+    kind: str, plural: str, display_name: str, description: str, api_version: str = "v1alpha1", namespaced: bool = True
+) -> K8sResourceType:
+    """Helper for modern F5 Gateway API resources (gateway.k8s.f5.com)."""
+    return K8sResourceType(
+        api_group=ApiGroups.F5_GATEWAY,
+        api_version=api_version,
+        kind=kind,
+        plural=plural,
+        namespaced=namespaced,
+        display_name=display_name,
+        description=description,
+        category=ResourceCategory.F5_BNK,
+    )
+
+
+def _gaie_resource(
+    kind: str, plural: str, display_name: str, description: str, api_version: str = "v1", namespaced: bool = True
+) -> K8sResourceType:
+    """Helper for Gateway API Inference Extension resources (inference.networking.k8s.io)."""
+    return K8sResourceType(
+        api_group=ApiGroups.GAIE_INFERENCE,
+        api_version=api_version,
+        kind=kind,
+        plural=plural,
+        namespaced=namespaced,
+        display_name=display_name,
+        description=description,
+        category=ResourceCategory.GATEWAY_API,
+    )
+
+
+def _certmanager_resource(
+    kind: str, plural: str, display_name: str, description: str, namespaced: bool = True
+) -> K8sResourceType:
     """Helper for cert-manager resources."""
     return K8sResourceType(
         api_group=ApiGroups.CERT_MANAGER,
@@ -108,7 +146,7 @@ def _certmanager_resource(kind: str, plural: str, display_name: str,
         namespaced=namespaced,
         display_name=display_name,
         description=description,
-        category=ResourceCategory.CERT_MANAGER
+        category=ResourceCategory.CERT_MANAGER,
     )
 
 
@@ -124,26 +162,24 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
     "service": _core_resource("Service", "services", "Service", "Kubernetes Service"),
     "configmap": _core_resource("ConfigMap", "configmaps", "ConfigMap", "Kubernetes ConfigMap"),
     "secret": _core_resource("Secret", "secrets", "Secret", "Kubernetes Secret"),
-    "serviceaccount": _core_resource("ServiceAccount", "serviceaccounts", "Service Account",
-                                     "Kubernetes Service Account for pod identity"),
-    "endpoints": _core_resource("Endpoints", "endpoints", "Endpoints",
-                                "Service endpoints (IP addresses and ports)"),
+    "serviceaccount": _core_resource(
+        "ServiceAccount", "serviceaccounts", "Service Account", "Kubernetes Service Account for pod identity"
+    ),
+    "endpoints": _core_resource("Endpoints", "endpoints", "Endpoints", "Service endpoints (IP addresses and ports)"),
     "event": _core_resource("Event", "events", "Event", "Kubernetes cluster events"),
-    "limitrange": _core_resource("LimitRange", "limitranges", "Limit Range",
-                                 "Default resource limits for namespace"),
-    "resourcequota": _core_resource("ResourceQuota", "resourcequotas", "Resource Quota",
-                                    "Resource usage limits for namespace"),
-    "persistentvolumeclaim": _core_resource("PersistentVolumeClaim", "persistentvolumeclaims",
-                                            "PVC", "Kubernetes Persistent Volume Claim"),
-
+    "limitrange": _core_resource("LimitRange", "limitranges", "Limit Range", "Default resource limits for namespace"),
+    "resourcequota": _core_resource(
+        "ResourceQuota", "resourcequotas", "Resource Quota", "Resource usage limits for namespace"
+    ),
+    "persistentvolumeclaim": _core_resource(
+        "PersistentVolumeClaim", "persistentvolumeclaims", "PVC", "Kubernetes Persistent Volume Claim"
+    ),
     # Cluster-scoped core resources
-    "namespace": _core_resource("Namespace", "namespaces", "Namespace",
-                                "Kubernetes Namespace", namespaced=False),
+    "namespace": _core_resource("Namespace", "namespaces", "Namespace", "Kubernetes Namespace", namespaced=False),
     "node": _core_resource("Node", "nodes", "Node", "Kubernetes Node", namespaced=False),
-    "persistentvolume": _core_resource("PersistentVolume", "persistentvolumes",
-                                       "Persistent Volume", "Kubernetes Persistent Volume",
-                                       namespaced=False),
-
+    "persistentvolume": _core_resource(
+        "PersistentVolume", "persistentvolumes", "Persistent Volume", "Kubernetes Persistent Volume", namespaced=False
+    ),
     # =========================================================================
     # WORKLOAD RESOURCES (apps/v1)
     # =========================================================================
@@ -151,7 +187,6 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
     "statefulset": _apps_resource("StatefulSet", "statefulsets", "StatefulSet", "Kubernetes StatefulSet"),
     "daemonset": _apps_resource("DaemonSet", "daemonsets", "DaemonSet", "Kubernetes DaemonSet"),
     "replicaset": _apps_resource("ReplicaSet", "replicasets", "ReplicaSet", "Kubernetes ReplicaSet"),
-
     # =========================================================================
     # NETWORKING RESOURCES
     # =========================================================================
@@ -163,7 +198,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="Ingress",
         description="Kubernetes Ingress",
-        category=ResourceCategory.NETWORKING
+        category=ResourceCategory.NETWORKING,
     ),
     "networkpolicy": K8sResourceType(
         api_group=ApiGroups.NETWORKING,
@@ -173,9 +208,8 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="Network Policy",
         description="Kubernetes Network Policy for pod traffic control",
-        category=ResourceCategory.NETWORKING
+        category=ResourceCategory.NETWORKING,
     ),
-
     # =========================================================================
     # STORAGE RESOURCES
     # =========================================================================
@@ -187,21 +221,25 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=False,
         display_name="Storage Class",
         description="Kubernetes Storage Class for dynamic provisioning",
-        category=ResourceCategory.STORAGE
+        category=ResourceCategory.STORAGE,
     ),
-
     # =========================================================================
     # RBAC RESOURCES
     # =========================================================================
     "role": _rbac_resource("Role", "roles", "Role", "Namespace-scoped RBAC role", namespaced=True),
-    "rolebinding": _rbac_resource("RoleBinding", "rolebindings", "Role Binding",
-                                  "Namespace-scoped RBAC role binding", namespaced=True),
-    "clusterrole": _rbac_resource("ClusterRole", "clusterroles", "Cluster Role",
-                                  "Cluster-wide RBAC role", namespaced=False),
-    "clusterrolebinding": _rbac_resource("ClusterRoleBinding", "clusterrolebindings",
-                                         "Cluster Role Binding", "Cluster-wide RBAC role binding",
-                                         namespaced=False),
-
+    "rolebinding": _rbac_resource(
+        "RoleBinding", "rolebindings", "Role Binding", "Namespace-scoped RBAC role binding", namespaced=True
+    ),
+    "clusterrole": _rbac_resource(
+        "ClusterRole", "clusterroles", "Cluster Role", "Cluster-wide RBAC role", namespaced=False
+    ),
+    "clusterrolebinding": _rbac_resource(
+        "ClusterRoleBinding",
+        "clusterrolebindings",
+        "Cluster Role Binding",
+        "Cluster-wide RBAC role binding",
+        namespaced=False,
+    ),
     # =========================================================================
     # BATCH RESOURCES
     # =========================================================================
@@ -213,7 +251,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="Job",
         description="Kubernetes batch Job",
-        category=ResourceCategory.BATCH
+        category=ResourceCategory.BATCH,
     ),
     "cronjob": K8sResourceType(
         api_group=ApiGroups.BATCH,
@@ -223,9 +261,8 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="CronJob",
         description="Kubernetes scheduled CronJob",
-        category=ResourceCategory.BATCH
+        category=ResourceCategory.BATCH,
     ),
-
     # =========================================================================
     # AUTOSCALING & POLICY RESOURCES
     # =========================================================================
@@ -237,7 +274,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="HPA",
         description="Horizontal Pod Autoscaler",
-        category=ResourceCategory.AUTOSCALING
+        category=ResourceCategory.AUTOSCALING,
     ),
     "poddisruptionbudget": K8sResourceType(
         api_group=ApiGroups.POLICY,
@@ -247,9 +284,8 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="Pod Disruption Budget",
         description="Pod availability during disruptions",
-        category=ResourceCategory.AUTOSCALING
+        category=ResourceCategory.AUTOSCALING,
     ),
-
     # =========================================================================
     # CLUSTER RESOURCES
     # =========================================================================
@@ -261,42 +297,69 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=False,
         display_name="CRD",
         description="Custom Resource Definition",
-        category=ResourceCategory.CLUSTER
+        category=ResourceCategory.CLUSTER,
     ),
-
     # =========================================================================
     # GATEWAY API RESOURCES
     # =========================================================================
-    "gatewayclass": _gateway_resource("GatewayClass", "gatewayclasses", "Gateway Class",
-                                      "Gateway API Gateway Class definition", namespaced=False),
-    "gateway": _gateway_resource("Gateway", "gateways", "Gateway",
-                                 "Gateway API Gateway instance with listeners"),
-    "httproute": _gateway_resource("HTTPRoute", "httproutes", "HTTP Route",
-                                   "Gateway API HTTP routing configuration"),
-    "grpcroute": _gateway_resource("GRPCRoute", "grpcroutes", "GRPC Route",
-                                   "Gateway API gRPC routing configuration", api_version="v1alpha2"),
-    "tcproute": _gateway_resource("TCPRoute", "tcproutes", "TCP Route",
-                                  "Gateway API TCP routing configuration", api_version="v1alpha2"),
-    "udproute": _gateway_resource("UDPRoute", "udproutes", "UDP Route",
-                                  "Gateway API UDP routing configuration", api_version="v1alpha2"),
-    "tlsroute": _gateway_resource("TLSRoute", "tlsroutes", "TLS Route",
-                                  "Gateway API TLS routing configuration", api_version="v1alpha2"),
-    "referencegrant": _gateway_resource("ReferenceGrant", "referencegrants", "Reference Grant",
-                                        "Gateway API cross-namespace reference permissions",
-                                        api_version="v1beta1"),
-
+    "gatewayclass": _gateway_resource(
+        "GatewayClass", "gatewayclasses", "Gateway Class", "Gateway API Gateway Class definition", namespaced=False
+    ),
+    "gateway": _gateway_resource("Gateway", "gateways", "Gateway", "Gateway API Gateway instance with listeners"),
+    "httproute": _gateway_resource("HTTPRoute", "httproutes", "HTTP Route", "Gateway API HTTP routing configuration"),
+    "grpcroute": _gateway_resource(
+        "GRPCRoute", "grpcroutes", "GRPC Route", "Gateway API gRPC routing configuration", api_version="v1alpha2"
+    ),
+    "tcproute": _gateway_resource(
+        "TCPRoute", "tcproutes", "TCP Route", "Gateway API TCP routing configuration", api_version="v1alpha2"
+    ),
+    "udproute": _gateway_resource(
+        "UDPRoute", "udproutes", "UDP Route", "Gateway API UDP routing configuration", api_version="v1alpha2"
+    ),
+    "tlsroute": _gateway_resource(
+        "TLSRoute", "tlsroutes", "TLS Route", "Gateway API TLS routing configuration", api_version="v1alpha2"
+    ),
+    "referencegrant": _gateway_resource(
+        "ReferenceGrant",
+        "referencegrants",
+        "Reference Grant",
+        "Gateway API cross-namespace reference permissions",
+        api_version="v1beta1",
+    ),
+    # --- Gateway API Inference Extension (GAIE v1) ---
+    "inferencepool": _gaie_resource(
+        "InferencePool",
+        "inferencepools",
+        "Inference Pool (GAIE)",
+        "Gateway API Inference Extension target pool for LLM serving engines",
+    ),
+    "inferencemodelrewrite": _gaie_resource(
+        "InferenceModelRewrite",
+        "inferencemodelrewrites",
+        "Inference Model Rewrite (GAIE)",
+        "Gateway API Inference Extension model header rewriter",
+        api_version="v1alpha2",
+    ),
+    "inferencemodel": _gaie_resource(
+        "InferenceModelRewrite",
+        "inferencemodelrewrites",
+        "Inference Model (GAIE)",
+        "Gateway API Inference Extension model header rewriter",
+        api_version="v1alpha2",
+    ),
     # =========================================================================
     # CERT-MANAGER RESOURCES
     # =========================================================================
-    "certificate": _certmanager_resource("Certificate", "certificates", "Certificate",
-                                         "cert-manager Certificate resource"),
-    "certificaterequest": _certmanager_resource("CertificateRequest", "certificaterequests",
-                                                "Certificate Request", "cert-manager Certificate Request"),
-    "issuer": _certmanager_resource("Issuer", "issuers", "Issuer",
-                                    "cert-manager namespace-scoped Issuer"),
-    "clusterissuer": _certmanager_resource("ClusterIssuer", "clusterissuers", "Cluster Issuer",
-                                           "cert-manager cluster-wide Issuer", namespaced=False),
-
+    "certificate": _certmanager_resource(
+        "Certificate", "certificates", "Certificate", "cert-manager Certificate resource"
+    ),
+    "certificaterequest": _certmanager_resource(
+        "CertificateRequest", "certificaterequests", "Certificate Request", "cert-manager Certificate Request"
+    ),
+    "issuer": _certmanager_resource("Issuer", "issuers", "Issuer", "cert-manager namespace-scoped Issuer"),
+    "clusterissuer": _certmanager_resource(
+        "ClusterIssuer", "clusterissuers", "Cluster Issuer", "cert-manager cluster-wide Issuer", namespaced=False
+    ),
     # =========================================================================
     # MULTUS CNI RESOURCES
     # =========================================================================
@@ -308,21 +371,25 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="Network Attachment",
         description="Multus CNI network attachment definition",
-        category=ResourceCategory.NETWORKING
+        category=ResourceCategory.NETWORKING,
     ),
-
     # =========================================================================
     # F5 BNK RESOURCES — Data-plane CRDs (k8s.f5net.com)
     # These are created by crd-installer and have HYPHENATED plural names.
     # =========================================================================
-
     # --- Security ---
     "f5bigfwpolicy": _f5_resource(
-        "F5BigFwPolicy", "f5-big-fw-policies", "F5 Firewall Policy",
-        "F5 BIG-IP firewall policy for ingress/egress traffic control"),
+        "F5BigFwPolicy",
+        "f5-big-fw-policies",
+        "F5 Firewall Policy",
+        "F5 BIG-IP firewall policy for ingress/egress traffic control",
+    ),
     "f5bigfwrulelist": _f5_resource(
-        "F5BigFwRulelist", "f5-big-fw-rulelists", "F5 Firewall Rule List",
-        "F5 BIG-IP firewall rule list (reusable set of rules referenced by policies)"),
+        "F5BigFwRulelist",
+        "f5-big-fw-rulelists",
+        "F5 Firewall Rule List",
+        "F5 BIG-IP firewall rule list (reusable set of rules referenced by policies)",
+    ),
     "bnksecpolicy": K8sResourceType(
         api_group=ApiGroups.F5_GATEWAY_NET,
         api_version="v1alpha1",
@@ -331,7 +398,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="BNK Security Policy",
         description="F5 BNK security policy for Gateway API integration",
-        category=ResourceCategory.F5_BNK
+        category=ResourceCategory.F5_BNK,
     ),
     "bnknetpolicy": K8sResourceType(
         api_group=ApiGroups.F5_GATEWAY_NET,
@@ -341,53 +408,81 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="BNK Network Policy",
         description="F5 BNK general extensions for Gateway API (iRules, TCPSettings, HSL logging)",
-        category=ResourceCategory.F5_BNK
+        category=ResourceCategory.F5_BNK,
     ),
     "f5bigddosglobal": _f5_resource(
-        "F5BigDdosGlobal", "f5-big-ddos-globals", "F5 DDoS Protection",
-        "Global DDoS protection configuration for traffic scrubbing"),
+        "F5BigDdosGlobal",
+        "f5-big-ddos-globals",
+        "F5 DDoS Protection",
+        "Global DDoS protection configuration for traffic scrubbing",
+    ),
     "f5bigcneaddresslist": _f5_resource(
-        "F5BigCneAddresslist", "f5-big-cne-addresslists", "F5 CNE Address List",
-        "Address list for firewall rules and policies"),
+        "F5BigCneAddresslist",
+        "f5-big-cne-addresslists",
+        "F5 CNE Address List",
+        "Address list for firewall rules and policies",
+    ),
     "f5bigcneportlist": _f5_resource(
-        "F5BigCnePortlist", "f5-big-cne-portlists", "F5 CNE Port List",
-        "Port list for firewall rules and policies"),
-
+        "F5BigCnePortlist", "f5-big-cne-portlists", "F5 CNE Port List", "Port list for firewall rules and policies"
+    ),
     # --- Networking ---
     "f5spkvlan": _f5_resource(
-        "F5SPKVlan", "f5-spk-vlans", "F5 VLAN",
-        "TMM interface configuration: VLANs, Self IPs, MTU sizes"),
+        "F5SPKVlan", "f5-spk-vlans", "F5 VLAN", "TMM interface configuration: VLANs, Self IPs, MTU sizes"
+    ),
     "f5spkstaticroute": _f5_resource(
-        "F5SPKStaticRoute", "f5-spk-staticroutes", "F5 Static Route",
-        "Static routing table management for Traffic Management Microkernel"),
+        "F5SPKStaticRoute",
+        "f5-spk-staticroutes",
+        "F5 Static Route",
+        "Static routing table management for Traffic Management Microkernel",
+    ),
     "f5spksnatpool": _f5_resource(
-        "F5SPKSnatpool", "f5-spk-snatpools", "F5 SNAT Pool",
-        "F5 BNK SNAT pool for source address translation"),
+        "F5SPKSnatpool", "f5-spk-snatpools", "F5 SNAT Pool", "F5 BNK SNAT pool for source address translation"
+    ),
     "f5spkegress": _f5_resource(
-        "F5SPKEgress", "f5-spk-egresses", "F5 Egress Config",
+        "F5SPKEgress",
+        "f5-spk-egresses",
+        "F5 Egress Config",
         "F5 BNK egress configuration for outbound traffic",
-        api_version="v3"),
+        api_version="v3",
+    ),
     "f5bigcneirule": _f5_resource(
-        "F5BigCneIrule", "f5-big-cne-irules", "F5 iRule",
-        "F5 BNK iRule for custom traffic manipulation logic (TCL)"),
+        "F5BigCneIrule", "f5-big-cne-irules", "F5 iRule", "F5 BNK iRule for custom traffic manipulation logic (TCL)"
+    ),
     "f5spkglobaloptions": _f5_resource(
-        "F5BigGlobalOptions", "f5-big-global-optionses", "F5 Global Options",
-        "Global configuration options for crypto hardware acceleration on DPU"),
-
+        "F5BigGlobalOptions",
+        "f5-big-global-optionses",
+        "F5 Global Options",
+        "Global configuration options for crypto hardware acceleration on DPU",
+    ),
     # --- Logging & Telemetry ---
     "f5bigloghslpub": _f5_resource(
-        "F5BigLogHslpub", "f5-big-log-hslpubs", "F5 HSL Publisher",
+        "F5BigLogHslpub",
+        "f5-big-log-hslpubs",
+        "F5 HSL Publisher",
         "High-Speed Logging (HSL) publisher configuration",
-        api_version="v2"),
+        api_version="v2",
+    ),
     "f5biglogprofile": _f5_resource(
-        "F5BigLogProfile", "f5-big-log-profiles", "F5 Log Profile",
+        "F5BigLogProfile",
+        "f5-big-log-profiles",
+        "F5 Log Profile",
         "F5 BNK log profile configuration for traffic logging",
-        api_version="v2"),
-
-    # --- Gateway extensions (k8s.f5net.com) ---
+        api_version="v2",
+    ),
+    "f5bigpersistenceprofile": _f5_resource(
+        "F5BigPersistenceProfile",
+        "f5-big-persistence-profiles",
+        "F5 Persistence Profile",
+        "Traffic persistence profile including Model Context Protocol (MCP) and Cookie/Source persistence",
+        api_version="v1",
+    ),
+    # --- Gateway extensions (legacy <=2.3: gateway.k8s.f5net.com) ---
     "f5bnkgateway": _f5_resource(
-        "F5BnkGateway", "f5-bnkgateways", "F5 BNK Gateway (IPAM)",
-        "F5 BNK Gateway for IPAM-based IP address management on Gateway API"),
+        "F5BnkGateway",
+        "f5-bnkgateways",
+        "F5 BNK Gateway (IPAM)",
+        "F5 BNK Gateway for IPAM-based IP address management on Gateway API",
+    ),
     "l4route": K8sResourceType(
         api_group=ApiGroups.F5_GATEWAY_NET,
         api_version="v1",
@@ -396,9 +491,53 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="L4 Route",
         description="F5 BNK Layer 4 route for TCP/UDP traffic (gateway.k8s.f5net.com)",
-        category=ResourceCategory.F5_BNK
+        category=ResourceCategory.F5_BNK,
     ),
-
+    # =========================================================================
+    # F5 BNK RESOURCES — Modern Gateway & Underlay CRDs (gateway.k8s.f5.com)
+    # Introduced in BNK 2.4.0 GA: Infra, GatewaySettings, EgressGateway, Policies
+    # =========================================================================
+    "infra": _f5_gateway_resource(
+        "Infra",
+        "infras",
+        "F5 Infra Underlay",
+        "Consolidated underlay infrastructure: IPAM pools, network attachments, VRFs, VLANs, and static routes",
+    ),
+    "gatewaysettings": _f5_gateway_resource(
+        "GatewaySettings",
+        "gatewaysettings",
+        "F5 Gateway Settings",
+        "Tenant-level Gateway settings: SNAT pools, listener networks, and egress configs",
+    ),
+    "egressgateway": _f5_gateway_resource(
+        "EgressGateway",
+        "egressgateways",
+        "F5 Egress Gateway",
+        "Outbound pod traffic steering with isolated SNAT and VRF pathing",
+    ),
+    "secpolicy": _f5_gateway_resource(
+        "SecPolicy", "secpolicies", "F5 Security Policy", "F5 BNK firewall and security policy attachment for Gateways"
+    ),
+    "netpolicy": _f5_gateway_resource(
+        "NetPolicy",
+        "netpolicies",
+        "F5 Network Policy",
+        "F5 BNK network extensions (iRules, persistence profiles, TCP settings)",
+    ),
+    "apppolicy": _f5_gateway_resource(
+        "AppPolicy",
+        "apppolicies",
+        "F5 App Policy",
+        "F5 BNK application policy binding extension profiles (AIGatewayProfile) to Gateway listeners",
+    ),
+    # Same kind as the legacy l4route, so a distinct key.
+    "l4route_24": _f5_gateway_resource(
+        "L4Route",
+        "l4routes",
+        "L4 Route",
+        "F5 BNK Layer 4 route for TCP/UDP traffic (gateway.k8s.f5.com)",
+        api_version="v1",
+    ),
     # =========================================================================
     # F5 BNK RESOURCES — FLO-managed CRDs (k8s.f5.com)
     # These are created by FLO itself and manage the operator lifecycle.
@@ -411,15 +550,126 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="CNE Instance",
         description="Cloud Native Engine instance configuration",
-        category=ResourceCategory.F5_BNK
+        category=ResourceCategory.F5_BNK,
     ),
-
-    # --- AI/ML ---
+    # --- AI/ML, LLM Gateway & Telemetry (inference.k8s.f5.com & metrics.f5.com) ---
+    "aitenant": K8sResourceType(
+        api_group=ApiGroups.F5_INFERENCE,
+        api_version="v1alpha1",
+        kind="AITenant",
+        plural="aitenants",
+        namespaced=False,
+        display_name="F5 AI Tenant",
+        description="Cluster-scoped multi-tenant boundary for AI Gateway providers, models, and governance",
+        category=ResourceCategory.F5_BNK,
+    ),
+    "aicredential": K8sResourceType(
+        api_group=ApiGroups.F5_INFERENCE,
+        api_version="v1alpha1",
+        kind="AICredential",
+        plural="aicredentials",
+        namespaced=True,
+        display_name="F5 AI Credential",
+        description="Secret-backed API key reference for AI Gateway upstream providers",
+        category=ResourceCategory.F5_BNK,
+    ),
+    "aiprovider": K8sResourceType(
+        api_group=ApiGroups.F5_INFERENCE,
+        api_version="v1alpha1",
+        kind="AIProvider",
+        plural="aiproviders",
+        namespaced=True,
+        display_name="F5 AI Provider",
+        description="LLM vendor endpoint definition (OpenAI, Anthropic, AzureOpenAI, AzureFoundry, Bedrock, Gemini, Generic)",
+        category=ResourceCategory.F5_BNK,
+    ),
+    "aimodel": K8sResourceType(
+        api_group=ApiGroups.F5_INFERENCE,
+        api_version="v1alpha1",
+        kind="AIModel",
+        plural="aimodels",
+        namespaced=True,
+        display_name="F5 AI Model",
+        description="Logical LLM model catalog entry with weighted multi-provider deployments and token pricing",
+        category=ResourceCategory.F5_BNK,
+    ),
+    "aigatewayprofile": K8sResourceType(
+        api_group=ApiGroups.F5_INFERENCE,
+        api_version="v1alpha1",
+        kind="AIGatewayProfile",
+        plural="aigatewayprofiles",
+        namespaced=True,
+        display_name="F5 AI Gateway Profile",
+        description="Gateway policy profile for virtual keys, JWT auth, failover, prompt cache, and semantic model routing",
+        category=ResourceCategory.F5_BNK,
+    ),
+    "aigateway": K8sResourceType(
+        api_group=ApiGroups.F5_INFERENCE,
+        api_version="v1alpha1",
+        kind="AIGateway",
+        plural="aigateways",
+        namespaced=True,
+        display_name="F5 AI Gateway Runtime",
+        description="AI Gateway runtime readiness and data-plane status resource",
+        category=ResourceCategory.F5_BNK,
+    ),
     "f5biganalyzer": _f5_resource(
-        "F5BigAnalyzer", "f5-big-analyzers", "F5 AI Analyzer",
+        "F5BigAnalyzer",
+        "f5-big-analyzers",
+        "F5 AI Analyzer",
         "AI-powered load balancing analyzer for LLM inference workloads (EA feature)",
-        api_version="v1alpha1"),
-
+        api_version="v1alpha1",
+    ),
+    "f5epp": K8sResourceType(
+        api_group=ApiGroups.F5_INFERENCE,
+        api_version="v1alpha1",
+        kind="F5EPP",
+        plural="f5-epps",
+        namespaced=True,
+        display_name="F5 Endpoint Picker",
+        description="AI inference routing analyzer server with KV-cache awareness, prompt prefix affinity, and prefill-decode disaggregation",
+        category=ResourceCategory.F5_BNK,
+    ),
+    "observer": K8sResourceType(
+        api_group=ApiGroups.F5_K8S,
+        api_version="v1",
+        kind="Observer",
+        plural="observers",
+        namespaced=True,
+        display_name="F5 Observer Telemetry",
+        description="Multi-tenant performance monitoring and Prometheus metric extraction",
+        category=ResourceCategory.F5_BNK,
+    ),
+    "scrapetemplate": K8sResourceType(
+        api_group=ApiGroups.F5_METRICS,
+        api_version="v1",
+        kind="ScrapeTemplate",
+        plural="scrapetemplates",
+        namespaced=True,
+        display_name="F5 Scrape Template",
+        description="Observer metric scrape template (metrics.f5.com)",
+        category=ResourceCategory.F5_BNK,
+    ),
+    "scrapeclass": K8sResourceType(
+        api_group=ApiGroups.F5_METRICS,
+        api_version="v1",
+        kind="ScrapeClass",
+        plural="scrapeclasses",
+        namespaced=False,
+        display_name="F5 Scrape Class",
+        description="Observer cluster-wide metric scrape class (metrics.f5.com)",
+        category=ResourceCategory.F5_BNK,
+    ),
+    "scrape": K8sResourceType(
+        api_group=ApiGroups.F5_METRICS,
+        api_version="v1",
+        kind="Scrape",
+        plural="scrapes",
+        namespaced=True,
+        display_name="F5 Metric Scrape",
+        description="Observer metric scrape target definition (metrics.f5.com)",
+        category=ResourceCategory.F5_BNK,
+    ),
     # --- IPAM (fic.f5.com) ---
     "ipamrange": K8sResourceType(
         api_group=ApiGroups.F5_IPAM,
@@ -429,9 +679,8 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="IPAM Range",
         description="F5 IPAM Controller IP address range allocation",
-        category=ResourceCategory.F5_BNK
+        category=ResourceCategory.F5_BNK,
     ),
-
     # =========================================================================
     # NVIDIA DPF RESOURCES — Provisioning (provisioning.dpu.nvidia.com)
     # DPU hardware lifecycle: discovery, inventory, BFB images, provisioning.
@@ -444,7 +693,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="DPU Device",
         description="Physical DPU inventory (serial, BMC IP, PCI addr, conditions)",
-        category=ResourceCategory.DPF
+        category=ResourceCategory.DPF,
     ),
     "dpuset": K8sResourceType(
         api_group=ApiGroups.DPF_PROVISIONING,
@@ -454,7 +703,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="DPU Set",
         description="Desired state for a group of DPUs (BFB image, flavor, rolling update)",
-        category=ResourceCategory.DPF
+        category=ResourceCategory.DPF,
     ),
     "dpucluster": K8sResourceType(
         api_group=ApiGroups.DPF_PROVISIONING,
@@ -464,7 +713,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="DPU Cluster",
         description="DPU cluster control plane (Kamaji or static kubeconfig)",
-        category=ResourceCategory.DPF
+        category=ResourceCategory.DPF,
     ),
     "dpu": K8sResourceType(
         api_group=ApiGroups.DPF_PROVISIONING,
@@ -474,7 +723,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="DPU",
         description="Individual DPU lifecycle (created by DPUSet controller)",
-        category=ResourceCategory.DPF
+        category=ResourceCategory.DPF,
     ),
     "bfb": K8sResourceType(
         api_group=ApiGroups.DPF_PROVISIONING,
@@ -484,7 +733,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="BFB Image",
         description="BlueField Boot image (downloaded from URL, flashed to DPUs)",
-        category=ResourceCategory.DPF
+        category=ResourceCategory.DPF,
     ),
     "dpuflavor": K8sResourceType(
         api_group=ApiGroups.DPF_PROVISIONING,
@@ -494,7 +743,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="DPU Flavor",
         description="Config template for DPU system-level settings",
-        category=ResourceCategory.DPF
+        category=ResourceCategory.DPF,
     ),
     "dpunode": K8sResourceType(
         api_group=ApiGroups.DPF_PROVISIONING,
@@ -504,7 +753,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="DPU Node",
         description="Node-level grouping of DPUDevices",
-        category=ResourceCategory.DPF
+        category=ResourceCategory.DPF,
     ),
     "dpudiscovery": K8sResourceType(
         api_group=ApiGroups.DPF_PROVISIONING,
@@ -514,7 +763,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="DPU Discovery",
         description="Auto-discover DPUs by scanning BMC IP ranges (zero-trust mode)",
-        category=ResourceCategory.DPF
+        category=ResourceCategory.DPF,
     ),
     "dpunodemaintenance": K8sResourceType(
         api_group=ApiGroups.DPF_PROVISIONING,
@@ -524,9 +773,8 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="DPU Node Maintenance",
         description="Node drain coordination for DPU maintenance operations",
-        category=ResourceCategory.DPF
+        category=ResourceCategory.DPF,
     ),
-
     # =========================================================================
     # NVIDIA DPF RESOURCES — Services (svc.dpu.nvidia.com)
     # DPU service lifecycle: Helm charts, service chains, interfaces.
@@ -539,7 +787,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="DPU Service",
         description="Deploy a Helm chart to DPU nodes (via ArgoCD)",
-        category=ResourceCategory.DPF
+        category=ResourceCategory.DPF,
     ),
     "dpudeployment": K8sResourceType(
         api_group=ApiGroups.DPF_SERVICE,
@@ -549,7 +797,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="DPU Deployment",
         description="Group of DPUServices + DPUSets for coordinated deployment",
-        category=ResourceCategory.DPF
+        category=ResourceCategory.DPF,
     ),
     "dpuservicechain": K8sResourceType(
         api_group=ApiGroups.DPF_SERVICE,
@@ -559,7 +807,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="DPU Service Chain",
         description="OVS flows for traffic steering between service functions",
-        category=ResourceCategory.DPF
+        category=ResourceCategory.DPF,
     ),
     "dpuserviceinterface": K8sResourceType(
         api_group=ApiGroups.DPF_SERVICE,
@@ -569,7 +817,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="DPU Service Interface",
         description="OVS ports for service function chains",
-        category=ResourceCategory.DPF
+        category=ResourceCategory.DPF,
     ),
     "dpuserviceipam": K8sResourceType(
         api_group=ApiGroups.DPF_SERVICE,
@@ -579,7 +827,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="DPU Service IPAM",
         description="IP address management for DPU service chains",
-        category=ResourceCategory.DPF
+        category=ResourceCategory.DPF,
     ),
     "dpuservicecredreq": K8sResourceType(
         api_group=ApiGroups.DPF_SERVICE,
@@ -589,7 +837,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="DPU Service Credential",
         description="Cross-cluster auth (host ↔ DPU cluster)",
-        category=ResourceCategory.DPF
+        category=ResourceCategory.DPF,
     ),
     "servicechain": K8sResourceType(
         api_group=ApiGroups.DPF_SERVICE,
@@ -599,7 +847,7 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="Service Chain",
         description="Service chain definition for DPU traffic steering",
-        category=ResourceCategory.DPF
+        category=ResourceCategory.DPF,
     ),
     "serviceinterface": K8sResourceType(
         api_group=ApiGroups.DPF_SERVICE,
@@ -609,9 +857,8 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="Service Interface",
         description="Service interface for DPU service function chains",
-        category=ResourceCategory.DPF
+        category=ResourceCategory.DPF,
     ),
-
     # =========================================================================
     # NVIDIA DPF RESOURCES — Operator (operator.dpu.nvidia.com)
     # =========================================================================
@@ -623,9 +870,8 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         namespaced=True,
         display_name="DPF Operator Config",
         description="Global DPF operator configuration (system components, networking)",
-        category=ResourceCategory.DPF
+        category=ResourceCategory.DPF,
     ),
-
     # =========================================================================
     # F5 CIS RESOURCES (cis.f5.com) — D-023 Phase 1
     # Display overlay only (D-019): unknown CIS kinds still surface as
@@ -681,12 +927,116 @@ RESOURCE_REGISTRY: dict[str, K8sResourceType] = {
         description="F5 CIS Policy — reusable traffic policy for VirtualServer/TransportServer (EOL Apr 2026)",
         category=ResourceCategory.F5_CIS,
     ),
+    # =========================================================================
+    # F5 CNF (Cloud-Native Network Functions) RESOURCES (k8s.f5net.com)
+    # =========================================================================
+    "f5bigdns": K8sResourceType(
+        api_group=ApiGroups.F5_NET,
+        api_version="v1",
+        kind="F5BigDns",
+        plural="f5bigdnses",
+        namespaced=True,
+        display_name="F5 CNF DNS Server",
+        description="F5 Cloud-Native Network Function high-performance DNS server and cache profile",
+        category=ResourceCategory.F5_CNF,
+    ),
+    "f5bigcgnat": K8sResourceType(
+        api_group=ApiGroups.F5_NET,
+        api_version="v1",
+        kind="F5BigCgnat",
+        plural="f5bigcgnats",
+        namespaced=True,
+        display_name="F5 Carrier-Grade NAT",
+        description="F5 CNF Large-Scale NAT44 / CGNAT policy",
+        category=ResourceCategory.F5_CNF,
+    ),
+    "f5bigdiameter": K8sResourceType(
+        api_group=ApiGroups.F5_NET,
+        api_version="v1",
+        kind="F5BigDiameter",
+        plural="f5bigdiameters",
+        namespaced=True,
+        display_name="F5 Diameter Endpoint",
+        description="F5 CNF 4G/5G Diameter signaling endpoint and routing profile",
+        category=ResourceCategory.F5_CNF,
+    ),
+    "f5bigipam": K8sResourceType(
+        api_group=ApiGroups.F5_NET,
+        api_version="v1",
+        kind="F5BigIpam",
+        plural="f5bigipams",
+        namespaced=True,
+        display_name="F5 CNF IPAM",
+        description="F5 CNF IP address management pool for secondary interfaces",
+        category=ResourceCategory.F5_CNF,
+    ),
+    "f5bignatpool": K8sResourceType(
+        api_group=ApiGroups.F5_NET,
+        api_version="v1",
+        kind="F5BigNatPool",
+        plural="f5bignatpools",
+        namespaced=True,
+        display_name="F5 NAT Pool",
+        description="F5 CNF Public IP NAT translation pool",
+        category=ResourceCategory.F5_CNF,
+    ),
+    "f5bigdnscache": K8sResourceType(
+        api_group=ApiGroups.F5_NET,
+        api_version="v1",
+        kind="F5BigDnsCache",
+        plural="f5-big-dns-caches",
+        namespaced=True,
+        display_name="F5 DNS Cache Resolver",
+        description="TMM DNS cache and resolver (required as aigw-dns-resolver for AI Gateway upstream resolution)",
+        category=ResourceCategory.F5_CNF,
+    ),
+    "f5biggslbinstance": K8sResourceType(
+        api_group=ApiGroups.F5_K8S,
+        api_version="v1",
+        kind="F5BigGslbInstance",
+        plural="f5-big-gslb-instances",
+        namespaced=True,
+        display_name="F5 GSLB Instance",
+        description="Global Server Load Balancing (GSLB) engine instance",
+        category=ResourceCategory.F5_CNF,
+    ),
+    "f5biggslbzone": K8sResourceType(
+        api_group=ApiGroups.F5_K8S,
+        api_version="v1",
+        kind="F5BigGslbZone",
+        plural="f5-big-gslb-zones",
+        namespaced=True,
+        display_name="F5 GSLB Zone",
+        description="Global Server Load Balancing DNS zone configuration",
+        category=ResourceCategory.F5_CNF,
+    ),
+    "f5biggslbpool": K8sResourceType(
+        api_group=ApiGroups.F5_K8S,
+        api_version="v1",
+        kind="F5BigGslbPool",
+        plural="f5-big-gslb-pools",
+        namespaced=True,
+        display_name="F5 GSLB Pool",
+        description="Global Server Load Balancing multi-site endpoint pool",
+        category=ResourceCategory.F5_CNF,
+    ),
+    "f5biggslbwideip": K8sResourceType(
+        api_group=ApiGroups.F5_K8S,
+        api_version="v1",
+        kind="F5BigGslbWideip",
+        plural="f5-big-gslb-wideips",
+        namespaced=True,
+        display_name="F5 GSLB WideIP",
+        description="Global Server Load Balancing WideIP domain routing rule",
+        category=ResourceCategory.F5_CNF,
+    ),
 }
 
 
 # =============================================================================
 # HELPER FUNCTIONS
 # =============================================================================
+
 
 def get_resource_type(key: str) -> K8sResourceType:
     """Get a resource type by key."""

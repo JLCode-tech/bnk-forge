@@ -94,7 +94,7 @@ export function ValueJourneyBanner() {
           <Badge
             variant="outline"
             className={cn(
-              'text-[10px]',
+              'text-2xs',
               allDone
                 ? 'bg-success/10 text-success border-success/20'
                 : 'bg-primary/10 text-primary border-primary/20'

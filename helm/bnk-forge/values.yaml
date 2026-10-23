@@ -4,7 +4,7 @@
 # internal mirror.
 
 global:
-  imageRegistry: ghcr.io/f5devcentral
+  imageRegistry: ghcr.io/jlcode-tech
   imagePullSecrets: []
   # Storage class for shared (RWX) state. Set to a class that supports
   # ReadWriteMany (NFS, CephFS, EFS, etc.). If empty, cluster default is used

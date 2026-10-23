@@ -89,14 +89,19 @@ export function LicenseStatusCard({ clusterId }: LicenseStatusCardProps) {
     isFetching,
   } = useLicenseStatus(clusterId);
 
-  const { data: cwcStatus } = useCWCStatus(clusterId, !isLoading);
+  const { data: cwcStatus } = useCWCStatus(clusterId);
 
   if (isLoading) {
     return (
       <div className="rounded-lg border border-border bg-card p-4">
-        <div className="flex items-center gap-3">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">Checking license status...</span>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            <div>
+              <span className="text-sm font-medium text-foreground">License Status</span>
+              <p className="text-xs text-muted-foreground">Checking license status...</p>
+            </div>
+          </div>
         </div>
       </div>
     );

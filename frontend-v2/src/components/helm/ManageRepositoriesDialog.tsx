@@ -197,7 +197,7 @@ export function ManageRepositoriesDialog({ open, onOpenChange }: ManageRepositor
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <code className="text-sm font-mono font-semibold truncate">{repo.name}</code>
-                          <Badge variant="outline" className="text-[10px] flex-shrink-0">
+                          <Badge variant="outline" className="text-2xs flex-shrink-0">
                             {repo.url.includes('https://') ? 'HTTPS' : 'HTTP'}
                           </Badge>
                         </div>
@@ -237,7 +237,7 @@ export function ManageRepositoriesDialog({ open, onOpenChange }: ManageRepositor
                       <div className="flex items-center gap-2 mb-1">
                         <span className="font-semibold text-sm">{repo.name}</span>
                         {isAdded && (
-                          <Badge variant="success" className="text-[10px]">
+                          <Badge variant="success" className="text-2xs">
                             Added
                           </Badge>
                         )}

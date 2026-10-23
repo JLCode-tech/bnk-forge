@@ -127,7 +127,7 @@ function ChartCard({ chart, onInstall }: ChartCardProps) {
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-sm truncate mb-1">{chart.name}</h3>
           {chart.version && (
-            <Badge variant="outline" className="text-[10px]">
+            <Badge variant="outline" className="text-2xs">
               v{chart.version}
             </Badge>
           )}
@@ -160,7 +160,7 @@ function ChartCard({ chart, onInstall }: ChartCardProps) {
       </div>
 
       {chart.app_version && (
-        <div className="mt-3 pt-3 border-t border-border text-[10px] text-muted-foreground">
+        <div className="mt-3 pt-3 border-t border-border text-2xs text-muted-foreground">
           App Version: {chart.app_version}
         </div>
       )}

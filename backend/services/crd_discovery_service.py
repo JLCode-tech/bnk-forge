@@ -8,6 +8,7 @@ registry for curated metadata, and caches per-cluster with a short TTL.
 Reach: direct kubeconfig only (same set as the generic resource route).
 Operator-relayed CRD discovery is deferred (see D-018 Out of Scope).
 """
+
 from __future__ import annotations
 
 import logging
@@ -21,7 +22,7 @@ from core.cache import cache
 from core.errors import AppError, BadRequestError, NotFoundError
 from core.k8s_resource_registry import get_resource_type, list_resource_types
 from core.k8s_types import K8sResourceType
-from schemas.k8s import CRDInfo, CrdListEnvelope
+from schemas.k8s import CRDInfo, CrdListEnvelope, CrdPrinterColumn, CrdSchemaResponse
 from services.kubernetes._base import KubernetesServiceBase
 from services.kubernetes._hardened import translate_k8s_exception
 from services.reachability import with_breaker
@@ -41,6 +42,15 @@ def _get_attr(obj: Any, key: str, default: Any = None) -> Any:
     if isinstance(obj, dict):
         return obj.get(key, default)
     return getattr(obj, key, default)
+
+
+def _strip_none(obj: Any) -> Any:
+    """Recursively strip None values from dicts/lists produced by kubernetes .to_dict()."""
+    if isinstance(obj, dict):
+        return {k: _strip_none(v) for k, v in obj.items() if v is not None}
+    if isinstance(obj, list):
+        return [_strip_none(item) for item in obj if item is not None]
+    return obj
 
 
 def _pick_version(versions: list[Any]) -> str | None:
@@ -294,6 +304,119 @@ class CrdDiscoveryService(KubernetesServiceBase):
             return crd.model_copy(update={"version": registry_entry.api_version})
         return crd
 
+    @with_breaker("cluster", target_id_arg="cluster_id")
+    def get_crd_schema(
+        self,
+        cluster_id: int,
+        crd_name: str,
+        version: str | None = None,
+    ) -> CrdSchemaResponse:
+        """Return the openAPIV3Schema, additionalPrinterColumns, shortNames, and status.conditions for a CRD."""
+        cluster = self.get_cluster(cluster_id)
+
+        cache_key = f"crd_discovery:{cluster_id}"
+        cached_raw: list[dict[str, Any]] | None = cache.get(cache_key)
+        if cached_raw is None:
+            raw_crds = self._discover(cluster)
+            cache.set(cache_key, raw_crds, CRD_CACHE_TTL_SECONDS)
+        else:
+            raw_crds = cached_raw
+
+        target_raw: dict[str, Any] | None = None
+        needle = crd_name.strip().lower()
+        for raw in raw_crds:
+            meta_name = (raw.get("metadata") or {}).get("name") or ""
+            spec = raw.get("spec") or {}
+            names = spec.get("names") or {}
+            plural = names.get("plural") or ""
+            kind = names.get("kind") or ""
+            group = spec.get("group") or ""
+            fq_name = meta_name or f"{plural}.{group}"
+            if fq_name.lower() == needle or plural.lower() == needle or kind.lower() == needle:
+                target_raw = raw
+                break
+
+        if target_raw is None:
+            raise NotFoundError("CRD", crd_name)
+
+        spec = target_raw.get("spec") or {}
+        names = spec.get("names") or {}
+        group = spec.get("group") or ""
+        kind = names.get("kind") or ""
+        plural = names.get("plural") or ""
+        singular = names.get("singular") or None
+        short_names = list(names.get("short_names") or names.get("shortNames") or [])
+        scope = spec.get("scope") or "Namespaced"
+        fq_name = (target_raw.get("metadata") or {}).get("name") or f"{plural}.{group}"
+
+        versions_raw = spec.get("versions") or []
+        all_version_names = [str(_get_attr(v, "name")) for v in versions_raw if _get_attr(v, "name")]
+        selected_version = version or _pick_version(versions_raw)
+
+        ver_obj: dict[str, Any] = {}
+        for v in versions_raw:
+            v_dict = v.to_dict() if hasattr(v, "to_dict") else (v if isinstance(v, dict) else {})
+            if v_dict.get("name") == selected_version:
+                ver_obj = v_dict
+                break
+        if not ver_obj and versions_raw:
+            if version is not None:
+                raise NotFoundError("CRD version", f"{crd_name}@{version}")
+            first_v = versions_raw[0]
+            ver_obj = (
+                first_v.to_dict() if hasattr(first_v, "to_dict") else (first_v if isinstance(first_v, dict) else {})
+            )
+
+        schema_wrapper = ver_obj.get("schema") or {}
+        if hasattr(schema_wrapper, "to_dict"):
+            schema_wrapper = schema_wrapper.to_dict()
+        raw_openapi = schema_wrapper.get("open_apiv3_schema") or schema_wrapper.get("openAPIV3Schema") or {}
+        if hasattr(raw_openapi, "to_dict"):
+            raw_openapi = raw_openapi.to_dict()
+        cleaned_openapi = _strip_none(raw_openapi) if isinstance(raw_openapi, dict) else {}
+
+        raw_cols = ver_obj.get("additional_printer_columns") or ver_obj.get("additionalPrinterColumns") or []
+        printer_columns: list[CrdPrinterColumn] = []
+        for col in raw_cols:
+            col_dict = col.to_dict() if hasattr(col, "to_dict") else (col if isinstance(col, dict) else {})
+            col_name = col_dict.get("name")
+            if not col_name:
+                continue
+            printer_columns.append(
+                CrdPrinterColumn(
+                    name=str(col_name),
+                    type=str(col_dict.get("type") or "string"),
+                    json_path=str(col_dict.get("json_path") or col_dict.get("jsonPath") or ""),
+                    description=col_dict.get("description"),
+                )
+            )
+
+        status_obj = target_raw.get("status") or {}
+        if hasattr(status_obj, "to_dict"):
+            status_obj = status_obj.to_dict()
+        raw_conditions = status_obj.get("conditions") or []
+        conditions: list[dict[str, Any]] = []
+        for cond in raw_conditions:
+            cond_dict = cond.to_dict() if hasattr(cond, "to_dict") else (cond if isinstance(cond, dict) else {})
+            cleaned_cond = _strip_none(cond_dict)
+            if isinstance(cleaned_cond, dict) and cleaned_cond:
+                conditions.append(cleaned_cond)
+
+        return CrdSchemaResponse(
+            name=fq_name,
+            kind=kind,
+            plural=plural,
+            singular=singular,
+            group=group,
+            version=selected_version,
+            scope=scope,
+            short_names=short_names,
+            versions=all_version_names,
+            open_apiv3_schema=cleaned_openapi,
+            additional_printer_columns=printer_columns,
+            conditions=conditions,
+        )
+
     def _discover(self, cluster: Any) -> list[dict[str, Any]]:
         """Fetch all CRDs from the cluster via ApiextensionsV1Api.
 
@@ -303,9 +426,9 @@ class CrdDiscoveryService(KubernetesServiceBase):
         try:
             api_client = self.load_kubeconfig(cluster)
             ext_api = client.ApiextensionsV1Api(api_client)
-            result = ext_api.list_custom_resource_definition(_request_timeout=(3, 8))
+            result = ext_api.list_custom_resource_definition(_request_timeout=(5, 15))
             raw = []
-            for item in (result.items or []):
+            for item in result.items or []:
                 if hasattr(item, "to_dict"):
                     raw.append(item.to_dict())
                 elif isinstance(item, dict):

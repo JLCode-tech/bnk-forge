@@ -88,7 +88,88 @@ BNK_231_RELEASE = {
     "feature_flags": {"ipv6": False, "tmm_node_labels": True},
 }
 
-SEED_RELEASES = [BNK_21_PROFILE, BNK_22_PROFILE, BNK_231_RELEASE]
+# BNK 2.4.0 GA — verified against CloudDocs 2.4.0 release notes
+BNK_24_RELEASE = {
+    "name": "bnk-2.4",
+    "display_name": "BNK 2.4 (GA)",
+    "description": "BNK 2.4 General Availability release with GAIE and F5 Endpoint Picker",
+    "is_default": False,
+    "is_active": True,
+    "source_type": "manual",
+    "bnk_manifest_version": "2.4.0",  # CNEInstance spec.manifestVersion; FLO resolves bigip-k8s-manifest-2.4.0.yaml
+    "bnk_cr_kind": "CNEInstance",
+    "flo_version": "v2.30.0-0.5.2",
+    "k8s_version": "1.32.0",
+    "doca_version": "3.2.0",
+    "containerd_version": "1.7.23",
+    "runc_version": "1.2.1",
+    "calico_version": "3.28.1",
+    "cert_manager_version": "v1.16.2",
+    "gateway_api_version": "1.2.0",
+    "multus_version": "4.1.0",
+    "sriov_version": "1.4.0",
+    "storage_class_type": "local-path",
+    "storage_provisioner": "rancher.io/local-path",
+    "feature_flags": {
+        "ipv6": True,
+        "tmm_node_labels": True,
+        "infra_crd": True,
+        "gateway_settings": True,
+        "egress_gateway": True,
+        "epp_ai": True,
+        "agentic_mcp": True,
+        "gaie_inference": True,
+        "observer_telemetry": True,
+    },
+}
+
+# BNK 2.4.1 GA — verified against CloudDocs 2.4.1 release notes
+BNK_241_RELEASE = {
+    "name": "bnk-2.4.1",
+    "display_name": "BNK 2.4.1 (GA)",
+    "description": "BNK 2.4.1 General Availability release with LLM Gateway, CNE HA, BGP BMP, and Analytics 2.4",
+    "is_default": False,
+    "is_active": True,
+    "source_type": "manual",
+    "bnk_manifest_version": "2.4.1-3.2850.1-0.0.9",
+    "bnk_cr_kind": "CNEInstance",
+    "flo_version": "v2.30.1-0.0.8",
+    "k8s_version": "1.35.0",
+    "doca_version": "3.2.0",
+    "containerd_version": "1.7.23",
+    "runc_version": "1.2.1",
+    "calico_version": "3.28.1",
+    "cert_manager_version": "v1.16.2",
+    "gateway_api_version": "1.2.0",
+    "multus_version": "4.1.0",
+    "sriov_version": "1.4.0",
+    "storage_class_type": "local-path",
+    "storage_provisioner": "rancher.io/local-path",
+    "feature_flags": {
+        "ipv6": True,
+        "tmm_node_labels": True,
+        "infra_crd": True,
+        "gateway_settings": True,
+        "egress_gateway": True,
+        "epp_ai": True,
+        "agentic_mcp": True,
+        "gaie_inference": True,
+        "observer_telemetry": True,
+        "llm_gateway": True,
+        "cne_ha": True,
+        "bgp_bmp": True,
+        "pseudocni_dpu": True,
+        "analytics_24": True,
+    },
+}
+
+SEED_RELEASES = [
+    BNK_21_PROFILE,
+    BNK_22_PROFILE,
+    BNK_231_RELEASE,
+    BNK_24_RELEASE,
+    BNK_241_RELEASE,
+]
 
 
 class BnkDeployableReleaseService:
@@ -99,14 +180,13 @@ class BnkDeployableReleaseService:
 
     def list_profiles(self) -> DeployableReleaseListResponse:
         releases = self.db.query(BnkDeployableRelease).order_by(BnkDeployableRelease.name).all()
-        return DeployableReleaseListResponse(
-            releases=[self._to_response(r) for r in releases]
-        )
+        return DeployableReleaseListResponse(releases=[self._to_response(r) for r in releases])
 
     def get_profile(self, profile_id: int) -> DeployableReleaseResponse:
         release = self.db.query(BnkDeployableRelease).filter(BnkDeployableRelease.id == profile_id).first()
         if not release:
             from core.errors import NotFoundError
+
             raise NotFoundError("deployable_release", profile_id)
         return self._to_response(release)
 
@@ -126,9 +206,9 @@ class BnkDeployableReleaseService:
 
         seeded = 0
         for release_data in SEED_RELEASES:
-            existing = self.db.query(BnkDeployableRelease).filter(
-                BnkDeployableRelease.name == release_data["name"]
-            ).first()
+            existing = (
+                self.db.query(BnkDeployableRelease).filter(BnkDeployableRelease.name == release_data["name"]).first()
+            )
             if not existing:
                 row_data = dict(release_data)
                 if release_data["name"] == "bnk-2.3.1" and bnk_release_id_231 is not None:
@@ -144,9 +224,8 @@ class BnkDeployableReleaseService:
         """Look up BnkRelease.id by flo_version_prefix; returns None if not found."""
         try:
             from models.bnk_release import BnkRelease
-            row = self.db.query(BnkRelease).filter(
-                BnkRelease.flo_version_prefix == flo_version_prefix
-            ).first()
+
+            row = self.db.query(BnkRelease).filter(BnkRelease.flo_version_prefix == flo_version_prefix).first()
             return row.id if row else None
         except Exception:
             return None
@@ -155,6 +234,7 @@ class BnkDeployableReleaseService:
         release = self.db.query(BnkDeployableRelease).filter(BnkDeployableRelease.id == release_id).first()
         if not release:
             from core.errors import NotFoundError
+
             raise NotFoundError("deployable_release", release_id)
         release.is_active = is_active
         self.db.flush()
@@ -165,6 +245,7 @@ class BnkDeployableReleaseService:
         release = self.db.query(BnkDeployableRelease).filter(BnkDeployableRelease.id == release_id).first()
         if not release:
             from core.errors import NotFoundError
+
             raise NotFoundError("deployable_release", release_id)
         # Clear existing default(s) then set the target.
         self.db.query(BnkDeployableRelease).filter(BnkDeployableRelease.is_default.is_(True)).update(

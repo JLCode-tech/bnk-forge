@@ -7,11 +7,11 @@
  * the degradation envelope. Chrome uses the shared theme tokens; the chart
  * itself is passed as children.
  */
-import * as React from 'react';
-import { AlertTriangle } from 'lucide-react';
-import { SectionCard } from '@/components/ui/section-card';
-import { Skeleton } from '@/components/ui/skeleton';
-import { cn } from '@/lib/utils';
+import * as React from "react";
+import { AlertTriangle } from "lucide-react";
+import { SectionCard } from "@/components/ui/section-card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 export interface ChartLegendItem {
   name: string;
@@ -46,8 +46,8 @@ function useAnimatedNumber(target: number | undefined): number {
   React.useEffect(() => {
     if (target == null) return;
     const prefersReduced =
-      typeof window !== 'undefined' &&
-      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (prefersReduced) {
       setValue(target);
       fromRef.current = target;
@@ -86,26 +86,33 @@ export function ChartCard({
 }: ChartCardProps) {
   const animated = useAnimatedNumber(totalValue);
   const headline =
-    total ?? (totalValue != null ? Math.round(animated).toLocaleString() : undefined);
+    total ??
+    (totalValue != null ? Math.round(animated).toLocaleString() : undefined);
 
   const shown = legend?.slice(0, maxLegend) ?? [];
   const hiddenCount = (legend?.length ?? 0) - shown.length;
 
   return (
-    <SectionCard compact className={cn('flex flex-col', className)}>
+    <SectionCard compact className={cn("flex flex-col", className)}>
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="min-w-0">
-          <h4 className="text-sm font-semibold text-foreground truncate">{title}</h4>
+          <h4 className="text-sm font-semibold text-foreground truncate">
+            {title}
+          </h4>
           {headline != null && (
             <span
-              className="text-xl font-semibold font-mono text-foreground tabular-nums"
+              className="text-xl font-semibold text-foreground tabular-nums"
               aria-live="polite"
             >
               {headline}
             </span>
           )}
         </div>
-        {controls && <div className="flex items-center gap-1.5 flex-shrink-0">{controls}</div>}
+        {controls && (
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {controls}
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -113,16 +120,21 @@ export function ChartCard({
       ) : !available ? (
         <div className="flex h-[200px] flex-col items-center justify-center gap-2 text-center text-muted-foreground">
           <AlertTriangle className="h-5 w-5 text-warning" />
-          <p className="text-xs">{unavailableReason || 'Data source unavailable'}</p>
+          <p className="text-xs">
+            {unavailableReason || "Data source unavailable"}
+          </p>
         </div>
       ) : (
-        <div className="flex-1">{children}</div>
+        <div className="flex-1 min-w-0">{children}</div>
       )}
 
       {!loading && available && shown.length > 0 && (
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
           {shown.map((item) => (
-            <div key={item.name} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <div
+              key={item.name}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground"
+            >
               <span
                 className="h-2 w-2 rounded-full flex-shrink-0"
                 style={{ backgroundColor: item.color }}
@@ -131,7 +143,9 @@ export function ChartCard({
             </div>
           ))}
           {hiddenCount > 0 && (
-            <span className="text-xs text-muted-foreground/70">+{hiddenCount} more</span>
+            <span className="text-xs text-muted-foreground/70">
+              +{hiddenCount} more
+            </span>
           )}
         </div>
       )}

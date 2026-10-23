@@ -27,6 +27,11 @@ import type {
   UpdatePolicyRequest,
   UpdateStrategyRequest,
   UpdateTargetRequest,
+  FleetDeployableConfig,
+  CreateFleetConfigRequest,
+  UpdateFleetConfigRequest,
+  DeployFleetConfigRequest,
+  DeployFleetConfigResponse,
 } from '@/types/fleet';
 
 export const fleetApi = {
@@ -322,4 +327,44 @@ export const fleetApi = {
     );
     return data;
   },
+
+  // ---------------------------------------------------------------------------
+  // Fleet Deployable Configs & Deploy
+  // ---------------------------------------------------------------------------
+
+  /** List saved fleet deployable configs. */
+  listFleetConfigs: async (params?: { fleet_id?: number; category?: string }): Promise<FleetDeployableConfig[]> => {
+    const { data } = await apiClient.get<FleetDeployableConfig[]>('/api/fleet/configs', { params });
+    return data;
+  },
+
+  /** Get a single deployable config by ID. */
+  getFleetConfig: async (configId: number): Promise<FleetDeployableConfig> => {
+    const { data } = await apiClient.get<FleetDeployableConfig>(`/api/fleet/configs/${configId}`);
+    return data;
+  },
+
+  /** Create/save a deployable config. */
+  createFleetConfig: async (body: CreateFleetConfigRequest): Promise<FleetDeployableConfig> => {
+    const { data } = await apiClient.post<FleetDeployableConfig>('/api/fleet/configs', body);
+    return data;
+  },
+
+  /** Update an existing deployable config. */
+  updateFleetConfig: async (configId: number, body: UpdateFleetConfigRequest): Promise<FleetDeployableConfig> => {
+    const { data } = await apiClient.put<FleetDeployableConfig>(`/api/fleet/configs/${configId}`, body);
+    return data;
+  },
+
+  /** Delete a deployable config. */
+  deleteFleetConfig: async (configId: number): Promise<void> => {
+    await apiClient.delete(`/api/fleet/configs/${configId}`);
+  },
+
+  /** Deploy or dry-run a config across multiple target clusters. */
+  deployFleetConfig: async (body: DeployFleetConfigRequest): Promise<DeployFleetConfigResponse> => {
+    const { data } = await apiClient.post<DeployFleetConfigResponse>('/api/fleet/configs/deploy', body);
+    return data;
+  },
 };
+

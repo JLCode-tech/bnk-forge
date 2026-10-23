@@ -1,16 +1,17 @@
-import React, { useRef } from 'react';
-import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import React, { useRef } from "react";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { Search, RefreshCw, LayoutGrid } from 'lucide-react';
-import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+} from "@/components/ui/select";
+import { Search, RefreshCw, LayoutGrid } from "lucide-react";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { useHeaderMetadata } from "./Header";
 
 interface Cluster {
   id: number;
@@ -25,13 +26,15 @@ interface Project {
 
 interface ResourcePageHeaderProps {
   title?: string;
+  titleBadge?: React.ReactNode;
   subtitle?: React.ReactNode;
   projects?: Project[];
   selectedProjectId?: number | null;
-  onProjectChange?: (id: number) => void;
+  onProjectChange?: (id: number | null) => void;
   clusters: Cluster[];
   selectedClusterId: number | null;
-  onClusterChange: (id: number) => void;
+  onClusterChange: (id: number | null) => void;
+  allowAllClusters?: boolean;
   namespaces: { name: string }[] | string[];
   selectedNamespace: string;
   onNamespaceChange: (ns: string) => void;
@@ -44,7 +47,8 @@ interface ResourcePageHeaderProps {
 }
 
 export function ResourcePageHeader({
-  title,
+  title: propTitle,
+  titleBadge,
   subtitle,
   projects,
   selectedProjectId,
@@ -52,6 +56,7 @@ export function ResourcePageHeader({
   clusters,
   selectedClusterId,
   onClusterChange,
+  allowAllClusters = false,
   namespaces,
   selectedNamespace,
   onNamespaceChange,
@@ -62,155 +67,232 @@ export function ResourcePageHeader({
   children,
   className,
 }: ResourcePageHeaderProps) {
+  const routeHandle = useHeaderMetadata();
+  const title = propTitle ?? routeHandle?.title;
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useKeyboardShortcuts([
     {
-      key: '/',
+      key: "/",
       action: (e) => {
         e.preventDefault();
         searchInputRef.current?.focus();
       },
-      allowInInput: true,
+      allowInInput: false,
     },
   ]);
 
   // Normalize namespaces to strings
-  const namespaceList = namespaces.map(ns => typeof ns === 'string' ? ns : ns.name);
+  const namespaceList = namespaces.map((ns) =>
+    typeof ns === "string" ? ns : ns.name,
+  );
 
   return (
-    <div className={cn(
-      'border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/75 px-6 py-4 flex flex-col gap-4 sticky top-0 z-20',
-      className
-    )}>
-      {/* Bold page title */}
-      {title && (
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">{title}</h1>
-          {subtitle && (
-            <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>
-          )}
-        </div>
+    <div
+      data-testid="resource-page-header"
+      className={cn(
+        "border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/75 px-4 py-2 sticky top-0 z-20",
+        className,
       )}
-
-      {/* Selector + search + actions row */}
-      <div className="flex items-center gap-3 flex-wrap">
-        {/* Optional Project Selector */}
-        {projects && onProjectChange && (
-          <div className="flex items-center gap-2">
-            <Select
-              value={selectedProjectId?.toString() || ''}
-              onValueChange={(value) => onProjectChange(parseInt(value))}
-            >
-              <SelectTrigger className="w-[180px] h-9">
-                <div className="flex items-center gap-2 min-w-0">
-                  <LayoutGrid className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                  <span className="min-w-0 flex-1 truncate text-left">
-                    <SelectValue placeholder="Select Project" />
+    >
+      {/* Compact single-row: title + search on left, scope selectors + actions on right */}
+      <div className="flex items-center justify-between gap-2.5 flex-wrap">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          {title && (
+            <div className="flex items-center gap-2 min-w-0 shrink-0">
+              <h1 className="text-sm font-semibold tracking-tight text-foreground whitespace-nowrap">
+                {title}
+              </h1>
+              {titleBadge}
+              {subtitle &&
+                (typeof subtitle === "string" ? (
+                  <span className="text-xs text-muted-foreground truncate hidden xl:inline max-w-[260px]">
+                    {subtitle}
                   </span>
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                {projects.map((project) => (
-                  <SelectItem key={project.id} value={project.id.toString()}>
-                    {project.name}
-                  </SelectItem>
+                ) : (
+                  <div className="text-xs text-muted-foreground truncate hidden xl:block max-w-[260px]">
+                    {subtitle}
+                  </div>
                 ))}
-              </SelectContent>
-            </Select>
-            <span className="text-lg font-light text-muted-foreground/50">/</span>
-          </div>
-        )}
+            </div>
+          )}
 
-        {/* Cluster Selector */}
-        <Select
-          value={selectedClusterId?.toString() || ''}
-          onValueChange={(value) => onClusterChange(parseInt(value))}
-          disabled={!clusters.length || (projects && !selectedProjectId)}
-        >
-          <SelectTrigger className="w-[200px] h-9">
-            <SelectValue placeholder="Select Cluster" />
-          </SelectTrigger>
-          <SelectContent>
-            {clusters.length === 0 ? (
-               <div className="p-2 text-xs text-muted-foreground text-center">No clusters found</div>
-            ) : (
-              clusters.map((cluster) => (
-                <SelectItem key={cluster.id} value={cluster.id.toString()}>
+          {/* Search Input */}
+          <div className="relative min-w-[180px] max-w-xs flex-1">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              ref={searchInputRef}
+              data-testid="resource-search-input"
+              placeholder="Search... (/)"
+              aria-label="Search resources"
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="pl-8 h-8 text-xs transition-all focus:w-full"
+            />
+          </div>
+        </div>
+
+        {/* Right-Aligned Scope Selectors + Actions */}
+        <div className="ml-auto flex items-center gap-2 flex-wrap">
+          {/* Optional Project Selector */}
+          {projects && onProjectChange && (
+            <div className="flex items-center gap-1.5">
+              <Select
+                value={
+                  selectedProjectId !== null && selectedProjectId !== undefined
+                    ? selectedProjectId.toString()
+                    : "all"
+                }
+                onValueChange={(value) => {
+                  if (value === "all") {
+                    onProjectChange(null);
+                  } else {
+                    onProjectChange(parseInt(value));
+                  }
+                }}
+              >
+                <SelectTrigger
+                  data-testid="project-selector"
+                  className="w-[150px] h-8 text-xs"
+                >
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <LayoutGrid className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                    <span className="min-w-0 flex-1 truncate text-left">
+                      <SelectValue placeholder="All Projects" />
+                    </span>
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="h-2 w-2 rounded-full flex-shrink-0 bg-primary/60" />
+                      <span className="truncate font-medium">All Projects</span>
+                    </div>
+                  </SelectItem>
+                  {projects.map((project) => (
+                    <SelectItem key={project.id} value={project.id.toString()}>
+                      {project.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-sm font-light text-muted-foreground/50">
+                /
+              </span>
+            </div>
+          )}
+
+          {/* Cluster Scope Selector */}
+          <Select
+            value={
+              selectedClusterId !== null && selectedClusterId !== undefined
+                ? selectedClusterId.toString()
+                : allowAllClusters
+                  ? "all"
+                  : ""
+            }
+            onValueChange={(value) => {
+              if (value === "all") {
+                onClusterChange(null);
+              } else {
+                onClusterChange(parseInt(value));
+              }
+            }}
+            disabled={!clusters.length && !allowAllClusters}
+          >
+            <SelectTrigger
+              data-testid="cluster-selector"
+              className="w-[180px] h-8 text-xs"
+            >
+              <SelectValue placeholder="Select Cluster" />
+            </SelectTrigger>
+            <SelectContent>
+              {allowAllClusters && (
+                <SelectItem value="all">
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className={cn(
-                      'h-2 w-2 rounded-full flex-shrink-0',
-                      cluster.status === 'active' ? 'bg-success' : 'bg-muted-foreground'
-                    )} />
-                    <span className="truncate">{cluster.name}</span>
+                    <span className="h-2 w-2 rounded-full flex-shrink-0 bg-primary" />
+                    <span className="truncate font-medium">All Clusters</span>
                   </div>
                 </SelectItem>
-              ))
-            )}
-          </SelectContent>
-        </Select>
+              )}
+              {clusters.length === 0 ? (
+                <div className="p-2 text-xs text-muted-foreground text-center">
+                  No clusters found
+                </div>
+              ) : (
+                clusters.map((cluster) => (
+                  <SelectItem key={cluster.id} value={cluster.id.toString()}>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className={cn(
+                          "h-2 w-2 rounded-full flex-shrink-0",
+                          cluster.status === "active"
+                            ? "bg-success"
+                            : "bg-muted-foreground",
+                        )}
+                      />
+                      <span className="truncate">{cluster.name}</span>
+                    </div>
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
 
-        <span className="text-lg font-light text-muted-foreground/50">/</span>
+          <span className="text-sm font-light text-muted-foreground/50">/</span>
 
-        {/* Namespace Selector */}
-        <Select
-          value={selectedNamespace}
-          onValueChange={onNamespaceChange}
-          disabled={!selectedClusterId}
-        >
-          <SelectTrigger className="w-[180px] h-9 font-medium">
-             <span className="truncate">
-                {selectedNamespace === 'all' ? 'All Namespaces' : selectedNamespace}
-             </span>
-          </SelectTrigger>
-          <SelectContent>
-            {/* "All Namespaces" removed from the dropdown intentionally — it's
-                an expensive cluster-wide fetch and should be opt-in via the
-                explicit "Load all namespaces" button in the K8s sidebar. The
-                currently-active "all" state is still displayed if set. */}
-            {selectedNamespace === 'all' && (
-              <SelectItem value="all" className="font-semibold text-warning">
-                All Namespaces (cluster-wide)
-              </SelectItem>
-            )}
-            {namespaceList.map((ns) => (
-              <SelectItem key={ns} value={ns}>
-                {ns}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {/* Search Input */}
-        <div className="flex-1 relative min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            ref={searchInputRef}
-            placeholder="Search... (/)"
-            aria-label="Search resources"
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-9 h-9 transition-all focus:w-full"
-          />
-        </div>
-
-        {/* Actions Area */}
-        <div className="flex items-center gap-2">
-          {children}
-
-          {onRefresh && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-9 w-9 p-0"
-              onClick={onRefresh}
-              disabled={isRefreshing || !selectedClusterId}
-              title="Refresh Resources"
-              aria-label="Refresh resources"
+          {/* Namespace Selector */}
+          <Select
+            value={selectedNamespace}
+            onValueChange={onNamespaceChange}
+            disabled={!selectedClusterId}
+          >
+            <SelectTrigger
+              data-testid="namespace-selector"
+              className="w-[150px] h-8 text-xs font-medium"
             >
-              <RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} aria-hidden="true" />
-            </Button>
-          )}
+              <span className="truncate">
+                {selectedNamespace === "all"
+                  ? "All Namespaces"
+                  : selectedNamespace}
+              </span>
+            </SelectTrigger>
+            <SelectContent>
+              {selectedNamespace === "all" && (
+                <SelectItem value="all" className="font-semibold text-warning">
+                  All Namespaces (cluster-wide)
+                </SelectItem>
+              )}
+              {namespaceList.map((ns) => (
+                <SelectItem key={ns} value={ns}>
+                  {ns}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Actions Area */}
+          <div className="flex items-center gap-1.5">
+            {children}
+
+            {onRefresh && (
+              <Button
+                data-testid="refresh-button"
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={onRefresh}
+                disabled={isRefreshing || !selectedClusterId}
+                title="Refresh Resources"
+                aria-label="Refresh resources"
+              >
+                <RefreshCw
+                  className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")}
+                  aria-hidden="true"
+                />
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </div>

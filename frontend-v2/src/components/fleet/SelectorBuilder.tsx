@@ -251,7 +251,7 @@ export function SelectorBuilder({ value, onChange, disabled = false, className }
                         {i > 0 && ', '}
                         <Badge
                           variant="secondary"
-                          className="text-[10px] font-normal px-1 py-0 h-4"
+                          className="text-2xs font-normal px-1 py-0 h-4"
                         >
                           {m.name}
                         </Badge>

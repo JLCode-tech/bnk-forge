@@ -125,7 +125,7 @@ function SummaryMatrix({
               {others.map((node) => (
                 <th
                   key={`sum-col-${node.node_id}`}
-                  className="border p-1 font-mono text-[10px] whitespace-nowrap"
+                  className="border p-1 font-mono text-2xs whitespace-nowrap"
                   title={`target node ${node.label}`}
                 >
                   {node.label}
@@ -136,7 +136,7 @@ function SummaryMatrix({
           <tbody>
             {refIfaces.map((src) => (
               <tr key={`sum-row-${src.interface}`}>
-                <th className="border p-1 font-mono text-[10px] whitespace-nowrap text-left bg-muted/30">
+                <th className="border p-1 font-mono text-2xs whitespace-nowrap text-left bg-muted/30">
                   {src.interface}
                 </th>
                 {others.map((node) => {
@@ -178,7 +178,7 @@ function SummaryMatrix({
                         <span className="inline-flex items-center gap-1 text-success">
                           <CheckCircle2 className="h-3.5 w-3.5" />
                           {cell.rtt_ms != null && (
-                            <span className="text-[10px] tabular-nums">{cell.rtt_ms.toFixed(1)}</span>
+                            <span className="text-2xs tabular-nums">{cell.rtt_ms.toFixed(1)}</span>
                           )}
                         </span>
                       ) : (
@@ -192,7 +192,7 @@ function SummaryMatrix({
           </tbody>
         </table>
       </div>
-      <p className="text-[10px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         Numbers are average ICMP round-trip time in milliseconds. ✓ = reachable, ✗ = unreachable, n/a = no
         same-named interface on that node.
       </p>
@@ -256,7 +256,7 @@ function GroupMatrix({ groupKey, group }: { groupKey: string; group: { endpoints
               {endpoints.map((ep) => (
                 <th
                   key={`col-${endpointKey(ep)}`}
-                  className="border p-1 font-mono text-[10px] whitespace-nowrap"
+                  className="border p-1 font-mono text-2xs whitespace-nowrap"
                   title={`${ep.hostname || endpointLabel(ep)} — ${ep.node_ip}`}
                 >
                   <div className="text-muted-foreground">{endpointLabel(ep)}</div>
@@ -277,12 +277,12 @@ function GroupMatrix({ groupKey, group }: { groupKey: string; group: { endpoints
                       {i === 0 && (
                         <th
                           rowSpan={node.count}
-                          className="sticky left-0 bg-background z-10 border p-1 font-mono text-[10px] whitespace-nowrap align-middle text-left"
+                          className="sticky left-0 bg-background z-10 border p-1 font-mono text-2xs whitespace-nowrap align-middle text-left"
                         >
                           {node.label}
                         </th>
                       )}
-                      <th className="border p-1 font-mono text-[10px] whitespace-nowrap text-left bg-muted/30">
+                      <th className="border p-1 font-mono text-2xs whitespace-nowrap text-left bg-muted/30">
                         {src.interface}
                       </th>
                       {endpoints.map((dst) => {
@@ -316,7 +316,7 @@ function GroupMatrix({ groupKey, group }: { groupKey: string; group: { endpoints
                               <span className="inline-flex items-center gap-1 text-success">
                                 <CheckCircle2 className="h-3.5 w-3.5" />
                                 {cell.rtt_ms != null && (
-                                  <span className="text-[10px] tabular-nums">{cell.rtt_ms.toFixed(1)}</span>
+                                  <span className="text-2xs tabular-nums">{cell.rtt_ms.toFixed(1)}</span>
                                 )}
                               </span>
                             ) : (
@@ -335,7 +335,7 @@ function GroupMatrix({ groupKey, group }: { groupKey: string; group: { endpoints
           </tbody>
         </table>
       </div>
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Numbers are average ICMP round-trip time in milliseconds (
             <span className="font-mono">ping -c 2</span> per cell). ✓ = reachable, ✗ = unreachable, — = self.
           </p>

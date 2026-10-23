@@ -59,12 +59,12 @@ def service(db_session):
 class TestBnkDeployableReleaseServiceSeed:
     """Tests for seed_profiles()."""
 
-    def test_seed_creates_three_releases(self, service, db_session):
+    def test_seed_creates_five_releases(self, service, db_session):
         count = service.seed_profiles()
         db_session.commit()
-        assert count == 3
+        assert count == 5
         releases = db_session.query(BnkDeployableRelease).all()
-        assert len(releases) == 3
+        assert len(releases) == 5
 
     def test_seed_idempotent_second_call_returns_zero(self, service, db_session):
         service.seed_profiles()
@@ -107,6 +107,18 @@ class TestBnkDeployableReleaseServiceSeed:
         assert r.cert_manager_version == "v1.16.2"
         assert r.doca_version == "3.2.0"
 
+    def test_seed_creates_bnk_241_release(self, service, db_session):
+        service.seed_profiles()
+        db_session.commit()
+        r = db_session.query(BnkDeployableRelease).filter_by(name="bnk-2.4.1").first()
+        assert r is not None
+        assert r.is_default is False
+        assert r.is_active is True
+        assert r.bnk_cr_kind == "CNEInstance"
+        assert r.bnk_manifest_version == "2.4.1-3.2850.1-0.0.9"
+        assert r.flo_version == "v2.30.1-0.0.8"
+        assert r.k8s_version == "1.35.0"
+
     def test_single_default_invariant_after_seed(self, service, db_session):
         """Exactly one release may have is_default=True after seed."""
         service.seed_profiles()
@@ -116,12 +128,27 @@ class TestBnkDeployableReleaseServiceSeed:
         assert defaults[0].name == "bnk-2.2"
 
     def test_seed_partial_idempotency(self, service, db_session):
-        """If one release exists, seed only creates the two missing ones."""
+        """If one release exists, seed only creates the four missing ones."""
         db_session.add(BnkDeployableRelease(**BNK_21_PROFILE))
         db_session.commit()
         count = service.seed_profiles()
         db_session.commit()
-        assert count == 2  # bnk-2.2 and bnk-2.3.1 were missing
+        assert count == 4  # bnk-2.2, bnk-2.3.1, bnk-2.4, and bnk-2.4.1 were missing
+
+    def test_oci_refresh_matches_seeded_24_row(self, service, db_session):
+        """The 2.4 seed carries the real CNEInstance manifestVersion, so an OCI
+        refresh of 2.4.0 updates the seeded row instead of inserting a duplicate."""
+        from services.bare_metal.deployable_release_refresh import DeployableReleaseRefreshService
+
+        service.seed_profiles()
+        db_session.commit()
+        result = DeployableReleaseRefreshService(db_session)._upsert_entry(
+            {"manifest_version": "2.4.0", "component_versions": {"charts/f5-lifecycle-operator": "v2.30.0-0.5.2"}},
+            is_active=True,
+            overrides={},
+        )
+        assert result == "updated"
+        assert db_session.query(BnkDeployableRelease).count() == 5
 
 
 # ---------------------------------------------------------------------------
@@ -141,7 +168,7 @@ class TestBnkDeployableReleaseServiceList:
         service.seed_profiles()
         db_session.commit()
         result = service.list_profiles()
-        assert len(result.releases) == 3
+        assert len(result.releases) == 5
 
     def test_list_ordered_by_name(self, service, db_session):
         service.seed_profiles()
@@ -176,6 +203,7 @@ class TestBnkDeployableReleaseServiceGet:
 
     def test_get_profile_invalid_id_raises_not_found(self, service):
         from core.errors import NotFoundError
+
         with pytest.raises(NotFoundError):
             service.get_profile(9999)
 
@@ -280,6 +308,7 @@ class TestBnkDeployableReleaseServiceSetActive:
 
     def test_set_active_invalid_id_raises_not_found(self, service):
         from core.errors import NotFoundError
+
         with pytest.raises(NotFoundError):
             service.set_active(9999, False)
 
@@ -325,6 +354,7 @@ class TestBnkDeployableReleaseServiceSetDefault:
 
     def test_set_default_invalid_id_raises_not_found(self, service):
         from core.errors import NotFoundError
+
         with pytest.raises(NotFoundError):
             service.set_default(9999)
 
@@ -340,12 +370,14 @@ class TestCertManagerFailFast:
 
     def test_cert_manager_missing_version_is_flagged(self):
         from modules.bare_metal.bnk_cert_manager import CertManagerSSHModule
+
         mod = CertManagerSSHModule()
         errors = mod.validate_inputs({})
         assert any("cert_manager_version" in e for e in errors)
 
     def test_cert_manager_provided_version_is_not_flagged(self):
         from modules.bare_metal.bnk_cert_manager import CertManagerSSHModule
+
         mod = CertManagerSSHModule()
         errors = mod.validate_inputs({"cert_manager_version": "v1.16.2"})
         assert not any("cert_manager_version" in e for e in errors)
@@ -353,6 +385,7 @@ class TestCertManagerFailFast:
     def test_cert_manager_input_has_no_hardcoded_default(self):
         """cert_manager_version InputSpec must have no default — catalog supplies it."""
         from modules.bare_metal.bnk_cert_manager import CertManagerSSHModule
+
         spec = CertManagerSSHModule.inputs.get("cert_manager_version")
         assert spec is not None
         # default=None means catalog-driven; any hardcoded string would be a regression.
@@ -370,12 +403,14 @@ class TestCneInstanceFailFast:
 
     def test_cneinstance_missing_bnk_cr_kind_is_flagged(self):
         from modules.bare_metal.bnk_cneinstance import BnkCneInstanceSSHModule
+
         mod = BnkCneInstanceSSHModule()
         errors = mod.validate_inputs({})
         assert any("bnk_cr_kind" in e for e in errors)
 
     def test_cneinstance_provided_bnk_cr_kind_is_not_flagged(self):
         from modules.bare_metal.bnk_cneinstance import BnkCneInstanceSSHModule
+
         mod = BnkCneInstanceSSHModule()
         errors = mod.validate_inputs({"bnk_cr_kind": "CNEInstance"})
         assert not any("bnk_cr_kind" in e for e in errors)
@@ -383,6 +418,7 @@ class TestCneInstanceFailFast:
     def test_cneinstance_bnk_cr_kind_renders_as_manifest_kind(self):
         """bnk_cr_kind value must render as the kind: field in the CR."""
         from modules.bare_metal.bnk_cneinstance import BnkCneInstanceSSHModule
+
         mod = BnkCneInstanceSSHModule()
         variables = {
             "bnk_cr_kind": "CNEInstance",
@@ -397,6 +433,7 @@ class TestCneInstanceFailFast:
     def test_cneinstance_input_has_no_hardcoded_default(self):
         """bnk_cr_kind InputSpec must have no default — catalog supplies it."""
         from modules.bare_metal.bnk_cneinstance import BnkCneInstanceSSHModule
+
         spec = BnkCneInstanceSSHModule.inputs.get("bnk_cr_kind")
         assert spec is not None
         assert spec.default is None

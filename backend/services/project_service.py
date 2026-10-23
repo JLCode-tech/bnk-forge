@@ -32,7 +32,7 @@ from core.platform_context import (
 )
 
 # Model imports
-from models import CloudCredentialTemplate, Project, ProjectBackendConfig, ProjectModule, User
+from models import CloudCredentialTemplate, Project, ProjectBackendConfig, ProjectModule, SSHCredential, User
 
 # Service imports
 from services.base_service import BaseService
@@ -238,6 +238,19 @@ class ProjectService(BaseService):
             return field_name in fields_set
         return hasattr(payload, field_name)
 
+    def _reject_sso_azure_template(self, template_id: int | None) -> None:
+        """Projects provision through the template, which an Entra ID SSO template cannot do."""
+        if not template_id:
+            return
+        template = self.db.query(CloudCredentialTemplate).filter(
+            CloudCredentialTemplate.id == template_id
+        ).first()
+        if template and template.provider == "azure" and template.azure_auth_method == "sso":
+            raise BadRequestError(
+                f"Credential template '{template.name}' uses Entra ID SSO and cannot provision. "
+                "Use a service-principal Azure template."
+            )
+
     @staticmethod
     def _apply_state_config(project, state_config: dict | None) -> None:
         """Persist project state backend settings into ProjectBackendConfig."""
@@ -378,7 +391,7 @@ class ProjectService(BaseService):
             if cached_result is not None:
                 return cached_result
 
-        # BE-004: Fix N+1 query - eagerly load k8s_clusters, credential_template, and user
+        # BE-004: Fix N+1 query - eagerly load k8s_clusters, credential_template, ssh_credential, backend_config, and user
         projects = self.db.query(Project).options(
             joinedload(Project.credential_template).load_only(
                 CloudCredentialTemplate.id,
@@ -387,6 +400,13 @@ class ProjectService(BaseService):
                 CloudCredentialTemplate.ibmcloud_api_key_encrypted,
                 CloudCredentialTemplate.ibmcloud_resource_group,
             ),
+            joinedload(Project.ssh_credential).load_only(
+                SSHCredential.id,
+                SSHCredential.name,
+                SSHCredential.host,
+                SSHCredential.username,
+            ),
+            joinedload(Project.backend_config),
             subqueryload(Project.k8s_clusters),
             # module_state is derived from module statuses; without this the list
             # endpoint would lazy-load modules once per project.
@@ -422,6 +442,8 @@ class ProjectService(BaseService):
                 "project",
                 "A project with this name already exists. Please choose a different name.",
             )
+
+        self._reject_sso_azure_template(project_data.credential_template_id)
 
         # Resolve project_type and cloud_provider
         project_type = project_data.project_type
@@ -564,6 +586,8 @@ class ProjectService(BaseService):
                 .filter(
                     CloudCredentialTemplate.is_default.is_(True),
                     CloudCredentialTemplate.provider == cloud_provider,
+                    # Entra ID SSO templates cannot provision.
+                    CloudCredentialTemplate.azure_auth_method.is_distinct_from("sso"),
                 )
                 .first()
             )
@@ -677,6 +701,8 @@ class ProjectService(BaseService):
         # already used below for target_platform_profile — so this uses it rather
         # than reading model_fields_set inline a second time.
         if self._field_was_supplied(project_data, "credential_template_id"):
+            if project_data.credential_template_id != project.credential_template_id:
+                self._reject_sso_azure_template(project_data.credential_template_id)
             project.credential_template_id = project_data.credential_template_id
 
         if self._field_was_supplied(project_data, "ssh_credential_id"):

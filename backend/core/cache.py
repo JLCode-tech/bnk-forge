@@ -18,34 +18,78 @@ DEFAULT_REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
 
 
 class CacheService:
-    """Redis cache wrapper with automatic JSON serialization"""
+    """Redis cache wrapper with automatic JSON serialization and lazy reconnection"""
+
+    _RECONNECT_COOLDOWN_SECONDS = 5.0
 
     def __init__(self, redis_url: str | None = None):
         """Initialize Redis connection"""
-        self.redis: Any = None
+        self._redis_url: str = redis_url or DEFAULT_REDIS_URL
+        self._redis: Any = None
+        self._pid: int | None = None
+        self._last_attempt_ts: float = 0.0
+        self._manual_override: bool = False
+        self._connect()
+
+    def _connect(self) -> Any:
+        import time
+
+        self._last_attempt_ts = time.monotonic()
         try:
-            url = redis_url or DEFAULT_REDIS_URL
-            self.redis = redis.from_url(url, decode_responses=True)
-            # Test connection
-            self.redis.ping()
-            logger.info(f"✅ Redis cache connected: {redis_url}")
+            client = redis.from_url(self._redis_url, decode_responses=True)
+            client.ping()
+            self._redis = client
+            self._pid = os.getpid()
+            logger.info(f"✅ Redis cache connected: {self._redis_url}")
         except Exception as e:
             logger.error(f"❌ Redis cache connection failed: {e}")
-            self.redis = None
+            self._redis = None
+            self._pid = None
+        return self._redis
+
+    @property
+    def redis(self) -> Any:
+        if self._manual_override:
+            return self._redis
+        current_pid = os.getpid()
+        if self._redis is not None and self._pid is not None and self._pid != current_pid:
+            self._redis = None
+        if self._redis is None:
+            import time
+
+            if (time.monotonic() - self._last_attempt_ts) >= self._RECONNECT_COOLDOWN_SECONDS:
+                self._connect()
+        return self._redis
+
+    @redis.setter
+    def redis(self, value: Any) -> None:
+        self._redis = value
+        self._pid = os.getpid() if value is not None else None
+        self._manual_override = True
+
+    def is_available(self) -> bool:
+        """Return True if the Redis client is connected and available."""
+        return self.redis is not None
 
     def get(self, key: str) -> Any | None:
         """
         Get value from cache
         Returns None if key doesn't exist or cache is unavailable
         """
-        if not self.redis:
+        client = self.redis
+        if not client:
             return None
 
         try:
-            value = self.redis.get(key)
+            value = client.get(key)
             if value is None:
                 return None
             return json.loads(value)
+        except redis.ConnectionError as e:
+            logger.warning(f"Cache GET connection error for key '{key}': {e}")
+            if not self._manual_override:
+                self._redis = None
+            return None
         except Exception as e:
             logger.warning(f"Cache GET error for key '{key}': {e}")
             return None
@@ -55,13 +99,19 @@ class CacheService:
         Set value in cache with TTL (default 5 minutes)
         Returns True if successful, False otherwise
         """
-        if not self.redis:
+        client = self.redis
+        if not client:
             return False
 
         try:
             serialized = json.dumps(value, default=str)
-            self.redis.setex(key, ttl_seconds, serialized)
+            client.setex(key, ttl_seconds, serialized)
             return True
+        except redis.ConnectionError as e:
+            logger.warning(f"Cache SET connection error for key '{key}': {e}")
+            if not self._manual_override:
+                self._redis = None
+            return False
         except Exception as e:
             logger.warning(f"Cache SET error for key '{key}': {e}")
             return False
@@ -71,12 +121,18 @@ class CacheService:
         Delete key from cache
         Returns True if successful, False otherwise
         """
-        if not self.redis:
+        client = self.redis
+        if not client:
             return False
 
         try:
-            self.redis.delete(key)
+            client.delete(key)
             return True
+        except redis.ConnectionError as e:
+            logger.warning(f"Cache DELETE connection error for key '{key}': {e}")
+            if not self._manual_override:
+                self._redis = None
+            return False
         except Exception as e:
             logger.warning(f"Cache DELETE error for key '{key}': {e}")
             return False
@@ -91,7 +147,8 @@ class CacheService:
         KEYS is O(n) and blocks the entire Redis server.
         SCAN is iterative and non-blocking.
         """
-        if not self.redis:
+        client = self.redis
+        if not client:
             return 0
 
         try:
@@ -99,12 +156,17 @@ class CacheService:
             cursor = 0
             # Use SCAN to iterate through keys without blocking Redis
             while True:
-                cursor, keys = self.redis.scan(cursor, match=pattern, count=100)
+                cursor, keys = client.scan(cursor, match=pattern, count=100)
                 if keys:
-                    deleted += self.redis.delete(*keys)
+                    deleted += client.delete(*keys)
                 if cursor == 0:
                     break
             return deleted
+        except redis.ConnectionError as e:
+            logger.warning(f"Cache DELETE_PATTERN connection error for pattern '{pattern}': {e}")
+            if not self._manual_override:
+                self._redis = None
+            return 0
         except Exception as e:
             logger.warning(f"Cache DELETE_PATTERN error for pattern '{pattern}': {e}")
             return 0
@@ -114,13 +176,19 @@ class CacheService:
         Clear entire cache (use with caution!)
         Returns True if successful, False otherwise
         """
-        if not self.redis:
+        client = self.redis
+        if not client:
             return False
 
         try:
-            self.redis.flushdb()
+            client.flushdb()
             logger.info("🗑️  Cache cleared")
             return True
+        except redis.ConnectionError as e:
+            logger.error(f"Cache CLEAR connection error: {e}")
+            if not self._manual_override:
+                self._redis = None
+            return False
         except Exception as e:
             logger.error(f"Cache CLEAR error: {e}")
             return False

@@ -33,8 +33,12 @@ class TestFleetHealth:
 
     @patch("routes.operators.fleet._query_cluster_health")
     def test_fleet_health(
-        self, mock_query_health,
-        client, viewer_headers, all_test_users, db,
+        self,
+        mock_query_health,
+        client,
+        viewer_headers,
+        all_test_users,
+        db,
     ):
         """Viewer can retrieve fleet health summary."""
         cluster = _make_cluster(db, name="prod-cluster", version="v1.28.0")
@@ -66,7 +70,12 @@ class TestFleetHealth:
         assert data["operators"][0]["bnk_severity"] == "healthy"
         assert data["unknown"] == 0
         assert data["operators"][0]["detected_platform_profile"] in {
-            "generic_onprem", "eks", "aks", "gke", "ocp", "unknown",
+            "generic_onprem",
+            "eks",
+            "aks",
+            "gke",
+            "ocp",
+            "unknown",
         }
         assert "platform_context" in data
         assert "mixed_platform_profiles" in data["platform_context"]
@@ -153,13 +162,60 @@ class TestFleetHealth:
         assert result["effective_connectivity_status"] == "connected"
         assert result["status"] == "warning"
 
+    @patch("routes.operators.fleet.KubernetesService")
+    @patch("routes.operators.fleet._probe_tcp")
+    def test_query_cluster_health_short_circuits_on_test_connection_failure(
+        self,
+        mock_probe_tcp,
+        mock_k8s_service,
+        db,
+    ):
+        """Unreachable cluster should short-circuit immediately without querying API groups or BNK data."""
+        cluster = _make_cluster(
+            db,
+            name="failing-cluster",
+            context="failing-cluster",
+        )
+        cluster.cloud_provider = "aws"
+        cluster.api_server = "https://example.eks.amazonaws.com"
+        cluster.ssh_tunnel_enabled = False
+        db.commit()
+
+        svc = MagicMock()
+        mock_k8s_service.return_value = svc
+        svc.test_connection.return_value = {
+            "success": False,
+            "message": "Connection refused",
+        }
+
+        with (
+            patch("routes.operators.fleet._cluster_has_bnk_api_groups") as mock_bnk_groups,
+            patch("routes.operators.fleet._cluster_has_dpf_api_groups") as mock_dpf_groups,
+            patch("routes.operators.fleet.fetch_all_bnk_data") as mock_fetch_bnk,
+        ):
+            from routes.operators.fleet import _query_cluster_health
+
+            result = _query_cluster_health(cluster, db)
+
+        mock_probe_tcp.assert_not_called()
+        svc.test_connection.assert_called_once_with(cluster.id)
+        mock_bnk_groups.assert_not_called()
+        mock_dpf_groups.assert_not_called()
+        mock_fetch_bnk.assert_not_called()
+        assert result["effective_connectivity_status"] == "unreachable"
+        assert result["status"] == "offline"
+        assert result["reachable"] is False
+
 
 class TestFleetCompare:
     """POST /api/operators/fleet/compare."""
 
     def test_fleet_compare_via_clusters_returns_cluster_config_shape(
         self,
-        client, operator_headers, all_test_users, db,
+        client,
+        operator_headers,
+        all_test_users,
+        db,
     ):
         """Operator can compare two clusters directly and get cluster-config response shape."""
         from models.kubernetes import KubernetesCluster
@@ -169,7 +225,10 @@ class TestFleetCompare:
         db.add_all([cluster_a, cluster_b])
         db.commit()
 
-        with patch("services.config_export_service.export_cluster_config") as mock_export, patch("services.config_export_service.diff_configs") as mock_diff:
+        with (
+            patch("services.config_export_service.export_cluster_config") as mock_export,
+            patch("services.config_export_service.diff_configs") as mock_diff,
+        ):
             mock_export.side_effect = [
                 {"bnk_forge_export": {"cluster": {"name": "mgx1"}}, "resources": {}, "module_config": {}},
                 {"bnk_forge_export": {"cluster": {"name": "mgx3"}}, "resources": {}, "module_config": {}},
@@ -210,7 +269,10 @@ class TestFleetCompare:
 
     def test_fleet_compare_via_operators(
         self,
-        client, operator_headers, all_test_users, db,
+        client,
+        operator_headers,
+        all_test_users,
+        db,
     ):
         """Operator can compare two operators' configurations (health-report fallback)."""
         from models import ConnectedOperator
@@ -275,3 +337,27 @@ class TestFleetRBAC:
         """Unauthenticated request to fleet health returns 401."""
         response = client.get("/api/operators/fleet-health")
         assert response.status_code == 401
+
+
+def test_bnk_24_gateway_group_counts_as_bnk():
+    """A cluster serving only the BNK 2.4 gateway.k8s.f5.com group still gets the BNK fetch."""
+    from routes.operators import fleet
+
+    with patch.object(fleet, "_cluster_api_groups", return_value=frozenset({"gateway.k8s.f5.com"})):
+        assert fleet._cluster_has_bnk_api_groups(MagicMock(), MagicMock()) is True
+
+
+def test_derive_status_from_health_partial_returns_warning():
+    from routes.operators import fleet
+
+    health = {"overall": "unknown", "partial": True}
+    assert fleet._derive_status_from_health(health) == "warning"
+
+
+def test_extract_health_metrics_partial_surfaces_informative_message():
+    from routes.operators import fleet
+
+    health = {"overall": "unknown", "partial": True, "counts": {}}
+    data = {"partial": True}
+    res = fleet._extract_health_metrics(health, data)
+    assert any("timed out or was incomplete" in issue["message"] for issue in res["health_issues"])

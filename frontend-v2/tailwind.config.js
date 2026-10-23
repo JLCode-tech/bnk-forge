@@ -2,10 +2,10 @@
 export default {
   darkMode: ["class"],
   content: [
-    './pages/**/*.{ts,tsx}',
-    './components/**/*.{ts,tsx}',
-    './app/**/*.{ts,tsx}',
-    './src/**/*.{ts,tsx}',
+    "./pages/**/*.{ts,tsx}",
+    "./components/**/*.{ts,tsx}",
+    "./app/**/*.{ts,tsx}",
+    "./src/**/*.{ts,tsx}",
   ],
   theme: {
     container: {
@@ -65,8 +65,14 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+        sans: [
+          "Inter",
+          '"Inter Variable"',
+          "system-ui",
+          "-apple-system",
+          "sans-serif",
+        ],
+        mono: ['"JetBrains Mono"', "Fira Code", "monospace"],
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -82,14 +88,15 @@ export default {
         "2xl": "var(--spacing-2xl)",
       },
       fontSize: {
-        xs: ['0.75rem', { lineHeight: '1rem' }],
-        sm: ['0.875rem', { lineHeight: '1.25rem' }],
-        base: ['1rem', { lineHeight: '1.6rem' }],
-        lg: ['1.125rem', { lineHeight: '1.75rem' }],
-        xl: ['1.25rem', { lineHeight: '1.75rem' }],
-        '2xl': ['1.5rem', { lineHeight: '2rem' }],
-        '3xl': ['1.875rem', { lineHeight: '2.25rem' }],
-        '4xl': ['2.25rem', { lineHeight: '2.5rem' }],
+        "2xs": ["0.6875rem", { lineHeight: "1rem" }],
+        xs: ["0.75rem", { lineHeight: "1rem" }],
+        sm: ["0.875rem", { lineHeight: "1.25rem" }],
+        base: ["1rem", { lineHeight: "1.6rem" }],
+        lg: ["1.125rem", { lineHeight: "1.75rem" }],
+        xl: ["1.25rem", { lineHeight: "1.75rem" }],
+        "2xl": ["1.5rem", { lineHeight: "2rem" }],
+        "3xl": ["1.875rem", { lineHeight: "2.25rem" }],
+        "4xl": ["2.25rem", { lineHeight: "2.5rem" }],
       },
       keyframes: {
         "accordion-down": {
@@ -116,7 +123,7 @@ export default {
           from: { opacity: "0", transform: "scale(0.95)" },
           to: { opacity: "1", transform: "scale(1)" },
         },
-        "shimmer": {
+        shimmer: {
           "0%": { backgroundPosition: "-1000px 0" },
           "100%": { backgroundPosition: "1000px 0" },
         },
@@ -148,20 +155,21 @@ export default {
         "slide-up": "slide-up 0.3s ease-out",
         "slide-down": "slide-down 0.3s ease-out",
         "scale-in": "scale-in 0.2s ease-out",
-        "shimmer": "shimmer 2s infinite linear",
+        shimmer: "shimmer 2s infinite linear",
         "page-enter": "page-enter 0.15s ease-out",
         "float-slow": "float-slow 4s ease-in-out infinite",
         "float-medium": "float-medium 3s ease-in-out infinite 0.5s",
         "float-fast": "float-fast 2.5s ease-in-out infinite 1s",
-        "progress-indeterminate": "progress-indeterminate 1.5s ease-in-out infinite",
+        "progress-indeterminate":
+          "progress-indeterminate 1.5s ease-in-out infinite",
       },
       transitionDuration: {
-        '0': '0ms',
-        '200': '200ms',
-        '300': '300ms',
-        '500': '500ms',
+        0: "0ms",
+        200: "200ms",
+        300: "300ms",
+        500: "500ms",
       },
     },
   },
   plugins: [require("tailwindcss-animate")],
-}
+};

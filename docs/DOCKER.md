@@ -96,30 +96,30 @@ commands below already pin that identity with `--certificate-identity-regexp …
 ```bash
 # Verify the signature
 cosign verify \
-  ghcr.io/f5devcentral/bnk-forge-api@<digest> \
-  --certificate-identity-regexp 'https://github.com/f5devcentral/bnk-forge/\.github/workflows/release\.yml@.*' \
+  ghcr.io/jlcode-tech/bnk-forge-api@<digest> \
+  --certificate-identity-regexp 'https://github.com/JLCode-tech/bnk-forge/\.github/workflows/release\.yml@.*' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 
 # Verify + extract the SBOM attestation
 cosign verify-attestation \
   --type cyclonedx \
-  --certificate-identity-regexp 'https://github.com/f5devcentral/bnk-forge/\.github/workflows/release\.yml@.*' \
+  --certificate-identity-regexp 'https://github.com/JLCode-tech/bnk-forge/\.github/workflows/release\.yml@.*' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  ghcr.io/f5devcentral/bnk-forge-api@<digest> \
+  ghcr.io/jlcode-tech/bnk-forge-api@<digest> \
   | jq -r '.payload' | base64 -d | jq .
 
 # Verify + extract the SLSA provenance attestation
 cosign verify-attestation \
   --type slsaprovenance \
-  --certificate-identity-regexp 'https://github.com/f5devcentral/bnk-forge/\.github/workflows/release\.yml@.*' \
+  --certificate-identity-regexp 'https://github.com/JLCode-tech/bnk-forge/\.github/workflows/release\.yml@.*' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  ghcr.io/f5devcentral/bnk-forge-api@<digest> \
+  ghcr.io/jlcode-tech/bnk-forge-api@<digest> \
   | jq -r '.payload' | base64 -d | jq .
 ```
 
 Apply the same commands to the other image names:
 `bnk-forge-worker`, `bnk-forge-beat`, `bnk-forge-frontend`, `bnk-forge-proxy`,
-`bnk-forge-mcp`, `bnk-forge-operator`.
+`bnk-forge-mcp`, `bnk-forge-operator`, `bnk-forge-agent`.
 
 ### OCI Labels
 
@@ -127,7 +127,7 @@ All images carry standard OCI labels injected at build time via `docker-bake.hcl
 
 | Label | Value |
 |-------|-------|
-| `org.opencontainers.image.source` | `https://github.com/f5devcentral/bnk-forge` |
+| `org.opencontainers.image.source` | `https://github.com/JLCode-tech/bnk-forge` |
 | `org.opencontainers.image.revision` | git commit SHA (`GIT_REVISION` bake arg) |
 | `org.opencontainers.image.version` | `VERSION` file contents |
 | `org.opencontainers.image.created` | RFC 3339 build timestamp (`CREATED` bake arg). Emitted only when set — CI release builds set it to the release commit's committer date; a plain `make push-images` leaves it unset and the label is omitted rather than written empty. |

@@ -3,13 +3,13 @@
  *
  * Covers: renders page, project/cluster selection, empty state, search input.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
-import { http, HttpResponse } from 'msw';
-import { server } from '@/test/mocks/server';
-import { render } from '@/test/test-utils';
-import { STORAGE_KEYS } from '@/lib/storage-keys';
-import KubernetesV2 from '@/pages/KubernetesV2';
+import { describe, it, expect, beforeEach } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { server } from "@/test/mocks/server";
+import { render } from "@/test/test-utils";
+import { STORAGE_KEYS } from "@/lib/storage-keys";
+import KubernetesV2 from "@/pages/KubernetesV2";
 
 const storageState = new Map<string, string>();
 const localStorageMock: Storage = {
@@ -29,7 +29,7 @@ const localStorageMock: Storage = {
   },
 };
 
-Object.defineProperty(window, 'localStorage', {
+Object.defineProperty(window, "localStorage", {
   value: localStorageMock,
   configurable: true,
 });
@@ -72,21 +72,25 @@ interface TestCluster {
   created_at: string | null;
 }
 
-function buildCluster(id: number, projectId: number, name: string): TestCluster {
+function buildCluster(
+  id: number,
+  projectId: number,
+  name: string,
+): TestCluster {
   return {
     id,
     name,
     context: `${name}-ctx`,
     api_server: `https://${name}.example.local`,
     cloud_provider: null,
-    detected_platform_profile: 'unknown',
+    detected_platform_profile: "unknown",
     detected_platform_provider: null,
     platform_capabilities: {},
     platform_constraints: {},
     region: null,
-    default_namespace: 'default',
-    status: 'active',
-    version: '1.29',
+    default_namespace: "default",
+    status: "active",
+    version: "1.29",
     project_id: projectId,
     ssh_tunnel_enabled: false,
     ssh_remote_k8s_host: null,
@@ -104,53 +108,84 @@ function mockKubernetesPageApis(params: {
   clustersByProject: Record<number, TestCluster[]>;
 }) {
   server.use(
-    http.get('*/api/projects', ({ request }) => {
-      return HttpResponse.json({ projects: params.projects, total: params.projects.length });
-    }),
-    http.get('*/api/k8s/clusters', ({ request }) => {
-      return HttpResponse.json({ clusters: params.allClusters, count: params.allClusters.length });
-    }),
-    http.get('*/api/projects/:projectId/k8s/clusters', ({ params: pathParams }) => {
-      const projectId = Number(pathParams.projectId);
-      const clusters = params.clustersByProject[projectId] || [];
-      return HttpResponse.json({ clusters, count: clusters.length });
-    }),
-    http.get('*/api/k8s/clusters/:clusterId/nodes/count', ({ params: pathParams }) => {
-      return HttpResponse.json({ cluster_id: Number(pathParams.clusterId), node_count: 3 });
-    }),
-    http.get('*/api/k8s/clusters/:clusterId/namespaces', ({ params: pathParams }) => {
+    http.get("*/api/projects", () => {
       return HttpResponse.json({
-        namespaces: [{ name: 'default', status: 'Active', labels: null, created_at: null }],
-        count: 1,
-        cluster_id: Number(pathParams.clusterId),
+        projects: params.projects,
+        total: params.projects.length,
       });
     }),
-    http.get('*/api/k8s/clusters/:id/resource-summary', ({ params: pathParams, request }) => {
-      const url = new URL(request.url);
+    http.get("*/api/k8s/clusters", () => {
       return HttpResponse.json({
-        cluster_id: Number(pathParams.id),
-        namespace: url.searchParams.get('namespace'),
-        summary: {},
+        clusters: params.allClusters,
+        count: params.allClusters.length,
       });
     }),
-    http.get('*/api/k8s/clusters/:id/resources/:type', ({ params: pathParams }) => {
-      return HttpResponse.json({
-        resources: [],
-        count: 0,
-        resource_type: String(pathParams.type),
-        namespace: 'default',
-        cluster_id: Number(pathParams.id),
-      });
-    }),
+    http.get(
+      "*/api/projects/:projectId/k8s/clusters",
+      ({ params: pathParams }) => {
+        const projectId = Number(pathParams.projectId);
+        const clusters = params.clustersByProject[projectId] || [];
+        return HttpResponse.json({ clusters, count: clusters.length });
+      },
+    ),
+    http.get(
+      "*/api/k8s/clusters/:clusterId/nodes/count",
+      ({ params: pathParams }) => {
+        return HttpResponse.json({
+          cluster_id: Number(pathParams.clusterId),
+          node_count: 3,
+        });
+      },
+    ),
+    http.get(
+      "*/api/k8s/clusters/:clusterId/namespaces",
+      ({ params: pathParams }) => {
+        return HttpResponse.json({
+          namespaces: [
+            {
+              name: "default",
+              status: "Active",
+              labels: null,
+              created_at: null,
+            },
+          ],
+          count: 1,
+          cluster_id: Number(pathParams.clusterId),
+        });
+      },
+    ),
+    http.get(
+      "*/api/k8s/clusters/:id/resource-summary",
+      ({ params: pathParams, request }) => {
+        const url = new URL(request.url);
+        return HttpResponse.json({
+          cluster_id: Number(pathParams.id),
+          namespace: url.searchParams.get("namespace"),
+          summary: {},
+        });
+      },
+    ),
+    http.get(
+      "*/api/k8s/clusters/:id/resources/:type",
+      ({ params: pathParams }) => {
+        return HttpResponse.json({
+          resources: [],
+          count: 0,
+          resource_type: String(pathParams.type),
+          namespace: "default",
+          cluster_id: Number(pathParams.id),
+        });
+      },
+    ),
   );
 }
 
-describe('KubernetesV2', () => {
+describe("KubernetesV2", () => {
   beforeEach(() => {
     resetK8sSelectionStorage();
   });
 
-  it('renders the Kubernetes page', async () => {
+  it("renders the Kubernetes page", async () => {
     render(<KubernetesV2 />);
     // Several elements mention "Kubernetes" (description text, the
     // auto-detect button, etc.) — assert that at least one renders.
@@ -159,33 +194,36 @@ describe('KubernetesV2', () => {
     });
   });
 
-  it('shows empty state when no cluster is selected', async () => {
+  it("shows empty state when no cluster is selected", async () => {
     resetK8sSelectionStorage();
     render(<KubernetesV2 />);
     await waitFor(() => {
-      expect(screen.getByText('No cluster selected')).toBeInTheDocument();
+      expect(screen.getByText("No cluster selected")).toBeInTheDocument();
     });
   });
 
-  it('renders search input', async () => {
+  it("renders search input", async () => {
     render(<KubernetesV2 />);
     await waitFor(() => {
-      const searchInput = screen.queryByPlaceholderText(/search/i) || screen.queryByPlaceholderText(/filter/i);
+      const searchInput =
+        screen.queryByPlaceholderText(/search/i) ||
+        screen.queryByPlaceholderText(/filter/i);
       expect(searchInput).toBeInTheDocument();
     });
   });
 
-  it('renders project dropdown', async () => {
+  it("renders project dropdown", async () => {
     render(<KubernetesV2 />);
     await waitFor(() => {
-      const projectSelector = screen.queryByText(/select project/i) || screen.queryByText(/project/i);
+      const projectSelector =
+        screen.queryByText(/select project/i) || screen.queryByText(/project/i);
       expect(projectSelector).toBeInTheDocument();
     });
   });
 
-  it('auto-selects project when exactly one project exists and none is selected', async () => {
-    const singleProject = [{ id: 1, name: 'project-one' }];
-    const singleCluster = [buildCluster(101, 1, 'cluster-one')];
+  it("auto-selects project when exactly one project exists and none is selected", async () => {
+    const singleProject = [{ id: 1, name: "project-one" }];
+    const singleCluster = [buildCluster(101, 1, "cluster-one")];
     mockKubernetesPageApis({
       projects: singleProject,
       allClusters: singleCluster,
@@ -195,13 +233,13 @@ describe('KubernetesV2', () => {
     render(<KubernetesV2 />);
 
     await waitFor(() => {
-      expect(window.localStorage.getItem(STORAGE_KEYS.K8S_PROJECT)).toBe('1');
+      expect(window.localStorage.getItem(STORAGE_KEYS.K8S_PROJECT)).toBe("1");
     });
   });
 
-  it('auto-selects cluster when exactly one cluster exists for the selected project', async () => {
-    const singleProject = [{ id: 1, name: 'project-one' }];
-    const singleCluster = [buildCluster(101, 1, 'cluster-one')];
+  it("auto-selects cluster when exactly one cluster exists for the selected project", async () => {
+    const singleProject = [{ id: 1, name: "project-one" }];
+    const singleCluster = [buildCluster(101, 1, "cluster-one")];
     mockKubernetesPageApis({
       projects: singleProject,
       allClusters: singleCluster,
@@ -211,16 +249,16 @@ describe('KubernetesV2', () => {
     render(<KubernetesV2 />);
 
     await waitFor(() => {
-      expect(window.localStorage.getItem(STORAGE_KEYS.K8S_CLUSTER)).toBe('101');
+      expect(window.localStorage.getItem(STORAGE_KEYS.K8S_CLUSTER)).toBe("101");
     });
   });
 
-  it('does NOT auto-select when multiple projects exist', async () => {
+  it("does NOT auto-select when multiple projects exist", async () => {
     const projects = [
-      { id: 1, name: 'project-one' },
-      { id: 2, name: 'project-two' },
+      { id: 1, name: "project-one" },
+      { id: 2, name: "project-two" },
     ];
-    const singleCluster = [buildCluster(101, 1, 'cluster-one')];
+    const singleCluster = [buildCluster(101, 1, "cluster-one")];
     mockKubernetesPageApis({
       projects,
       allClusters: singleCluster,
@@ -230,16 +268,16 @@ describe('KubernetesV2', () => {
     render(<KubernetesV2 />);
 
     await waitFor(() => {
-      expect(screen.getByText('No cluster selected')).toBeInTheDocument();
+      expect(screen.getByText("No cluster selected")).toBeInTheDocument();
     });
     expect(window.localStorage.getItem(STORAGE_KEYS.K8S_PROJECT)).toBeFalsy();
   });
 
-  it('does NOT auto-select when multiple clusters exist', async () => {
-    const singleProject = [{ id: 1, name: 'project-one' }];
+  it("does NOT auto-select when multiple clusters exist", async () => {
+    const singleProject = [{ id: 1, name: "project-one" }];
     const clusters = [
-      buildCluster(101, 1, 'cluster-one'),
-      buildCluster(102, 1, 'cluster-two'),
+      buildCluster(101, 1, "cluster-one"),
+      buildCluster(102, 1, "cluster-two"),
     ];
     mockKubernetesPageApis({
       projects: singleProject,
@@ -252,68 +290,102 @@ describe('KubernetesV2', () => {
     // With multiple clusters the auto-select condition (1 project AND 1 cluster) is
     // not met, so neither project nor cluster should be auto-selected.
     await waitFor(() => {
-      expect(screen.getByText('No cluster selected')).toBeInTheDocument();
+      expect(screen.getByText("No cluster selected")).toBeInTheDocument();
     });
     expect(window.localStorage.getItem(STORAGE_KEYS.K8S_PROJECT)).toBeFalsy();
     expect(window.localStorage.getItem(STORAGE_KEYS.K8S_CLUSTER)).toBeFalsy();
   });
 
-  it('does NOT auto-select while data is still loading', async () => {
-    const singleProject = [{ id: 1, name: 'project-one' }];
-    const singleCluster = [buildCluster(101, 1, 'cluster-one')];
+  it("does NOT auto-select while data is still loading", async () => {
+    const singleProject = [{ id: 1, name: "project-one" }];
+    const singleCluster = [buildCluster(101, 1, "cluster-one")];
 
     server.use(
-      http.get('*/api/projects', async () => {
+      http.get("*/api/projects", async () => {
         await new Promise((r) => setTimeout(r, 200));
-        return HttpResponse.json({ projects: singleProject, total: singleProject.length });
-      }),
-      http.get('*/api/k8s/clusters', () => {
-        return HttpResponse.json({ clusters: singleCluster, count: singleCluster.length });
-      }),
-      http.get('*/api/projects/:projectId/k8s/clusters', ({ params: pathParams }) => {
-        const projectId = Number(pathParams.projectId);
-        const clusters = projectId === 1 ? singleCluster : [];
-        return HttpResponse.json({ clusters, count: clusters.length });
-      }),
-      http.get('*/api/k8s/clusters/:clusterId/nodes/count', ({ params: pathParams }) => {
-        return HttpResponse.json({ cluster_id: Number(pathParams.clusterId), node_count: 3 });
-      }),
-      http.get('*/api/k8s/clusters/:clusterId/namespaces', ({ params: pathParams }) => {
         return HttpResponse.json({
-          namespaces: [{ name: 'default', status: 'Active', labels: null, created_at: null }],
-          count: 1,
-          cluster_id: Number(pathParams.clusterId),
+          projects: singleProject,
+          total: singleProject.length,
         });
       }),
-      http.get('*/api/k8s/clusters/:id/resource-summary', ({ params: pathParams, request }) => {
-        const url = new URL(request.url);
+      http.get("*/api/k8s/clusters", () => {
         return HttpResponse.json({
-          cluster_id: Number(pathParams.id),
-          namespace: url.searchParams.get('namespace'),
-          summary: {},
+          clusters: singleCluster,
+          count: singleCluster.length,
         });
       }),
-      http.get('*/api/k8s/clusters/:id/resources/:type', ({ params: pathParams }) => {
-        return HttpResponse.json({
-          resources: [],
-          count: 0,
-          resource_type: String(pathParams.type),
-          namespace: 'default',
-          cluster_id: Number(pathParams.id),
-        });
-      }),
+      http.get(
+        "*/api/projects/:projectId/k8s/clusters",
+        ({ params: pathParams }) => {
+          const projectId = Number(pathParams.projectId);
+          const clusters = projectId === 1 ? singleCluster : [];
+          return HttpResponse.json({ clusters, count: clusters.length });
+        },
+      ),
+      http.get(
+        "*/api/k8s/clusters/:clusterId/nodes/count",
+        ({ params: pathParams }) => {
+          return HttpResponse.json({
+            cluster_id: Number(pathParams.clusterId),
+            node_count: 3,
+          });
+        },
+      ),
+      http.get(
+        "*/api/k8s/clusters/:clusterId/namespaces",
+        ({ params: pathParams }) => {
+          return HttpResponse.json({
+            namespaces: [
+              {
+                name: "default",
+                status: "Active",
+                labels: null,
+                created_at: null,
+              },
+            ],
+            count: 1,
+            cluster_id: Number(pathParams.clusterId),
+          });
+        },
+      ),
+      http.get(
+        "*/api/k8s/clusters/:id/resource-summary",
+        ({ params: pathParams, request }) => {
+          const url = new URL(request.url);
+          return HttpResponse.json({
+            cluster_id: Number(pathParams.id),
+            namespace: url.searchParams.get("namespace"),
+            summary: {},
+          });
+        },
+      ),
+      http.get(
+        "*/api/k8s/clusters/:id/resources/:type",
+        ({ params: pathParams }) => {
+          return HttpResponse.json({
+            resources: [],
+            count: 0,
+            resource_type: String(pathParams.type),
+            namespace: "default",
+            cluster_id: Number(pathParams.id),
+          });
+        },
+      ),
     );
 
     render(<KubernetesV2 />);
 
     expect(window.localStorage.getItem(STORAGE_KEYS.K8S_PROJECT)).toBeFalsy();
 
-    await waitFor(() => {
-      expect(window.localStorage.getItem(STORAGE_KEYS.K8S_PROJECT)).toBe('1');
-    }, { timeout: 3000 });
+    await waitFor(
+      () => {
+        expect(window.localStorage.getItem(STORAGE_KEYS.K8S_PROJECT)).toBe("1");
+      },
+      { timeout: 3000 },
+    );
 
     await waitFor(() => {
-      expect(window.localStorage.getItem(STORAGE_KEYS.K8S_CLUSTER)).toBe('101');
+      expect(window.localStorage.getItem(STORAGE_KEYS.K8S_CLUSTER)).toBe("101");
     });
   });
 });

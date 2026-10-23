@@ -17,18 +17,18 @@
  * Warning/Critical cards auto-expand. Sorted by severity.
  */
 
-import { useState, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { cn } from '@/lib/utils';
-import { useF5BNKHealth } from '@/hooks/useK8s';
-import { useClusterDriftStatus } from '@/hooks/useDrift';
-import { LicenseStatusCard } from '@/components/k8s/LicenseStatusCard';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { HealthDetailCard } from '@/components/health/HealthDetailCard';
-import { PodLogsViewer } from '@/components/k8s/PodLogsViewer';
-import { ResourceDescribeViewer } from '@/components/k8s/ResourceDescribeViewer';
-import type { K8sResource } from '@/types/kubernetes';
+import { useState, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+import { cn } from "@/lib/utils";
+import { useBnkRefresh, useF5BNKHealth } from "@/hooks/useK8s";
+import { useClusterDriftStatus } from "@/hooks/useDrift";
+import { LicenseStatusCard } from "@/components/k8s/LicenseStatusCard";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { HealthDetailCard } from "@/components/health/HealthDetailCard";
+import { PodLogsViewer } from "@/components/k8s/PodLogsViewer";
+import { ResourceDescribeViewer } from "@/components/k8s/ResourceDescribeViewer";
+import type { K8sResource } from "@/types/kubernetes";
 import {
   RefreshCw,
   CheckCircle2,
@@ -36,16 +36,27 @@ import {
   XCircle,
   Loader2,
   GitCompareArrows,
-} from 'lucide-react';
+  Wifi,
+  Link2,
+  ChevronDown,
+  ChevronRight,
+  Zap,
+} from "lucide-react";
 import type {
   HealthSeverity,
   HealthPodDetail,
   HealthRemediationAction,
   ClusterDriftStatus,
-} from '@/types';
-import { SEVERITY_CONFIG, getSeverityConfig, compareSeverity } from '@/lib/health-severity';
-import { ErrorState } from '@/components/ui/error-state';
-import { parseApiError } from '@/lib/error-handler';
+  HealthConnectivityStatus,
+  HealthIntegrationStatus,
+} from "@/types";
+import {
+  SEVERITY_CONFIG,
+  getSeverityConfig,
+  compareSeverity,
+} from "@/lib/health-severity";
+import { ErrorState } from "@/components/ui/error-state";
+import { parseApiError } from "@/lib/error-handler";
 
 interface BNKHealthDashboardProps {
   clusterId: number;
@@ -60,7 +71,7 @@ const severityConfig = SEVERITY_CONFIG;
 function SeverityDot({ severity }: { severity: HealthSeverity }) {
   const cfg = getSeverityConfig(severity);
   return (
-    <span className={cn('inline-block h-2.5 w-2.5 rounded-full', cfg.dot)} />
+    <span className={cn("inline-block h-2.5 w-2.5 rounded-full", cfg.dot)} />
   );
 }
 
@@ -85,7 +96,9 @@ function StatRow({
       <div className="flex items-center gap-2">
         {severity && <SeverityDot severity={severity} />}
         <span className="text-sm font-medium tabular-nums">
-          {value}{total !== undefined ? `/${total}` : ''}{suffix ? ` ${suffix}` : ''}
+          {value}
+          {total !== undefined ? `/${total}` : ""}
+          {suffix ? ` ${suffix}` : ""}
         </span>
       </div>
     </div>
@@ -96,11 +109,98 @@ function StatRow({
 
 function FeatureBadge({ label, enabled }: { label: string; enabled: boolean }) {
   return (
+    <Badge variant={enabled ? "success" : "muted"} className="text-xs gap-1">
+      {enabled ? (
+        <CheckCircle2 className="h-3 w-3" />
+      ) : (
+        <XCircle className="h-3 w-3" />
+      )}
+      {label}
+    </Badge>
+  );
+}
+
+// ---- Connectivity / integration badges ----
+
+function ConnectivityBadge({
+  connectivity,
+}: {
+  connectivity: HealthConnectivityStatus;
+}) {
+  const statusConfig: Record<
+    string,
+    {
+      variant: "success" | "warning" | "destructive" | "muted";
+      icon: typeof Wifi;
+      label: string;
+    }
+  > = {
+    connected: { variant: "success", icon: CheckCircle2, label: "Connected" },
+    reachable: { variant: "warning", icon: Wifi, label: "Reachable" },
+    partial: { variant: "warning", icon: AlertTriangle, label: "Partial" },
+    unreachable: {
+      variant: "destructive",
+      icon: XCircle,
+      label: "Unreachable",
+    },
+    unknown: { variant: "muted", icon: Wifi, label: "Unknown" },
+  };
+  const cfg = statusConfig[connectivity.status] || statusConfig.unknown;
+  const Icon = cfg.icon;
+  return (
     <Badge
-      variant={enabled ? 'success' : 'muted'}
-      className="text-xs gap-1"
+      variant={cfg.variant}
+      className="text-xs gap-1 font-normal"
+      title={connectivity.message}
     >
-      {enabled ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+      <Icon className="h-3 w-3" />
+      {cfg.label}
+    </Badge>
+  );
+}
+
+function IntegrationBadge({
+  integration,
+}: {
+  integration: HealthIntegrationStatus;
+}) {
+  const severityConfigMap: Record<
+    string,
+    {
+      variant: "success" | "warning" | "destructive" | "muted";
+      icon: typeof Link2;
+      label: string;
+    }
+  > = {
+    healthy: {
+      variant: "success",
+      icon: CheckCircle2,
+      label: "Operator Connected",
+    },
+    warning: {
+      variant: "warning",
+      icon: AlertTriangle,
+      label: "Operator Disconnected",
+    },
+    critical: {
+      variant: "destructive",
+      icon: XCircle,
+      label: "Integration Failed",
+    },
+    unknown: { variant: "muted", icon: Link2, label: "Integration Unknown" },
+  };
+  const cfg =
+    severityConfigMap[integration.status] || severityConfigMap.unknown;
+  const Icon = cfg.icon;
+  const label =
+    integration.operatorMode === "kubeconfig" ? "Kubeconfig" : cfg.label;
+  return (
+    <Badge
+      variant={cfg.variant}
+      className="text-xs gap-1 font-normal"
+      title={integration.message}
+    >
+      <Icon className="h-3 w-3" />
       {label}
     </Badge>
   );
@@ -115,12 +215,18 @@ interface ComponentCardData {
   explanation: string;
   podDetails: HealthPodDetail[];
   remediationActions: HealthRemediationAction[];
+  namespaces: string[];
+  zones: string[];
+  nodes: string[];
   children?: React.ReactNode;
 }
 
 // ---- Main component ----
 
-export function BNKHealthDashboard({ clusterId, namespace }: BNKHealthDashboardProps) {
+export function BNKHealthDashboard({
+  clusterId,
+  namespace,
+}: BNKHealthDashboardProps) {
   const navigate = useNavigate();
   const {
     data: health,
@@ -134,14 +240,24 @@ export function BNKHealthDashboard({ clusterId, namespace }: BNKHealthDashboardP
     pollingEnabled: true,
   });
   const { data: driftStatus } = useClusterDriftStatus(clusterId);
+  const refresh = useBnkRefresh(clusterId);
+
+  // Collapsible Recommendations state (default collapsed)
+  const [recsExpanded, setRecsExpanded] = useState(false);
 
   // Dialog state for View Logs
   const [logsDialogOpen, setLogsDialogOpen] = useState(false);
-  const [logsPod, setLogsPod] = useState<{ name: string; namespace: string } | null>(null);
+  const [logsPod, setLogsPod] = useState<{
+    name: string;
+    namespace: string;
+  } | null>(null);
 
   // Dialog state for Describe
   const [describeDialogOpen, setDescribeDialogOpen] = useState(false);
-  const [describePod, setDescribePod] = useState<{ name: string; namespace: string } | null>(null);
+  const [describePod, setDescribePod] = useState<{
+    name: string;
+    namespace: string;
+  } | null>(null);
 
   const handleViewLogs = useCallback((podName: string, ns: string) => {
     setLogsPod({ name: podName, namespace: ns });
@@ -161,42 +277,43 @@ export function BNKHealthDashboard({ clusterId, namespace }: BNKHealthDashboardP
 
     // Platform components — each gets its own card
     const platformComponents: Array<{
-      key: 'flo' | 'controller' | 'crdInstaller' | 'analyzer';
+      key: "flo" | "controller" | "crdInstaller" | "analyzer";
       name: string;
       summaryFn: (comp: Record<string, unknown>) => string;
       show: boolean;
     }> = [
       {
-        key: 'flo',
-        name: 'FLO Operator',
+        key: "flo",
+        name: "FLO Operator",
         summaryFn: (c) => `${c.running ?? 0}/${c.total ?? 0} running`,
         // Only show FLO for a confirmed FLO deploy-flow install. Direct-helm
         // installs genuinely have no FLO/lifecycle-operator pod, and an
         // 'unknown' shape (e.g. transient cluster-connectivity issue) should
         // not flash a misleading permanent 0/0 "unknown" card either.
-        show: health.installShape === 'flo',
+        show: health.installShape === "flo",
       },
       {
-        key: 'controller',
-        name: 'CNE Controller',
+        key: "controller",
+        name: "CNE Controller",
         summaryFn: (c) => `${c.running ?? 0}/${c.total ?? 0} running`,
         show: true,
       },
       {
-        key: 'crdInstaller',
-        name: 'CRD Installer',
+        key: "crdInstaller",
+        name: "CRD Installer",
         summaryFn: (c) => `${c.completed ?? 0}/${c.total ?? 0} done`,
         // One-shot Job; pods are garbage-collected after the CRDs are
         // installed. Steady-state on a working cluster is 0/0 — hide the card
         // then to avoid signalling "Unknown" when there's nothing to inspect.
         // However, if the Job failed (pods GC'd, severity=critical), show the
         // card so operators can see the failure.
-        show: (health.platform?.crdInstaller?.total ?? 0) > 0
-          || health.platform?.crdInstaller?.severity === 'critical',
+        show:
+          (health.platform?.crdInstaller?.total ?? 0) > 0 ||
+          health.platform?.crdInstaller?.severity === "critical",
       },
       {
-        key: 'analyzer',
-        name: 'F5 Analyzer',
+        key: "analyzer",
+        name: "F5 Analyzer",
         summaryFn: (c) => `${c.running ?? 0}/${c.total ?? 0} running`,
         show: (health.platform?.analyzer?.total ?? 0) > 0,
       },
@@ -208,11 +325,15 @@ export function BNKHealthDashboard({ clusterId, namespace }: BNKHealthDashboardP
       if (!comp) continue;
       cards.push({
         name: pc.name,
-        severity: (comp.severity as HealthSeverity) || 'unknown',
+        severity: (comp.severity as HealthSeverity) || "unknown",
         summary: pc.summaryFn(comp as unknown as Record<string, unknown>),
-        explanation: (comp.explanation as string) || '',
+        explanation: (comp.explanation as string) || "",
         podDetails: (comp.podDetails as HealthPodDetail[]) || [],
-        remediationActions: (comp.remediationActions as HealthRemediationAction[]) || [],
+        remediationActions:
+          (comp.remediationActions as HealthRemediationAction[]) || [],
+        namespaces: (comp.namespaces as string[]) || [],
+        zones: (comp.zones as string[]) || [],
+        nodes: (comp.nodes as string[]) || [],
       });
     }
 
@@ -220,25 +341,44 @@ export function BNKHealthDashboard({ clusterId, namespace }: BNKHealthDashboardP
     const tmm = health.dataPlane?.tmm;
     if (tmm) {
       const cneInstance = health.dataPlane?.cneInstance;
-      const hasCne = cneInstance && 'name' in cneInstance && cneInstance.name;
+      const hasCne = cneInstance && "name" in cneInstance && cneInstance.name;
       cards.push({
-        name: 'TMM (Data Plane)',
-        severity: (tmm.severity as HealthSeverity) || 'unknown',
+        name: "TMM (Data Plane)",
+        severity: (tmm.severity as HealthSeverity) || "unknown",
         summary: `${tmm.running ?? 0}/${tmm.pods ?? 0} pods running · ${tmm.containersReady ?? 0}/${tmm.containersTotal ?? 0} containers · ${tmm.totalRestarts ?? 0} restarts`,
-        explanation: (tmm.explanation as string) || '',
+        explanation: (tmm.explanation as string) || "",
         podDetails: (tmm.podDetails as HealthPodDetail[]) || [],
-        remediationActions: (tmm.remediationActions as HealthRemediationAction[]) || [],
+        remediationActions:
+          (tmm.remediationActions as HealthRemediationAction[]) || [],
+        namespaces: (tmm.namespaces as string[]) || [],
+        zones: (tmm.zones as string[]) || [],
+        nodes: (tmm.nodes as string[]) || [],
         children: hasCne ? (
           <div className="pt-2 border-t border-border">
             <p className="text-xs mb-2 text-muted-foreground">
               CNEInstance: {cneInstance.name as string}
             </p>
             <div className="flex flex-wrap gap-1.5">
-              <FeatureBadge label="Firewall" enabled={!!cneInstance.firewallACL} />
-              <FeatureBadge label="IntelligentLB" enabled={!!cneInstance.intelligentLB} />
-              <FeatureBadge label="PseudoCNI" enabled={!!cneInstance.pseudoCNI} />
-              <FeatureBadge label="Metrics" enabled={!!cneInstance.metricSubsystem} />
-              <FeatureBadge label="Logging" enabled={!!cneInstance.loggingSubsystem} />
+              <FeatureBadge
+                label="Firewall"
+                enabled={!!cneInstance.firewallACL}
+              />
+              <FeatureBadge
+                label="IntelligentLB"
+                enabled={!!cneInstance.intelligentLB}
+              />
+              <FeatureBadge
+                label="PseudoCNI"
+                enabled={!!cneInstance.pseudoCNI}
+              />
+              <FeatureBadge
+                label="Metrics"
+                enabled={!!cneInstance.metricSubsystem}
+              />
+              <FeatureBadge
+                label="Logging"
+                enabled={!!cneInstance.loggingSubsystem}
+              />
             </div>
           </div>
         ) : undefined,
@@ -250,16 +390,25 @@ export function BNKHealthDashboard({ clusterId, namespace }: BNKHealthDashboardP
     if (gateways && (gateways.total ?? 0) > 0) {
       const addresses = (gateways.addresses as string[]) || [];
       cards.push({
-        name: 'Gateways',
-        severity: (gateways.severity as HealthSeverity) || 'unknown',
-        summary: `${gateways.programmed ?? 0}/${gateways.total ?? 0} programmed${addresses.length ? ` · VIPs: ${addresses.join(', ')}` : ''}`,
-        explanation: (gateways.explanation as string) || '',
+        name: "Gateways",
+        severity: (gateways.severity as HealthSeverity) || "unknown",
+        summary: `${gateways.programmed ?? 0}/${gateways.total ?? 0} programmed${addresses.length ? ` · VIPs: ${addresses.join(", ")}` : ""}`,
+        explanation: (gateways.explanation as string) || "",
         podDetails: [],
         remediationActions: [],
+        namespaces: [],
+        zones: [],
+        nodes: [],
         children: (
           <>
-            <StatRow label="Listeners" value={health.networking?.listeners ?? 0} />
-            <StatRow label="HTTP Routes" value={health.networking?.httpRoutes ?? 0} />
+            <StatRow
+              label="Listeners"
+              value={health.networking?.listeners ?? 0}
+            />
+            <StatRow
+              label="HTTP Routes"
+              value={health.networking?.httpRoutes ?? 0}
+            />
           </>
         ),
       });
@@ -269,18 +418,66 @@ export function BNKHealthDashboard({ clusterId, namespace }: BNKHealthDashboardP
     const vlans = health.networking?.vlans;
     if (vlans && (vlans.total ?? 0) > 0) {
       cards.push({
-        name: 'VLANs',
-        severity: (vlans.severity as HealthSeverity) || 'unknown',
+        name: "VLANs",
+        severity: (vlans.severity as HealthSeverity) || "unknown",
         summary: `${vlans.programmed ?? 0}/${vlans.total ?? 0} programmed`,
-        explanation: (vlans.explanation as string) || '',
+        explanation: (vlans.explanation as string) || "",
         podDetails: [],
         remediationActions: [],
+        namespaces: [],
+        zones: [],
+        nodes: [],
         children: (
           <>
-            {(vlans.details as Array<{ name: string; interfaces: string[]; selfIPs: string[] }>)?.map((vlan) => (
-              <div key={vlan.name} className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{vlan.name} ({vlan.interfaces?.join(', ')})</span>
-                <span className="font-mono">{vlan.selfIPs?.join(', ')}</span>
+            {(
+              vlans.details as Array<{
+                name: string;
+                interfaces: string[];
+                selfIPs: string[];
+              }>
+            )?.map((vlan) => (
+              <div
+                key={vlan.name}
+                className="flex items-center justify-between text-xs text-muted-foreground"
+              >
+                <span>
+                  {vlan.name} ({vlan.interfaces?.join(", ")})
+                </span>
+                <span className="font-mono">{vlan.selfIPs?.join(", ")}</span>
+              </div>
+            ))}
+          </>
+        ),
+      });
+    }
+
+    // Networking — BNK 2.4 Infra (networks and IPAM pools that replace F5SPKVlan)
+    const infra = health.networking?.infra;
+    if (infra && infra.total > 0) {
+      cards.push({
+        name: "Infra",
+        severity: infra.severity || "unknown",
+        summary: `${infra.programmed}/${infra.total} programmed`,
+        explanation: infra.explanation || "",
+        podDetails: [],
+        remediationActions: [],
+        namespaces: [],
+        zones: [],
+        nodes: [],
+        children: (
+          <>
+            {infra.details.map((item) => (
+              <div
+                key={item.name}
+                className="flex items-center justify-between text-xs text-muted-foreground"
+              >
+                <span>
+                  {item.name}
+                  {item.programmed ? "" : " (not programmed)"}
+                </span>
+                <span className="font-mono">
+                  {item.networks} networks · {item.ipams} IPAM pools
+                </span>
               </div>
             ))}
           </>
@@ -291,47 +488,72 @@ export function BNKHealthDashboard({ clusterId, namespace }: BNKHealthDashboardP
     // Security — iRules (if any have issues)
     const irules = health.security?.irules;
     if (irules && (irules.total ?? 0) > 0) {
-      const errorIrules = (irules.details as Array<{ name: string; error: string | null }>)?.filter(ir => ir.error) || [];
+      const errorIrules =
+        (
+          irules.details as Array<{ name: string; error: string | null }>
+        )?.filter((ir) => ir.error) || [];
       cards.push({
-        name: 'iRules',
-        severity: (irules.severity as HealthSeverity) || 'unknown',
+        name: "iRules",
+        severity: (irules.severity as HealthSeverity) || "unknown",
         summary: `${irules.accepted ?? 0}/${irules.total ?? 0} accepted`,
-        explanation: (irules.explanation as string) || '',
+        explanation: (irules.explanation as string) || "",
         podDetails: [],
         remediationActions: [],
-        children: errorIrules.length > 0 ? (
-          <>
-            {errorIrules.map((ir) => (
-              <div key={ir.name} className="flex items-start gap-2">
-                <AlertTriangle className="h-3.5 w-3.5 text-warning mt-0.5 shrink-0" />
-                <div>
-                  <span className="text-xs font-medium text-warning">{ir.name}</span>
-                  <p className="text-xs text-muted-foreground line-clamp-2">{ir.error}</p>
+        namespaces: [],
+        zones: [],
+        nodes: [],
+        children:
+          errorIrules.length > 0 ? (
+            <>
+              {errorIrules.map((ir) => (
+                <div key={ir.name} className="flex items-start gap-2">
+                  <AlertTriangle className="h-3.5 w-3.5 text-warning mt-0.5 shrink-0" />
+                  <div>
+                    <span className="text-xs font-medium text-warning">
+                      {ir.name}
+                    </span>
+                    <p className="text-xs text-muted-foreground line-clamp-2">
+                      {ir.error}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </>
-        ) : undefined,
+              ))}
+            </>
+          ) : undefined,
       });
     }
 
     // Security — counts summary card (always show if any policies exist)
-    const secPolicyCount = (health.security?.firewallPolicies ?? 0) +
+    const secPolicyCount =
+      (health.security?.firewallPolicies ?? 0) +
       (health.security?.securityPolicies ?? 0) +
       (health.security?.networkPolicies ?? 0);
     if (secPolicyCount > 0) {
       cards.push({
-        name: 'Security Policies',
-        severity: (health.security?.severity as HealthSeverity) || 'unknown',
+        name: "Security Policies",
+        severity: (health.security?.severity as HealthSeverity) || "unknown",
         summary: `${secPolicyCount} policies · ${health.security?.addressLists ?? 0} address lists · ${health.security?.portLists ?? 0} port lists`,
-        explanation: 'Security policies protect your network functions with firewall rules, network segmentation, and access control.',
+        explanation:
+          "Security policies protect your network functions with firewall rules, network segmentation, and access control.",
         podDetails: [],
         remediationActions: [],
+        namespaces: [],
+        zones: [],
+        nodes: [],
         children: (
           <>
-            <StatRow label="Firewall Policies" value={health.security?.firewallPolicies ?? 0} />
-            <StatRow label="Security Policies" value={health.security?.securityPolicies ?? 0} />
-            <StatRow label="Network Policies" value={health.security?.networkPolicies ?? 0} />
+            <StatRow
+              label="Firewall Policies"
+              value={health.security?.firewallPolicies ?? 0}
+            />
+            <StatRow
+              label="Security Policies"
+              value={health.security?.securityPolicies ?? 0}
+            />
+            <StatRow
+              label="Network Policies"
+              value={health.security?.networkPolicies ?? 0}
+            />
           </>
         ),
       });
@@ -343,11 +565,13 @@ export function BNKHealthDashboard({ clusterId, namespace }: BNKHealthDashboardP
     return cards;
   }, [health]);
 
-  if (isLoading) {
+  if (isLoading && !health) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <span className="ml-3 text-sm text-muted-foreground">Loading BNK health data...</span>
+        <span className="ml-3 text-sm text-muted-foreground">
+          Loading BNK health data...
+        </span>
       </div>
     );
   }
@@ -360,12 +584,14 @@ export function BNKHealthDashboard({ clusterId, namespace }: BNKHealthDashboardP
         error={error}
         onRetry={() => refetch()}
         size="sm"
-        {...(healthErrorRoute ? {
-          secondaryAction: {
-            label: parsedHealthError.action!.label,
-            onClick: () => navigate(healthErrorRoute),
-          },
-        } : {})}
+        {...(healthErrorRoute
+          ? {
+              secondaryAction: {
+                label: parsedHealthError.action!.label,
+                onClick: () => navigate(healthErrorRoute),
+              },
+            }
+          : {})}
       />
     );
   }
@@ -374,21 +600,24 @@ export function BNKHealthDashboard({ clusterId, namespace }: BNKHealthDashboardP
 
   const lastUpdated = dataUpdatedAt
     ? new Date(dataUpdatedAt).toLocaleTimeString()
-    : 'never';
+    : "never";
 
-  const overallConfig = severityConfig[(health.overall as HealthSeverity)] || severityConfig.unknown;
+  const overallConfig =
+    severityConfig[health.overall as HealthSeverity] || severityConfig.unknown;
   const OverallIcon = overallConfig.icon;
 
   return (
     <div className="space-y-6">
       {/* Overall Status Banner */}
-      <div className={cn(
-        'rounded-lg border p-4 flex items-center justify-between',
-        overallConfig.bg,
-        overallConfig.border,
-      )}>
+      <div
+        className={cn(
+          "rounded-lg border p-4 flex items-center justify-between",
+          overallConfig.bg,
+          overallConfig.border,
+        )}
+      >
         <div className="flex items-center gap-3">
-          <OverallIcon className={cn('h-6 w-6', overallConfig.color)} />
+          <OverallIcon className={cn("h-6 w-6", overallConfig.color)} />
           <div>
             <h2 className="font-semibold text-lg flex items-center gap-2">
               BNK Platform {overallConfig.label}
@@ -397,14 +626,21 @@ export function BNKHealthDashboard({ clusterId, namespace }: BNKHealthDashboardP
                   {health.installMethod}
                 </Badge>
               )}
+              {health.connectivity && (
+                <ConnectivityBadge connectivity={health.connectivity} />
+              )}
+              {health.integration && (
+                <IntegrationBadge integration={health.integration} />
+              )}
             </h2>
             <p className="text-sm text-muted-foreground">
-              {health.counts?.tmm_containers || '0/0'} TMM containers
-              {' · '}
-              {health.counts?.gateways || 0} gateway{health.counts?.gateways !== 1 ? 's' : ''}
-              {' · '}
+              {health.counts?.tmm_containers || "0/0"} TMM containers
+              {" · "}
+              {health.counts?.gateways || 0} gateway
+              {health.counts?.gateways !== 1 ? "s" : ""}
+              {" · "}
               {health.counts?.httpRoutes || 0} routes
-              {' · '}
+              {" · "}
               {health.counts?.vlans || 0} VLANs
             </p>
           </div>
@@ -416,10 +652,12 @@ export function BNKHealthDashboard({ clusterId, namespace }: BNKHealthDashboardP
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => refetch()}
+            onClick={() => refresh()}
             disabled={isFetching}
           >
-            <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} />
+            <RefreshCw
+              className={cn("h-3.5 w-3.5", isFetching && "animate-spin")}
+            />
           </Button>
         </div>
       </div>
@@ -432,6 +670,91 @@ export function BNKHealthDashboard({ clusterId, namespace }: BNKHealthDashboardP
         <DriftStatusBanner driftStatus={driftStatus} />
       )}
 
+      {/* Collapsible Recommendations (default collapsed) */}
+      {(() => {
+        const degradedCards = componentCards.filter(
+          (c) => c.severity === "critical" || c.severity === "warning",
+        );
+        const recs = [
+          ...degradedCards.map((c) => ({
+            id: `comp-${c.name}`,
+            title: `Investigate ${c.name} (${c.summary})`,
+            severity: c.severity,
+            description: c.explanation,
+          })),
+          ...(driftStatus && driftStatus.modules_with_drift > 0
+            ? [
+                {
+                  id: "drift-rec",
+                  title: "Reconcile Configuration Drift",
+                  severity: "warning" as HealthSeverity,
+                  description: `${driftStatus.modules_with_drift} of ${driftStatus.total_modules} module(s) have drifted from desired state.`,
+                },
+              ]
+            : []),
+          ...((health.counts?.gateways ?? 0) === 0
+            ? [
+                {
+                  id: "gateway-rec",
+                  title: "Configure a Gateway Listener",
+                  severity: "unknown" as HealthSeverity,
+                  description:
+                    "No Gateway API resources detected. Create a Gateway and L4/HTTP Routes to begin processing traffic through TMM.",
+                },
+              ]
+            : []),
+        ];
+        if (recs.length === 0) return null;
+        return (
+          <div className="rounded-lg border p-4 bg-card border-border">
+            <button
+              type="button"
+              onClick={() => setRecsExpanded((prev) => !prev)}
+              aria-expanded={recsExpanded}
+              className="w-full flex items-center justify-between text-left"
+            >
+              <h3 className="font-semibold text-sm flex items-center gap-2">
+                {recsExpanded ? (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                )}
+                <Zap className="h-4 w-4 text-primary" />
+                <span>Recommendations</span>
+                <Badge variant="outline" className="text-2xs ml-1">
+                  {recs.length}
+                </Badge>
+              </h3>
+              <span className="text-xs text-muted-foreground">
+                {recsExpanded ? "Click to collapse" : "Click to expand"}
+              </span>
+            </button>
+            {recsExpanded && (
+              <div className="space-y-3 mt-4">
+                {recs.map((rec) => (
+                  <div
+                    key={rec.id}
+                    className="flex items-start justify-between gap-3 p-3 rounded-lg border border-border bg-muted/50"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-medium">{rec.title}</span>
+                        <Badge variant="outline" className="text-2xs">
+                          {rec.severity}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {rec.description}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Health Detail Cards Grid — sorted by severity */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {componentCards.map((card) => (
@@ -443,6 +766,9 @@ export function BNKHealthDashboard({ clusterId, namespace }: BNKHealthDashboardP
             explanation={card.explanation}
             podDetails={card.podDetails}
             remediationActions={card.remediationActions}
+            namespaces={card.namespaces}
+            zones={card.zones}
+            nodes={card.nodes}
             clusterId={clusterId}
             onViewLogs={handleViewLogs}
             onDescribe={handleDescribe}
@@ -456,21 +782,34 @@ export function BNKHealthDashboard({ clusterId, namespace }: BNKHealthDashboardP
       <PodLogsViewer
         open={logsDialogOpen}
         onOpenChange={setLogsDialogOpen}
-        pod={logsPod ? { metadata: { name: logsPod.name, namespace: logsPod.namespace } } as never : null}
+        pod={
+          logsPod
+            ? ({
+                metadata: { name: logsPod.name, namespace: logsPod.namespace },
+              } as never)
+            : null
+        }
         clusterId={clusterId}
-        namespace={logsPod?.namespace || ''}
+        namespace={logsPod?.namespace || ""}
       />
 
       {/* Resource Describe Viewer Dialog */}
       <ResourceDescribeViewer
         open={describeDialogOpen}
         onOpenChange={setDescribeDialogOpen}
-        resource={describePod ? {
-          name: describePod.name,
-          kind: 'Pod',
-          apiVersion: 'v1',
-          metadata: { name: describePod.name, namespace: describePod.namespace },
-        } as K8sResource : null}
+        resource={
+          describePod
+            ? ({
+                name: describePod.name,
+                kind: "Pod",
+                apiVersion: "v1",
+                metadata: {
+                  name: describePod.name,
+                  namespace: describePod.namespace,
+                },
+              } as K8sResource)
+            : null
+        }
         clusterId={clusterId}
         namespace={describePod?.namespace}
       />
@@ -480,27 +819,54 @@ export function BNKHealthDashboard({ clusterId, namespace }: BNKHealthDashboardP
 
 // ---- Drift Status Banner ----
 
-function DriftStatusBanner({ driftStatus }: { driftStatus: ClusterDriftStatus }) {
+function DriftStatusBanner({
+  driftStatus,
+}: {
+  driftStatus: ClusterDriftStatus;
+}) {
   const hasDrift = driftStatus.modules_with_drift > 0;
-  const allUnchecked = driftStatus.overall_status === 'unchecked';
+  const allUnchecked = driftStatus.overall_status === "unchecked";
 
   const bannerConfig = hasDrift
-    ? { bg: 'bg-warning/10', border: 'border-warning/30', icon: AlertTriangle, color: 'text-warning', badgeVariant: 'warning' as const, label: 'Drift Detected' }
+    ? {
+        bg: "bg-warning/10",
+        border: "border-warning/30",
+        icon: AlertTriangle,
+        color: "text-warning",
+        badgeVariant: "warning" as const,
+        label: "Drift Detected",
+      }
     : allUnchecked
-    ? { bg: 'bg-muted', border: 'border-border', icon: GitCompareArrows, color: 'text-muted-foreground', badgeVariant: 'muted' as const, label: 'Not Checked' }
-    : { bg: 'bg-success/10', border: 'border-success/30', icon: CheckCircle2, color: 'text-success', badgeVariant: 'success' as const, label: 'No Drift' };
+      ? {
+          bg: "bg-muted",
+          border: "border-border",
+          icon: GitCompareArrows,
+          color: "text-muted-foreground",
+          badgeVariant: "muted" as const,
+          label: "Not Checked",
+        }
+      : {
+          bg: "bg-success/10",
+          border: "border-success/30",
+          icon: CheckCircle2,
+          color: "text-success",
+          badgeVariant: "success" as const,
+          label: "No Drift",
+        };
 
   const Icon = bannerConfig.icon;
 
   return (
-    <div className={cn(
-      'rounded-lg border p-4',
-      bannerConfig.bg,
-      bannerConfig.border,
-    )}>
+    <div
+      className={cn(
+        "rounded-lg border p-4",
+        bannerConfig.bg,
+        bannerConfig.border,
+      )}
+    >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Icon className={cn('h-5 w-5', bannerConfig.color)} />
+          <Icon className={cn("h-5 w-5", bannerConfig.color)} />
           <div>
             <h3 className="font-semibold text-sm flex items-center gap-2">
               Configuration Drift
@@ -512,8 +878,8 @@ function DriftStatusBanner({ driftStatus }: { driftStatus: ClusterDriftStatus })
               {hasDrift
                 ? `${driftStatus.modules_with_drift} of ${driftStatus.total_modules} module(s) drifted from desired state`
                 : allUnchecked
-                ? `${driftStatus.total_modules} module(s) — enable drift detection in project settings`
-                : `${driftStatus.modules_ok} of ${driftStatus.total_modules} module(s) match desired state`}
+                  ? `${driftStatus.total_modules} module(s) — enable drift detection in project settings`
+                  : `${driftStatus.modules_ok} of ${driftStatus.total_modules} module(s) match desired state`}
               {driftStatus.modules_unchecked > 0 && !allUnchecked && (
                 <> · {driftStatus.modules_unchecked} unchecked</>
               )}
@@ -528,20 +894,30 @@ function DriftStatusBanner({ driftStatus }: { driftStatus: ClusterDriftStatus })
       </div>
 
       {/* Show drifted modules */}
-      {hasDrift && driftStatus.module_statuses
-        .filter(m => m.status === 'drift')
-        .map(m => (
-          <div key={m.module_id} className="flex items-center justify-between mt-2 pl-8 text-xs text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-3 w-3 text-warning" />
-              <span className="font-medium">{m.module_name}</span>
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                {m.engine_type === 'kubernetes' ? 'K8s' : m.engine_type === 'container' ? 'Container' : 'OpenTofu'}
-              </Badge>
+      {hasDrift &&
+        driftStatus.module_statuses
+          .filter((m) => m.status === "drift")
+          .map((m) => (
+            <div
+              key={m.module_id}
+              className="flex items-center justify-between mt-2 pl-8 text-xs text-muted-foreground"
+            >
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-3 w-3 text-warning" />
+                <span className="font-medium">{m.module_name}</span>
+                <Badge variant="outline" className="text-2xs px-1.5 py-0">
+                  {m.engine_type === "kubernetes"
+                    ? "K8s"
+                    : m.engine_type === "container"
+                      ? "Container"
+                      : "OpenTofu"}
+                </Badge>
+              </div>
+              <span className="text-muted-foreground truncate max-w-[300px]">
+                {m.drift_summary}
+              </span>
             </div>
-            <span className="text-muted-foreground truncate max-w-[300px]">{m.drift_summary}</span>
-          </div>
-        ))}
+          ))}
     </div>
   );
 }

@@ -6,7 +6,7 @@
  *   BenchmarkConfig = a saved RunConfig (base_url, model, proxy, phases)
  *   BenchmarkAgent  = a test client MACHINE (registered via curl)
  */
-import type { components } from './api-generated';
+import type { components } from "./api-generated";
 
 // =============================================================================
 // Enums
@@ -14,21 +14,38 @@ import type { components } from './api-generated';
 
 /** Proxy types for comparison */
 export type ProxyType =
-  | 'envoy'
-  | 'nginx'
-  | 'haproxy'
-  | 'f5-bnk'
-  | 'nodeport'
-  | 'envoy-ai-gateway'
-  | 'llm-d-router';
+  | "envoy"
+  | "nginx"
+  | "haproxy"
+  | "f5-bnk"
+  | "f5-bnk-epp"
+  | "nodeport"
+  | "envoy-ai-gateway"
+  | "llm-d-router";
 
 /** Benchmark tool that produced results */
-export type BenchmarkTool = 'aiperf' | 'llm-bench';
+export type BenchmarkTool = "aiperf" | "llm-bench";
 
-export type BenchmarkRunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
-export type BenchmarkAgentStatus = 'connected' | 'disconnected' | 'running';
-export type BenchmarkTargetStatus = 'active' | 'inactive' | 'validating' | 'error';
-export type ProxyDeploymentStatus = 'discovered' | 'pending' | 'deploying' | 'ready' | 'failed' | 'uninstalling' | 'uninstalled';
+export type BenchmarkRunStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled";
+export type BenchmarkAgentStatus = "connected" | "disconnected" | "running";
+export type BenchmarkTargetStatus =
+  | "active"
+  | "inactive"
+  | "validating"
+  | "error";
+export type ProxyDeploymentStatus =
+  | "discovered"
+  | "pending"
+  | "deploying"
+  | "ready"
+  | "failed"
+  | "uninstalling"
+  | "uninstalled";
 
 // =============================================================================
 // Config — saved RunConfig presets
@@ -39,7 +56,7 @@ export interface BenchmarkConfig {
   name: string;
   description: string | null;
   tool: string;
-  config_json: Record<string, unknown>;  // Full RunConfig
+  config_json: Record<string, unknown>; // Full RunConfig
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -74,8 +91,10 @@ export interface BenchmarkRun {
   config_id: number | null;
   agent_id: number | null;
   target_id?: number | null;
+  cluster_name?: string | null;
   proxy_deployment_id?: number | null;
   scenario_key?: string | null;
+  variant_label?: string | null;
   status: BenchmarkRunStatus;
   error_message: string | null;
   is_baseline?: boolean;
@@ -90,8 +109,8 @@ export interface BenchmarkRun {
   successful_requests: number | null;
   failed_requests: number | null;
   success_rate_pct: number | null;
-  latency_p50: number | null;  // seconds
-  latency_p99: number | null;  // seconds
+  latency_p50: number | null; // seconds
+  latency_p99: number | null; // seconds
   overall_rps: number | null;
   peak_rps: number | null;
   tokens_per_sec: number | null;
@@ -104,8 +123,8 @@ export interface BenchmarkRun {
 }
 
 export interface BenchmarkRunDetail extends BenchmarkRun {
-  result_json: Record<string, unknown> | null;  // Full BenchmarkResult
-  config_snapshot: Record<string, unknown> | null;  // Full RunConfig
+  result_json: Record<string, unknown> | null; // Full BenchmarkResult
+  config_snapshot: Record<string, unknown> | null; // Full RunConfig
   config: BenchmarkConfig | null;
   agent: BenchmarkAgent | null;
 }
@@ -138,12 +157,50 @@ export interface BenchmarkAgent {
   name: string;
   hostname: string | null;
   ip_address: string | null;
+  host_ip?: string | null;
+  project_id?: number | null;
+  project_name?: string | null;
+  connected_projects?: string[] | null;
+  infra?: string | null;
+  managed?: boolean | null;
+  ssh_credential_id?: number | null;
+  provision_status?: string | null;
+  provision_message?: string | null;
+  readiness?: AgentHostReadiness | Record<string, unknown> | null;
   tags: Record<string, unknown> | null;
   capabilities: Record<string, unknown> | null;
   status: BenchmarkAgentStatus;
   last_heartbeat: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface BenchmarkAgentCheckResponse {
+  agent_id: number;
+  name: string;
+  status: BenchmarkAgentStatus;
+  ws_connected: boolean;
+  ip_address?: string | null;
+  host_reachable?: boolean | null;
+  last_heartbeat?: string | null;
+  message: string;
+}
+
+export interface BenchmarkAgentConnectResponse {
+  agent_id: number;
+  name: string;
+  status: BenchmarkAgentStatus;
+  success: boolean;
+  method: string;
+  message: string;
+  error?: string | null;
+}
+
+export interface BenchmarkAgentTokenResponse {
+  agent_id: number;
+  agent_name: string;
+  token: string;
+  expires_at: string;
 }
 
 // =============================================================================
@@ -170,21 +227,131 @@ export interface BenchmarkCompareRunMetrics {
   overall_rps: number | null;
   peak_rps: number | null;
   tokens_per_sec: number | null;
+  total_output_tokens?: number | null;
+  total_input_tokens?: number | null;
   duration_seconds: number | null;
-  // aiperf-specific metrics (avg values for comparison)
+  // aiperf tail-latency + service-level metrics (latencies in ms)
   ttft_avg: number | null;
+  ttft_p50?: number | null;
+  ttft_p90?: number | null;
+  ttft_p99?: number | null;
   itl_avg: number | null;
+  itl_p50?: number | null;
+  itl_p99?: number | null;
   tst_avg: number | null;
   osl_avg: number | null;
   isl_avg: number | null;
   per_user_throughput_avg: number | null;
+  per_user_throughput_p50?: number | null;
+  goodput?: number | null;
+  good_request_pct?: number | null;
+  error_rate_pct?: number | null;
+  requested_osl?: number | null;
+  // What the router did, from the model-server pods (result_json.model_server)
+  cache_hit_pct?: number | null;
+  load_spread?: number | null;
+  max_share_pct?: number | null;
+  preemptions?: number | null;
+  ttft_p10?: number | null;
+  ttft_p25?: number | null;
+  tags?: Record<string, unknown> | null;
+  config_snapshot?: Record<string, unknown> | null;
+  pods?: ModelServerPodStats[] | null;
+}
+
+/** Per-pod counter deltas over a run (vLLM / llm-d simulator /metrics). */
+export interface ModelServerPodStats {
+  pod: string;
+  node?: string | null;
+  requests?: number;
+  prefix_queries?: number;
+  prefix_hits?: number;
+  preemptions?: number;
+  prompt_tokens?: number;
+  generation_tokens?: number;
+  hit_pct?: number;
+  share_pct?: number;
+  counted_from?: string;
+}
+
+export interface ModelServerStats {
+  source: string;
+  from?: string | null;
+  to?: string | null;
+  pods: ModelServerPodStats[];
+  totals: {
+    pods: number;
+    requests: number;
+    hit_pct?: number;
+    load_spread?: number | null;
+    max_share_pct?: number;
+    preemptions?: number;
+    prompt_tokens?: number;
+    generation_tokens?: number;
+  };
+}
+
+/** One load point of a sweep. latency_p50/p99 in seconds; ttft/itl in ms. */
+export interface CurvePoint {
+  run_id: number;
+  variant_label: string | null;
+  concurrency: number | null;
+  request_rate: number | null;
+  benchmark_duration?: number | null;
+  total_requests?: number | null;
+  latency_p50: number | null;
+  latency_p99: number | null;
+  overall_rps: number | null;
+  tokens_per_sec: number | null;
+  success_rate_pct: number | null;
+  ttft_p50: number | null;
+  ttft_p99: number | null;
+  itl_p50: number | null;
+  itl_p99: number | null;
+  per_user_throughput_p50: number | null;
+  goodput: number | null;
+  good_request_pct: number | null;
+  error_rate_pct: number | null;
+  osl_avg: number | null;
+  requested_osl: number | null;
+  /** Open loop: average requests in flight. */
+  effective_concurrency?: number | null;
+}
+
+export interface RunGroupListItem {
+  id: number;
+  scenario_key: string;
+  scenario_name: string | null;
+  run_label: string | null;
+  status: string;
+  target_id: number | null;
+  proxy: string | null;
+  model: string | null;
+  total_runs: number;
+  completed_runs: number;
+  failed_runs: number;
+  created_at: string;
+}
+
+export interface CurveGroup extends RunGroupListItem {
+  points: CurvePoint[];
+  load_axis?: string;
+  /** Goodput targets the sweep ran with, in ms (e.g. time_to_first_token: 2000). */
+  goodput_targets?: Record<string, number>;
+}
+
+export interface RunGroupCurvesResponse {
+  groups: CurveGroup[];
+  mismatch_reasons: string[];
 }
 
 export interface BenchmarkCompareResponse {
   runs: BenchmarkCompareRunMetrics[];
-  winners: Record<string, number>;  // metric → winning run_id
+  winners: Record<string, number>; // metric → winning run_id
   // True when the compared runs don't share the same config_id/scenario_key.
   context_mismatch?: boolean;
+  // True when the runs were served differently (simulator vs real model, replica count).
+  server_mismatch?: boolean;
 }
 
 // =============================================================================
@@ -253,7 +420,7 @@ export interface BenchmarkToolStat {
 // =============================================================================
 
 export interface BenchmarkWSMessage {
-  type: 'progress' | 'run_completed' | 'run_failed' | 'run_started';
+  type: "progress" | "run_completed" | "run_failed" | "run_started";
   run_id?: number | string;
   event?: Record<string, unknown>;
   status?: string;
@@ -276,7 +443,7 @@ export interface LatencyStats {
   p99?: number;
   max?: number;
   avg?: number;
-  mean?: number;  // alias for avg — some formats use one or the other
+  mean?: number; // alias for avg — some formats use one or the other
 }
 
 export interface ThroughputStats {
@@ -292,7 +459,7 @@ export interface ThroughputStats {
 export interface PhaseResult {
   name?: string;
   requests: number;
-  success?: number;       // alias: "successful" in some formats
+  success?: number; // alias: "successful" in some formats
   successful?: number;
   failed: number;
   duration_seconds?: number | null;
@@ -320,6 +487,7 @@ export interface BenchmarkTarget {
   name: string;
   description: string | null;
   cluster_id: number;
+  cluster_name?: string | null;
   llm_base_url: string;
   llm_model: string;
   llm_namespace: string;
@@ -381,6 +549,8 @@ export interface ProxyDeployment {
   helm_values: Record<string, unknown> | null;
   proxy_url: string | null;
   external_url: string | null;
+  /** What the proxy routes on (EPP, tokens, KV events), set on deploy */
+  routing_info?: Record<string, string> | null;
   status: ProxyDeploymentStatus;
   status_message: string | null;
   celery_task_id: string | null;
@@ -426,6 +596,8 @@ export interface TriggerRunRequest {
   total_requests?: number;
   max_tokens?: number;
   timeout?: number;
+  /** aiperf settings applied over the config (null unsets a config key). */
+  overrides?: Record<string, unknown>;
 }
 
 export interface TriggerRunResponse {
@@ -519,18 +691,26 @@ export interface DiscoverTargetsResponse {
 // Do NOT hand-duplicate these shapes; re-alias the generated ones.
 // =============================================================================
 
-export type ScenarioCatalogItem = components['schemas']['ScenarioCatalogItem'];
-export type ScenarioCatalogResponse = components['schemas']['ScenarioCatalogResponse'];
-export type ScenarioRunRequest = components['schemas']['ScenarioRunRequest'];
-export type ScenarioRunResponse = components['schemas']['ScenarioRunResponse'];
-export type RunGroupChildSummary = components['schemas']['RunGroupChildSummary'];
-export type RunGroupResponse = components['schemas']['RunGroupResponse'];
+export type ScenarioCatalogItem = components["schemas"]["ScenarioCatalogItem"];
+export type ScenarioCatalogResponse =
+  components["schemas"]["ScenarioCatalogResponse"];
+export type ScenarioRunRequest = components["schemas"]["ScenarioRunRequest"];
+export type ScenarioRunResponse = components["schemas"]["ScenarioRunResponse"];
+export type RunGroupChildSummary =
+  components["schemas"]["RunGroupChildSummary"];
+export type RunGroupResponse = components["schemas"]["RunGroupResponse"];
 
 // =============================================================================
 // Agent Host — Forge-managed remote benchmark host (Slice 1)
 // =============================================================================
 
-export type AgentHostProvisionStatus = 'unprovisioned' | 'provisioning' | 'provisioned' | 'failed' | 'scanning';
+export type AgentHostProvisionStatus =
+  | "unprovisioned"
+  | "provisioning"
+  | "provisioned"
+  | "failed"
+  | "scanning"
+  | "self_managed";
 
 /** A Forge-managed remote server registered as a benchmark agent host. */
 export interface BenchmarkAgentHost {
@@ -545,6 +725,9 @@ export interface BenchmarkAgentHost {
 
   // SSH-host registration fields
   project_id: number | null;
+  project_name?: string | null;
+  connected_projects?: string[] | null;
+  infra?: string | null;
   host_ip: string | null;
   ssh_credential_id: number | null;
   ssh_port: number | null;
@@ -561,10 +744,18 @@ export interface BenchmarkAgentHost {
 export interface BenchmarkAgentHostCreate {
   name: string;
   project_id: number;
-  host_ip: string;
-  ssh_credential_id: number;
+  agent_mode?: "outbound" | "ssh";
+  connected_project_ids?: number[];
+  infra?: string;
+  host_ip?: string | null;
+  ssh_credential_id?: number | null;
   ssh_port?: number;
   jumphost_chain?: Array<{ ssh_credential_id: number }>;
+  agent_type?: string;
+  heartbeat_interval?: number;
+  setup_mode?: string;
+  tags?: Record<string, unknown>;
+  capabilities?: Record<string, unknown>;
 }
 
 // Slice 2 — SSH scan
@@ -589,10 +780,10 @@ export interface AgentHostProvisionResponse {
 }
 
 export type AgentHostScanVerdict =
-  | 'ready'
-  | 'needs_provision'
-  | 'unreachable_to_targets'
-  | 'ssh_unreachable';
+  | "ready"
+  | "needs_provision"
+  | "unreachable_to_targets"
+  | "ssh_unreachable";
 
 export interface AgentHostReadiness {
   ssh_reachable: boolean;
@@ -628,10 +819,10 @@ export interface AgentHostReadiness {
 // =============================================================================
 
 export type AgentHostCandidateSource =
-  | 'bare_metal'
-  | 'cluster_bastion'
-  | 'ssh_credential'
-  | 'aws_jumphost';
+  | "bare_metal"
+  | "cluster_bastion"
+  | "ssh_credential"
+  | "aws_jumphost";
 
 export interface AgentHostCandidate {
   label: string;

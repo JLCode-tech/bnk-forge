@@ -227,7 +227,7 @@ export function RunModuleActionDialog({ open, onOpenChange, module }: RunModuleA
                         <span className="flex items-center gap-2">
                           {action.title}
                           {action.rating?.toLowerCase() === 'amber' && (
-                            <Badge variant="warning" className="text-[10px]">amber</Badge>
+                            <Badge variant="warning" className="text-2xs">amber</Badge>
                           )}
                         </span>
                       </SelectItem>

@@ -1,88 +1,150 @@
 /**
- * CNF Dashboard — Discovery-driven Custom Resource browser.
+ * F5 CNF Dashboard — Cloud-Native Network Functions.
  *
- * Thin orchestrator that wires together:
- * - cnf-parts/CNFSidebar — runtime-built category navigation from /crds
- * - cnf-parts/CNFResourceTable — instance list with condition-derived status
- * - cnf-parts/CNFDetailPanel — read-only metadata + conditions + raw YAML
+ * Operational portal and telco data plane center:
+ * - Overview: Fleet summary, KPI metrics, architectural pillars, function status cards
+ * - DNS Services: Dedicated DNS Express, resolver caches, and listener management
+ * - Network Functions: Carrier-Grade NAT (CGNAT) and Diameter signaling routing
+ * - Network Graph: Interactive Telco data plane graph (BGP -> SR-IOV/DPDK -> TMM Core -> CNF Engines -> 5G Core)
  *
- * READ-ONLY: no create/edit/delete/apply/patch controls anywhere.
  * Cluster/namespace selection is persisted to localStorage under CNF-specific keys.
  */
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { cn } from '@/lib/utils';
-import { queryKeys } from '@/lib/queryKeys';
-import { Badge } from '@/components/ui/badge';
-import { Activity, AlertTriangle, Globe, LayoutGrid, Network, Server } from 'lucide-react';
-import { ResourcePageHeader } from '@/components/layout/ResourcePageHeader';
-import { ResourceExplorerLayout } from '@/components/layout/ResourceExplorerLayout';
-import { ResourceViewTabs } from '@/components/layout/ResourceViewTabs';
-import { EmptyState } from '@/components/ui/empty-state';
-import { SkeletonTable } from '@/components/ui/skeleton-table';
-import { ConnectivityGate } from '@/components/ConnectivityGate';
-import { ResourceDescribeViewer } from '@/components/k8s/ResourceDescribeViewer';
-import { ResourceTopologyGraph } from '@/components/k8s/ResourceTopologyGraph';
-import { useProjects } from '@/hooks/useProjects';
-import { useAllClusters } from '@/hooks/useK8sClusters';
-import { useProjectClusters, useClusterNamespaces } from '@/hooks/useK8s';
-import { useAutoSelectProjectCluster } from '@/hooks/useAutoSelectProjectCluster';
-import { useClusterReachable } from '@/hooks/useConnectivity';
-import { useClusterResources } from '@/hooks/useK8sResources';
-import { useCrds } from '@/hooks/useCrds';
-import { useTopology } from '@/hooks/useTopology';
-import { parseApiError } from '@/lib/error-handler';
-import { STORAGE_KEYS } from '@/lib/storage-keys';
-import type { K8sResource } from '@/types/kubernetes';
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { Cpu, LayoutDashboard, Network, Radio } from "lucide-react";
+import { ResourcePageHeader } from "@/components/layout/ResourcePageHeader";
+import { ResourceExplorerLayout } from "@/components/layout/ResourceExplorerLayout";
+import { ResourceSidebarViewTabs } from "@/components/layout/ResourceCategorySidebar";
+import { CollapsibleInnerSidebar } from "@/components/layout/InnerSidebar";
+import { ConnectivityGate } from "@/components/ConnectivityGate";
+import { ResourceDescribeViewer } from "@/components/k8s/ResourceDescribeViewer";
+import { ResourceCreateDialog } from "@/components/k8s/ResourceCreateDialog";
+import { ResourceEditDialog } from "@/components/k8s/ResourceEditDialog";
+import { ResourceDeleteDialog } from "@/components/k8s/ResourceDeleteDialog";
+import { ClusterScopePickerCard } from "@/components/k8s/ClusterScopePickerCard";
+import { ErrorState } from "@/components/ui/error-state";
+import { TableHead } from "@/components/ui/table";
+import { useProjects } from "@/hooks/useProjects";
+import { useAllClusters } from "@/hooks/useK8sClusters";
+import { useProjectClusters, useClusterNamespaces } from "@/hooks/useK8s";
+import { useAutoSelectProjectCluster } from "@/hooks/useAutoSelectProjectCluster";
+import { useClusterReachable } from "@/hooks/useConnectivity";
+import { useClusterResources } from "@/hooks/useK8sResources";
+import { useCrds } from "@/hooks/useCrds";
+import { api } from "@/lib/api";
+import { parseApiError } from "@/lib/error-handler";
+import { notify } from "@/lib/notify";
+import { STORAGE_KEYS } from "@/lib/storage-keys";
+import type { K8sResource } from "@/types/kubernetes";
+import { CNFClusterRow } from "./cnf-parts/CNFClusterRow";
 
 import {
-  buildCnfCategories,
-  CNFSidebar,
-  CNFResourceTable,
-  CNFDetailPanel,
-  type CRDInfo,
-} from './cnf-parts';
-
-// ---------------------------------------------------------------------------
-// Main Component
-// ---------------------------------------------------------------------------
+  CNFOverview,
+  CNFDnsPanel,
+  CNFTelcoPanel,
+  CNFNetworkGraph,
+  YAML_TEMPLATES,
+} from "./cnf-parts";
 
 export default function CNF() {
   const queryClient = useQueryClient();
-  const borderDefault = 'border-border';
 
-  // Project and cluster selection (persisted to localStorage)
-  const { data: projects } = useProjects();
-  const { data: allClustersResponse } = useAllClusters();
-  const allClusters = allClustersResponse?.clusters ?? [];
+  // ---------------------------------------------------------------------------
+  // View mode tab: 'overview' | 'dns' | 'telco' | 'network-graph'
+  // ---------------------------------------------------------------------------
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawView = searchParams.get("view");
+  const validViews = ["overview", "dns", "telco", "network-graph"] as const;
+  type CNFView = (typeof validViews)[number];
+  const view: CNFView = validViews.includes(rawView as CNFView)
+    ? (rawView as CNFView)
+    : "overview";
+
+  const setView = useCallback(
+    (nextView: string) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (nextView === "overview") {
+            next.delete("view");
+          } else {
+            next.set("view", nextView);
+          }
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // ---------------------------------------------------------------------------
+  // Projects & Clusters
+  // ---------------------------------------------------------------------------
+  const { data: projects = [] } = useProjects();
+  const {
+    data: allClustersResponse,
+    error: allClustersError,
+    isLoading: allClustersLoading,
+  } = useAllClusters();
+  const allClusters = useMemo(
+    () => allClustersResponse?.clusters ?? [],
+    [allClustersResponse?.clusters],
+  );
 
   const [selectedProject, setSelectedProject] = useState<number | null>(() => {
-    const stored = localStorage.getItem(STORAGE_KEYS.CNF_PROJECT);
-    return stored ? parseInt(stored) : null;
-  });
-  const [selectedCluster, setSelectedCluster] = useState<number | null>(() => {
-    const stored = localStorage.getItem(STORAGE_KEYS.CNF_CLUSTER);
-    return stored ? parseInt(stored) : null;
+    const fromStorage = localStorage.getItem(STORAGE_KEYS.CNF_PROJECT);
+    return fromStorage ? Number(fromStorage) : null;
   });
 
-  const { data: clusters = [] } = useProjectClusters(selectedProject ?? 0, {
-    pollingEnabled: false,
-  });
-
-  // Auto-resolve project from cluster (e.g. deep-link with cluster ID)
-  useEffect(() => {
-    if (selectedCluster && !selectedProject && allClusters.length > 0) {
-      const match = allClusters.find((c) => c.id === selectedCluster);
-      if (match?.project_id) setSelectedProject(match.project_id);
-    }
-  }, [selectedCluster, selectedProject, allClusters]);
+  const { data: projectClusters = [] } = useProjectClusters(
+    selectedProject || 0,
+  );
 
   const visibleClusters = useMemo(() => {
-    if (!selectedProject) return clusters ?? [];
-    if ((clusters ?? []).length > 0) return clusters ?? [];
+    if (!selectedProject) return allClusters;
     return allClusters.filter((c) => c.project_id === selectedProject);
-  }, [selectedProject, clusters, allClusters]);
+  }, [selectedProject, allClusters]);
+
+  const [selectedCluster, setSelectedCluster] = useState<number | null>(() => {
+    const fromUrl = searchParams.get("cluster");
+    if (fromUrl) {
+      const parsed = Number(fromUrl);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        localStorage.setItem(STORAGE_KEYS.CNF_CLUSTER, String(parsed));
+        return parsed;
+      }
+    }
+    const fromStorage = localStorage.getItem(STORAGE_KEYS.CNF_CLUSTER);
+    return fromStorage ? Number(fromStorage) : null;
+  });
+
+  // Sync URL ?cluster= changes after initial mount
+  useEffect(() => {
+    const clusterParam = searchParams.get("cluster");
+    if (clusterParam) {
+      const parsed = Number(clusterParam);
+      if (Number.isFinite(parsed) && parsed > 0 && parsed !== selectedCluster) {
+        setSelectedCluster(parsed);
+        localStorage.setItem(STORAGE_KEYS.CNF_CLUSTER, String(parsed));
+      }
+    }
+  }, [searchParams, selectedCluster]);
+
+  // Keep cluster selection valid: if cluster isn't in selected project, clear project (widen)
+  // rather than wiping the shared cluster scope across the app (B-1 fix)
+  useEffect(() => {
+    if (selectedCluster && selectedProject && visibleClusters.length > 0) {
+      const exists = visibleClusters.some((c) => c.id === selectedCluster);
+      if (!exists) {
+        setSelectedProject(null);
+        localStorage.removeItem(STORAGE_KEYS.CNF_PROJECT);
+      }
+    }
+  }, [selectedCluster, selectedProject, visibleClusters]);
 
   useAutoSelectProjectCluster({
     projects,
@@ -94,436 +156,558 @@ export default function CNF() {
     setSelectedCluster,
   });
 
-  // Namespace selector and search
-  const [selectedNamespace, setSelectedNamespace] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  const isClusterReachable = useClusterReachable(selectedCluster ?? undefined);
 
-  // View toggle: resource browser vs topology graph
-  const [view, setView] = useState<'browser' | 'topology'>('browser');
-
-  const clusterReachable = useClusterReachable(selectedCluster ?? undefined);
-
-  // Persist selections
-  useEffect(() => {
-    if (selectedProject !== null) {
-      localStorage.setItem(STORAGE_KEYS.CNF_PROJECT, selectedProject.toString());
-    } else {
-      localStorage.removeItem(STORAGE_KEYS.CNF_PROJECT);
-    }
-  }, [selectedProject]);
-
-  useEffect(() => {
-    if (selectedCluster !== null) {
-      localStorage.setItem(STORAGE_KEYS.CNF_CLUSTER, selectedCluster.toString());
-    } else {
-      localStorage.removeItem(STORAGE_KEYS.CNF_CLUSTER);
-    }
-  }, [selectedCluster]);
-
-  // Clear cluster when project changes and cluster no longer belongs to it
-  useEffect(() => {
-    if (selectedProject && selectedCluster) {
-      const exists = visibleClusters.some((c) => c.id === selectedCluster);
-      if (!exists && visibleClusters.length > 0) setSelectedCluster(visibleClusters[0].id);
-      else if (!exists) setSelectedCluster(null);
-    }
-  }, [selectedProject, visibleClusters, selectedCluster]);
-
-  // CRD discovery
-  const { data: crdsData, isLoading: crdsLoading, error: crdsError } = useCrds(
-    selectedCluster ?? 0,
-    { enabled: !!selectedCluster && clusterReachable }
+  // ---------------------------------------------------------------------------
+  // Namespaces
+  // ---------------------------------------------------------------------------
+  const { data: namespacesData } = useClusterNamespaces(selectedCluster ?? 0);
+  const namespaces = useMemo(
+    () => namespacesData?.namespaces ?? [],
+    [namespacesData],
   );
 
-  // Sidebar state
-  const [selectedCrdKey, setSelectedCrdKey] = useState<string | null>(null);
-  const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
+  const [selectedNamespace, setSelectedNamespace] = useState<string>("all");
 
-  // Build categories from discovery response
-  const categories = useMemo(
-    () => buildCnfCategories(crdsData?.crds ?? []),
-    [crdsData?.crds]
+  // ---------------------------------------------------------------------------
+  // Selection, Describe, and CRUD modals
+  // ---------------------------------------------------------------------------
+  const [selectedResource, setSelectedResource] = useState<K8sResource | null>(
+    null,
   );
-
-  // Auto-expand first category when categories load
-  useEffect(() => {
-    if (categories.length > 0 && expandedCategories.length === 0) {
-      setExpandedCategories([categories[0].category]);
-    }
-  }, [categories, expandedCategories.length]);
-
-  // Find the selected CRD's info
-  const selectedCrdInfo: CRDInfo | null = useMemo(() => {
-    if (!selectedCrdKey || !crdsData?.crds) return null;
-    return crdsData.crds.find((c) => c.name === selectedCrdKey) ?? null;
-  }, [selectedCrdKey, crdsData?.crds]);
-
-  const handleSelectCrd = useCallback((key: string) => {
-    setSelectedCrdKey(key);
-    setSelectedResource(null);
-  }, []);
-
-  const toggleCategory = useCallback((category: string) => {
-    setExpandedCategories((prev) =>
-      prev.includes(category) ? prev.filter((c) => c !== category) : [...prev, category]
-    );
-  }, []);
-
-  // Resource list for selected CRD
-  const namespace = selectedNamespace === 'all' ? undefined : selectedNamespace;
-  const { data: resourcesData, isLoading: resourcesLoading, error: resourcesError } = useClusterResources(
-    selectedCluster ?? 0,
-    selectedCrdKey ?? '',
-    namespace ? { namespace } : undefined,
-    { enabled: !!selectedCluster && !!selectedCrdKey && clusterReachable }
-  );
-
-  const resources: K8sResource[] = (resourcesData?.resources ?? []) as K8sResource[];
-
-  // Namespaces for selector
-  const { data: namespacesResponse } = useClusterNamespaces(selectedCluster ?? 0, {
-    enabled: !!selectedCluster && clusterReachable,
-  });
-  const namespaces = namespacesResponse?.namespaces ?? [];
-
-  // Topology graph (only when topology view is active + a real namespace is selected)
-  const topologyNamespace = selectedNamespace === 'all' ? '' : selectedNamespace;
-  const {
-    data: topologyData,
-    isLoading: topologyLoading,
-    error: topologyError,
-  } = useTopology(selectedCluster ?? 0, topologyNamespace, {
-    enabled: view === 'topology' && !!selectedCluster && clusterReachable,
-  });
-
-  // Selected resource for detail panel
-  const [selectedResource, setSelectedResource] = useState<K8sResource | null>(null);
-
-  // Describe dialog
   const [describeOpen, setDescribeOpen] = useState(false);
-  const [resourceToDescribe, setResourceToDescribe] = useState<K8sResource | null>(null);
+  const [resourceToDescribe, setResourceToDescribe] =
+    useState<K8sResource | null>(null);
 
-  const handleDescribe = (resource: K8sResource) => {
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createResourceType, setCreateResourceType] =
+    useState<string>("f5bigdnsapps");
+
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [resourceToEdit, setResourceToEdit] = useState<K8sResource | null>(
+    null,
+  );
+  const [editResourceType, setEditResourceType] =
+    useState<string>("f5bigdnsapps");
+
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [resourceToDelete, setResourceToDelete] = useState<K8sResource | null>(
+    null,
+  );
+  const [deleteResourceType, setDeleteResourceType] =
+    useState<string>("f5bigdnsapps");
+
+  const handleDescribe = useCallback((resource: K8sResource) => {
     setResourceToDescribe(resource);
     setDescribeOpen(true);
-  };
+  }, []);
 
-  // Refresh — invalidate the three cluster-scoped caches used by this page
-  const handleRefresh = useCallback(() => {
-    if (!selectedCluster) return;
-    void queryClient.invalidateQueries({ queryKey: queryKeys.k8s.clusters.crds(selectedCluster) });
-    void queryClient.invalidateQueries({ queryKey: queryKeys.k8s.clusters.allResources(selectedCluster) });
-    void queryClient.invalidateQueries({ queryKey: queryKeys.k8s.clusters.namespaces(selectedCluster) });
-  }, [queryClient, selectedCluster]);
+  const handleCreateResource = useCallback((resourceType: string) => {
+    setCreateResourceType(resourceType);
+    setCreateDialogOpen(true);
+  }, []);
 
-  // ---------------------------------------------------------------------------
-  // Render helpers
-  // ---------------------------------------------------------------------------
+  const handleEditResource = useCallback(
+    (resource: K8sResource, resourceType: string) => {
+      setResourceToEdit(resource);
+      setEditResourceType(resourceType);
+      setEditDialogOpen(true);
+    },
+    [],
+  );
 
-  const renderCenterContent = () => {
-    if (crdsLoading) {
-      return (
-        <div className="p-4">
-          <SkeletonTable rows={5} columns={4} />
-        </div>
-      );
-    }
-
-    if (crdsError) {
-      return (
-        <div className="p-4">
-          <EmptyState
-            icon={AlertTriangle}
-            title="Failed to load CRDs"
-            description={parseApiError(crdsError).message}
-          />
-        </div>
-      );
-    }
-
-    if (!crdsData || crdsData.crds.length === 0) {
-      return (
-        <div className="p-4">
-          <EmptyState
-            icon={Globe}
-            title="No custom resource definitions found"
-            description={crdsData?.info ?? 'No CRDs are installed on this cluster.'}
-          />
-        </div>
-      );
-    }
-
-    if (!selectedCrdKey) {
-      return (
-        <div className="p-4 flex items-center justify-center h-full">
-          <EmptyState
-            icon={Globe}
-            title="Select a resource type"
-            description="Choose a CRD from the sidebar to browse its instances."
-          />
-        </div>
-      );
-    }
-
-    if (resourcesLoading) {
-      return (
-        <div className="p-4">
-          <SkeletonTable rows={5} columns={4} />
-        </div>
-      );
-    }
-
-    if (resourcesError) {
-      return (
-        <div className="p-4">
-          <EmptyState
-            icon={AlertTriangle}
-            title="Failed to load resources"
-            description={parseApiError(resourcesError).message}
-          />
-        </div>
-      );
-    }
-
-    // 200 + info = CRD vanished / unavailable post-discovery
-    if (resourcesData?.info && resources.length === 0) {
-      return (
-        <div className="p-4">
-          <EmptyState
-            icon={AlertTriangle}
-            title="Resource type unavailable"
-            description={resourcesData.info}
-          />
-        </div>
-      );
-    }
-
-    if (resources.length === 0) {
-      return (
-        <div className="p-4">
-          <EmptyState
-            icon={Globe}
-            title="No instances found"
-            description={`No ${selectedCrdInfo?.display_name ?? selectedCrdInfo?.kind ?? selectedCrdKey} instances in ${selectedNamespace === 'all' ? 'all namespaces' : `namespace "${selectedNamespace}"`}.`}
-          />
-        </div>
-      );
-    }
-
-    return (
-      <div className="flex-1 overflow-auto">
-        <CNFResourceTable
-          resources={resources}
-          selectedResource={selectedResource}
-          onSelectResource={setSelectedResource}
-          onDescribe={handleDescribe}
-          borderDefault={borderDefault}
-        />
-      </div>
-    );
-  };
-
-  const renderTopologyContent = () => {
-    if (selectedNamespace === 'all') {
-      return (
-        <div className="flex items-center justify-center h-full">
-          <EmptyState
-            icon={Network}
-            title="Select a namespace"
-            description="The topology view is namespace-scoped. Choose a specific namespace from the selector above."
-            size="sm"
-          />
-        </div>
-      );
-    }
-
-    if (topologyLoading) {
-      return (
-        <div className="flex items-center justify-center h-full">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Network className="h-4 w-4 animate-pulse" />
-            Building topology…
-          </div>
-        </div>
-      );
-    }
-
-    if (topologyError) {
-      return (
-        <div className="flex items-center justify-center h-full">
-          <EmptyState
-            icon={AlertTriangle}
-            title="Topology unavailable"
-            description={parseApiError(topologyError).message}
-            size="sm"
-          />
-        </div>
-      );
-    }
-
-    if (!topologyData) return null;
-
-    return (
-      <div className="flex-1 h-full overflow-hidden">
-        <ResourceTopologyGraph
-          key={`${topologyNamespace}-${selectedCluster}`}
-          nodes={topologyData.nodes}
-          edges={topologyData.edges}
-          info={topologyData.info}
-          onDescribeResource={handleDescribe}
-        />
-      </div>
-    );
-  };
-
-  const renderToolbar = () => (
-    <div className={cn('flex items-center justify-between px-4 py-2 border-b', borderDefault)}>
-      <div className="flex items-center gap-2">
-        {view === 'browser' ? (
-          <>
-            <h2 className="text-sm font-semibold">
-              {selectedCrdInfo
-                ? (selectedCrdInfo.display_name ?? selectedCrdInfo.kind)
-                : 'Custom Resources'}
-              {selectedCrdKey && resources.length > 0 && (
-                <span className="text-muted-foreground"> ({resources.length})</span>
-              )}
-            </h2>
-            {selectedCrdInfo && (
-              <Badge variant="outline" className="text-xs font-mono">
-                {selectedCrdInfo.group}
-              </Badge>
-            )}
-          </>
-        ) : (
-          <h2 className="text-sm font-semibold">
-            Topology
-            {topologyNamespace && (
-              <span className="text-muted-foreground"> — {topologyNamespace}</span>
-            )}
-          </h2>
-        )}
-      </div>
-      {selectedCrdInfo?.source === 'registry-enriched' && view === 'browser' && (
-        <Badge variant="muted" className="text-xs">
-          curated
-        </Badge>
-      )}
-    </div>
+  const handleDeleteResource = useCallback(
+    (resource: K8sResource, resourceType: string) => {
+      setResourceToDelete(resource);
+      setDeleteResourceType(resourceType);
+      setDeleteDialogOpen(true);
+    },
+    [],
   );
 
   // ---------------------------------------------------------------------------
-  // Render
+  // Dedicated CNF Telemetry Queries
   // ---------------------------------------------------------------------------
+  const nsParam =
+    selectedNamespace === "all" ? undefined : { namespace: selectedNamespace };
+
+  const { data: crdsData } = useCrds(selectedCluster ?? 0, {
+    group: ["k8s.f5net.com"],
+    enabled: !!selectedCluster && isClusterReachable && view === "overview",
+  });
+
+  const { data: dnsAppsData, isLoading: dnsAppsLoading } = useClusterResources(
+    selectedCluster ?? 0,
+    "f5bigdnsapps",
+    nsParam,
+    {
+      enabled:
+        !!selectedCluster &&
+        isClusterReachable &&
+        (view === "overview" || view === "dns" || view === "network-graph"),
+    },
+  );
+
+  const { data: dnsCachesData, isLoading: dnsCachesLoading } =
+    useClusterResources(
+      selectedCluster ?? 0,
+      "f5bigdnsresolvercaches",
+      nsParam,
+      {
+        enabled:
+          !!selectedCluster &&
+          isClusterReachable &&
+          (view === "overview" || view === "dns"),
+      },
+    );
+
+  const { data: dnsZonesData, isLoading: dnsZonesLoading } =
+    useClusterResources(selectedCluster ?? 0, "f5bigdnszones", nsParam, {
+      enabled:
+        !!selectedCluster &&
+        isClusterReachable &&
+        (view === "overview" || view === "dns"),
+    });
+
+  const { data: cnatData, isLoading: cnatLoading } = useClusterResources(
+    selectedCluster ?? 0,
+    "f5bigcgnats",
+    nsParam,
+    {
+      enabled:
+        !!selectedCluster &&
+        isClusterReachable &&
+        (view === "overview" || view === "telco" || view === "network-graph"),
+    },
+  );
+
+  const { data: diameterData, isLoading: diameterLoading } =
+    useClusterResources(selectedCluster ?? 0, "f5bigdiameters", nsParam, {
+      enabled:
+        !!selectedCluster &&
+        isClusterReachable &&
+        (view === "overview" || view === "telco" || view === "network-graph"),
+    });
+
+  const { data: ipsData, isLoading: ipsLoading } = useClusterResources(
+    selectedCluster ?? 0,
+    "f5bigipams",
+    nsParam,
+    {
+      enabled:
+        !!selectedCluster &&
+        isClusterReachable &&
+        (view === "overview" || view === "telco"),
+    },
+  );
+
+  const dnsApps: K8sResource[] = useMemo(() => {
+    if (!dnsAppsData) return [];
+    if (Array.isArray(dnsAppsData)) return dnsAppsData;
+    const items = (dnsAppsData as { items?: K8sResource[] }).items;
+    return Array.isArray(items) ? items : [];
+  }, [dnsAppsData]);
+
+  const dnsCaches: K8sResource[] = useMemo(() => {
+    if (!dnsCachesData) return [];
+    if (Array.isArray(dnsCachesData)) return dnsCachesData;
+    const items = (dnsCachesData as { items?: K8sResource[] }).items;
+    return Array.isArray(items) ? items : [];
+  }, [dnsCachesData]);
+
+  const dnsZones: K8sResource[] = useMemo(() => {
+    if (!dnsZonesData) return [];
+    if (Array.isArray(dnsZonesData)) return dnsZonesData;
+    const items = (dnsZonesData as { items?: K8sResource[] }).items;
+    return Array.isArray(items) ? items : [];
+  }, [dnsZonesData]);
+
+  const cgnatInstances: K8sResource[] = useMemo(() => {
+    if (!cnatData) return [];
+    if (Array.isArray(cnatData)) return cnatData;
+    const items = (cnatData as { items?: K8sResource[] }).items;
+    return Array.isArray(items) ? items : [];
+  }, [cnatData]);
+
+  const diameterInstances: K8sResource[] = useMemo(() => {
+    if (!diameterData) return [];
+    if (Array.isArray(diameterData)) return diameterData;
+    const items = (diameterData as { items?: K8sResource[] }).items;
+    return Array.isArray(items) ? items : [];
+  }, [diameterData]);
+
+  const ipamInstances: K8sResource[] = useMemo(() => {
+    if (!ipsData) return [];
+    if (Array.isArray(ipsData)) return ipsData;
+    const items = (ipsData as { items?: K8sResource[] }).items;
+    return Array.isArray(items) ? items : [];
+  }, [ipsData]);
+
+  const activeCnfResourcesCount =
+    dnsCaches.length +
+    dnsApps.length +
+    dnsZones.length +
+    cgnatInstances.length +
+    diameterInstances.length +
+    ipamInstances.length;
+  const discoveredCrdsCount = useMemo(() => {
+    const crds = crdsData?.crds ?? [];
+    return crds.filter(
+      (crd) =>
+        crd.group === "k8s.f5net.com" ||
+        crd.group?.endsWith(".f5net.com") ||
+        crd.group?.endsWith(".f5.com") ||
+        Boolean(YAML_TEMPLATES[crd.plural]),
+    ).length;
+  }, [crdsData]);
+
+  // ---------------------------------------------------------------------------
+  // Refresh Handler
+  // ---------------------------------------------------------------------------
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
+  const handleRefresh = useCallback(async () => {
+    if (!selectedCluster) return;
+    setIsManualRefreshing(true);
+    try {
+      await queryClient.invalidateQueries({
+        queryKey: ["k8s", "clusters", selectedCluster, "resources"],
+      });
+    } finally {
+      setIsManualRefreshing(false);
+    }
+  }, [queryClient, selectedCluster]);
+
+  const isRefreshing =
+    isManualRefreshing ||
+    dnsAppsLoading ||
+    dnsCachesLoading ||
+    dnsZonesLoading ||
+    cnatLoading ||
+    diameterLoading ||
+    ipsLoading;
+
+  const currentCluster = projectClusters.find((c) => c.id === selectedCluster);
 
   return (
     <ResourceExplorerLayout>
       <ResourcePageHeader
-        title="Custom Resources"
-        subtitle="Discovery-driven CRD browser — read-only metadata, conditions, and YAML"
+        title="F5 CNF"
+        subtitle="Carrier-grade telco network functions and high-speed packet processing"
         projects={projects || []}
         selectedProjectId={selectedProject}
-        onProjectChange={setSelectedProject}
+        onProjectChange={(id) => {
+          setSelectedProject(id);
+          if (id) {
+            localStorage.setItem(STORAGE_KEYS.CNF_PROJECT, String(id));
+          } else {
+            localStorage.removeItem(STORAGE_KEYS.CNF_PROJECT);
+          }
+        }}
         clusters={visibleClusters}
         selectedClusterId={selectedCluster}
-        onClusterChange={setSelectedCluster}
+        allowAllClusters={true}
+        onClusterChange={(id) => {
+          setSelectedCluster(id);
+          if (id) {
+            localStorage.setItem(STORAGE_KEYS.CNF_CLUSTER, String(id));
+          } else {
+            localStorage.removeItem(STORAGE_KEYS.CNF_CLUSTER);
+          }
+        }}
         namespaces={namespaces}
         selectedNamespace={selectedNamespace}
         onNamespaceChange={setSelectedNamespace}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onRefresh={handleRefresh}
-        isRefreshing={false}
-      >
-        {selectedCluster && crdsData && crdsData.crds.length > 0 && (
-          <Badge variant="outline" className="text-xs h-7">
-            <Activity className="h-3 w-3 mr-1" />
-            {crdsData.count} CRD{crdsData.count !== 1 ? 's' : ''}
-          </Badge>
-        )}
-      </ResourcePageHeader>
+        isRefreshing={isRefreshing}
+      />
 
-      {/* View-mode tab strip — Browse vs Topology. Shared ResourceViewTabs
-          idiom, identical to the Kubernetes/F5 BNK strips (D-020). */}
-      {selectedCluster && clusterReachable && (
-        <ResourceViewTabs
-          aria-label="CNF view mode"
-          active={view}
-          onChange={(key) => setView(key as 'browser' | 'topology')}
-          tabs={[
-            { key: 'browser', label: 'Browse', icon: LayoutGrid, title: 'Browse custom resources by CRD' },
-            { key: 'topology', label: 'Topology', icon: Network, title: 'Resource topology graph' },
-          ]}
-        />
-      )}
-
+      {/* Main Content Area */}
       <ResourceExplorerLayout.Body>
-        {/* Sidebar — CRD category navigation; only needed in browser view */}
-        {selectedCluster && clusterReachable && categories.length > 0 && view === 'browser' && (
-          <CNFSidebar
-            categories={categories}
-            selectedCrdKey={selectedCrdKey}
-            onSelectCrd={handleSelectCrd}
-            expandedCategories={expandedCategories}
-            onToggleCategory={toggleCategory}
+        {/* Persistent Flush Left Inner Sub-Sidebar */}
+        <CollapsibleInnerSidebar className="w-52 shrink-0 border-r border-border bg-card/30 flex flex-col">
+          <ResourceSidebarViewTabs
+            aria-label="F5 CNF view mode"
+            active={view}
+            onChange={(key) => {
+              setView(key as "overview" | "dns" | "telco" | "network-graph");
+              if (!selectedCluster && visibleClusters.length > 0) {
+                const firstId = visibleClusters[0].id;
+                setSelectedCluster(firstId);
+                localStorage.setItem(STORAGE_KEYS.CNF_CLUSTER, String(firstId));
+              }
+            }}
+            tabs={[
+              {
+                key: "overview",
+                label: "Overview",
+                icon: LayoutDashboard,
+                title: "Executive summary, telco KPIs, and functional status",
+              },
+              {
+                key: "dns",
+                label: "DNS Services",
+                icon: Radio,
+                title:
+                  "DNS Express resolution metrics, resolver caches, and listener status",
+              },
+              {
+                key: "telco",
+                label: "Network Functions",
+                icon: Cpu,
+                title:
+                  "Carrier-Grade NAT (CGNAT) and Diameter signaling router",
+              },
+              {
+                key: "network-graph",
+                label: "Network Graph",
+                icon: Network,
+                title: "Data plane packet pipeline and telco topology",
+              },
+            ]}
           />
-        )}
+        </CollapsibleInnerSidebar>
 
-        {/* Center content */}
-        {!selectedProject ? (
-          <ResourceExplorerLayout.Content className="flex items-center justify-center">
-            <EmptyState
-              icon={Server}
-              title="No project selected"
-              description="Select a project to view its clusters and Custom Resources."
-            />
-          </ResourceExplorerLayout.Content>
-        ) : !selectedCluster ? (
-          <ResourceExplorerLayout.Content className="flex items-center justify-center">
-            <EmptyState
-              icon={Server}
-              title="No cluster selected"
-              description="Select a cluster to browse its Custom Resources."
-            />
+        {!selectedCluster ? (
+          <ResourceExplorerLayout.Content className="p-6 space-y-6 w-full overflow-y-auto">
+            {allClustersError ? (
+              <ErrorState
+                error={allClustersError}
+                title="Failed to load clusters"
+                onRetry={handleRefresh}
+              />
+            ) : (
+              <ClusterScopePickerCard
+                title="CNF by Cluster"
+                description="Network functions installed per cluster. Select one to inspect DNS, CGNAT and Diameter."
+                clusters={visibleClusters}
+                isLoading={allClustersLoading}
+                onSelectCluster={(id) => {
+                  setSelectedCluster(id);
+                  localStorage.setItem(STORAGE_KEYS.CNF_CLUSTER, String(id));
+                }}
+                actionLabel="Inspect CNF"
+                showStatusColumn={false}
+                extraColumnCount={1}
+                extraHeaders={
+                  <TableHead className="text-xs font-semibold">
+                    CNF Functions
+                  </TableHead>
+                }
+                renderRow={(cluster, onSelect) => (
+                  <CNFClusterRow
+                    key={cluster.id}
+                    cluster={cluster}
+                    onInspect={() => onSelect(cluster.id)}
+                  />
+                )}
+              />
+            )}
           </ResourceExplorerLayout.Content>
         ) : (
           <>
-            <ResourceExplorerLayout.Content className="flex flex-col overflow-hidden">
+            <ResourceExplorerLayout.Content className="flex flex-col overflow-y-auto">
               <ConnectivityGate
                 target={{
-                  type: 'cluster',
-                  id: selectedCluster,
-                  displayName: allClusters.find((c) => c.id === selectedCluster)?.name,
+                  type: "cluster",
+                  id: selectedCluster ?? 0,
+                  displayName: currentCluster?.name,
                 }}
               >
-                {renderToolbar()}
-                {view === 'topology' ? renderTopologyContent() : renderCenterContent()}
+                {view === "overview" && (
+                  <CNFOverview
+                    clusterName={currentCluster?.name}
+                    crdsCount={
+                      discoveredCrdsCount > 0
+                        ? discoveredCrdsCount
+                        : activeCnfResourcesCount
+                    }
+                    dnsCachesCount={dnsCaches.length}
+                    dnsAppsCount={dnsApps.length}
+                    dnsZonesCount={dnsZones.length}
+                    cnatCount={cgnatInstances.length}
+                    diameterCount={diameterInstances.length}
+                    ipsCount={ipamInstances.length}
+                    onNavigateTab={(tab) => setView(tab)}
+                  />
+                )}
+
+                {view === "dns" && (
+                  <CNFDnsPanel
+                    caches={dnsCaches}
+                    apps={dnsApps}
+                    zones={dnsZones}
+                    isLoading={
+                      dnsAppsLoading || dnsCachesLoading || dnsZonesLoading
+                    }
+                    selectedResource={selectedResource}
+                    onSelectResource={setSelectedResource}
+                    onDescribe={handleDescribe}
+                    onCreateResource={handleCreateResource}
+                    onEditResource={handleEditResource}
+                    onDeleteResource={handleDeleteResource}
+                    searchQuery={searchQuery}
+                    onSearchChange={setSearchQuery}
+                    borderDefault="border-border"
+                  />
+                )}
+
+                {view === "telco" && (
+                  <CNFTelcoPanel
+                    cnatPolicies={cgnatInstances}
+                    diameterEndpoints={diameterInstances}
+                    ipsPolicies={ipamInstances}
+                    isLoading={cnatLoading || diameterLoading || ipsLoading}
+                    selectedResource={selectedResource}
+                    onSelectResource={setSelectedResource}
+                    onDescribe={handleDescribe}
+                    onCreateResource={handleCreateResource}
+                    onEditResource={handleEditResource}
+                    onDeleteResource={handleDeleteResource}
+                    searchQuery={searchQuery}
+                    onSearchChange={setSearchQuery}
+                    borderDefault="border-border"
+                  />
+                )}
+
+                {view === "network-graph" && (
+                  <CNFNetworkGraph
+                    clusterId={selectedCluster}
+                    namespace={selectedNamespace}
+                    dnsApps={dnsApps}
+                    cgnatInstances={cgnatInstances}
+                    diameterInstances={diameterInstances}
+                    onDescribeResource={handleDescribe}
+                  />
+                )}
               </ConnectivityGate>
             </ResourceExplorerLayout.Content>
-
-            {/* Detail panel */}
-            <ResourceExplorerLayout.DetailPanel open={!!selectedResource}>
-              {selectedResource && (
-                <CNFDetailPanel
-                  resource={selectedResource}
-                  onClose={() => setSelectedResource(null)}
-                  onDescribe={handleDescribe}
-                />
-              )}
-            </ResourceExplorerLayout.DetailPanel>
           </>
         )}
       </ResourceExplorerLayout.Body>
 
-      {/* Describe dialog */}
+      {/* Resource Describe & CRUD Dialogs */}
       {selectedCluster && (
-        <ResourceDescribeViewer
-          open={describeOpen}
-          onOpenChange={setDescribeOpen}
-          resource={resourceToDescribe}
-          clusterId={selectedCluster}
-          namespace={resourceToDescribe?.metadata?.namespace}
-        />
+        <>
+          <ResourceDescribeViewer
+            open={describeOpen}
+            onOpenChange={setDescribeOpen}
+            resource={resourceToDescribe}
+            clusterId={selectedCluster}
+            namespace={resourceToDescribe?.metadata?.namespace}
+          />
+
+          <ResourceCreateDialog
+            open={createDialogOpen}
+            onOpenChange={setCreateDialogOpen}
+            resourceType={createResourceType}
+            namespace={
+              selectedNamespace === "all" ? "default" : selectedNamespace
+            }
+            onSubmit={async (resourceYaml, dryRun) => {
+              try {
+                await api.createK8sResource(
+                  selectedCluster,
+                  createResourceType,
+                  {
+                    resource_yaml: resourceYaml,
+                    namespace:
+                      selectedNamespace === "all"
+                        ? "default"
+                        : selectedNamespace,
+                    dry_run: dryRun,
+                  },
+                );
+                if (dryRun) {
+                  notify.success(
+                    "Dry run successful - no changes applied",
+                    undefined,
+                    { category: "cluster" },
+                  );
+                } else {
+                  setCreateDialogOpen(false);
+                  void handleRefresh();
+                }
+              } catch (error: unknown) {
+                const parsed = parseApiError(error);
+                notify.error(parsed.title, parsed.message, {
+                  category: "cluster",
+                });
+              }
+            }}
+          />
+
+          {resourceToEdit && (
+            <ResourceEditDialog
+              open={editDialogOpen}
+              onOpenChange={setEditDialogOpen}
+              resource={resourceToEdit}
+              onSubmit={async (resourceYaml, dryRun) => {
+                try {
+                  await api.updateK8sResource(
+                    selectedCluster,
+                    editResourceType,
+                    resourceToEdit.metadata.name,
+                    {
+                      resource_yaml: resourceYaml,
+                      namespace: resourceToEdit.metadata.namespace,
+                      dry_run: dryRun,
+                    },
+                  );
+                  if (dryRun) {
+                    notify.success(
+                      "Dry run successful - no changes applied",
+                      undefined,
+                      { category: "cluster" },
+                    );
+                  } else {
+                    setEditDialogOpen(false);
+                    setResourceToEdit(null);
+                    void handleRefresh();
+                  }
+                } catch (error: unknown) {
+                  const parsed = parseApiError(error);
+                  notify.error(parsed.title, parsed.message, {
+                    category: "cluster",
+                  });
+                }
+              }}
+            />
+          )}
+
+          {resourceToDelete && (
+            <ResourceDeleteDialog
+              open={deleteDialogOpen}
+              onOpenChange={setDeleteDialogOpen}
+              resource={resourceToDelete}
+              onConfirm={async () => {
+                try {
+                  await api.deleteK8sResource(
+                    selectedCluster,
+                    deleteResourceType,
+                    resourceToDelete.metadata.name,
+                    { namespace: resourceToDelete.metadata.namespace },
+                  );
+                  notify.success(
+                    `${resourceToDelete.kind} deleted successfully`,
+                    undefined,
+                    { category: "cluster" },
+                  );
+                  setDeleteDialogOpen(false);
+                  setResourceToDelete(null);
+                  setSelectedResource(null);
+                  void handleRefresh();
+                } catch (error: unknown) {
+                  const parsed = parseApiError(error);
+                  notify.error(parsed.title, parsed.message, {
+                    category: "cluster",
+                  });
+                }
+              }}
+            />
+          )}
+        </>
       )}
     </ResourceExplorerLayout>
   );

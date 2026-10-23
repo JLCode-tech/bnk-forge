@@ -5,8 +5,8 @@ D3: Fleet health is kubeconfig-based — queries clusters directly via
 bnk_data_service instead of relying on operator health reports.
 Operators are optional enrichment, not the data source.
 """
+
 import logging
-import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
@@ -21,13 +21,14 @@ from core.k8s_types import ApiGroups
 from database import get_db
 from models.kubernetes import KubernetesCluster
 from routes.auth import require_operator, require_viewer
+from services.bnk.helpers import extract_bnk_version
 from services.bnk_data_service import analyze_health, fetch_all_bnk_data
 from services.connectivity_probe_service import _parse_api_server, _probe_tcp
 from services.dpf.fetch import detect_dpf
 from services.kubernetes_service import KubernetesService
 from services.operator_registry import (
+    is_operator_live_connected,
     list_operators,
-    operator_connections,
 )
 from services.platform_context_service import PlatformContextService
 
@@ -54,11 +55,7 @@ def _build_fleet_compare_platform_context(
 
     profile_a = context_a.detected_platform_profile
     profile_b = context_b.detected_platform_profile
-    mixed_profiles = (
-        profile_a != "unknown"
-        and profile_b != "unknown"
-        and profile_a != profile_b
-    )
+    mixed_profiles = profile_a != "unknown" and profile_b != "unknown" and profile_a != profile_b
 
     caveats: list[str] = []
     support_semantics: list[str] = []
@@ -102,12 +99,14 @@ def _build_fleet_health_platform_context(clusters: list[KubernetesCluster]) -> d
         profile = context.detected_platform_profile
         if profile and profile != "unknown":
             profiles.add(profile)
-        cluster_contexts.append({
-            "cluster_id": cluster.id,
-            "cluster_name": cluster.name,
-            "detected_platform_profile": context.detected_platform_profile,
-            "detected_platform_provider": context.detected_platform_provider,
-        })
+        cluster_contexts.append(
+            {
+                "cluster_id": cluster.id,
+                "cluster_name": cluster.name,
+                "detected_platform_profile": context.detected_platform_profile,
+                "detected_platform_provider": context.detected_platform_provider,
+            }
+        )
 
     mixed_profiles = len(profiles) > 1
     caveats: list[str] = []
@@ -118,8 +117,7 @@ def _build_fleet_health_platform_context(clusters: list[KubernetesCluster]) -> d
             "Cross-cluster status and diffs should be interpreted with platform context."
         )
         support_semantics.append(
-            "Support/readiness semantics are platform-aware and may differ between clusters "
-            "in this fleet."
+            "Support/readiness semantics are platform-aware and may differ between clusters in this fleet."
         )
 
     return {
@@ -151,31 +149,12 @@ def _resource_key_to_ref(resource_key: str) -> dict[str, str | None]:
 def _derive_status_from_health(health: dict) -> str:
     """Derive fleet status (healthy/warning/critical) from analyze_health() output."""
     overall = health.get("overall", "unknown")
+    if health.get("partial") and overall == "unknown":
+        return "warning"
     # analyze_health returns: healthy, warning, critical, unknown
     if overall in ("healthy", "warning", "critical", "unknown"):
         return overall
     return "unknown"
-
-
-def _extract_bnk_version(data: dict) -> str | None:
-    """
-    Extract BNK version from TMM pod container images.
-
-    TMM image tags follow the pattern: `<registry>/spk-tmm:v2.5.0-0.0.5`
-    We extract the semver portion (e.g., "2.5.0").
-    Falls back to FLO/controller images if TMM not found.
-    """
-    classified = data.get("classified_pods", {})
-    # Try TMM first, then FLO, then controller
-    for pod_type in ("tmm", "flo", "controller"):
-        for pod in classified.get(pod_type, []):
-            for container in pod.get("containers", []):
-                image = container.get("image", "")
-                # Match version tag: :v1.2.3 or :1.2.3 (with optional build suffix)
-                m = re.search(r":v?(\d+\.\d+\.\d+)", image)
-                if m:
-                    return m.group(1)
-    return None
 
 
 def _extract_uptime_seconds(data: dict) -> int:
@@ -214,7 +193,7 @@ def _extract_health_metrics(health: dict, data: dict) -> dict:
     counts = health.get("counts", {})
 
     # BNK version from pod images
-    bnk_version = _extract_bnk_version(data)
+    bnk_version = extract_bnk_version(data)
 
     # Uptime from oldest running BNK pod
     uptime_secs = _extract_uptime_seconds(data)
@@ -259,11 +238,13 @@ def _extract_health_metrics(health: dict, data: dict) -> dict:
                 message = f"{section_label}: {', '.join(bad_subs)}"
             else:
                 message = f"{section_label} is {severity}"
-            health_issues.append({
-                "component": section_label,
-                "severity": severity,
-                "message": message,
-            })
+            health_issues.append(
+                {
+                    "component": section_label,
+                    "severity": severity,
+                    "message": message,
+                }
+            )
 
     # If the cluster is reachable but no BNK signals were detected at all
     # (fetch_all_bnk_data returned empty without raising — e.g. plain OCP with
@@ -271,11 +252,22 @@ def _extract_health_metrics(health: dict, data: dict) -> dict:
     # above produces no health_issues. Surface an explicit reason so the UI
     # isn't a warning badge with nothing to say.
     if not health_issues and health.get("overall") == "unknown":
-        health_issues.append({
-            "component": "BNK",
-            "severity": "warning",
-            "message": "BNK not installed or no BNK resources detected",
-        })
+        if data.get("partial") or health.get("partial"):
+            health_issues.append(
+                {
+                    "component": "BNK",
+                    "severity": "warning",
+                    "message": "BNK data fetch timed out or was incomplete",
+                }
+            )
+        else:
+            health_issues.append(
+                {
+                    "component": "BNK",
+                    "severity": "warning",
+                    "message": "BNK not installed or no BNK resources detected",
+                }
+            )
 
     return {
         "bnk_version": bnk_version,
@@ -321,21 +313,26 @@ def _query_dpf_summary(k8s_service, cluster_id: int) -> dict:
 
 # BNK API groups — presence of any of these indicates BNK CRDs are installed.
 # Gateway API alone is not a BNK signal (it exists independently, e.g. Istio).
-_BNK_API_GROUPS: frozenset[str] = frozenset({
-    ApiGroups.F5_NET,
-    ApiGroups.F5_K8S,
-    ApiGroups.F5_GATEWAY_NET,
-})
+_BNK_API_GROUPS: frozenset[str] = frozenset(
+    {
+        ApiGroups.F5_NET,
+        ApiGroups.F5_K8S,
+        ApiGroups.F5_GATEWAY_NET,
+        ApiGroups.F5_GATEWAY,
+    }
+)
 
 # DPF API groups — presence of any of these indicates NVIDIA DOCA Platform
 # Framework CRDs are installed. Used to gate the DPF discovery probe so we
 # don't hit /apis/provisioning.dpu.nvidia.com on every poll for clusters
 # that have no DPUs.
-_DPF_API_GROUPS: frozenset[str] = frozenset({
-    ApiGroups.DPF_PROVISIONING,
-    ApiGroups.DPF_SERVICE,
-    ApiGroups.DPF_OPERATOR,
-})
+_DPF_API_GROUPS: frozenset[str] = frozenset(
+    {
+        ApiGroups.DPF_PROVISIONING,
+        ApiGroups.DPF_SERVICE,
+        ApiGroups.DPF_OPERATOR,
+    }
+)
 
 # Per-cluster cache of the full set of registered API groups. One discovery
 # call answers multiple presence questions (BNK, DPF, ...), cached for a
@@ -345,7 +342,11 @@ _api_groups_cache: dict[int, tuple[float, frozenset[str]]] = {}
 _api_groups_lock = Lock()
 
 
-def _cluster_api_groups(cluster: KubernetesCluster, db: Session) -> frozenset[str] | None:
+def _cluster_api_groups(
+    cluster: KubernetesCluster,
+    db: Session,
+    k8s_service: KubernetesService | None = None,
+) -> frozenset[str] | None:
     """
     Return the set of API group names registered on the cluster.
 
@@ -362,15 +363,12 @@ def _cluster_api_groups(cluster: KubernetesCluster, db: Session) -> frozenset[st
             return cached[1]
 
     try:
-        k8s_service = KubernetesService(db)
-        api_client = k8s_service.load_kubeconfig(cluster)
+        svc = k8s_service or KubernetesService(db)
+        api_client = svc.load_kubeconfig(cluster)
         apis = k8s_client.ApisApi(api_client).get_api_versions()
         groups = frozenset(g.name for g in (apis.groups or []))
     except Exception as e:
-        logger.warning(
-            f"Fleet: API group discovery failed for cluster {cluster.name} "
-            f"(id={cluster_id}): {e}"
-        )
+        logger.warning(f"Fleet: API group discovery failed for cluster {cluster.name} (id={cluster_id}): {e}")
         return None
 
     with _api_groups_lock:
@@ -378,7 +376,11 @@ def _cluster_api_groups(cluster: KubernetesCluster, db: Session) -> frozenset[st
     return groups
 
 
-def _cluster_has_bnk_api_groups(cluster: KubernetesCluster, db: Session) -> bool:
+def _cluster_has_bnk_api_groups(
+    cluster: KubernetesCluster,
+    db: Session,
+    k8s_service: KubernetesService | None = None,
+) -> bool:
     """
     Check whether the cluster has any BNK-specific API groups registered.
 
@@ -389,13 +391,17 @@ def _cluster_has_bnk_api_groups(cluster: KubernetesCluster, db: Session) -> bool
     On discovery failure we return True (fall through to the full fetch) so
     a broken discovery call never silently hides BNK that's actually present.
     """
-    groups = _cluster_api_groups(cluster, db)
+    groups = _cluster_api_groups(cluster, db, k8s_service=k8s_service)
     if groups is None:
         return True
     return bool(_BNK_API_GROUPS & groups)
 
 
-def _cluster_has_dpf_api_groups(cluster: KubernetesCluster, db: Session) -> bool:
+def _cluster_has_dpf_api_groups(
+    cluster: KubernetesCluster,
+    db: Session,
+    k8s_service: KubernetesService | None = None,
+) -> bool:
     """
     Check whether the cluster has any DPF (NVIDIA DOCA Platform Framework)
     API groups registered.
@@ -405,7 +411,7 @@ def _cluster_has_dpf_api_groups(cluster: KubernetesCluster, db: Session) -> bool
     discovery failure we return False so we DON'T probe — erring on the
     side of skipping expensive calls rather than repeating 404s.
     """
-    groups = _cluster_api_groups(cluster, db)
+    groups = _cluster_api_groups(cluster, db, k8s_service=k8s_service)
     if groups is None:
         return False
     return bool(_DPF_API_GROUPS & groups)
@@ -413,9 +419,11 @@ def _cluster_has_dpf_api_groups(cluster: KubernetesCluster, db: Session) -> bool
 
 # Fleet-health response cache — avoids re-running the full multi-cluster
 # fetch burst when multiple tabs/users poll the endpoint within a short window.
+# Uses Redis (TTL 15s) with in-process dict fallback when Redis is unavailable.
 # Keyed by (sorted cluster IDs tuple, max updated_at) so create/update/delete
 # of a cluster naturally invalidates the cache without needing explicit hooks.
-_FLEET_HEALTH_TTL_SEC = 15.0
+_FLEET_HEALTH_REDIS_TTL_SEC = 15
+_FLEET_HEALTH_TTL_SEC = 30.0
 _fleet_health_cache: dict[tuple, tuple[float, dict]] = {}
 _fleet_health_lock = Lock()
 
@@ -431,11 +439,13 @@ _BNK_NOT_INSTALLED_RESULT = {
     "gateway_count": 0,
     "uptime_seconds": 0,
     "health_summary": {"healthy": 0, "warning": 1, "critical": 0},
-    "health_issues": [{
-        "component": "BNK",
-        "severity": "warning",
-        "message": "BNK not installed or no BNK resources detected",
-    }],
+    "health_issues": [
+        {
+            "component": "BNK",
+            "severity": "warning",
+            "message": "BNK not installed or no BNK resources detected",
+        }
+    ],
     "dpf_detected": False,
     "dpf_version": None,
     "dpf_status": None,
@@ -473,14 +483,13 @@ _OFFLINE_RESULT = {
 }
 
 # TCP pre-check timeout — fast fail for port-blocked clusters.
-# 10s accommodates slower on-prem/tunneled clusters while still
-# short-circuiting truly unreachable hosts before the 60s K8s timeout.
-_TCP_PRECHECK_TIMEOUT = 10
+# 2s short-circuits unreachable hosts before the K8s API timeout.
+_TCP_PRECHECK_TIMEOUT = 2
 
 
 def _query_cluster_health(
     cluster: KubernetesCluster,
-    db: Session,
+    db: Session | None = None,
 ) -> dict:
     """
     Query a single cluster's BNK + DPF health via kubeconfig.
@@ -505,10 +514,7 @@ def _query_cluster_health(
     #     a cloud LB that may block raw TCP probes from outside the VPC, but
     #     the K8s API is reachable via HTTPS with kubeconfig auth (STS tokens, etc.)
     _cloud_providers = {"aws", "azure", "gcp"}
-    _skip_tcp = (
-        cluster.ssh_tunnel_enabled
-        or (cluster.cloud_provider or "").lower() in _cloud_providers
-    )
+    _skip_tcp = cluster.ssh_tunnel_enabled or (cluster.cloud_provider or "").lower() in _cloud_providers
     if not _skip_tcp:
         host, port = _parse_api_server(cluster.api_server)
         if host:
@@ -520,57 +526,62 @@ def _query_cluster_health(
                 )
                 return {**_OFFLINE_RESULT}
 
-    try:
-        k8s_service = KubernetesService(db)
-        # Quick reachability check via K8s API before expensive BNK fetch
+    def _do_query(session: Session) -> dict:
         try:
-            k8s_service.test_connection(cluster.id)
+            k8s_service = KubernetesService(session)
+            # Quick reachability check via K8s API before expensive BNK fetch
+            conn_res = k8s_service.test_connection(cluster.id)
+            if not isinstance(conn_res, dict) or not conn_res.get("success"):
+                err_msg = conn_res.get("message") if isinstance(conn_res, dict) else "connection failed"
+                logger.warning(f"Fleet: cluster {cluster.name} (id={cluster.id}) K8s API unreachable: {err_msg}")
+                return {**_OFFLINE_RESULT}
+
+            # Cheap short-circuits: one discovery call (cached) answers both
+            # "does this cluster have BNK?" and "does it have DPF?". Skip the
+            # heavy probes for absent frameworks.
+            has_bnk = _cluster_has_bnk_api_groups(cluster, session, k8s_service=k8s_service)
+            has_dpf = _cluster_has_dpf_api_groups(cluster, session, k8s_service=k8s_service)
+
+            dpf_summary = _query_dpf_summary(k8s_service, cluster.id) if has_dpf else dict(_DPF_NOT_INSTALLED_SUMMARY)
+
+            if not has_bnk:
+                return {**_BNK_NOT_INSTALLED_RESULT, **dpf_summary}
+
+            try:
+                data = fetch_all_bnk_data(k8s_service, cluster.id)
+                health = analyze_health(data)
+                status = _derive_status_from_health(health)
+                metrics = _extract_health_metrics(health, data)
+            except Exception as e:
+                # Cluster is reachable but BNK data fetch failed unexpectedly.
+                # (The no-BNK-installed case is now handled by the short-circuit above.)
+                logger.info(f"Fleet: cluster {cluster.name} (id={cluster.id}) BNK fetch failed: {e}")
+                return {**_BNK_NOT_INSTALLED_RESULT, **dpf_summary}
+
+            return {
+                "status": status,
+                "bnk_severity": health.get("overall", status),
+                "effective_connectivity_status": "connected",
+                "reachable": True,
+                **metrics,
+                **dpf_summary,
+            }
         except Exception as e:
-            logger.warning(f"Fleet: cluster {cluster.name} (id={cluster.id}) K8s API unreachable: {e}")
+            logger.warning(f"Fleet health query failed for cluster {cluster.name} (id={cluster.id}): {e}")
             return {**_OFFLINE_RESULT}
 
-        # Cheap short-circuits: one discovery call (cached) answers both
-        # "does this cluster have BNK?" and "does it have DPF?". Skip the
-        # heavy probes for absent frameworks.
-        has_bnk = _cluster_has_bnk_api_groups(cluster, db)
-        has_dpf = _cluster_has_dpf_api_groups(cluster, db)
+    if db is not None:
+        return _do_query(db)
+    from database import SessionLocal
 
-        dpf_summary = (
-            _query_dpf_summary(k8s_service, cluster.id)
-            if has_dpf
-            else dict(_DPF_NOT_INSTALLED_SUMMARY)
-        )
-
-        if not has_bnk:
-            return {**_BNK_NOT_INSTALLED_RESULT, **dpf_summary}
-
-        try:
-            data = fetch_all_bnk_data(k8s_service, cluster.id)
-            health = analyze_health(data)
-            status = _derive_status_from_health(health)
-            metrics = _extract_health_metrics(health, data)
-        except Exception as e:
-            # Cluster is reachable but BNK data fetch failed unexpectedly.
-            # (The no-BNK-installed case is now handled by the short-circuit above.)
-            logger.info(f"Fleet: cluster {cluster.name} (id={cluster.id}) BNK fetch failed: {e}")
-            return {**_BNK_NOT_INSTALLED_RESULT, **dpf_summary}
-
-        return {
-            "status": status,
-            "bnk_severity": health.get("overall", status),
-            "effective_connectivity_status": "connected",
-            "reachable": True,
-            **metrics,
-            **dpf_summary,
-        }
-    except Exception as e:
-        logger.warning(f"Fleet health query failed for cluster {cluster.name} (id={cluster.id}): {e}")
-        return {**_OFFLINE_RESULT}
+    with SessionLocal() as session:
+        return _do_query(session)
 
 
 # ---------------------------------------------------------------------------
 # Fleet Endpoints
 # ---------------------------------------------------------------------------
+
 
 @router.get("/fleet-health", response_model=FleetHealthResponse, dependencies=[Depends(require_viewer)])
 def get_fleet_health(db: Session = Depends(get_db)):
@@ -588,6 +599,8 @@ def get_fleet_health(db: Session = Depends(get_db)):
     ID set + max updated_at so cluster create/update/delete invalidate
     naturally without needing explicit cache-busting hooks.
     """
+    from core.cache import cache
+
     clusters = db.query(KubernetesCluster).all()
 
     # Cache lookup — key on (cluster IDs, max updated_at). A changed cluster
@@ -596,15 +609,25 @@ def get_fleet_health(db: Session = Depends(get_db)):
         (c.updated_at for c in clusters if c.updated_at is not None),
         default=None,
     )
+    cluster_ids = tuple(sorted(int(c.id) for c in clusters))
+    max_updated_str = max_updated.isoformat() if max_updated else "none"
+    user_scope = f"{','.join(str(cid) for cid in cluster_ids)}:{max_updated_str}"
+    redis_key = f"fleet:health:{user_scope}"
+
+    cached_redis = cache.get(redis_key)
+    if cached_redis is not None:
+        return cached_redis
+
     cache_key = (
-        tuple(sorted(int(c.id) for c in clusters)),
+        cluster_ids,
         max_updated.isoformat() if max_updated else None,
     )
     now_mono = time.monotonic()
-    with _fleet_health_lock:
-        cached = _fleet_health_cache.get(cache_key)
-        if cached and (now_mono - cached[0]) < _FLEET_HEALTH_TTL_SEC:
-            return cached[1]
+    if not cache.is_available():
+        with _fleet_health_lock:
+            cached = _fleet_health_cache.get(cache_key)
+            if cached and (now_mono - cached[0]) < _FLEET_HEALTH_TTL_SEC:
+                return cached[1]
 
     if not clusters:
         empty_response = {
@@ -623,8 +646,9 @@ def get_fleet_health(db: Session = Depends(get_db)):
                 "support_semantics": [],
             },
         }
-        with _fleet_health_lock:
-            _fleet_health_cache[cache_key] = (now_mono, empty_response)
+        if not cache.set(redis_key, empty_response, _FLEET_HEALTH_REDIS_TTL_SEC):
+            with _fleet_health_lock:
+                _fleet_health_cache[cache_key] = (now_mono, empty_response)
         return empty_response
 
     # Build operator lookup: cluster_id → operator record
@@ -634,18 +658,18 @@ def get_fleet_health(db: Session = Depends(get_db)):
         if op.cluster_id:
             op_by_cluster[op.cluster_id] = op
 
-    # Query all clusters in parallel (30s per-cluster, 60s overall safety timeout)
+    # Query all clusters in parallel (5s per-cluster, 8s overall safety timeout).
+    # Pass db=None so worker threads use their own isolated SessionLocal().
+    # Use shutdown(wait=False) so hung worker threads do not block the HTTP response.
     cluster_results: dict[int, dict] = {}
-    with ThreadPoolExecutor(max_workers=min(10, len(clusters))) as executor:
-        futures = {
-            executor.submit(_query_cluster_health, cluster, db): cluster
-            for cluster in clusters
-        }
+    executor = ThreadPoolExecutor(max_workers=min(10, len(clusters)))
+    try:
+        futures = {executor.submit(_query_cluster_health, cluster, None): cluster for cluster in clusters}
         try:
-            for future in as_completed(futures, timeout=60):
+            for future in as_completed(futures, timeout=8):
                 cluster = futures[future]
                 try:
-                    cluster_results[cluster.id] = future.result(timeout=30)
+                    cluster_results[cluster.id] = future.result(timeout=5)
                 except Exception as e:
                     logger.error(f"Unexpected error querying cluster {cluster.name}: {e}")
                     cluster_results[cluster.id] = {**_OFFLINE_RESULT}
@@ -655,6 +679,8 @@ def get_fleet_health(db: Session = Depends(get_db)):
                 if cluster.id not in cluster_results:
                     logger.warning(f"Fleet: cluster {cluster.name} timed out — marking offline")
                     cluster_results[cluster.id] = {**_OFFLINE_RESULT}
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
     # Build response
     operators_out = []
@@ -672,12 +698,7 @@ def get_fleet_health(db: Session = Depends(get_db)):
         # Enrich with operator metadata if linked
         linked_op = op_by_cluster.get(cluster.id)
         if linked_op:
-            is_connected_ws = operator_connections.is_connected(linked_op.operator_id)
-            is_connected_polling = False
-            if linked_op.connectivity_mode == "polling" and linked_op.last_heartbeat_at:
-                heartbeat_age = (datetime.now(UTC) - linked_op.last_heartbeat_at).total_seconds()
-                is_connected_polling = heartbeat_age < 60
-            _is_connected = is_connected_ws or is_connected_polling
+            _is_connected = is_operator_live_connected(linked_op)
 
             operator_version = linked_op.operator_version
             connectivity_mode = linked_op.connectivity_mode or "direct_ws"
@@ -705,37 +726,43 @@ def get_fleet_health(db: Session = Depends(get_db)):
         else:
             uptime_str = f"{uptime_secs // 86400}d {(uptime_secs % 86400) // 3600}h"
 
-        operators_out.append({
-            "operator_id": operator_id,
-            "operator_uuid": operator_uuid,
-            "cluster_id": cluster.id,
-            "cluster_name": cluster.name,
-            "status": status,
-            "bnk_severity": result.get("bnk_severity", status),
-            "effective_connectivity_status": result.get(
-                "effective_connectivity_status",
-                "connected" if result.get("reachable") else "unreachable",
-            ),
-            "last_seen": last_seen,
-            "bnk_version": result.get("bnk_version"),
-            "route_count": result.get("route_count", 0),
-            "tmm_count": result.get("tmm_count", 0),
-            "gateway_count": result.get("gateway_count", 0),
-            "uptime": uptime_str,
-            "health_summary": result.get("health_summary", {"healthy": 0, "warning": 0, "critical": 0}),
-            "health_issues": result.get("health_issues", []),
-            "kubernetes_version": k8s_version,
-            "node_count": node_count,
-            "operator_version": operator_version,
-            "connectivity_mode": connectivity_mode,
-            "dpf_detected": result.get("dpf_detected", False),
-            "dpf_version": result.get("dpf_version"),
-            "dpf_status": result.get("dpf_status"),
-            "dpu_count": result.get("dpu_count", 0),
-            "dpu_cluster_count": result.get("dpu_cluster_count", 0),
-            "detected_platform_profile": platform_context.detected_platform_profile,
-            "detected_platform_provider": platform_context.detected_platform_provider,
-        })
+        operators_out.append(
+            {
+                "operator_id": operator_id,
+                "operator_uuid": operator_uuid,
+                "cluster_id": cluster.id,
+                "cluster_name": cluster.name,
+                "status": status,
+                "bnk_severity": result.get("bnk_severity", status),
+                "effective_connectivity_status": result.get(
+                    "effective_connectivity_status",
+                    "connected" if result.get("reachable") else "unreachable",
+                ),
+                "last_seen": last_seen,
+                "bnk_version": result.get("bnk_version"),
+                "route_count": result.get("route_count", 0),
+                "tmm_count": result.get("tmm_count", 0),
+                "gateway_count": result.get("gateway_count", 0),
+                "uptime": uptime_str,
+                "health_summary": result.get("health_summary", {"healthy": 0, "warning": 0, "critical": 0}),
+                "health_issues": result.get("health_issues", []),
+                "kubernetes_version": k8s_version,
+                "node_count": node_count,
+                "operator_version": operator_version,
+                "connectivity_mode": connectivity_mode,
+                "dpf_detected": result.get("dpf_detected", False),
+                "dpf_version": result.get("dpf_version"),
+                "dpf_status": result.get("dpf_status"),
+                "dpu_count": result.get("dpu_count", 0),
+                "dpu_cluster_count": result.get("dpu_cluster_count", 0),
+                "detected_platform_profile": platform_context.detected_platform_profile,
+                "detected_platform_provider": platform_context.detected_platform_provider,
+                "cloud_provider": cluster.cloud_provider,
+                "region": cluster.region,
+                "account_id": cluster.account_id,
+                "discovery_status": cluster.discovery_status,
+            }
+        )
 
     response = {
         "total_clusters": len(clusters),
@@ -747,13 +774,14 @@ def get_fleet_health(db: Session = Depends(get_db)):
         "operators": operators_out,
         "platform_context": _build_fleet_health_platform_context(clusters),
     }
-    with _fleet_health_lock:
-        # Opportunistically trim stale entries so the cache can't grow unbounded
-        # if cluster sets churn a lot (each distinct key would accumulate).
-        stale_cutoff = now_mono - _FLEET_HEALTH_TTL_SEC
-        for key in [k for k, (t, _) in _fleet_health_cache.items() if t < stale_cutoff]:
-            _fleet_health_cache.pop(key, None)
-        _fleet_health_cache[cache_key] = (now_mono, response)
+    if not cache.set(redis_key, response, _FLEET_HEALTH_REDIS_TTL_SEC):
+        with _fleet_health_lock:
+            # Opportunistically trim stale entries so the cache can't grow unbounded
+            # if cluster sets churn a lot (each distinct key would accumulate).
+            stale_cutoff = now_mono - _FLEET_HEALTH_TTL_SEC
+            for key in [k for k, (t, _) in _fleet_health_cache.items() if t < stale_cutoff]:
+                _fleet_health_cache.pop(key, None)
+            _fleet_health_cache[cache_key] = (now_mono, response)
     return response
 
 
@@ -780,6 +808,7 @@ def fleet_compare_configs(
     if cluster_a and cluster_b:
         try:
             from services.config_export_service import diff_configs, export_cluster_config
+
             config_a = export_cluster_config(cluster_a.id, db)
             config_b = export_cluster_config(cluster_b.id, db)
             diff_result = diff_configs(config_a, config_b)
@@ -838,12 +867,14 @@ def fleet_compare_configs(
         val_a = bnk_a.get(key)
         val_b = bnk_b.get(key)
         if val_a != val_b:
-            differences.append({
-                "field": label,
-                "key": key,
-                "value_a": val_a,
-                "value_b": val_b,
-            })
+            differences.append(
+                {
+                    "field": label,
+                    "key": key,
+                    "value_a": val_a,
+                    "value_b": val_b,
+                }
+            )
 
     name_a = (op_a.cluster_name if op_a else cluster_a.name) if (op_a or cluster_a) else f"ID {body.operator_a_id}"
     name_b = (op_b.cluster_name if op_b else cluster_b.name) if (op_b or cluster_b) else f"ID {body.operator_b_id}"

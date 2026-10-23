@@ -47,6 +47,7 @@ logger = logging.getLogger(__name__)
 # Version helpers
 # ==============================================================
 
+
 def parse_version(v: str) -> tuple[int, ...]:
     """
     Parse a FLO version string to a comparable numeric tuple.
@@ -100,23 +101,44 @@ def version_eq(a: str, b: str) -> bool:
 # Keep them sorted newest-first — first match wins.
 # ==============================================================
 
+
 @dataclass
 class _VersionRange:
     """Maps a FLO chart version range to a BNK GA label."""
-    min_version: tuple[int, ...]   # inclusive lower bound (parsed)
-    max_version: tuple[int, ...]   # exclusive upper bound (parsed)
+
+    min_version: tuple[int, ...]  # inclusive lower bound (parsed)
+    max_version: tuple[int, ...]  # exclusive upper bound (parsed)
     label: str
     min_k8s: str
     max_k8s: str
 
+
 # Ranges are checked in order — first match wins.
 # Keep them sorted newest-first so the most recent match is found first.
 _VERSION_RANGES: list[_VersionRange] = [
+    # BNK 2.4.1 — FLO chart 2.30.1+ (prefix 2.30.1)
+    # Source: CloudDocs BNK 2.4.1 GA release notes (FLO v2.30.1-0.0.8)
+    _VersionRange(
+        min_version=parse_version("2.30.1"),
+        max_version=parse_version("3.0.0"),
+        label="BNK 2.4.1 GA",
+        min_k8s="1.30",
+        max_k8s="1.35",
+    ),
+    # BNK 2.4 — FLO chart 2.30.0.x (prefix 2.30.0)
+    # Source: CloudDocs BNK 2.4.0 GA release notes (FLO v2.30.0-0.5.2)
+    _VersionRange(
+        min_version=parse_version("2.30.0"),
+        max_version=parse_version("2.30.1"),
+        label="BNK 2.4 GA",
+        min_k8s="1.30",
+        max_k8s="1.35",
+    ),
     # BNK 2.3 — FLO chart 2.21.x (new 2.x.x scheme)
     # Source: IBM-F5 manifest 2.3.0 + live FLO 2.21.13 on a known-2.3 cluster
     _VersionRange(
         min_version=parse_version("2.20.0"),
-        max_version=parse_version("3.0.0"),
+        max_version=parse_version("2.30.0"),
         label="BNK 2.3 GA",
         min_k8s="1.30",
         # Upstream-validated through 1.31; widened to 1.33 to cover real-world
@@ -155,6 +177,131 @@ _VERSION_RANGES: list[_VersionRange] = [
         max_k8s="1.28",
     ),
 ]
+
+
+BNK_241_KNOWN_ISSUES: dict[str, dict[str, str]] = {
+    "2455985-2": {
+        "id": "2455985-2",
+        "name": "crd_migration_2455985_2",
+        "label": "Metrics CRD API Group Migration (ID 2455985-2)",
+        "summary": "metrics.f5.net → metrics.f5.com CRD migration",
+        "workaround": (
+            "Backup and delete legacy metrics.f5.net Scrape/ScrapeClass/ScrapeTemplate "
+            "CRs and CRDs before upgrading to BNK 2.4.1, then recreate under metrics.f5.com/v1alpha1."
+        ),
+    },
+    "2471977-2": {
+        "id": "2471977-2",
+        "name": "gslb_crd_conflict_2471977_2",
+        "label": "GSLB Instance CRD v1alpha1 → v1 Conflict (ID 2471977-2)",
+        "summary": "f5-big-gslb-instances v1alpha1 → v1 CRD conflict",
+        "workaround": (
+            "Delete legacy v1alpha1 f5-big-gslb-instances CRDs/CRs prior to FLO 2.30.1+ upgrade "
+            "and re-apply under k8s.f5net.com/v1."
+        ),
+    },
+    "2569605-1": {
+        "id": "2569605-1",
+        "name": "license_jwks_2569605_1",
+        "label": "Connected License JWKS ConfigMap Requirement (ID 2569605-1)",
+        "summary": "Connected License.spec.jwksConfigMapRef requirement",
+        "workaround": (
+            "Ensure connected-mode License CRs specify spec.jwksConfigMapRef pointing to "
+            "the F5 JWKS public key ConfigMap before upgrading to BNK 2.4.1."
+        ),
+    },
+}
+
+
+def is_bnk_241_target(target_version: str | None) -> bool:
+    """Return True when target_version maps to BNK 2.4.1 GA (FLO 2.30.1+ or manifest 2.4.1*)."""
+    if not target_version:
+        return False
+    cleaned = target_version.lstrip("v")
+    if cleaned.startswith("2.4.1"):
+        return True
+    info = get_known_version_info(target_version)
+    return bool(info and info.get("label") == "BNK 2.4.1 GA")
+
+
+def evaluate_bnk_241_pre_upgrade_checks(
+    bnk_install: dict,
+    target_version: str | None,
+) -> list[dict]:
+    """
+    Evaluate BNK 2.4.1 Release Note Known Issue pre-upgrade checks:
+      - 2455985-2: metrics.f5.net -> metrics.f5.com CRD migration
+      - 2471977-2: f5-big-gslb-instances v1alpha1 -> v1 CRD conflict
+      - 2569605-1: connected License.spec.jwksConfigMapRef requirement
+    """
+    if not is_bnk_241_target(target_version):
+        return []
+
+    checks: list[dict] = []
+    crds = bnk_install.get("crds") or []
+    crd_names = {(c.get("name", "") if isinstance(c, dict) else str(c)).lower() for c in crds}
+
+    # 1. Known Issue 2455985-2: metrics.f5.net -> metrics.f5.com CRD migration
+    has_legacy_metrics = bool(
+        bnk_install.get("legacy_metrics_f5_net") or any(name.endswith(".metrics.f5.net") for name in crd_names)
+    )
+    issue_metrics = BNK_241_KNOWN_ISSUES["2455985-2"]
+    checks.append(
+        {
+            "name": issue_metrics["name"],
+            "issue_id": "2455985-2",
+            "label": issue_metrics["label"],
+            "status": "warn",
+            "detail": (
+                f"Legacy metrics.f5.net CRDs detected — {issue_metrics['workaround']}"
+                if has_legacy_metrics
+                else f"Verify before upgrade: {issue_metrics['summary']}. {issue_metrics['workaround']}"
+            ),
+            "critical": False,
+        }
+    )
+
+    # 2. Known Issue 2471977-2: f5-big-gslb-instances v1alpha1 -> v1 CRD conflict
+    has_gslb_v1alpha1 = bool(
+        bnk_install.get("gslb_v1alpha1_present") or "f5-big-gslb-instances.k8s.f5net.com" in crd_names
+    )
+    issue_gslb = BNK_241_KNOWN_ISSUES["2471977-2"]
+    checks.append(
+        {
+            "name": issue_gslb["name"],
+            "issue_id": "2471977-2",
+            "label": issue_gslb["label"],
+            "status": "warn",
+            "detail": (
+                f"f5-big-gslb-instances CRD detected — {issue_gslb['workaround']}"
+                if has_gslb_v1alpha1
+                else f"Verify before upgrade: {issue_gslb['summary']}. {issue_gslb['workaround']}"
+            ),
+            "critical": False,
+        }
+    )
+
+    # 3. Known Issue 2569605-1: connected License.spec.jwksConfigMapRef requirement
+    license_info = bnk_install.get("license") or {}
+    license_spec = license_info.get("spec") if isinstance(license_info, dict) else {}
+    jwks_configured = bool(isinstance(license_spec, dict) and license_spec.get("jwksConfigMapRef"))
+    issue_license = BNK_241_KNOWN_ISSUES["2569605-1"]
+    checks.append(
+        {
+            "name": issue_license["name"],
+            "issue_id": "2569605-1",
+            "label": issue_license["label"],
+            "status": "pass" if jwks_configured else "warn",
+            "detail": (
+                "License.spec.jwksConfigMapRef is configured for BNK 2.4.1 connected mode"
+                if jwks_configured
+                else f"Verify before upgrade: {issue_license['summary']}. {issue_license['workaround']}"
+            ),
+            "critical": False,
+        }
+    )
+
+    return checks
 
 
 def detect_current_bnk_version(bnk_install: dict) -> str | None:
@@ -264,9 +411,7 @@ class BnkUpgradeService(BnkUpgradePlanMixin, BnkUpgradeExecutionMixin):
         Returns the BnkUpgrade with pre_checks populated.
         Status will be 'ready' if all critical checks pass, 'failed' otherwise.
         """
-        cluster = self.db.query(KubernetesCluster).filter(
-            KubernetesCluster.id == cluster_id
-        ).first()
+        cluster = self.db.query(KubernetesCluster).filter(KubernetesCluster.id == cluster_id).first()
         if not cluster:
             raise ValueError(f"Cluster {cluster_id} not found")
 
@@ -277,10 +422,14 @@ class BnkUpgradeService(BnkUpgradePlanMixin, BnkUpgradeExecutionMixin):
         #   raise 409 with upgrade_id + status so the FE can offer a Cancel action.
         _SUPERSEDABLE = {BnkUpgradeStatus.PLANNING, BnkUpgradeStatus.READY}
         _EXECUTING = {BnkUpgradeStatus.IN_PROGRESS, BnkUpgradeStatus.HEALTH_CHECK, BnkUpgradeStatus.ROLLING_BACK}
-        existing = self.db.query(BnkUpgrade).filter(
-            BnkUpgrade.cluster_id == cluster_id,
-            BnkUpgrade.status.in_([*_SUPERSEDABLE, *_EXECUTING]),
-        ).first()
+        existing = (
+            self.db.query(BnkUpgrade)
+            .filter(
+                BnkUpgrade.cluster_id == cluster_id,
+                BnkUpgrade.status.in_([*_SUPERSEDABLE, *_EXECUTING]),
+            )
+            .first()
+        )
         if existing:
             if existing.status in _EXECUTING:
                 raise AppError(
@@ -411,7 +560,10 @@ class BnkUpgradeService(BnkUpgradePlanMixin, BnkUpgradeExecutionMixin):
         fallback = self._get_fallback_versions()
         if fallback:
             logger.info(f"Using {len(fallback)} known BNK versions as fallback (OCI registry unavailable)")
-            return fallback, "OCI registry unavailable — showing known BNK versions. Configure cne_pull_secret for exact chart versions."
+            return (
+                fallback,
+                "OCI registry unavailable — showing known BNK versions. Configure cne_pull_secret for exact chart versions.",
+            )
         return [], "No versions available — OCI registry unreachable and no known versions defined"
 
     @staticmethod
@@ -437,15 +589,17 @@ class BnkUpgradeService(BnkUpgradePlanMixin, BnkUpgradeExecutionMixin):
             else:
                 continue
 
-            fallback.append({
-                "version": tag,
-                "label": vr.label,
-                "release_date": None,
-                "notes": f"Known GA release ({tag}). Exact patch versions available with OCI registry access.",
-                "min_k8s": vr.min_k8s,
-                "max_k8s": vr.max_k8s,
-                "source": "known",
-            })
+            fallback.append(
+                {
+                    "version": tag,
+                    "label": vr.label,
+                    "release_date": None,
+                    "notes": f"Known GA release ({tag}). Exact patch versions available with OCI registry access.",
+                    "min_k8s": vr.min_k8s,
+                    "max_k8s": vr.max_k8s,
+                    "source": "known",
+                }
+            )
 
         # Already sorted newest-first in _VERSION_RANGES
         return fallback
@@ -459,26 +613,32 @@ class BnkUpgradeService(BnkUpgradePlanMixin, BnkUpgradeExecutionMixin):
 
         Returns (username, password) or None if not available.
         """
-        cluster = self.db.query(KubernetesCluster).filter(
-            KubernetesCluster.id == cluster_id
-        ).first()
+        cluster = self.db.query(KubernetesCluster).filter(KubernetesCluster.id == cluster_id).first()
         if not cluster or not cluster.project_id:
             return None
 
         # Find the cne_pull_secret in project secrets
-        secret = self.db.query(ProjectSecret).filter(
-            ProjectSecret.project_id == cluster.project_id,
-            ProjectSecret.name == "cne_pull_secret",
-            ProjectSecret.is_active,
-        ).first()
+        secret = (
+            self.db.query(ProjectSecret)
+            .filter(
+                ProjectSecret.project_id == cluster.project_id,
+                ProjectSecret.name == "cne_pull_secret",
+                ProjectSecret.is_active,
+            )
+            .first()
+        )
 
         if not secret:
             # Also try by target_variable_name
-            secret = self.db.query(ProjectSecret).filter(
-                ProjectSecret.project_id == cluster.project_id,
-                ProjectSecret.target_variable_name == "cne_pull_secret",
-                ProjectSecret.is_active,
-            ).first()
+            secret = (
+                self.db.query(ProjectSecret)
+                .filter(
+                    ProjectSecret.project_id == cluster.project_id,
+                    ProjectSecret.target_variable_name == "cne_pull_secret",
+                    ProjectSecret.is_active,
+                )
+                .first()
+            )
 
         if not secret:
             logger.debug("No cne_pull_secret found in project secrets")
@@ -557,11 +717,12 @@ class BnkUpgradeService(BnkUpgradePlanMixin, BnkUpgradeExecutionMixin):
                 return []
 
             # Filter and sort: only version-like tags (start with v or digit)
-            version_tags = [t for t in tags if re.match(r'^v?\d+\.', t)]
+            version_tags = [t for t in tags if re.match(r"^v?\d+\.", t)]
             version_tags.sort(key=lambda t: parse_version(t), reverse=True)
 
             # Build version list — prefer registry GA labels, fall back to in-code ranges
             from services.release_registry_service import ReleaseRegistryService
+
             registry_svc: ReleaseRegistryService | None = None
             try:
                 registry_svc = ReleaseRegistryService(self.db)
@@ -591,15 +752,17 @@ class BnkUpgradeService(BnkUpgradePlanMixin, BnkUpgradeExecutionMixin):
                         min_k8s = known.get("min_k8s")
                         max_k8s = known.get("max_k8s")
 
-                versions.append({
-                    "version": tag,
-                    "label": ga_label or tag,
-                    "release_date": None,
-                    "notes": None,
-                    "min_k8s": min_k8s,
-                    "max_k8s": max_k8s,
-                    "source": "registry",
-                })
+                versions.append(
+                    {
+                        "version": tag,
+                        "label": ga_label or tag,
+                        "release_date": None,
+                        "notes": None,
+                        "min_k8s": min_k8s,
+                        "max_k8s": max_k8s,
+                        "source": "registry",
+                    }
+                )
 
             logger.info(f"Fetched {len(versions)} FLO versions from OCI registry")
             return versions

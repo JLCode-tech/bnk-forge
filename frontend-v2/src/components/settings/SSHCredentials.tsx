@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
-import { SectionCard } from '@/components/ui/section-card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { useEffect, useState } from "react";
+import { SectionCard } from "@/components/ui/section-card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -12,8 +12,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Switch } from '@/components/ui/switch';
+} from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -21,13 +21,13 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from "@/components/ui/table";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from "@/components/ui/dropdown-menu";
 import {
   AlertTriangle,
   Loader2,
@@ -39,14 +39,14 @@ import {
   Trash2,
   KeyRound,
   MoreVertical,
-} from 'lucide-react';
+} from "lucide-react";
 // Note: Server icon is still used inside the SshHostStatusIcon helper below.
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { notify, notifyError } from '@/lib/notify';
-import { api } from '@/lib/api';
-import { queryKeys } from '@/lib/queryKeys';
-import type { SSHCredential, SSHCredentialCreate } from '@/types';
-import { useAppMutation } from '@/hooks/lib/useAppMutation';
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { notify, notifyError } from "@/lib/notify";
+import { api } from "@/lib/api";
+import { queryKeys } from "@/lib/queryKeys";
+import type { SSHCredential, SSHCredentialCreate } from "@/types";
+import { useAppMutation } from "@/hooks/lib/useAppMutation";
 
 // ============================================================================
 // Types
@@ -80,14 +80,14 @@ interface FormState {
 }
 
 const emptyForm: FormState = {
-  name: '',
-  description: '',
-  host: '',
+  name: "",
+  description: "",
+  host: "",
   port: 22,
-  username: '',
-  password: '',
-  private_key: '',
-  key_passphrase: '',
+  username: "",
+  password: "",
+  private_key: "",
+  key_passphrase: "",
   is_default: false,
   useOwnKey: false,
 };
@@ -100,8 +100,11 @@ export default function SSHCredentials() {
   const queryClient = useQueryClient();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [editingCredential, setEditingCredential] = useState<SSHCredential | null>(null);
-  const [testingCredentialId, setTestingCredentialId] = useState<number | null>(null);
+  const [editingCredential, setEditingCredential] =
+    useState<SSHCredential | null>(null);
+  const [testingCredentialId, setTestingCredentialId] = useState<number | null>(
+    null,
+  );
   const [passwordAuthDenied, setPasswordAuthDenied] = useState(false);
 
   // Form state
@@ -115,11 +118,14 @@ export default function SSHCredentials() {
 
   // Auto-setup mutation (password → key bootstrap)
   const setupMutation = useAppMutation({
-    mutationFn: (data: SSHCredentialSetup) =>
-      api.setupSSHCredential(data),
+    mutationFn: (data: SSHCredentialSetup) => api.setupSSHCredential(data),
     onSuccess: (cred) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sshCredentials.all });
-      notify.success('SSH connection added — key-based auth configured automatically', undefined, { category: 'credentials' });
+      notify.success(
+        "SSH connection added — key-based auth configured automatically",
+        undefined,
+        { category: "credentials" },
+      );
       setIsCreateDialogOpen(false);
       setPasswordAuthDenied(false);
       resetForm();
@@ -130,9 +136,9 @@ export default function SSHCredentials() {
     onError: (error: unknown) => {
       // Check if password auth was denied — flip to manual key mode
       const errData = extractErrorDetails(error);
-      if (errData?.error_code === 'password_auth_denied') {
+      if (errData?.error_code === "password_auth_denied") {
         setPasswordAuthDenied(true);
-        setFormData((prev) => ({ ...prev, useOwnKey: true, password: '' }));
+        setFormData((prev) => ({ ...prev, useOwnKey: true, password: "" }));
         // Don't close the dialog — show the message inline
         return;
       }
@@ -157,8 +163,13 @@ export default function SSHCredentials() {
 
   // Update mutation
   const updateMutation = useAppMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<SSHCredentialCreate> }) =>
-      api.updateSSHCredential(id, data),
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: number;
+      data: Partial<SSHCredentialCreate>;
+    }) => api.updateSSHCredential(id, data),
     onSuccess: (cred) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sshCredentials.all });
       setIsEditDialogOpen(false);
@@ -176,7 +187,9 @@ export default function SSHCredentials() {
     mutationFn: (id: number) => api.deleteSSHCredential(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sshCredentials.all });
-      notify.success('SSH connection deleted', undefined, { category: 'credentials' });
+      notify.success("SSH connection deleted", undefined, {
+        category: "credentials",
+      });
     },
     onError: (error) => {
       notifyError(error);
@@ -214,10 +227,16 @@ export default function SSHCredentials() {
       // last_test_status the backend just persisted.
       queryClient.invalidateQueries({ queryKey: queryKeys.sshCredentials.all });
       if (data.success) {
-        const detail = data.hostname || data.ssh_banner || data.message || '';
-        notify.success(`SSH connection test passed${detail ? `: ${detail}` : ''}`, undefined, { category: 'credentials' });
+        const detail = data.hostname || data.ssh_banner || data.message || "";
+        notify.success(
+          `SSH connection test passed${detail ? `: ${detail}` : ""}`,
+          undefined,
+          { category: "credentials" },
+        );
       } else {
-        notify.error(`SSH connection test failed: ${data.error || data.message || 'Unknown error'}`);
+        notify.error(
+          `SSH connection test failed: ${data.error || data.message || "Unknown error"}`,
+        );
       }
     },
     onError: (error) => {
@@ -240,7 +259,7 @@ export default function SSHCredentials() {
         host: formData.host,
         port: formData.port,
         username: formData.username,
-        auth_type: 'key',
+        auth_type: "key",
         private_key: formData.private_key || null,
         key_passphrase: formData.key_passphrase || null,
         is_default: formData.is_default,
@@ -263,15 +282,15 @@ export default function SSHCredentials() {
     setEditingCredential(credential);
     setFormData({
       name: credential.name,
-      description: credential.description || '',
+      description: credential.description || "",
       host: credential.host,
       port: credential.port || 22,
       username: credential.username,
-      password: '',
-      private_key: '',
-      key_passphrase: '',
+      password: "",
+      private_key: "",
+      key_passphrase: "",
       is_default: credential.is_default,
-      useOwnKey: credential.auth_type === 'key',
+      useOwnKey: credential.auth_type === "key",
     });
     setIsEditDialogOpen(true);
   };
@@ -285,13 +304,14 @@ export default function SSHCredentials() {
       host: formData.host,
       port: formData.port,
       username: formData.username,
-      auth_type: formData.useOwnKey ? 'key' : 'password',
+      auth_type: formData.useOwnKey ? "key" : "password",
       is_default: formData.is_default,
     };
 
     // Only include sensitive fields if they have values (leave blank to keep existing)
     if (formData.private_key) updateData.private_key = formData.private_key;
-    if (formData.key_passphrase) updateData.key_passphrase = formData.key_passphrase;
+    if (formData.key_passphrase)
+      updateData.key_passphrase = formData.key_passphrase;
     if (formData.password) updateData.password = formData.password;
 
     updateMutation.mutate({ id: editingCredential.id, data: updateData });
@@ -300,13 +320,21 @@ export default function SSHCredentials() {
   const handleDelete = (credential: SSHCredential) => {
     if (credential.projects_count > 0 || credential.clusters_count > 0) {
       const usages: string[] = [];
-      if (credential.projects_count > 0) usages.push(`${credential.projects_count} project(s)`);
-      if (credential.clusters_count > 0) usages.push(`${credential.clusters_count} cluster(s)`);
-      notify.error(`Cannot delete — ${usages.join(' and ')} are using this connection.`);
+      if (credential.projects_count > 0)
+        usages.push(`${credential.projects_count} project(s)`);
+      if (credential.clusters_count > 0)
+        usages.push(`${credential.clusters_count} cluster(s)`);
+      notify.error(
+        `Cannot delete — ${usages.join(" and ")} are using this connection.`,
+      );
       return;
     }
 
-    if (confirm(`Delete SSH connection "${credential.name}"? This action cannot be undone.`)) {
+    if (
+      confirm(
+        `Delete SSH connection "${credential.name}"? This action cannot be undone.`,
+      )
+    ) {
       deleteMutation.mutate(credential.id);
     }
   };
@@ -335,7 +363,9 @@ export default function SSHCredentials() {
         <Input
           id="description"
           value={formData.description}
-          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+          onChange={(e) =>
+            setFormData({ ...formData, description: e.target.value })
+          }
           placeholder="Optional description"
         />
       </div>
@@ -358,7 +388,9 @@ export default function SSHCredentials() {
             id="port"
             type="number"
             value={formData.port}
-            onChange={(e) => setFormData({ ...formData, port: parseInt(e.target.value) || 22 })}
+            onChange={(e) =>
+              setFormData({ ...formData, port: parseInt(e.target.value) || 22 })
+            }
             placeholder="22"
           />
         </div>
@@ -367,7 +399,9 @@ export default function SSHCredentials() {
           <Input
             id="username"
             value={formData.username}
-            onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+            onChange={(e) =>
+              setFormData({ ...formData, username: e.target.value })
+            }
             placeholder="ubuntu"
           />
         </div>
@@ -383,11 +417,14 @@ export default function SSHCredentials() {
               id="password"
               type="password"
               value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, password: e.target.value })
+              }
               placeholder="Enter SSH password"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Used once to set up key-based authentication. The password is <strong>not stored</strong>.
+              Used once to set up key-based authentication. The password is{" "}
+              <strong>not stored</strong>.
             </p>
           </div>
 
@@ -396,10 +433,12 @@ export default function SSHCredentials() {
             <div className="flex items-start gap-2 p-3 bg-warning/10 border border-warning/30 rounded-md">
               <AlertTriangle className="h-5 w-5 text-warning shrink-0 mt-0.5" />
               <div className="text-sm">
-                <p className="font-medium text-warning">Password authentication not supported</p>
+                <p className="font-medium text-warning">
+                  Password authentication not supported
+                </p>
                 <p className="text-muted-foreground mt-1">
-                  This server does not accept password authentication.
-                  Please provide your SSH private key below.
+                  This server does not accept password authentication. Please
+                  provide your SSH private key below.
                 </p>
               </div>
             </div>
@@ -412,10 +451,12 @@ export default function SSHCredentials() {
             <div className="flex items-start gap-2 p-3 bg-warning/10 border border-warning/30 rounded-md">
               <AlertTriangle className="h-5 w-5 text-warning shrink-0 mt-0.5" />
               <div className="text-sm">
-                <p className="font-medium text-warning">Password authentication not supported</p>
+                <p className="font-medium text-warning">
+                  Password authentication not supported
+                </p>
                 <p className="text-muted-foreground mt-1">
-                  This server does not accept password authentication.
-                  Please paste your SSH private key below.
+                  This server does not accept password authentication. Please
+                  paste your SSH private key below.
                 </p>
               </div>
             </div>
@@ -426,13 +467,18 @@ export default function SSHCredentials() {
             <Textarea
               id="private_key"
               value={formData.private_key}
-              onChange={(e) => setFormData({ ...formData, private_key: e.target.value })}
-              placeholder={'-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----'}
+              onChange={(e) =>
+                setFormData({ ...formData, private_key: e.target.value })
+              }
+              placeholder={
+                "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"
+              }
               rows={4}
               className="font-mono text-xs"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Paste the private key that has access to this server. Supports RSA, ECDSA, and Ed25519.
+              Paste the private key that has access to this server. Supports
+              RSA, ECDSA, and Ed25519.
             </p>
           </div>
 
@@ -442,7 +488,9 @@ export default function SSHCredentials() {
               id="key_passphrase"
               type="password"
               value={formData.key_passphrase}
-              onChange={(e) => setFormData({ ...formData, key_passphrase: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, key_passphrase: e.target.value })
+              }
               placeholder="Leave empty if key has no passphrase"
             />
           </div>
@@ -462,14 +510,18 @@ export default function SSHCredentials() {
         className="text-xs text-primary hover:underline flex items-center gap-1"
       >
         <KeyRound className="h-3 w-3" />
-        {formData.useOwnKey ? 'Set up automatically with password instead' : 'I already have an SSH key'}
+        {formData.useOwnKey
+          ? "Set up automatically with password instead"
+          : "I already have an SSH key"}
       </button>
 
       {/* Default toggle */}
       <div className="flex items-center space-x-2">
         <Switch
           checked={formData.is_default}
-          onCheckedChange={(checked) => setFormData({ ...formData, is_default: checked })}
+          onCheckedChange={(checked) =>
+            setFormData({ ...formData, is_default: checked })
+          }
         />
         <Label>Set as default connection</Label>
       </div>
@@ -497,7 +549,9 @@ export default function SSHCredentials() {
         <Input
           id="edit-description"
           value={formData.description}
-          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+          onChange={(e) =>
+            setFormData({ ...formData, description: e.target.value })
+          }
           placeholder="Optional description"
         />
       </div>
@@ -519,7 +573,9 @@ export default function SSHCredentials() {
             id="edit-port"
             type="number"
             value={formData.port}
-            onChange={(e) => setFormData({ ...formData, port: parseInt(e.target.value) || 22 })}
+            onChange={(e) =>
+              setFormData({ ...formData, port: parseInt(e.target.value) || 22 })
+            }
             placeholder="22"
           />
         </div>
@@ -528,7 +584,9 @@ export default function SSHCredentials() {
           <Input
             id="edit-username"
             value={formData.username}
-            onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+            onChange={(e) =>
+              setFormData({ ...formData, username: e.target.value })
+            }
             placeholder="ubuntu"
           />
         </div>
@@ -540,17 +598,21 @@ export default function SSHCredentials() {
         <div className="flex gap-2">
           <Button
             type="button"
-            variant={formData.useOwnKey ? 'default' : 'outline'}
+            variant={formData.useOwnKey ? "default" : "outline"}
             size="sm"
-            onClick={() => setFormData((prev) => ({ ...prev, useOwnKey: true }))}
+            onClick={() =>
+              setFormData((prev) => ({ ...prev, useOwnKey: true }))
+            }
           >
             SSH Key
           </Button>
           <Button
             type="button"
-            variant={!formData.useOwnKey ? 'default' : 'outline'}
+            variant={!formData.useOwnKey ? "default" : "outline"}
             size="sm"
-            onClick={() => setFormData((prev) => ({ ...prev, useOwnKey: false }))}
+            onClick={() =>
+              setFormData((prev) => ({ ...prev, useOwnKey: false }))
+            }
           >
             Password
           </Button>
@@ -565,18 +627,24 @@ export default function SSHCredentials() {
             id="edit-password"
             type="password"
             value={formData.password}
-            onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
+            onChange={(e) =>
+              setFormData((prev) => ({ ...prev, password: e.target.value }))
+            }
             placeholder="Leave blank to keep existing"
           />
         </div>
       ) : (
         <>
           <div>
-            <Label htmlFor="edit-private_key">SSH Private Key (leave blank to keep existing)</Label>
+            <Label htmlFor="edit-private_key">
+              SSH Private Key (leave blank to keep existing)
+            </Label>
             <Textarea
               id="edit-private_key"
               value={formData.private_key}
-              onChange={(e) => setFormData({ ...formData, private_key: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, private_key: e.target.value })
+              }
               placeholder="(existing key hidden)"
               rows={4}
               className="font-mono text-xs"
@@ -584,12 +652,16 @@ export default function SSHCredentials() {
           </div>
 
           <div>
-            <Label htmlFor="edit-key_passphrase">Key Passphrase (leave blank to keep existing)</Label>
+            <Label htmlFor="edit-key_passphrase">
+              Key Passphrase (leave blank to keep existing)
+            </Label>
             <Input
               id="edit-key_passphrase"
               type="password"
               value={formData.key_passphrase}
-              onChange={(e) => setFormData({ ...formData, key_passphrase: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, key_passphrase: e.target.value })
+              }
               placeholder="Leave empty if key has no passphrase"
             />
           </div>
@@ -599,7 +671,9 @@ export default function SSHCredentials() {
       <div className="flex items-center space-x-2">
         <Switch
           checked={formData.is_default}
-          onCheckedChange={(checked) => setFormData({ ...formData, is_default: checked })}
+          onCheckedChange={(checked) =>
+            setFormData({ ...formData, is_default: checked })
+          }
         />
         <Label>Set as default connection</Label>
       </div>
@@ -613,16 +687,20 @@ export default function SSHCredentials() {
   return (
     <SectionCard title="SSH connections">
       <p className="text-sm text-muted-foreground -mt-1 mb-4">
-        SSH connections for on-premises and private Kubernetes clusters.
-        Add a host with a password — BNK Forge will automatically set up key-based auth. Then select
-        it in any K8s project to auto-discover and manage clusters via SSH tunnel.
+        SSH connections for on-premises and private Kubernetes clusters. Add a
+        host with a password — BNK Forge will automatically set up key-based
+        auth. Then select it in any K8s project to auto-discover and manage
+        clusters via SSH tunnel.
       </p>
       <div className="space-y-6">
         <div className="flex items-center gap-2">
           <Button
-            variant="outline"
+            variant="default"
             size="sm"
-            onClick={() => { resetForm(); setIsCreateDialogOpen(true); }}
+            onClick={() => {
+              resetForm();
+              setIsCreateDialogOpen(true);
+            }}
           >
             <Plus className="h-4 w-4 mr-2" />
             Add SSH Connection
@@ -631,12 +709,18 @@ export default function SSHCredentials() {
             variant="outline"
             size="sm"
             onClick={() => testAllMutation.mutate()}
-            disabled={testAllMutation.isPending || !credentials || credentials.length === 0}
+            disabled={
+              testAllMutation.isPending ||
+              !credentials ||
+              credentials.length === 0
+            }
             title="Re-test every SSH credential"
           >
-            {testAllMutation.isPending
-              ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              : <TestTube2 className="h-4 w-4 mr-2" />}
+            {testAllMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <TestTube2 className="h-4 w-4 mr-2" />
+            )}
             Re-test all
           </Button>
         </div>
@@ -673,49 +757,56 @@ export default function SSHCredentials() {
               <TableBody>
                 {credentials.map((credential) => {
                   const inUse =
-                    credential.projects_count > 0 || credential.clusters_count > 0;
+                    credential.projects_count > 0 ||
+                    credential.clusters_count > 0;
                   const usedByParts: string[] = [];
                   if (credential.clusters_count > 0) {
                     usedByParts.push(
-                      `${credential.clusters_count} cluster${credential.clusters_count === 1 ? '' : 's'}`,
+                      `${credential.clusters_count} cluster${credential.clusters_count === 1 ? "" : "s"}`,
                     );
                   }
                   if (credential.projects_count > 0) {
                     usedByParts.push(
-                      `${credential.projects_count} project${credential.projects_count === 1 ? '' : 's'}`,
+                      `${credential.projects_count} project${credential.projects_count === 1 ? "" : "s"}`,
                     );
                   }
                   // Preserve the exact substrings the existing test suite asserts on.
                   const usedByCounts =
-                    credential.clusters_count > 0 || credential.projects_count > 0 ? (
+                    credential.clusters_count > 0 ||
+                    credential.projects_count > 0 ? (
                       <span className="text-xs text-muted-foreground">
                         {credential.clusters_count > 0 && (
-                          <span>Used by {credential.clusters_count} cluster(s)</span>
+                          <span>
+                            Used by {credential.clusters_count} cluster(s)
+                          </span>
                         )}
-                        {credential.clusters_count > 0 && credential.projects_count > 0 && (
-                          <span> · </span>
-                        )}
+                        {credential.clusters_count > 0 &&
+                          credential.projects_count > 0 && <span> · </span>}
                         {credential.projects_count > 0 && (
-                          <span>Used by {credential.projects_count} project(s)</span>
+                          <span>
+                            Used by {credential.projects_count} project(s)
+                          </span>
                         )}
                       </span>
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
                     );
 
-                  const authVariant: 'success' | 'info' | 'muted' = credential.has_private_key
-                    ? 'success'
-                    : credential.has_password
-                      ? 'info'
-                      : 'muted';
+                  const authVariant: "success" | "info" | "muted" =
+                    credential.has_private_key
+                      ? "success"
+                      : credential.has_password
+                        ? "info"
+                        : "muted";
                   const authLabel = credential.has_private_key
-                    ? 'SSH Key'
+                    ? "SSH Key"
                     : credential.has_password
-                      ? 'Password'
-                      : 'Unconfigured';
+                      ? "Password"
+                      : "Unconfigured";
 
                   const isRowTesting =
-                    testingCredentialId === credential.id && testMutation.isPending;
+                    testingCredentialId === credential.id &&
+                    testMutation.isPending;
 
                   return (
                     <TableRow key={credential.id}>
@@ -726,7 +817,7 @@ export default function SSHCredentials() {
                               {credential.name}
                             </span>
                             {credential.is_default && (
-                              <Badge variant="success" className="text-[10px]">
+                              <Badge variant="success" className="text-2xs">
                                 Default
                               </Badge>
                             )}
@@ -740,10 +831,10 @@ export default function SSHCredentials() {
                               "Password Configured" copy. Not visible to users. */}
                           <span className="sr-only">
                             {credential.has_private_key
-                              ? 'Key Configured'
+                              ? "Key Configured"
                               : credential.has_password
-                                ? 'Password Configured'
-                                : ''}
+                                ? "Password Configured"
+                                : ""}
                           </span>
                         </div>
                       </TableCell>
@@ -754,7 +845,8 @@ export default function SSHCredentials() {
                       </TableCell>
                       <TableCell>
                         <span className="font-mono text-xs text-foreground/80">
-                          {credential.username}@{credential.host}:{credential.port}
+                          {credential.username}@{credential.host}:
+                          {credential.port}
                         </span>
                       </TableCell>
                       <TableCell>
@@ -781,7 +873,10 @@ export default function SSHCredentials() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
                               onClick={() => testMutation.mutate(credential.id)}
-                              disabled={testMutation.isPending || testAllMutation.isPending}
+                              disabled={
+                                testMutation.isPending ||
+                                testAllMutation.isPending
+                              }
                               title="Re-test SSH connection"
                             >
                               {isRowTesting ? (
@@ -791,7 +886,9 @@ export default function SSHCredentials() {
                               )}
                               Test connection
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleEdit(credential)}>
+                            <DropdownMenuItem
+                              onClick={() => handleEdit(credential)}
+                            >
                               <Edit className="h-4 w-4 mr-2" />
                               Edit
                             </DropdownMenuItem>
@@ -800,7 +897,7 @@ export default function SSHCredentials() {
                               disabled={inUse}
                               title={
                                 inUse
-                                  ? 'Cannot delete — this connection is in use'
+                                  ? "Cannot delete — this connection is in use"
                                   : undefined
                               }
                             >
@@ -820,32 +917,51 @@ export default function SSHCredentials() {
           <div className="text-center py-8 text-muted-foreground">
             <Key className="h-12 w-12 mx-auto mb-4 opacity-50" />
             <p>No SSH connections configured</p>
-            <p className="text-xs mt-2">Add a connection to reach on-premises or private K8s clusters via SSH tunnel</p>
+            <p className="text-xs mt-2">
+              Add a connection to reach on-premises or private K8s clusters via
+              SSH tunnel
+            </p>
           </div>
         )}
 
         {/* Create Dialog */}
-        <Dialog open={isCreateDialogOpen} onOpenChange={(open) => { setIsCreateDialogOpen(open); if (!open) resetForm(); }}>
+        <Dialog
+          open={isCreateDialogOpen}
+          onOpenChange={(open) => {
+            setIsCreateDialogOpen(open);
+            if (!open) resetForm();
+          }}
+        >
           <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Add SSH Connection</DialogTitle>
               <DialogDescription>
-                Enter the host details and password. BNK Forge will SSH in, generate a key pair, and configure
-                key-based auth automatically. The password is used once and never stored.
+                Enter the host details and password. BNK Forge will SSH in,
+                generate a key pair, and configure key-based auth automatically.
+                The password is used once and never stored.
               </DialogDescription>
             </DialogHeader>
             {renderCreateForm()}
             <DialogFooter>
-              <Button variant="outline" onClick={() => { setIsCreateDialogOpen(false); resetForm(); }}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsCreateDialogOpen(false);
+                  resetForm();
+                }}
+              >
                 Cancel
               </Button>
               <Button onClick={handleCreate} disabled={isCreating}>
                 {isCreating ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    {formData.useOwnKey ? 'Creating...' : 'Setting up...'}
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    {formData.useOwnKey ? "Creating..." : "Setting up..."}
                   </>
+                ) : formData.useOwnKey ? (
+                  "Add Connection"
                 ) : (
-                  formData.useOwnKey ? 'Add Connection' : 'Connect & Set Up Key'
+                  "Connect & Set Up Key"
                 )}
               </Button>
             </DialogFooter>
@@ -858,19 +974,29 @@ export default function SSHCredentials() {
             <DialogHeader>
               <DialogTitle>Edit SSH Connection</DialogTitle>
               <DialogDescription>
-                Update connection settings. Leave key fields blank to keep existing values.
+                Update connection settings. Leave key fields blank to keep
+                existing values.
               </DialogDescription>
             </DialogHeader>
             {renderEditForm()}
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+              <Button
+                variant="outline"
+                onClick={() => setIsEditDialogOpen(false)}
+              >
                 Cancel
               </Button>
-              <Button onClick={handleUpdate} disabled={updateMutation.isPending}>
+              <Button
+                onClick={handleUpdate}
+                disabled={updateMutation.isPending}
+              >
                 {updateMutation.isPending ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Updating...</>
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />{" "}
+                    Updating...
+                  </>
                 ) : (
-                  'Update Connection'
+                  "Update Connection"
                 )}
               </Button>
             </DialogFooter>
@@ -886,11 +1012,13 @@ export default function SSHCredentials() {
 // ============================================================================
 
 /** Extract error_code and error_detail from API error response */
-function extractErrorDetails(error: unknown): { error_code?: string; error_detail?: string } | null {
+function extractErrorDetails(
+  error: unknown,
+): { error_code?: string; error_detail?: string } | null {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const axiosError = error as any;
   const details = axiosError?.response?.data?.error?.details;
-  if (details && typeof details === 'object') {
+  if (details && typeof details === "object") {
     return details;
   }
   return null;
@@ -911,31 +1039,32 @@ function SshHostStatusIcon({
   message,
   pending,
 }: {
-  status?: 'ok' | 'failed' | 'running' | null;
+  status?: "ok" | "failed" | "running" | null;
   when?: string | null;
   message?: string | null;
   pending?: boolean;
 }) {
   const ageLabel = when
     ? `last tested ${new Date(when).toLocaleString()}`
-    : 'never tested';
-  const effective = pending || status === 'running' ? 'running' : (status ?? 'unknown');
+    : "never tested";
+  const effective =
+    pending || status === "running" ? "running" : (status ?? "unknown");
   const tooltip =
-    effective === 'running'
-      ? 'Trying…'
-      : effective === 'ok'
+    effective === "running"
+      ? "Trying…"
+      : effective === "ok"
         ? `Reachable — ${ageLabel}`
-        : effective === 'failed'
-          ? `Not reachable — ${ageLabel}${message ? `\n${message}` : ''}`
+        : effective === "failed"
+          ? `Not reachable — ${ageLabel}${message ? `\n${message}` : ""}`
           : `Not tested yet — ${ageLabel}`;
   const colour =
-    effective === 'running'
-      ? 'text-warning animate-pulse'
-      : effective === 'ok'
-        ? 'text-success'
-        : effective === 'failed'
-          ? 'text-destructive'
-          : 'text-muted-foreground';
+    effective === "running"
+      ? "text-warning animate-pulse"
+      : effective === "ok"
+        ? "text-success"
+        : effective === "failed"
+          ? "text-destructive"
+          : "text-muted-foreground";
   return (
     <span
       className={`inline-flex items-center ${colour}`}

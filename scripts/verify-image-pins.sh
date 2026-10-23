@@ -81,7 +81,7 @@ FILES=()
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --registry) OVERRIDE_REGISTRY="${2:?--registry needs a value}"; shift 2 ;;
+    --registry) OVERRIDE_REGISTRY="$(printf '%s' "${2:?--registry needs a value}" | tr '[:upper:]' '[:lower:]')"; shift 2 ;;
     --version)  OVERRIDE_VERSION="${2:?--version needs a value}"; shift 2 ;;
     --expect-version) EXPECT_VERSION="${2:?--expect-version needs a value}"; shift 2 ;;
     --file)     FILES+=("${2:?--file needs a path}"); shift 2 ;;

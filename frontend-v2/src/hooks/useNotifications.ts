@@ -74,7 +74,10 @@ export interface NotificationFilters {
  * Uses `before_id` for cursor (newest-first); a page returning < BELL_PAGE_SIZE items is the last page.
  * Does NOT replace useNotifications — existing callers are unaffected.
  */
-export function useNotificationsInfinite(filters: NotificationFilters = {}) {
+export function useNotificationsInfinite(
+  filters: NotificationFilters = {},
+  options?: { enabled?: boolean },
+) {
   return useInfiniteQuery<NotificationData[], Error, { pages: NotificationData[][] }, ReturnType<typeof queryKeys.notifications.infinite>, number | undefined>({
     queryKey: queryKeys.notifications.infinite(filters),
     queryFn: ({ pageParam }) =>
@@ -90,6 +93,7 @@ export function useNotificationsInfinite(filters: NotificationFilters = {}) {
       if (lastPage.length < BELL_PAGE_SIZE) return undefined;
       return lastPage[lastPage.length - 1].id;
     },
+    enabled: options?.enabled ?? true,
     staleTime: QUERY_STALE_TIME.DEFAULT,
     refetchInterval: POLL_INTERVALS.SLOW,
   });

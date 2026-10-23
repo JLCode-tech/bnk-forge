@@ -56,6 +56,7 @@ IMAGES=(
   "bnk-forge-proxy"
   "bnk-forge-mcp"
   "bnk-forge-operator"
+  "bnk-forge-agent"
 )
 
 if [ "${1:-}" = "--images" ]; then
@@ -65,6 +66,7 @@ fi
 
 : "${REGISTRY:?REGISTRY is required (e.g. ghcr.io/your-org)}"
 : "${VERSION:?VERSION is required (e.g. 3.1.6)}"
+REGISTRY="$(printf '%s' "$REGISTRY" | tr '[:upper:]' '[:lower:]')"
 
 HOST="${REGISTRY%%/*}"          # ghcr.io
 NAMESPACE="${REGISTRY#*/}"      # f5devcentral  (may be multi-segment)

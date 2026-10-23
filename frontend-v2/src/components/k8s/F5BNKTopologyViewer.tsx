@@ -9,10 +9,11 @@
  * at a glance how the demo stack is wired up.
  */
 
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
-import { useF5GatewayTopology } from '@/hooks/useK8s';
+import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { useBnkRefresh, useF5GatewayTopology } from "@/hooks/useK8s";
 import {
   Globe,
   Radio,
@@ -35,8 +36,9 @@ import {
   ArrowRightLeft,
   CheckCircle2,
   XCircle,
-} from 'lucide-react';
-import { useState } from 'react';
+} from "lucide-react";
+import { useMemo, useState } from "react";
+import { getSeverityConfig } from "@/lib/health-severity";
 
 // ─── Types (matching backend response) ─────────────────────────────────
 
@@ -61,9 +63,18 @@ interface TopologyRoute {
   name: string;
   namespace: string;
   kind: string;
+  resourceType?: string;
   hostnames: string[];
   backends: TopologyBackend[];
   analyzers: TopologyAnalyzer[];
+  accepted: boolean;
+  conditions: Array<{
+    type: string;
+    status: string;
+    reason?: string;
+    message?: string;
+  }>;
+  conditionMessage?: string | null;
 }
 
 interface TopologyExtension {
@@ -76,10 +87,14 @@ interface TopologyExtension {
 
 interface TopologyNetPolicy {
   name: string;
+  kind?: string;
   namespace: string;
   extensions: TopologyExtension[];
   resolvedCount: number;
   totalExtensions: number;
+  resolved: boolean;
+  programmed: boolean;
+  messages: Record<string, string | null>;
 }
 
 interface TopologyFwRule {
@@ -108,15 +123,26 @@ interface TopologyFwPolicy {
 
 interface TopologySecPolicy {
   name: string;
+  kind?: string;
   namespace: string;
   targetListener: string;
   firewallPolicies: TopologyFwPolicy[];
+  resolved: boolean;
+  programmed: boolean;
+  messages: Record<string, string | null>;
 }
 
 interface TopologyListener {
   name: string;
   protocol: string;
   port: number | null;
+  attachedRouteCount: number;
+  conditions: Array<{
+    type: string;
+    status: string;
+    reason?: string;
+    message?: string;
+  }>;
   routes: TopologyRoute[];
   networkPolicies: TopologyNetPolicy[];
 }
@@ -126,6 +152,14 @@ interface TopologyGateway {
   namespace: string;
   gatewayClassName: string;
   addresses: string[];
+  accepted: boolean;
+  programmed: boolean;
+  conditions: Array<{
+    type: string;
+    status: string;
+    reason?: string;
+    message?: string;
+  }>;
   listeners: TopologyListener[];
   securityPolicies: TopologySecPolicy[];
 }
@@ -160,6 +194,8 @@ interface TopologyCounts {
 interface DataPlaneVlan {
   name: string;
   namespace: string;
+  kind?: string;
+  infraName?: string;
   interfaces: string[];
   selfipV4s: string[];
   prefixLen: number | null;
@@ -176,6 +212,7 @@ interface DataPlaneCNEInstance {
   networkAttachments: string[];
   containerPlatform: string;
   phase: string;
+  ready: boolean;
 }
 
 interface DataPlaneStaticRoute {
@@ -194,6 +231,7 @@ interface DataPlaneSnatPool {
 interface DataPlaneEgress {
   name: string;
   namespace: string;
+  kind?: string;
   snatType: string;
   egressSnatpool: string | null;
   firewallEnforcedPolicy: string | null;
@@ -231,10 +269,42 @@ interface DataPlane {
   };
 }
 
+interface TopologyReferenceGrant {
+  name: string;
+  namespace: string;
+  from: Array<{ group: string; kind: string; namespace: string }>;
+  to: Array<{ group: string; kind: string }>;
+}
+
 interface TopologyResponse {
   topology: TopologyGateway[];
   dataPlane: DataPlane;
+  referenceGrants: TopologyReferenceGrant[];
   counts: TopologyCounts;
+  trafficStats?: {
+    available?: boolean;
+    listeners?: Array<{
+      gatewayName: string;
+      gatewayNamespace: string;
+      listenerName: string;
+      clientsideCurConns: number;
+      clientsideTotConns: number;
+    }>;
+    egresses?: Array<{
+      egressName: string;
+      namespace: string;
+      clientsideCurConns: number;
+      clientsideTotConns: number;
+    }>;
+    firewallRules?: Array<{
+      policyName: string;
+      namespace: string;
+      ruleName: string;
+      action?: string;
+      ipProtocol?: string;
+      hitCount: number;
+    }>;
+  };
   cluster_id: number;
   namespace: string | null;
 }
@@ -243,9 +313,10 @@ interface TopologyResponse {
 
 /** Emitted when a user clicks a route or backend in the topology tree */
 export interface TopologyResourceSelection {
-  kind: string;       // "HTTPRoute", "L4Route", "Gateway", "TCPRoute", etc.
+  kind: string; // "HTTPRoute", "L4Route", "Gateway", "TCPRoute", etc.
   name: string;
   namespace: string;
+  resourceType?: string; // registry key when kind alone is ambiguous (L4Route)
 }
 
 // ─── Props ─────────────────────────────────────────────────────────────
@@ -257,13 +328,75 @@ interface F5BNKTopologyViewerProps {
   onSelectResource?: (selection: TopologyResourceSelection) => void;
 }
 
+// ─── Operational-state helpers ─────────────────────────────────────────
+
+function severityFromConditions(
+  conditions: Array<{ type: string; status: string }> | undefined,
+): "healthy" | "unhealthy" | "degraded" | "unknown" {
+  if (!conditions || conditions.length === 0) return "unknown";
+  const relevant = conditions.filter(
+    (c) =>
+      c.type === "Ready" || c.type === "Programmed" || c.type === "Accepted",
+  );
+  if (relevant.length === 0) return "unknown";
+
+  const order = {
+    unhealthy: 0,
+    critical: 0,
+    degraded: 1,
+    warning: 1,
+    unknown: 2,
+    healthy: 3,
+  };
+  let worst: "healthy" | "unhealthy" | "degraded" = "healthy";
+  for (const c of relevant) {
+    const sev: "healthy" | "unhealthy" | "degraded" =
+      c.status === "True"
+        ? "healthy"
+        : c.status === "False"
+          ? "unhealthy"
+          : "degraded";
+    if (order[sev] < order[worst]) {
+      worst = sev;
+    }
+  }
+  return worst;
+}
+
+function ConditionsStatusBadge({
+  label,
+  conditions,
+}: {
+  label?: string;
+  conditions: Array<{ type: string; status: string }> | undefined;
+}) {
+  const severity = severityFromConditions(conditions);
+  const config = getSeverityConfig(severity);
+  const text = label ?? config.label;
+  return <StatusBadge status={severity} label={text} />;
+}
+
+function StatusDot({ ready, label }: { ready: boolean; label?: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-2xs">
+      <span
+        className={cn(
+          "h-2 w-2 rounded-full",
+          ready ? "bg-success" : "bg-warning",
+        )}
+      />
+      {label && <span className="text-muted-foreground">{label}</span>}
+    </span>
+  );
+}
+
 // ─── Collapsible Section ───────────────────────────────────────────────
 
 function CollapsibleSection({
   title,
   icon: Icon,
   badge,
-  badgeVariant = 'secondary',
+  badgeVariant = "secondary",
   defaultOpen = true,
   children,
   indent = 0,
@@ -271,8 +404,8 @@ function CollapsibleSection({
 }: {
   title: string;
   icon: React.ComponentType<{ className?: string }>;
-  badge?: string;
-  badgeVariant?: 'default' | 'secondary' | 'destructive' | 'outline';
+  badge?: string | React.ReactNode;
+  badgeVariant?: "default" | "secondary" | "destructive" | "outline";
   defaultOpen?: boolean;
   children: React.ReactNode;
   indent?: number;
@@ -288,7 +421,7 @@ function CollapsibleSection({
         <button
           onClick={() => setIsOpen(!isOpen)}
           className="flex-shrink-0 p-0.5 -m-0.5 rounded hover:bg-muted transition-colors"
-          aria-label={isOpen ? 'Collapse' : 'Expand'}
+          aria-label={isOpen ? "Collapse" : "Expand"}
         >
           {isOpen ? (
             <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
@@ -299,7 +432,10 @@ function CollapsibleSection({
         <Icon className="h-4 w-4 flex-shrink-0" />
         {isClickable ? (
           <button
-            onClick={(e) => { e.stopPropagation(); onClickTitle(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClickTitle();
+            }}
             className="truncate text-left transition-colors hover:text-primary hover:underline cursor-pointer"
           >
             {title}
@@ -313,9 +449,15 @@ function CollapsibleSection({
           </button>
         )}
         {badge && (
-          <Badge variant={badgeVariant} className="ml-auto text-xs">
-            {badge}
-          </Badge>
+          <span className="ml-auto flex items-center gap-1.5">
+            {typeof badge === "string" ? (
+              <Badge variant={badgeVariant} className="text-xs">
+                {badge}
+              </Badge>
+            ) : (
+              badge
+            )}
+          </span>
         )}
       </div>
       {isOpen && <div className="ml-4 mt-1">{children}</div>}
@@ -336,7 +478,19 @@ function TreeLeaf({
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   detail?: string;
-  badges?: Array<{ text: string; variant?: 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'info' | 'muted'; className?: string }>;
+  badges?: Array<{
+    text: string;
+    variant?:
+      | "default"
+      | "secondary"
+      | "destructive"
+      | "outline"
+      | "success"
+      | "warning"
+      | "info"
+      | "muted";
+    className?: string;
+  }>;
   indent?: number;
   onClick?: () => void;
 }) {
@@ -345,32 +499,46 @@ function TreeLeaf({
   return (
     <div
       className={cn(
-        'flex items-center gap-2 py-1 px-2 text-sm rounded-md text-foreground/80',
-        isClickable && 'hover:bg-muted/50 cursor-pointer',
+        "flex items-center gap-2 py-1 px-2 text-sm rounded-md text-foreground/80",
+        isClickable && "hover:bg-muted/50 cursor-pointer",
       )}
       style={{ marginLeft: indent * 16 }}
       onClick={onClick}
-      role={isClickable ? 'button' : undefined}
+      role={isClickable ? "button" : undefined}
       tabIndex={isClickable ? 0 : undefined}
-      onKeyDown={isClickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
+      onKeyDown={
+        isClickable
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
     >
-      <div className="w-3.5 flex-shrink-0" /> {/* Spacer to align with collapsible chevrons */}
+      <div className="w-3.5 flex-shrink-0" />{" "}
+      {/* Spacer to align with collapsible chevrons */}
       <Icon className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
-      <span className={cn(
-        'truncate font-medium',
-        isClickable && 'hover:text-primary',
-      )}>
+      <span
+        className={cn(
+          "truncate font-medium",
+          isClickable && "hover:text-primary",
+        )}
+      >
         {label}
       </span>
       {detail && (
-        <span className="text-xs truncate text-muted-foreground">
-          {detail}
-        </span>
+        <span className="text-xs truncate text-muted-foreground">{detail}</span>
       )}
       {badges && badges.length > 0 && (
         <span className="flex items-center gap-1 ml-auto">
           {badges.map((b, i) => (
-            <Badge key={i} variant={b.variant || 'secondary'} className={cn('text-xs', b.className)}>
+            <Badge
+              key={i}
+              variant={b.variant || "secondary"}
+              className={cn("text-xs", b.className)}
+            >
               {b.text}
             </Badge>
           ))}
@@ -407,37 +575,94 @@ function CountCard({
 // ─── Firewall Action Badge ─────────────────────────────────────────────
 
 function ActionBadge({ action }: { action: string }) {
-  const lower = action?.toLowerCase() || '';
-  if (lower === 'accept' || lower === 'allow') {
-    return <Badge variant="success" className="text-xs">Accept</Badge>;
+  const lower = action?.toLowerCase() || "";
+  if (lower === "accept" || lower === "allow") {
+    return (
+      <Badge variant="success" className="text-xs">
+        Accept
+      </Badge>
+    );
   }
-  if (lower === 'drop' || lower === 'reject' || lower === 'deny') {
-    return <Badge variant="destructive" className="text-xs">Drop</Badge>;
+  if (lower === "drop" || lower === "reject" || lower === "deny") {
+    return (
+      <Badge variant="destructive" className="text-xs">
+        Drop
+      </Badge>
+    );
   }
-  return <Badge variant="secondary" className="text-xs">{action}</Badge>;
+  return (
+    <Badge variant="secondary" className="text-xs">
+      {action}
+    </Badge>
+  );
 }
 
 // ─── Main Component ────────────────────────────────────────────────────
 
-export function F5BNKTopologyViewer({ clusterId, namespace, onSelectResource }: F5BNKTopologyViewerProps) {
+export function F5BNKTopologyViewer({
+  clusterId,
+  namespace,
+  onSelectResource,
+}: F5BNKTopologyViewerProps) {
   const { data, isLoading, error, refetch, isFetching } = useF5GatewayTopology(
     clusterId,
     namespace ? { namespace } : undefined,
-    { pollingEnabled: false, enabled: !!clusterId }
+    { pollingEnabled: false, enabled: !!clusterId },
   );
+  const refresh = useBnkRefresh(clusterId);
 
   const topology = (data as TopologyResponse)?.topology || [];
   const dataPlane = (data as TopologyResponse)?.dataPlane;
   const counts = (data as TopologyResponse)?.counts;
+  const referenceGrants = (data as TopologyResponse)?.referenceGrants || [];
+  const trafficStats = (data as TopologyResponse)?.trafficStats;
+
+  const listenerStatsMap = useMemo(() => {
+    const map = new Map<string, { curConns: number; totConns: number }>();
+    if (!trafficStats?.available) return map;
+    for (const s of trafficStats.listeners || []) {
+      const key = `${s.gatewayNamespace}/${s.gatewayName}/${s.listenerName}`;
+      map.set(key, {
+        curConns: s.clientsideCurConns || 0,
+        totConns: s.clientsideTotConns || 0,
+      });
+    }
+    return map;
+  }, [trafficStats]);
+
+  const egressStatsMap = useMemo(() => {
+    const map = new Map<string, { curConns: number; totConns: number }>();
+    if (!trafficStats?.available) return map;
+    for (const s of trafficStats.egresses || []) {
+      const key = `${s.namespace}/${s.egressName}`;
+      map.set(key, {
+        curConns: s.clientsideCurConns || 0,
+        totConns: s.clientsideTotConns || 0,
+      });
+    }
+    return map;
+  }, [trafficStats]);
+
+  const fwRuleHitMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!trafficStats?.available) return map;
+    for (const rule of trafficStats.firewallRules || []) {
+      const count = rule.hitCount ?? 0;
+      map.set(`${rule.namespace}/${rule.policyName}/${rule.ruleName}`, count);
+      if (rule.policyName) {
+        map.set(`${rule.policyName}/${rule.ruleName}`, count);
+      }
+      map.set(rule.ruleName, count);
+    }
+    return map;
+  }, [trafficStats]);
 
   // ── Loading State ──
-  if (isLoading) {
+  if (isLoading && !data) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="h-6 w-6 animate-spin text-primary mr-3" />
-        <span className="text-sm text-muted-foreground">
-          Loading topology…
-        </span>
+        <span className="text-sm text-muted-foreground">Loading topology…</span>
       </div>
     );
   }
@@ -453,7 +678,12 @@ export function F5BNKTopologyViewer({ clusterId, namespace, onSelectResource }: 
         <p className="text-xs mt-1 text-muted-foreground">
           {(error as Error).message}
         </p>
-        <Button variant="outline" size="sm" className="mt-4" onClick={() => refetch()}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-4"
+          onClick={() => refetch()}
+        >
           <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
           Retry
         </Button>
@@ -461,12 +691,15 @@ export function F5BNKTopologyViewer({ clusterId, namespace, onSelectResource }: 
     );
   }
 
-  const hasDataPlane = dataPlane && (
-    dataPlane.vlans.length > 0 || dataPlane.cneInstances.length > 0 ||
-    dataPlane.staticRoutes.length > 0 || dataPlane.snatPools.length > 0 ||
-    dataPlane.egresses.length > 0 ||
-    dataPlane.logging.hslPublishers.length > 0 || dataPlane.logging.logProfiles.length > 0
-  );
+  const hasDataPlane =
+    dataPlane &&
+    (dataPlane.vlans.length > 0 ||
+      dataPlane.cneInstances.length > 0 ||
+      dataPlane.staticRoutes.length > 0 ||
+      dataPlane.snatPools.length > 0 ||
+      dataPlane.egresses.length > 0 ||
+      dataPlane.logging.hslPublishers.length > 0 ||
+      dataPlane.logging.logProfiles.length > 0);
 
   // ── Empty State ──
   if (!topology.length && !hasDataPlane) {
@@ -490,26 +723,37 @@ export function F5BNKTopologyViewer({ clusterId, namespace, onSelectResource }: 
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
           <CountCard label="Gateways" count={counts.gateways} icon={Globe} />
           <CountCard label="Routes" count={counts.totalRoutes} icon={Route} />
-          <CountCard label="Policies" count={counts.securityPolicies + counts.networkPolicies} icon={Shield} />
+          <CountCard
+            label="Policies"
+            count={counts.securityPolicies + counts.networkPolicies}
+            icon={Shield}
+          />
           <CountCard label="iRules" count={counts.iRules} icon={Code} />
           <CountCard label="VLANs" count={counts.vlans} icon={Wifi} />
-          <CountCard label="CNE Instances" count={counts.cneInstances} icon={Cpu} />
+          <CountCard
+            label="CNE Instances"
+            count={counts.cneInstances}
+            icon={Cpu}
+          />
         </div>
       )}
 
       {/* ── Refresh Bar ── */}
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">
-          Showing complete object graph for {topology.length} gateway{topology.length !== 1 ? 's' : ''}
+          Showing complete object graph for {topology.length} gateway
+          {topology.length !== 1 ? "s" : ""}
         </p>
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => refetch()}
+          onClick={() => refresh()}
           disabled={isFetching}
           className="text-xs"
         >
-          <RefreshCw className={cn('h-3.5 w-3.5 mr-1.5', isFetching && 'animate-spin')} />
+          <RefreshCw
+            className={cn("h-3.5 w-3.5 mr-1.5", isFetching && "animate-spin")}
+          />
           Refresh
         </Button>
       </div>
@@ -529,31 +773,47 @@ export function F5BNKTopologyViewer({ clusterId, namespace, onSelectResource }: 
               <div className="flex items-center gap-2">
                 {onSelectResource ? (
                   <button
-                    onClick={() => onSelectResource({ kind: 'Gateway', name: gw.name, namespace: gw.namespace })}
+                    onClick={() =>
+                      onSelectResource({
+                        kind: "Gateway",
+                        name: gw.name,
+                        namespace: gw.namespace,
+                      })
+                    }
                     className="font-semibold text-sm truncate transition-colors hover:text-primary hover:underline cursor-pointer"
                   >
                     {gw.name}
                   </button>
                 ) : (
-                  <span className="font-semibold text-sm truncate">{gw.name}</span>
+                  <span className="font-semibold text-sm truncate">
+                    {gw.name}
+                  </span>
                 )}
                 <Badge variant="outline" className="text-xs">
                   {gw.gatewayClassName}
                 </Badge>
+                <ConditionsStatusBadge conditions={gw.conditions} />
               </div>
               <div className="text-xs text-muted-foreground">
                 {gw.namespace}
                 {gw.addresses.length > 0 && (
-                  <span className="ml-2 font-mono">VIP: {gw.addresses.join(', ')}</span>
+                  <span className="ml-2 font-mono">
+                    VIP: {gw.addresses.join(", ")}
+                  </span>
                 )}
               </div>
             </div>
             <div className="flex items-center gap-1.5">
               <Badge variant="secondary" className="text-xs">
-                {gw.listeners.length} listener{gw.listeners.length !== 1 ? 's' : ''}
+                {gw.listeners.length} listener
+                {gw.listeners.length !== 1 ? "s" : ""}
               </Badge>
               <Badge variant="secondary" className="text-xs">
-                {gw.listeners.reduce((sum, l) => sum + l.routes.length, 0)} route{gw.listeners.reduce((sum, l) => sum + l.routes.length, 0) !== 1 ? 's' : ''}
+                {gw.listeners.reduce((sum, l) => sum + l.routes.length, 0)}{" "}
+                route
+                {gw.listeners.reduce((sum, l) => sum + l.routes.length, 0) !== 1
+                  ? "s"
+                  : ""}
               </Badge>
             </div>
           </div>
@@ -561,176 +821,298 @@ export function F5BNKTopologyViewer({ clusterId, namespace, onSelectResource }: 
           {/* Topology Tree */}
           <div className="p-3 space-y-0.5">
             {/* ── Listeners ── */}
-            {gw.listeners.map((listener) => (
-              <CollapsibleSection
-                key={listener.name}
-                title={listener.name}
-                icon={Radio}
-                badge={`${listener.protocol} :${listener.port}`}
-              >
-                {/* ── Routes (HTTP, GRPC, TCP, UDP, TLS, L4) ── */}
-                {listener.routes.map((route) => (
-                  <CollapsibleSection
-                    key={`${route.namespace}/${route.name}`}
-                    title={route.name}
-                    icon={Route}
-                    badge={route.kind !== 'HTTPRoute' ? route.kind : undefined}
-                    indent={1}
-                    defaultOpen={route.analyzers.length > 0}
-                    onClickTitle={onSelectResource ? () => onSelectResource({ kind: route.kind, name: route.name, namespace: route.namespace }) : undefined}
-                  >
-                    {/* Route namespace (shown when different from gateway) */}
-                    {route.namespace && (
-                      <div
-                        className="flex items-center gap-1.5 px-2 py-0.5 text-xs text-muted-foreground"
-                        style={{ marginLeft: 32 }}
-                      >
-                        ns: <span className="font-mono">{route.namespace}</span>
-                        {route.hostnames.length > 0 && (
-                          <span className="ml-2">hosts: {route.hostnames.join(', ')}</span>
+            {gw.listeners.map((listener) => {
+              const listenerKey = `${gw.namespace}/${gw.name}/${listener.name}`;
+              const stats = listenerStatsMap.get(listenerKey);
+              const listenerBadges = (
+                <>
+                  <Badge variant="secondary" className="text-xs">
+                    {listener.protocol}:{listener.port}
+                  </Badge>
+                  {listener.attachedRouteCount > 0 && (
+                    <Badge variant="outline" className="text-xs">
+                      {listener.attachedRouteCount} route
+                      {listener.attachedRouteCount !== 1 ? "s" : ""}
+                    </Badge>
+                  )}
+                  <ConditionsStatusBadge conditions={listener.conditions} />
+                  {stats && (
+                    <>
+                      <Badge variant="info" className="text-xs">
+                        {stats.curConns} conn{stats.curConns !== 1 ? "s" : ""}
+                      </Badge>
+                      <Badge variant="muted" className="text-xs">
+                        {stats.totConns} total
+                      </Badge>
+                    </>
+                  )}
+                </>
+              );
+              return (
+                <CollapsibleSection
+                  key={listener.name}
+                  title={listener.name}
+                  icon={Radio}
+                  badge={listenerBadges}
+                >
+                  {/* ── Routes (HTTP, GRPC, TCP, UDP, TLS, L4) ── */}
+                  {listener.routes.map((route) => {
+                    const routeBadges = (
+                      <>
+                        {route.kind !== "HTTPRoute" && (
+                          <Badge variant="outline" className="text-2xs">
+                            {route.kind}
+                          </Badge>
                         )}
-                      </div>
-                    )}
-
-                    {/* Backends */}
-                    {route.backends.map((be, i) => {
-                      const isCrossNs = be.namespace && be.namespace !== route.namespace;
-                      const isCustomKind = be.kind && be.kind !== 'Service';
-                      const badges: Array<{ text: string; variant?: 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'info' | 'muted'; className?: string }> = [];
-                      if (isCrossNs) {
-                        badges.push({ text: `ns:${be.namespace}`, variant: 'warning' });
-                      }
-                      if (isCustomKind) {
-                        badges.push({ text: be.kind!, variant: 'outline' });
-                      }
-                      if (be.weight) {
-                        badges.push({ text: `weight ${be.weight}` });
-                      }
-                      return (
-                        <TreeLeaf
-                          key={i}
-                          icon={Server}
-                          label={be.name}
-                          detail={be.port ? `:${be.port}` : undefined}
-                          badges={badges.length > 0 ? badges : undefined}
-                          indent={2}
-                        />
-                      );
-                    })}
-
-                    {/* AI Analyzers attached to this route */}
-                    {route.analyzers.map((az) => (
+                        <Badge
+                          variant={route.accepted ? "success" : "warning"}
+                          className="text-2xs"
+                        >
+                          {route.accepted ? "Accepted" : "Pending"}
+                        </Badge>
+                      </>
+                    );
+                    return (
                       <CollapsibleSection
-                        key={az.name}
-                        title={az.name}
-                        icon={Activity}
-                        badge="AI Analyzer"
-                        badgeVariant="default"
-                        indent={2}
-                        defaultOpen={false}
+                        key={`${route.namespace}/${route.name}`}
+                        title={route.name}
+                        icon={Route}
+                        badge={routeBadges}
+                        indent={1}
+                        defaultOpen={route.analyzers.length > 0}
+                        onClickTitle={
+                          onSelectResource
+                            ? () =>
+                                onSelectResource({
+                                  kind: route.kind,
+                                  name: route.name,
+                                  namespace: route.namespace,
+                                  resourceType: route.resourceType,
+                                })
+                            : undefined
+                        }
                       >
-                        <TreeLeaf
-                          icon={Activity}
-                          label="Schedule"
-                          detail={az.schedule || 'N/A'}
-                          indent={3}
-                        />
-                        {az.dataSources.map((ds, i) => (
-                          <TreeLeaf
-                            key={i}
+                        {/* Route namespace (shown when different from gateway) */}
+                        {route.namespace && (
+                          <div
+                            className="flex items-center gap-1.5 px-2 py-0.5 text-xs text-muted-foreground"
+                            style={{ marginLeft: 32 }}
+                          >
+                            ns:{" "}
+                            <span className="font-mono">{route.namespace}</span>
+                            {route.hostnames.length > 0 && (
+                              <span className="ml-2">
+                                hosts: {route.hostnames.join(", ")}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Backends */}
+                        {route.backends.map((be, i) => {
+                          const isCrossNs =
+                            be.namespace && be.namespace !== route.namespace;
+                          const isCustomKind = be.kind && be.kind !== "Service";
+                          const badges: Array<{
+                            text: string;
+                            variant?:
+                              | "default"
+                              | "secondary"
+                              | "destructive"
+                              | "outline"
+                              | "success"
+                              | "warning"
+                              | "info"
+                              | "muted";
+                            className?: string;
+                          }> = [];
+                          if (isCrossNs) {
+                            badges.push({
+                              text: `ns:${be.namespace}`,
+                              variant: "warning",
+                            });
+                          }
+                          if (isCustomKind) {
+                            badges.push({ text: be.kind!, variant: "outline" });
+                          }
+                          if (be.weight) {
+                            badges.push({ text: `weight ${be.weight}` });
+                          }
+                          return (
+                            <TreeLeaf
+                              key={i}
+                              icon={Server}
+                              label={be.name}
+                              detail={be.port ? `:${be.port}` : undefined}
+                              badges={badges.length > 0 ? badges : undefined}
+                              indent={2}
+                            />
+                          );
+                        })}
+
+                        {/* AI Analyzers attached to this route */}
+                        {route.analyzers.map((az) => (
+                          <CollapsibleSection
+                            key={az.name}
+                            title={az.name}
                             icon={Activity}
-                            label="DataSource"
-                            detail={ds}
-                            indent={3}
-                          />
-                        ))}
-                        {Object.entries(az.parameters).map(([key, val]) => (
-                          <TreeLeaf
-                            key={key}
-                            icon={Activity}
-                            label={key}
-                            detail={String(val)}
-                            indent={3}
-                          />
+                            badge="AI Analyzer"
+                            badgeVariant="default"
+                            indent={2}
+                            defaultOpen={false}
+                          >
+                            <TreeLeaf
+                              icon={Activity}
+                              label="Schedule"
+                              detail={az.schedule || "N/A"}
+                              indent={3}
+                            />
+                            {az.dataSources.map((ds, i) => (
+                              <TreeLeaf
+                                key={i}
+                                icon={Activity}
+                                label="DataSource"
+                                detail={ds}
+                                indent={3}
+                              />
+                            ))}
+                            {Object.entries(az.parameters).map(([key, val]) => (
+                              <TreeLeaf
+                                key={key}
+                                icon={Activity}
+                                label={key}
+                                detail={String(val)}
+                                indent={3}
+                              />
+                            ))}
+                          </CollapsibleSection>
                         ))}
                       </CollapsibleSection>
-                    ))}
-                  </CollapsibleSection>
-                ))}
+                    );
+                  })}
 
-                {listener.routes.length === 0 && (
-                  <TreeLeaf
-                    icon={Route}
-                    label="No routes"
-                    detail="No routes targeting this listener"
-                    indent={1}
-                  />
-                )}
+                  {listener.routes.length === 0 && (
+                    <TreeLeaf
+                      icon={Route}
+                      label="No routes"
+                      detail="No routes targeting this listener"
+                      indent={1}
+                    />
+                  )}
 
-                {/* ── Network Policies (per-listener) ── */}
-                {listener.networkPolicies.map((np) => (
-                  <CollapsibleSection
-                    key={np.name}
-                    title={np.name}
-                    icon={Network}
-                    badge="NetPolicy"
-                    indent={1}
-                    defaultOpen={true}
-                    onClickTitle={onSelectResource ? () => onSelectResource({ kind: 'BNKNetPolicy', name: np.name, namespace: np.namespace }) : undefined}
-                  >
-                    {np.extensions.map((ext, i) => {
-                      if (ext.kind === 'F5BigCneIrule') {
-                        return (
-                          <TreeLeaf
-                            key={i}
-                            icon={Code}
-                            label={ext.name}
-                            detail={ext.lineCount ? `${ext.lineCount} lines` : undefined}
-                            badges={[
-                              ...(ext.eventHandlers || []).map((eh) => ({
-                                text: eh,
-                                variant: (eh.includes('REQUEST')
-                                  ? 'info'
-                                  : eh.includes('RESPONSE')
-                                    ? 'secondary'
-                                    : 'secondary') as 'info' | 'secondary',
-                              })),
-                            ]}
-                            indent={2}
-                            onClick={onSelectResource ? () => onSelectResource({ kind: ext.kind, name: ext.name, namespace: np.namespace }) : undefined}
-                          />
-                        );
-                      }
-                      return (
-                        <TreeLeaf
-                          key={i}
-                          icon={Code}
-                          label={ext.name}
-                          detail={ext.kind}
-                          indent={2}
-                          onClick={onSelectResource ? () => onSelectResource({ kind: ext.kind, name: ext.name, namespace: np.namespace }) : undefined}
+                  {/* ── Network Policies (per-listener) ── */}
+                  {listener.networkPolicies.map((np) => {
+                    const netPolicyBadges = (
+                      <>
+                        <Badge variant="outline" className="text-2xs">
+                          NetPolicy
+                        </Badge>
+                        <StatusDot
+                          ready={np.resolved}
+                          label={np.resolved ? "Resolved" : "Unresolved"}
                         />
-                      );
-                    })}
-                    {np.extensions.length === 0 && (
-                      <TreeLeaf
-                        icon={Code}
-                        label="No extensions"
-                        indent={2}
-                      />
-                    )}
-                    {np.totalExtensions > 0 && (
-                      <div
-                        className="text-xs px-2 py-0.5 ml-8 text-muted-foreground"
-                        style={{ marginLeft: 48 }}
+                        <StatusDot
+                          ready={np.programmed}
+                          label={np.programmed ? "Programmed" : "Pending"}
+                        />
+                      </>
+                    );
+                    return (
+                      <CollapsibleSection
+                        key={np.name}
+                        title={np.name}
+                        icon={Network}
+                        badge={netPolicyBadges}
+                        indent={1}
+                        defaultOpen={true}
+                        onClickTitle={
+                          onSelectResource
+                            ? () =>
+                                onSelectResource({
+                                  kind: np.kind || "BNKNetPolicy",
+                                  name: np.name,
+                                  namespace: np.namespace,
+                                })
+                            : undefined
+                        }
                       >
-                        {np.resolvedCount}/{np.totalExtensions} resolved
-                      </div>
-                    )}
-                  </CollapsibleSection>
-                ))}
-              </CollapsibleSection>
-            ))}
+                        {np.extensions.map((ext, i) => {
+                          if (ext.kind === "F5BigCneIrule") {
+                            return (
+                              <TreeLeaf
+                                key={i}
+                                icon={Code}
+                                label={ext.name}
+                                detail={
+                                  ext.lineCount
+                                    ? `${ext.lineCount} lines`
+                                    : undefined
+                                }
+                                badges={[
+                                  ...(ext.eventHandlers || []).map((eh) => ({
+                                    text: eh,
+                                    variant: (eh.includes("REQUEST")
+                                      ? "info"
+                                      : eh.includes("RESPONSE")
+                                        ? "secondary"
+                                        : "secondary") as "info" | "secondary",
+                                  })),
+                                ]}
+                                indent={2}
+                                onClick={
+                                  onSelectResource
+                                    ? () =>
+                                        onSelectResource({
+                                          kind: ext.kind,
+                                          name: ext.name,
+                                          namespace: np.namespace,
+                                        })
+                                    : undefined
+                                }
+                              />
+                            );
+                          }
+                          return (
+                            <TreeLeaf
+                              key={i}
+                              icon={Code}
+                              label={ext.name}
+                              detail={ext.kind}
+                              indent={2}
+                              onClick={
+                                onSelectResource
+                                  ? () =>
+                                      onSelectResource({
+                                        kind: ext.kind,
+                                        name: ext.name,
+                                        namespace: np.namespace,
+                                      })
+                                  : undefined
+                              }
+                            />
+                          );
+                        })}
+                        {np.extensions.length === 0 && (
+                          <TreeLeaf
+                            icon={Code}
+                            label="No extensions"
+                            indent={2}
+                          />
+                        )}
+                        {np.totalExtensions > 0 && (
+                          <div
+                            className="text-xs px-2 py-0.5 ml-8 text-muted-foreground"
+                            style={{ marginLeft: 48 }}
+                          >
+                            {np.resolvedCount}/{np.totalExtensions} resolved
+                          </div>
+                        )}
+                      </CollapsibleSection>
+                    );
+                  })}
+                </CollapsibleSection>
+              );
+            })}
 
             {/* ── Security Policies (gateway-level) ── */}
             {gw.securityPolicies.length > 0 && (
@@ -740,40 +1122,86 @@ export function F5BNKTopologyViewer({ clusterId, namespace, onSelectResource }: 
                     key={sp.name}
                     title={sp.name}
                     icon={ShieldAlert}
-                    badge={sp.targetListener ? `→ ${sp.targetListener}` : 'All Listeners'}
-                    onClickTitle={onSelectResource ? () => onSelectResource({ kind: 'BNKSecPolicy', name: sp.name, namespace: sp.namespace }) : undefined}
+                    badge={
+                      <>
+                        <Badge variant="outline" className="text-2xs">
+                          {sp.targetListener
+                            ? `→ ${sp.targetListener}`
+                            : "All Listeners"}
+                        </Badge>
+                        <StatusDot
+                          ready={sp.resolved}
+                          label={sp.resolved ? "Resolved" : "Unresolved"}
+                        />
+                        <StatusDot
+                          ready={sp.programmed}
+                          label={sp.programmed ? "Programmed" : "Pending"}
+                        />
+                      </>
+                    }
+                    onClickTitle={
+                      onSelectResource
+                        ? () =>
+                            onSelectResource({
+                              kind: sp.kind || "BNKSecPolicy",
+                              name: sp.name,
+                              namespace: sp.namespace,
+                            })
+                        : undefined
+                    }
                   >
                     {sp.firewallPolicies.map((fw) => (
                       <CollapsibleSection
                         key={fw.name}
                         title={fw.name}
                         icon={Shield}
-                        badge={`${fw.rules.length} rule${fw.rules.length !== 1 ? 's' : ''}`}
+                        badge={`${fw.rules.length} rule${fw.rules.length !== 1 ? "s" : ""}`}
                         indent={1}
                       >
                         {/* Firewall Rules */}
-                        {fw.rules.map((rule, i) => (
-                          <div
-                            key={i}
-                            className="flex items-center gap-2 py-1 px-2 text-sm rounded-md text-foreground/80"
-                            style={{ marginLeft: 32 }}
-                          >
-                            <div className="w-3.5 flex-shrink-0" />
-                            <Shield className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
-                            <span className="font-medium truncate">{rule.name}</span>
-                            <ActionBadge action={rule.action} />
-                            {rule.ipProtocol && (
-                              <Badge variant="outline" className="text-xs">
-                                {rule.ipProtocol}
-                              </Badge>
-                            )}
-                            {rule.logging && (
-                              <Badge variant="secondary" className="text-xs">
-                                Log
-                              </Badge>
-                            )}
-                          </div>
-                        ))}
+                        {fw.rules.map((rule, i) => {
+                          const ruleHits =
+                            fwRuleHitMap.get(
+                              `${sp.namespace}/${fw.name}/${rule.name}`,
+                            ) ??
+                            fwRuleHitMap.get(`${fw.name}/${rule.name}`) ??
+                            fwRuleHitMap.get(rule.name);
+                          return (
+                            <div
+                              key={i}
+                              className="flex items-center gap-2 py-1 px-2 text-sm rounded-md text-foreground/80"
+                              style={{ marginLeft: 32 }}
+                            >
+                              <div className="w-3.5 flex-shrink-0" />
+                              <Shield className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+                              <span className="font-medium truncate">
+                                {rule.name}
+                              </span>
+                              <ActionBadge action={rule.action} />
+                              {rule.ipProtocol && (
+                                <Badge variant="outline" className="text-xs">
+                                  {rule.ipProtocol}
+                                </Badge>
+                              )}
+                              {trafficStats?.available &&
+                                ruleHits !== undefined && (
+                                  <Badge
+                                    variant={
+                                      ruleHits > 0 ? "info" : "secondary"
+                                    }
+                                    className="text-xs font-mono"
+                                  >
+                                    {ruleHits} hit{ruleHits !== 1 ? "s" : ""}
+                                  </Badge>
+                                )}
+                              {rule.logging && (
+                                <Badge variant="secondary" className="text-xs">
+                                  Log
+                                </Badge>
+                              )}
+                            </div>
+                          );
+                        })}
 
                         {/* Address Lists */}
                         {fw.addressLists.length > 0 && (
@@ -788,7 +1216,7 @@ export function F5BNKTopologyViewer({ clusterId, namespace, onSelectResource }: 
                                 defaultOpen={false}
                               >
                                 <div className="text-xs font-mono px-2 py-1 rounded ml-12 text-muted-foreground bg-muted/50">
-                                  {al.addresses.join(', ')}
+                                  {al.addresses.join(", ")}
                                 </div>
                               </CollapsibleSection>
                             ))}
@@ -803,12 +1231,12 @@ export function F5BNKTopologyViewer({ clusterId, namespace, onSelectResource }: 
                                 key={pl.name}
                                 title={pl.name}
                                 icon={List}
-                                badge={`${pl.ports.length} port${pl.ports.length !== 1 ? 's' : ''}`}
+                                badge={`${pl.ports.length} port${pl.ports.length !== 1 ? "s" : ""}`}
                                 indent={2}
                                 defaultOpen={false}
                               >
                                 <div className="text-xs font-mono px-2 py-1 rounded ml-12 text-muted-foreground bg-muted/50">
-                                  {pl.ports.join(', ')}
+                                  {pl.ports.join(", ")}
                                 </div>
                               </CollapsibleSection>
                             ))}
@@ -833,6 +1261,54 @@ export function F5BNKTopologyViewer({ clusterId, namespace, onSelectResource }: 
         </div>
       ))}
 
+      {/* ── Reference Grants ── */}
+      {referenceGrants.length > 0 && (
+        <div className="rounded-lg border overflow-hidden bg-card border-border">
+          <div className="px-4 py-3 border-b flex items-center gap-3 bg-muted/50 border-border">
+            <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-info/10">
+              <Shield className="h-4 w-4 text-info" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-sm">Reference Grants</span>
+                <Badge variant="outline" className="text-xs">
+                  Cross-namespace access
+                </Badge>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {referenceGrants.length} grant
+                {referenceGrants.length !== 1 ? "s" : ""} allowing references
+                across namespaces
+              </div>
+            </div>
+          </div>
+          <div className="p-3 space-y-2">
+            {referenceGrants.map((rg) => (
+              <div
+                key={`${rg.namespace}/${rg.name}`}
+                className="flex items-start gap-2 text-sm px-2 py-1.5 rounded-md bg-muted/50"
+              >
+                <Shield className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                <div className="min-w-0">
+                  <div className="font-medium">{rg.name}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {rg.namespace}
+                    {" · "}
+                    from:{" "}
+                    {rg.from.map((f) => `${f.kind}@${f.namespace}`).join(", ")}
+                    {" → "}
+                    to:{" "}
+                    {rg.to
+                      .map((t) => `${t.kind}${t.group ? ` (${t.group})` : ""}`)
+                      .join(", ")}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Data Plane Section ── */}
       {hasDataPlane && (
         <div className="rounded-lg border overflow-hidden bg-card border-border">
@@ -844,7 +1320,9 @@ export function F5BNKTopologyViewer({ clusterId, namespace, onSelectResource }: 
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-sm">Data Plane</span>
-                <Badge variant="outline" className="text-xs">TMM Networking</Badge>
+                <Badge variant="outline" className="text-xs">
+                  TMM Networking
+                </Badge>
               </div>
               <div className="text-xs text-muted-foreground">
                 VLANs, interfaces, self-IPs, and CNE instance configuration
@@ -853,7 +1331,7 @@ export function F5BNKTopologyViewer({ clusterId, namespace, onSelectResource }: 
             <div className="flex items-center gap-1.5">
               {counts && counts.vlans > 0 && (
                 <Badge variant="secondary" className="text-xs">
-                  {counts.vlans} VLAN{counts.vlans !== 1 ? 's' : ''}
+                  {counts.vlans} VLAN{counts.vlans !== 1 ? "s" : ""}
                 </Badge>
               )}
               {counts && counts.cneInstances > 0 && (
@@ -871,8 +1349,27 @@ export function F5BNKTopologyViewer({ clusterId, namespace, onSelectResource }: 
                 key={cne.name}
                 title={cne.name}
                 icon={Cpu}
-                badge={cne.phase || 'Unknown'}
-                onClickTitle={onSelectResource ? () => onSelectResource({ kind: 'CNEInstance', name: cne.name, namespace: cne.namespace }) : undefined}
+                badge={
+                  <>
+                    <Badge variant="secondary" className="text-xs">
+                      {cne.phase || "Unknown"}
+                    </Badge>
+                    <StatusDot
+                      ready={cne.ready}
+                      label={cne.ready ? "Ready" : "Pending"}
+                    />
+                  </>
+                }
+                onClickTitle={
+                  onSelectResource
+                    ? () =>
+                        onSelectResource({
+                          kind: "CNEInstance",
+                          name: cne.name,
+                          namespace: cne.namespace,
+                        })
+                    : undefined
+                }
               >
                 {/* Network Attachments */}
                 {cne.networkAttachments.length > 0 && (
@@ -915,12 +1412,19 @@ export function F5BNKTopologyViewer({ clusterId, namespace, onSelectResource }: 
                       ) : (
                         <XCircle className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
                       )}
-                      <span className={cn('font-medium', !enabled && 'opacity-50')}>{key}</span>
-                      <Badge
-                        variant={enabled ? 'success' : 'secondary'}
-                        className={cn('text-xs ml-auto', !enabled && 'opacity-50')}
+                      <span
+                        className={cn("font-medium", !enabled && "opacity-50")}
                       >
-                        {enabled ? 'Enabled' : 'Disabled'}
+                        {key}
+                      </span>
+                      <Badge
+                        variant={enabled ? "success" : "secondary"}
+                        className={cn(
+                          "text-xs ml-auto",
+                          !enabled && "opacity-50",
+                        )}
+                      >
+                        {enabled ? "Enabled" : "Disabled"}
                       </Badge>
                     </div>
                   ))}
@@ -943,22 +1447,33 @@ export function F5BNKTopologyViewer({ clusterId, namespace, onSelectResource }: 
                 {dataPlane!.vlans.map((vlan) => (
                   <CollapsibleSection
                     key={`${vlan.namespace}/${vlan.name}`}
-                    title={`${vlan.name}${vlan.namespace ? ` (${vlan.namespace})` : ''}`}
+                    title={`${vlan.name}${vlan.namespace ? ` (${vlan.namespace})` : ""}`}
                     icon={Wifi}
-                    badge={vlan.internal ? 'Internal' : 'External'}
-                    onClickTitle={onSelectResource ? () => onSelectResource({ kind: 'F5SPKVlan', name: vlan.name, namespace: vlan.namespace }) : undefined}
+                    badge={vlan.internal ? "Internal" : "External"}
+                    onClickTitle={
+                      onSelectResource
+                        ? () =>
+                            onSelectResource({
+                              kind: vlan.kind || "F5SPKVlan",
+                              name: vlan.infraName || vlan.name,
+                              namespace: vlan.namespace,
+                            })
+                        : undefined
+                    }
                   >
                     {/* Self-IPs */}
                     {vlan.selfipV4s.map((ip, i) => (
                       <TreeLeaf
                         key={i}
                         icon={Globe}
-                        label={`${ip}${vlan.prefixLen ? `/${vlan.prefixLen}` : ''}`}
+                        label={`${ip}${vlan.prefixLen ? `/${vlan.prefixLen}` : ""}`}
                         detail="Self-IP"
-                        badges={[{
-                          text: vlan.ready ? 'Programmed' : 'Pending',
-                          variant: vlan.ready ? 'success' : 'warning',
-                        }]}
+                        badges={[
+                          {
+                            text: vlan.ready ? "Programmed" : "Pending",
+                            variant: vlan.ready ? "success" : "warning",
+                          },
+                        ]}
                         indent={1}
                       />
                     ))}
@@ -1033,7 +1548,11 @@ export function F5BNKTopologyViewer({ clusterId, namespace, onSelectResource }: 
                       key={sp.name}
                       icon={Server}
                       label={sp.name}
-                      detail={sp.addresses.length > 0 ? sp.addresses.join(', ') : 'No members'}
+                      detail={
+                        sp.addresses.length > 0
+                          ? sp.addresses.join(", ")
+                          : "No members"
+                      }
                       indent={1}
                     />
                   ))}
@@ -1050,65 +1569,84 @@ export function F5BNKTopologyViewer({ clusterId, namespace, onSelectResource }: 
                   badge={`${dataPlane!.egresses.length}`}
                   defaultOpen={false}
                 >
-                  {dataPlane!.egresses.map((eg) => (
-                    <CollapsibleSection
-                      key={`${eg.namespace}/${eg.name}`}
-                      title={`${eg.name}${eg.namespace ? ` (${eg.namespace})` : ''}`}
-                      icon={ArrowRightLeft}
-                      indent={1}
-                      defaultOpen={false}
-                    >
-                      <TreeLeaf
+                  {dataPlane!.egresses.map((eg) => {
+                    const egressKey = `${eg.namespace}/${eg.name}`;
+                    const egressStats = egressStatsMap.get(egressKey);
+                    const egressBadges = egressStats ? (
+                      <>
+                        <Badge variant="info" className="text-xs">
+                          {egressStats.curConns} conn
+                          {egressStats.curConns !== 1 ? "s" : ""}
+                        </Badge>
+                        <Badge variant="muted" className="text-xs">
+                          {egressStats.totConns} total
+                        </Badge>
+                      </>
+                    ) : undefined;
+                    return (
+                      <CollapsibleSection
+                        key={`${eg.kind || "F5SPKEgress"}/${egressKey}`}
+                        title={`${eg.name}${eg.namespace ? ` (${eg.namespace})` : ""}`}
                         icon={ArrowRightLeft}
-                        label="SNAT Type"
-                        detail={eg.snatType}
-                        badges={[{
-                          text: eg.ready ? 'Programmed' : 'Pending',
-                          variant: eg.ready ? 'success' : 'warning',
-                        }]}
-                        indent={2}
-                      />
-                      {eg.capturedNamespaces.map((ns, i) => (
+                        badge={egressBadges}
+                        indent={1}
+                        defaultOpen={false}
+                      >
                         <TreeLeaf
-                          key={i}
-                          icon={Network}
-                          label={ns}
-                          detail="Captured Namespace"
+                          icon={ArrowRightLeft}
+                          label="SNAT Type"
+                          detail={eg.snatType}
+                          badges={[
+                            {
+                              text: eg.ready ? "Programmed" : "Pending",
+                              variant: eg.ready ? "success" : "warning",
+                            },
+                          ]}
                           indent={2}
                         />
-                      ))}
-                      {eg.firewallEnforcedPolicy && (
-                        <TreeLeaf
-                          icon={Shield}
-                          label="Firewall Policy"
-                          detail={eg.firewallEnforcedPolicy}
-                          indent={2}
-                        />
-                      )}
-                      {eg.logProfile && (
-                        <TreeLeaf
-                          icon={FileText}
-                          label="Log Profile"
-                          detail={eg.logProfile}
-                          indent={2}
-                        />
-                      )}
-                      {eg.vxlan && (
-                        <TreeLeaf
-                          icon={Network}
-                          label="VXLAN Interface"
-                          detail={`${eg.vxlan.tmmInterfaceName} → ${eg.vxlan.nodeInterfaceName}`}
-                          indent={2}
-                        />
-                      )}
-                    </CollapsibleSection>
-                  ))}
+                        {eg.capturedNamespaces.map((ns, i) => (
+                          <TreeLeaf
+                            key={i}
+                            icon={Network}
+                            label={ns}
+                            detail="Captured Namespace"
+                            indent={2}
+                          />
+                        ))}
+                        {eg.firewallEnforcedPolicy && (
+                          <TreeLeaf
+                            icon={Shield}
+                            label="Firewall Policy"
+                            detail={eg.firewallEnforcedPolicy}
+                            indent={2}
+                          />
+                        )}
+                        {eg.logProfile && (
+                          <TreeLeaf
+                            icon={FileText}
+                            label="Log Profile"
+                            detail={eg.logProfile}
+                            indent={2}
+                          />
+                        )}
+                        {eg.vxlan && (
+                          <TreeLeaf
+                            icon={Network}
+                            label="VXLAN Interface"
+                            detail={`${eg.vxlan.tmmInterfaceName} → ${eg.vxlan.nodeInterfaceName}`}
+                            indent={2}
+                          />
+                        )}
+                      </CollapsibleSection>
+                    );
+                  })}
                 </CollapsibleSection>
               </div>
             )}
 
             {/* ── Logging ── */}
-            {(dataPlane!.logging.hslPublishers.length > 0 || dataPlane!.logging.logProfiles.length > 0) && (
+            {(dataPlane!.logging.hslPublishers.length > 0 ||
+              dataPlane!.logging.logProfiles.length > 0) && (
               <div className="mt-2 pt-2 border-t border-border">
                 <CollapsibleSection
                   title="Logging & Telemetry"
@@ -1121,7 +1659,7 @@ export function F5BNKTopologyViewer({ clusterId, namespace, onSelectResource }: 
                       key={hsl.name}
                       icon={FileText}
                       label={hsl.name}
-                      detail={`HSL Publisher${hsl.protocol ? ` (${hsl.protocol})` : ''}`}
+                      detail={`HSL Publisher${hsl.protocol ? ` (${hsl.protocol})` : ""}`}
                       indent={1}
                     />
                   ))}

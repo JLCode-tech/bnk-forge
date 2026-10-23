@@ -35,6 +35,7 @@ def _bnkctl_binary_available() -> bool:
     """
     return Path(_AWSBNKCTL_BINARY_PATH).is_file() or shutil.which("awsbnkctl") is not None
 
+
 # CLI_BNKCTL_MODULES registry: paths, names, descriptions, and variable schemas.
 # Each module is a standalone (single-module) deploy with stack_instance_id=NULL.
 # Execution engine is "cli-bnkctl" (tool-agnostic BnkctlEngine).
@@ -52,7 +53,7 @@ CLI_BNKCTL_MODULES: list[dict] = [
         ),
         "category": "cli-bnkctl",
         "git_source": "builtin://cli-bnkctl/awsbnkctl/bnk-demo",
-        "version": "1.2.0",
+        "version": "1.0.0",
         "execution_engine": "cli-bnkctl",
         "deploy_model": "cli-exec",
         "module_source_kind": "builtin",
@@ -103,7 +104,7 @@ CLI_BNKCTL_MODULES: list[dict] = [
                 "name": "kubernetes_version",
                 "type": "string",
                 "description": "EKS control-plane Kubernetes version (cluster.kubernetesVersion)",
-                "default": "1.30",
+                "default": "1.34",
                 "required": False,
             },
             {
@@ -132,7 +133,7 @@ CLI_BNKCTL_MODULES: list[dict] = [
                 "name": "demo_enabled",
                 "type": "boolean",
                 "description": "Mark this as a demo deployment (writes DEMO_MODE/EXPIRY to state.env). "
-                               "Requires jumphost_enabled=true per awsbnkctl schema.",
+                "Requires jumphost_enabled=true per awsbnkctl schema.",
                 "default": False,
                 "required": False,
             },
@@ -140,7 +141,7 @@ CLI_BNKCTL_MODULES: list[dict] = [
                 "name": "demo_ttl",
                 "type": "string",
                 "description": "Demo cluster lifetime as a Go duration string (e.g. 24h, 48h, 72h). "
-                               "Used when demo_enabled=true.",
+                "Used when demo_enabled=true.",
                 "default": "24h",
                 "required": False,
             },
@@ -148,7 +149,7 @@ CLI_BNKCTL_MODULES: list[dict] = [
                 "name": "jumphost_enabled",
                 "type": "boolean",
                 "description": "Provision an EC2 jumphost (SSH bastion) inside the BNK_EXT subnet "
-                               "(testing.jumphost.enabled). Required for demo_enabled.",
+                "(testing.jumphost.enabled). Required for demo_enabled.",
                 "default": False,
                 "required": False,
             },
@@ -163,10 +164,10 @@ CLI_BNKCTL_MODULES: list[dict] = [
                 "name": "bigipve_enabled",
                 "type": "boolean",
                 "description": "Provision a chargeable F5 BIG-IP VE instance alongside the cluster "
-                               "(bigipVE.enabled). WARNING: incurs AWS charges (~15 min extra). "
-                               "Requires AWSBNKCTL_BIGIP_PASSWORD env var at provisioning time. "
-                               "Enabling BIG-IP VE forces the dual-interface pattern "
-                               "(BIG-IP VE needs the internal subnet).",
+                "(bigipVE.enabled). WARNING: incurs AWS charges (~15 min extra). "
+                "Requires AWSBNKCTL_BIGIP_PASSWORD env var at provisioning time. "
+                "Enabling BIG-IP VE forces the dual-interface pattern "
+                "(BIG-IP VE needs the internal subnet).",
                 "default": False,
                 "required": False,
             },
@@ -188,7 +189,7 @@ CLI_BNKCTL_MODULES: list[dict] = [
                 "name": "bigipve_vip",
                 "type": "string",
                 "description": "BIG-IP virtual-server IP inside network.dataPath.external.cidr "
-                               "(bigipVE.vip). Leave empty to auto-derive as <prefix>.10.120.",
+                "(bigipVE.vip). Leave empty to auto-derive as <prefix>.10.120.",
                 "default": "",
                 "required": False,
             },
@@ -196,15 +197,14 @@ CLI_BNKCTL_MODULES: list[dict] = [
                 "name": "ai_sagemaker_enabled",
                 "type": "boolean",
                 "description": "Create a disposable SageMaker LMI endpoint on up, deleted on down "
-                               "(ai.sagemaker.enabled). Incurs SageMaker instance charges while running.",
+                "(ai.sagemaker.enabled). Incurs SageMaker instance charges while running.",
                 "default": False,
                 "required": False,
             },
             {
                 "name": "ai_sagemaker_model",
                 "type": "string",
-                "description": "Hugging Face model ID for the SageMaker LLM endpoint "
-                               "(required when AI demo enabled).",
+                "description": "Hugging Face model ID for the SageMaker LLM endpoint (required when AI demo enabled).",
                 "default": "meta-llama/Meta-Llama-3-8B-Instruct",
                 "required": False,
             },
@@ -363,7 +363,8 @@ def seed_cli_bnkctl_modules(db: Session) -> tuple[int, int]:
             db.commit()
             logger.info(
                 "cli-bnkctl: awsbnkctl binary not found at %s — deactivated %d existing module(s)",
-                _AWSBNKCTL_BINARY_PATH, deactivated,
+                _AWSBNKCTL_BINARY_PATH,
+                deactivated,
             )
         else:
             logger.debug(
@@ -373,9 +374,7 @@ def seed_cli_bnkctl_modules(db: Session) -> tuple[int, int]:
         return created, updated
 
     for attrs in CLI_BNKCTL_MODULES:
-        existing = db.query(ModuleLibrary).filter(
-            ModuleLibrary.path == attrs["path"]
-        ).first()
+        existing = db.query(ModuleLibrary).filter(ModuleLibrary.path == attrs["path"]).first()
 
         if existing is not None and existing.content_sha256 is not None:
             # D-033: a content-hashed catalog version row owns this path now —

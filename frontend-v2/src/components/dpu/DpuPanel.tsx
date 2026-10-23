@@ -613,7 +613,7 @@ export function DpuPanel({ projectId, isOwner }: DpuPanelProps) {
                               <span className="flex items-center gap-1.5 whitespace-nowrap">
                                 <Badge
                                   variant="warning"
-                                  className="text-[10px] px-1 py-0 whitespace-nowrap"
+                                  className="text-2xs px-1 py-0 whitespace-nowrap"
                                   title={`Managed in-band via rshim on ${dpu.host_hostname ?? dpu.host_node_ip ?? '?'}${dpu.host_hostname && dpu.host_node_ip ? ` (${dpu.host_node_ip})` : ''} — PCI ${dpu.pci_address ?? '?'}`}
                                 >
                                   in-band
@@ -1465,7 +1465,7 @@ function DiscoveryBadge({
       return (
         <div className="flex flex-col gap-0.5 max-w-[22rem]" title={error}>
           <Badge variant="info" className="w-fit">running…</Badge>
-          <span className="text-[11px] text-muted-foreground truncate">{error}</span>
+          <span className="text-2xs text-muted-foreground truncate">{error}</span>
         </div>
       );
     }
@@ -1487,7 +1487,7 @@ function DiscoveryBadge({
             <PopoverTrigger asChild>
               <button
                 type="button"
-                className="self-start text-[11px] text-primary hover:underline"
+                className="self-start text-2xs text-primary hover:underline"
               >
                 Details
               </button>
@@ -1603,7 +1603,7 @@ function FlashCell({ dpu }: { dpu: Dpu }) {
       <div className="flex flex-col min-w-0 gap-0.5">
         <span className="text-destructive font-medium">failed</span>
         {headline && (
-          <span className="text-[11px] text-muted-foreground truncate">
+          <span className="text-2xs text-muted-foreground truncate">
             {headline}
           </span>
         )}
@@ -1612,7 +1612,7 @@ function FlashCell({ dpu }: { dpu: Dpu }) {
             <PopoverTrigger asChild>
               <button
                 type="button"
-                className="self-start text-[11px] text-primary hover:underline"
+                className="self-start text-2xs text-primary hover:underline"
               >
                 Details
               </button>
@@ -1673,7 +1673,7 @@ function DiscoveryOrLinkModeCell({
     return (
       <Badge
         variant="info"
-        className="text-[10px] px-1.5 py-0 whitespace-nowrap"
+        className="text-2xs px-1.5 py-0 whitespace-nowrap"
         title={tooltip}
       >
         {label}
@@ -1777,7 +1777,7 @@ function DpuOsCell({ dpu }: { dpu: Dpu }) {
             <PopoverTrigger asChild>
               <button
                 type="button"
-                className="self-start text-[11px] text-primary hover:underline"
+                className="self-start text-2xs text-primary hover:underline"
               >
                 Details
               </button>

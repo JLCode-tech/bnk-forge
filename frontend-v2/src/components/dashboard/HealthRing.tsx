@@ -50,7 +50,7 @@ export function HealthRing({ score, size = 100 }: HealthRingProps) {
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-2xl font-bold tracking-tight text-foreground">{score}</span>
-        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Health</span>
+        <span className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">Health</span>
       </div>
     </div>
   );

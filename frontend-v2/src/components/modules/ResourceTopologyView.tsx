@@ -1,10 +1,16 @@
-import { useState, useEffect, useCallback } from 'react';
-import { SectionCard } from '@/components/ui/section-card';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useState, useEffect, useCallback } from "react";
+import { SectionCard } from "@/components/ui/section-card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   RefreshCw,
   AlertTriangle,
@@ -18,11 +24,11 @@ import {
   Shield,
   Box,
   type LucideIcon,
-} from 'lucide-react';
-import { api } from '@/lib/api';
-import type { ProjectModule } from '@/types';
-import { notifyError } from '@/lib/notify';
-import { parseApiError } from '@/lib/error-handler';
+} from "lucide-react";
+import { api } from "@/lib/api";
+import type { ProjectModule } from "@/types";
+import { notifyError } from "@/lib/notify";
+import { parseApiError } from "@/lib/error-handler";
 
 interface ResourceTopologyViewProps {
   module: ProjectModule;
@@ -43,25 +49,58 @@ interface ResourceGroup {
   resources: StateResource[];
 }
 
-function getResourceCategory(type: string): { category: string; icon: LucideIcon; color: string } {
+function getResourceCategory(type: string): {
+  category: string;
+  icon: LucideIcon;
+  color: string;
+} {
   const typeUpper = type.toUpperCase();
 
-  if (typeUpper.includes('COMPUTE') || typeUpper.includes('INSTANCE') || typeUpper.includes('VM')) {
-    return { category: 'Compute', icon: Server, color: 'bg-info' };
+  if (
+    typeUpper.includes("COMPUTE") ||
+    typeUpper.includes("INSTANCE") ||
+    typeUpper.includes("VM")
+  ) {
+    return { category: "Compute", icon: Server, color: "bg-info" };
   }
-  if (typeUpper.includes('NETWORK') || typeUpper.includes('VPC') || typeUpper.includes('SUBNET') || typeUpper.includes('ROUTE')) {
-    return { category: 'Networking', icon: Network, color: 'bg-primary' };
+  if (
+    typeUpper.includes("NETWORK") ||
+    typeUpper.includes("VPC") ||
+    typeUpper.includes("SUBNET") ||
+    typeUpper.includes("ROUTE")
+  ) {
+    return { category: "Networking", icon: Network, color: "bg-primary" };
   }
-  if (typeUpper.includes('DATABASE') || typeUpper.includes('DB') || typeUpper.includes('RDS') || typeUpper.includes('SQL')) {
-    return { category: 'Database', icon: Database, color: 'bg-success' };
+  if (
+    typeUpper.includes("DATABASE") ||
+    typeUpper.includes("DB") ||
+    typeUpper.includes("RDS") ||
+    typeUpper.includes("SQL")
+  ) {
+    return { category: "Database", icon: Database, color: "bg-success" };
   }
-  if (typeUpper.includes('STORAGE') || typeUpper.includes('BUCKET') || typeUpper.includes('S3') || typeUpper.includes('BLOB')) {
-    return { category: 'Storage', icon: Box, color: 'bg-warning' };
+  if (
+    typeUpper.includes("STORAGE") ||
+    typeUpper.includes("BUCKET") ||
+    typeUpper.includes("S3") ||
+    typeUpper.includes("BLOB")
+  ) {
+    return { category: "Storage", icon: Box, color: "bg-warning" };
   }
-  if (typeUpper.includes('SECURITY') || typeUpper.includes('IAM') || typeUpper.includes('ROLE') || typeUpper.includes('POLICY') || typeUpper.includes('FIREWALL')) {
-    return { category: 'Security & IAM', icon: Shield, color: 'bg-destructive' };
+  if (
+    typeUpper.includes("SECURITY") ||
+    typeUpper.includes("IAM") ||
+    typeUpper.includes("ROLE") ||
+    typeUpper.includes("POLICY") ||
+    typeUpper.includes("FIREWALL")
+  ) {
+    return {
+      category: "Security & IAM",
+      icon: Shield,
+      color: "bg-destructive",
+    };
   }
-  return { category: 'Other', icon: Cloud, color: 'bg-muted-foreground' };
+  return { category: "Other", icon: Cloud, color: "bg-muted-foreground" };
 }
 
 function categorizeResources(resources: StateResource[]): ResourceGroup[] {
@@ -77,8 +116,8 @@ function categorizeResources(resources: StateResource[]): ResourceGroup[] {
     groups.get(category)!.resources.push(resource);
   });
 
-  return Array.from(groups.values()).sort((a, b) =>
-    b.resources.length - a.resources.length
+  return Array.from(groups.values()).sort(
+    (a, b) => b.resources.length - a.resources.length,
   );
 }
 
@@ -97,7 +136,7 @@ export function ResourceTopologyView({ module }: ResourceTopologyViewProps) {
 
       // Expand all groups by default
       const categories = categorizeResources(response.resources || []);
-      setExpandedGroups(new Set(categories.map(c => c.category)));
+      setExpandedGroups(new Set(categories.map((c) => c.category)));
     } catch (err) {
       const parsed = parseApiError(err);
       setError(parsed.message);
@@ -127,10 +166,18 @@ export function ResourceTopologyView({ module }: ResourceTopologyViewProps) {
     <SectionCard title="Resource topology" className="h-full">
       <div className="flex items-center justify-between -mt-1 mb-4">
         <p className="text-sm text-muted-foreground">
-          Hierarchical view of infrastructure resources in this module by category.
+          Hierarchical view of infrastructure resources in this module by
+          category.
         </p>
-        <Button size="sm" variant="outline" onClick={loadResources} disabled={isLoading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={loadResources}
+          disabled={isLoading}
+        >
+          <RefreshCw
+            className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`}
+          />
           Refresh
         </Button>
       </div>
@@ -139,7 +186,9 @@ export function ResourceTopologyView({ module }: ResourceTopologyViewProps) {
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
               <RefreshCw className="h-12 w-12 animate-spin mx-auto mb-4 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">Loading topology...</p>
+              <p className="text-sm text-muted-foreground">
+                Loading topology...
+              </p>
             </div>
           </div>
         ) : error ? (
@@ -159,7 +208,9 @@ export function ResourceTopologyView({ module }: ResourceTopologyViewProps) {
             {/* Summary Stats */}
             <div className="grid grid-cols-3 gap-4 mb-6">
               <div className="border rounded-lg p-3">
-                <p className="text-sm text-muted-foreground mb-1">Total Resources</p>
+                <p className="text-sm text-muted-foreground mb-1">
+                  Total Resources
+                </p>
                 <p className="text-2xl font-bold">{resources.length}</p>
               </div>
               <div className="border rounded-lg p-3">
@@ -168,7 +219,9 @@ export function ResourceTopologyView({ module }: ResourceTopologyViewProps) {
               </div>
               <div className="border rounded-lg p-3">
                 <p className="text-sm text-muted-foreground mb-1">Provider</p>
-                <p className="text-sm font-mono mt-1">{resources[0]?.provider || 'N/A'}</p>
+                <p className="text-sm font-mono mt-1">
+                  {resources[0]?.provider || "N/A"}
+                </p>
               </div>
             </div>
 
@@ -187,18 +240,23 @@ export function ResourceTopologyView({ module }: ResourceTopologyViewProps) {
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 rounded-lg ${group.color} flex items-center justify-center`}>
+                            <div
+                              className={`w-10 h-10 rounded-lg ${group.color} flex items-center justify-center`}
+                            >
                               <Icon className="h-5 w-5 text-white" />
                             </div>
                             <div>
-                              <CardTitle className="text-base">{group.category}</CardTitle>
+                              <CardTitle>{group.category}</CardTitle>
                               <CardDescription className="text-xs">
-                                {group.resources.length} resource{group.resources.length !== 1 ? 's' : ''}
+                                {group.resources.length} resource
+                                {group.resources.length !== 1 ? "s" : ""}
                               </CardDescription>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            <Badge variant="secondary">{group.resources.length}</Badge>
+                            <Badge variant="secondary">
+                              {group.resources.length}
+                            </Badge>
                             {isExpanded ? (
                               <ChevronDown className="h-5 w-5 text-muted-foreground" />
                             ) : (
@@ -225,7 +283,10 @@ export function ResourceTopologyView({ module }: ResourceTopologyViewProps) {
                                       {resource.type}
                                     </p>
                                   </div>
-                                  <Badge variant="outline" className="text-xs shrink-0">
+                                  <Badge
+                                    variant="outline"
+                                    className="text-xs shrink-0"
+                                  >
                                     {resource.mode}
                                   </Badge>
                                 </div>

@@ -13,6 +13,8 @@ with proxy deployments (envoy, nginx, haproxy, f5-bnk) managed via Helm.
   - ProxyDeployment = a proxy (envoy/nginx/etc.) deployed to a target cluster via Helm
 """
 
+from typing import Any
+
 from sqlalchemy import (
     JSON,
     BigInteger,
@@ -25,6 +27,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -45,6 +48,7 @@ class BenchmarkRun(Base):
     The result_json column stores the full BenchmarkResult from the CLI tool.
     Created either by POST /api/benchmarks/results (CLI push) or POST /api/benchmarks/runs (UI trigger).
     """
+
     __tablename__ = "benchmark_runs"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -68,7 +72,9 @@ class BenchmarkRun(Base):
     # Link to target/proxy (Phase 4b — optional, backward compatible)
     # target_id: index supplied by idx_benchmark_run_target in __table_args__ (avoid duplicate ix_*).
     target_id = Column(Integer, ForeignKey("benchmark_targets.id", ondelete="SET NULL"), nullable=True)
-    proxy_deployment_id = Column(Integer, ForeignKey("proxy_deployments.id", ondelete="SET NULL"), nullable=True, index=True)
+    proxy_deployment_id = Column(
+        Integer, ForeignKey("proxy_deployments.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     # Link to parent run-group (Phase 6 — scenario expansion). A scenario expands into
     # one parent BenchmarkRunGroup + N child BenchmarkRuns (one per concurrency/phase).
@@ -118,6 +124,11 @@ class BenchmarkRun(Base):
     proxy_deployment = relationship("ProxyDeployment", back_populates="runs")
     run_group = relationship("BenchmarkRunGroup", back_populates="runs")
 
+    @property
+    def cluster_name(self) -> str | None:
+        """Name of the associated Kubernetes cluster (via target)."""
+        return self.target.cluster.name if (self.target and self.target.cluster) else None
+
     __table_args__ = (
         Index("idx_benchmark_run_proxy_created", "proxy", "created_at"),
         Index("idx_benchmark_run_tool_proxy", "tool", "proxy"),
@@ -136,6 +147,7 @@ class BenchmarkRunGroup(Base):
     Each child run remains a single aiperf invocation. Aggregate metrics are rolled
     up here once all children reach a terminal state.
     """
+
     __tablename__ = "benchmark_run_groups"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -183,6 +195,11 @@ class BenchmarkRunGroup(Base):
     runs = relationship("BenchmarkRun", back_populates="run_group", order_by="BenchmarkRun.id")
     target = relationship("BenchmarkTarget")
 
+    @property
+    def cluster_name(self) -> str | None:
+        """Name of the associated Kubernetes cluster (via target)."""
+        return self.target.cluster.name if (self.target and self.target.cluster) else None
+
     __table_args__ = (
         Index("idx_benchmark_run_group_scenario", "scenario_key"),
         Index("idx_benchmark_run_group_status_created", "status", "created_at"),
@@ -198,6 +215,7 @@ class BenchmarkConfig(Base):
 
     ⚠️  This is NOT "model_provider + model_name". It's a load test configuration.
     """
+
     __tablename__ = "benchmark_configs"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -218,9 +236,7 @@ class BenchmarkConfig(Base):
     # Relationships
     runs = relationship("BenchmarkRun", back_populates="config")
 
-    __table_args__ = (
-        Index("idx_benchmark_config_tool", "tool"),
-    )
+    __table_args__ = (Index("idx_benchmark_config_tool", "tool"),)
 
 
 class BenchmarkAgent(Base):
@@ -237,12 +253,15 @@ class BenchmarkAgent(Base):
 
     ⚠️  This is a PHYSICAL/VIRTUAL MACHINE, NOT an "AI model being evaluated".
     """
+
     __tablename__ = "benchmark_agents"
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False, unique=True, index=True)  # "loadgen-01"
     hostname = Column(String(255), nullable=True)  # OS hostname
-    ip_address = Column(String(45), nullable=True)  # IPv4 or IPv6 — the address the agent *advertises* (self-registered)
+    ip_address = Column(
+        String(45), nullable=True
+    )  # IPv4 or IPv6 — the address the agent *advertises* (self-registered)
     tags = Column(JSON, nullable=True)  # {"datacenter": "us-east", "gpu": false}
     capabilities = Column(JSON, nullable=True)  # {"engines": ["burst"], "platform": "Linux", "python": "3.11"}
 
@@ -272,6 +291,19 @@ class BenchmarkAgent(Base):
     # Runtime readiness snapshot (populated after successful provision)
     readiness = Column(JSON, nullable=True)
 
+    @property
+    def token_version(self) -> int:
+        """Monotonic version for per-agent token revocation (stored in readiness JSON)."""
+        if self.readiness and isinstance(self.readiness, dict):
+            return int(self.readiness.get("_token_version", 1))
+        return 1
+
+    @token_version.setter
+    def token_version(self, value: int) -> None:
+        current = dict(self.readiness) if isinstance(self.readiness, dict) else {}
+        current["_token_version"] = int(value)
+        self.readiness = current  # type: ignore[assignment]
+
     # True = Forge-managed remote host; False = self-registered built-in agent
     managed = Column(Boolean, nullable=False, default=False)
     # ── end Slice 1 columns ─────────────────────────────────────────────────
@@ -283,6 +315,74 @@ class BenchmarkAgent(Base):
     runs = relationship("BenchmarkRun", back_populates="agent")
     project = relationship("Project", foreign_keys=[project_id])
     ssh_credential = relationship("SSHCredential", foreign_keys=[ssh_credential_id])
+
+    @property
+    def project_name(self) -> str | None:
+        if self.project:
+            return str(self.project.name)
+        conns = self.connected_projects
+        if conns and len(conns) == 1 and not conns[0].startswith("All Projects"):
+            return conns[0]
+        return None
+
+    @property
+    def infra(self) -> str:
+        tags: dict[str, Any] = self.tags if isinstance(self.tags, dict) else {}
+        if tags.get("infra"):
+            return str(tags["infra"])
+        if tags.get("cloud"):
+            return str(tags["cloud"]).upper()
+
+        if tags.get("builtin") or self.name == "forge-local":
+            return "Built-in (Docker)"
+
+        if self.project and self.project.cloud_provider:
+            cp = str(self.project.cloud_provider).lower()
+            if cp == "aws":
+                return "AWS"
+            elif cp in ("azure", "azr"):
+                return "Azure"
+            elif cp in ("gcp", "gke"):
+                return "GKE"
+            elif cp in ("on-prem", "onprem", "bare-metal", "baremetal", "metal"):
+                return "On-Prem"
+            return cp.upper()
+
+        name_lower = self.name.lower()
+        managed_by = str(tags.get("managed_by", "")).lower()
+        if "aws" in name_lower or "aws" in managed_by:
+            return "AWS"
+        if "azr" in name_lower or "azr" in managed_by:
+            return "Azure"
+        if "gke" in name_lower or "gke" in managed_by:
+            return "GKE"
+        if "onprem" in name_lower or "metal" in name_lower or tags.get("type") == "bare_metal":
+            return "On-Prem"
+
+        return "Generic"
+
+    @property
+    def connected_projects(self) -> list[str]:
+        tags: dict[str, Any] = self.tags if isinstance(self.tags, dict) else {}
+        if tags.get("connected_projects") and isinstance(tags["connected_projects"], list):
+            return [str(p) for p in tags["connected_projects"]]
+        if self.project:
+            return [str(self.project.name)]
+        if tags.get("project_name"):
+            return [str(tags["project_name"])]
+        if tags.get("builtin") or self.name == "forge-local":
+            return ["All Projects (Global)"]
+
+        # Check if tags or name correlate with project
+        managed_by = str(tags.get("managed_by", "")).lower()
+        if "awsbnkctl" in managed_by or self.name.startswith("awsbnkctl"):
+            return ["awsbnkctl-bnk-agentcore-demo"]
+        if "azrbnkctl" in managed_by or self.name.startswith("azrbnkctl"):
+            return ["azrbnkctl-bnk-agentfoundry-demo"]
+        if "gkebnkctl" in managed_by or self.name.startswith("gkebnkctl"):
+            return ["gkebnkctl-bnk-vertex-demo"]
+
+        return []
 
     __table_args__ = (
         Index("idx_benchmark_agent_status", "status"),
@@ -297,10 +397,11 @@ class BenchmarkTarget(Base):
     endpoint details (base URL, model, namespace). Proxy deployments
     (envoy, nginx, etc.) are children of this target.
     """
+
     __tablename__ = "benchmark_targets"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False, unique=True, index=True)
+    name = Column(String(255), nullable=False, index=True)
     description = Column(Text, nullable=True)
 
     # Link to existing K8s cluster
@@ -331,11 +432,17 @@ class BenchmarkTarget(Base):
     runs = relationship("BenchmarkRun", back_populates="target")
 
     @property
+    def cluster_name(self) -> str | None:
+        """Name of the associated Kubernetes cluster."""
+        return self.cluster.name if self.cluster else None
+
+    @property
     def proxy_count(self) -> int:
         """Number of proxy deployments for this target (used in list view)."""
         return len(self.proxy_deployments) if self.proxy_deployments else 0
 
     __table_args__ = (
+        UniqueConstraint("cluster_id", "name", name="uq_benchmark_targets_cluster_name"),
         Index("idx_benchmark_target_cluster", "cluster_id"),
         Index("idx_benchmark_target_status", "status"),
     )
@@ -348,6 +455,7 @@ class ProxyDeployment(Base):
     forwards LLM inference traffic from the test agent to the target's
     LLM endpoint.
     """
+
     __tablename__ = "proxy_deployments"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -363,6 +471,7 @@ class ProxyDeployment(Base):
     # Deployed endpoint (populated after successful deploy)
     proxy_url = Column(String(500), nullable=True)  # e.g. http://envoy-proxy.perf-proxies:10080
     external_url = Column(String(500), nullable=True)  # NodePort/LB URL for external agents
+    routing_info = Column(JSON, nullable=True)  # What the proxy routes on (EPP, tokens, KV events), for display
 
     # Status
     status = Column(String(50), default=ProxyDeploymentStatus.PENDING, nullable=False, index=True)

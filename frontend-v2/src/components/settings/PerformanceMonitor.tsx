@@ -1,6 +1,6 @@
-import { SectionCard } from '@/components/ui/section-card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { SectionCard } from "@/components/ui/section-card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   RefreshCw,
   Activity,
@@ -12,61 +12,87 @@ import {
   Zap,
   TrendingUp,
   AlertCircle,
-} from 'lucide-react';
+} from "lucide-react";
 import {
   useSystemHealth,
   useQueueMetrics,
   usePerformanceMetrics,
   useRecentErrors,
-} from '@/hooks/useSystem';
-import { DISPLAY_LIMITS } from '@/lib/constants';
-import type { ServiceStatus, TaskError } from '@/types';
+} from "@/hooks/useSystem";
+import { DISPLAY_LIMITS } from "@/lib/constants";
+import type { ServiceStatus, TaskError } from "@/types";
 
-type StatusTone = 'success' | 'warning' | 'destructive' | 'muted';
+type StatusTone = "success" | "warning" | "destructive" | "muted";
 
 type SystemStatus = {
-  status: 'critical' | 'degraded' | 'healthy' | 'unknown';
+  status: "critical" | "degraded" | "healthy" | "unknown";
   tone: StatusTone;
   icon?: typeof CheckCircle;
 };
 
 // Map a status tone to its token-pure foreground class.
 const TONE_TEXT: Record<StatusTone, string> = {
-  success: 'text-success',
-  warning: 'text-warning',
-  destructive: 'text-destructive',
-  muted: 'text-muted-foreground',
+  success: "text-success",
+  warning: "text-warning",
+  destructive: "text-destructive",
+  muted: "text-muted-foreground",
 };
 
-type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'info' | 'muted';
+type BadgeVariant =
+  | "default"
+  | "secondary"
+  | "destructive"
+  | "outline"
+  | "success"
+  | "warning"
+  | "info"
+  | "muted";
 
 const SERVICE_BADGE_VARIANT: Record<string, BadgeVariant> = {
-  healthy: 'success',
-  degraded: 'warning',
-  offline: 'destructive',
+  healthy: "success",
+  degraded: "warning",
+  offline: "destructive",
 };
 
-export default function PerformanceMonitor() {
-  const { data: health, isLoading: healthLoading, refetch: refetchHealth } = useSystemHealth();
+export default function PerformanceMonitor({
+  hideRefresh = false,
+}: {
+  hideRefresh?: boolean;
+} = {}) {
+  const {
+    data: health,
+    isLoading: healthLoading,
+    refetch: refetchHealth,
+  } = useSystemHealth();
   const { data: queueMetrics, isLoading: queueLoading } = useQueueMetrics();
   const { data: perfMetrics, isLoading: perfLoading } = usePerformanceMetrics();
   const { data: errors, isLoading: errorsLoading } = useRecentErrors(5);
 
-  const isLoading = healthLoading || queueLoading || perfLoading || errorsLoading;
+  const isLoading =
+    healthLoading || queueLoading || perfLoading || errorsLoading;
 
   // Determine overall system status
   const getSystemStatus = (): SystemStatus => {
-    if (!health?.services) return { status: 'unknown', tone: 'muted' };
+    if (!health?.services) return { status: "unknown", tone: "muted" };
 
     const services = Object.values(health.services);
-    const allHealthy = services.every((s: { status: string }) => s.status === 'healthy');
-    const anyOffline = services.some((s: { status: string }) => s.status === 'offline');
-    const anyDegraded = services.some((s: { status: string }) => s.status === 'degraded');
+    const allHealthy = services.every(
+      (s: { status: string }) => s.status === "healthy",
+    );
+    const anyOffline = services.some(
+      (s: { status: string }) => s.status === "offline",
+    );
+    const anyDegraded = services.some(
+      (s: { status: string }) => s.status === "degraded",
+    );
 
-    if (anyOffline) return { status: 'critical', tone: 'destructive', icon: XCircle };
-    if (anyDegraded) return { status: 'degraded', tone: 'warning', icon: AlertTriangle };
-    if (allHealthy) return { status: 'healthy', tone: 'success', icon: CheckCircle };
-    return { status: 'unknown', tone: 'muted', icon: AlertCircle };
+    if (anyOffline)
+      return { status: "critical", tone: "destructive", icon: XCircle };
+    if (anyDegraded)
+      return { status: "degraded", tone: "warning", icon: AlertTriangle };
+    if (allHealthy)
+      return { status: "healthy", tone: "success", icon: CheckCircle };
+    return { status: "unknown", tone: "muted", icon: AlertCircle };
   };
 
   const systemStatus = getSystemStatus();
@@ -78,11 +104,15 @@ export default function PerformanceMonitor() {
 
     // Check average task duration - alert if tasks are taking unusually long (> 30 minutes)
     // Note: This is task execution time, not API response time (see ADR-019)
-    const avgDurationSeconds = perfMetrics?.api?.avg_task_duration_seconds ||
-                               (perfMetrics?.api?.avg_response_time_ms ? perfMetrics.api.avg_response_time_ms / 1000 : 0);
-    if (avgDurationSeconds > 1800) { // 30 minutes
+    const avgDurationSeconds =
+      perfMetrics?.api?.avg_task_duration_seconds ||
+      (perfMetrics?.api?.avg_response_time_ms
+        ? perfMetrics.api.avg_response_time_ms / 1000
+        : 0);
+    if (avgDurationSeconds > 1800) {
+      // 30 minutes
       alerts.push({
-        severity: 'medium',
+        severity: "medium",
         message: `Long average task duration: ${(avgDurationSeconds / 60).toFixed(1)} minutes`,
       });
     }
@@ -90,7 +120,7 @@ export default function PerformanceMonitor() {
     // Check task queue depth
     if (queueMetrics?.tasks?.pending && queueMetrics.tasks.pending > 50) {
       alerts.push({
-        severity: 'medium',
+        severity: "medium",
         message: `High task queue depth: ${queueMetrics.tasks.pending} pending tasks`,
       });
     }
@@ -98,27 +128,34 @@ export default function PerformanceMonitor() {
     // Check worker availability
     if (queueMetrics?.workers?.total === 0) {
       alerts.push({
-        severity: 'high',
-        message: 'No Celery workers available',
+        severity: "high",
+        message: "No Celery workers available",
       });
     }
 
     // Check if worker inspection timed out (indicates workers are very busy)
     if (queueMetrics?.workers?.inspection_timeout) {
       alerts.push({
-        severity: 'low',
-        message: 'Worker inspection timed out (workers may be busy with long operations)',
+        severity: "low",
+        message:
+          "Worker inspection timed out (workers may be busy with long operations)",
       });
     }
 
     // Check error rate
-    const failedTasks = perfMetrics?.api?.failed_tasks_last_hour || perfMetrics?.api?.failed_requests_last_hour || 0;
-    const totalTasks = perfMetrics?.api?.tasks_last_hour || perfMetrics?.api?.requests_last_hour || 0;
+    const failedTasks =
+      perfMetrics?.api?.failed_tasks_last_hour ||
+      perfMetrics?.api?.failed_requests_last_hour ||
+      0;
+    const totalTasks =
+      perfMetrics?.api?.tasks_last_hour ||
+      perfMetrics?.api?.requests_last_hour ||
+      0;
     if (failedTasks && totalTasks) {
       const errorRate = (failedTasks / totalTasks) * 100;
       if (errorRate > 10) {
         alerts.push({
-          severity: 'high',
+          severity: "high",
           message: `High task failure rate: ${errorRate.toFixed(1)}% in last hour`,
         });
       }
@@ -127,23 +164,27 @@ export default function PerformanceMonitor() {
     return alerts;
   };
 
-  const degradationAlerts = perfMetrics && queueMetrics ? checkDegradation() : [];
+  const degradationAlerts =
+    perfMetrics && queueMetrics ? checkDegradation() : [];
 
   const getServiceIcon = (serviceName: string) => {
     switch (serviceName) {
-      case 'backend':
+      case "backend":
         return Server;
-      case 'database':
+      case "database":
         return Database;
-      case 'redis':
-      case 'celery':
+      case "redis":
+      case "celery":
         return Zap;
       default:
         return Activity;
     }
   };
 
-  const failedLastHour = perfMetrics?.api?.failed_tasks_last_hour ?? perfMetrics?.api?.failed_requests_last_hour ?? 0;
+  const failedLastHour =
+    perfMetrics?.api?.failed_tasks_last_hour ??
+    perfMetrics?.api?.failed_requests_last_hour ??
+    0;
 
   return (
     <div className="space-y-6">
@@ -158,15 +199,19 @@ export default function PerformanceMonitor() {
               Real-time monitoring and performance metrics
             </p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => refetchHealth()}
-            disabled={isLoading}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
+          {!hideRefresh && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetchHealth()}
+              disabled={isLoading}
+            >
+              <RefreshCw
+                className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`}
+              />
+              Refresh
+            </Button>
+          )}
         </div>
         <div className="space-y-6">
           {/* System Status Banner — neutral surface + tone-coloured icon/label, no whole-card tint */}
@@ -200,10 +245,7 @@ export default function PerformanceMonitor() {
               </div>
               <ul className="space-y-1">
                 {degradationAlerts.map((alert, idx) => (
-                  <li
-                    key={idx}
-                    className="text-sm text-foreground/80"
-                  >
+                  <li key={idx} className="text-sm text-foreground/80">
                     • {alert.message}
                   </li>
                 ))}
@@ -217,45 +259,50 @@ export default function PerformanceMonitor() {
               Service Health
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {health?.services && Object.entries(health.services).map(([serviceName, serviceData]: [string, ServiceStatus]) => {
-                const ServiceIcon = getServiceIcon(serviceName);
-                const badgeVariant = SERVICE_BADGE_VARIANT[serviceData.status] ?? 'muted';
-                return (
-                  <div
-                    key={serviceName}
-                    className="p-3 rounded-lg border border-border bg-card"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <ServiceIcon className="h-5 w-5 text-muted-foreground" />
-                        <div>
-                          <div className="font-medium capitalize text-foreground">
-                            {serviceName}
+              {health?.services &&
+                Object.entries(health.services).map(
+                  ([serviceName, serviceData]: [string, ServiceStatus]) => {
+                    const ServiceIcon = getServiceIcon(serviceName);
+                    const badgeVariant =
+                      SERVICE_BADGE_VARIANT[serviceData.status] ?? "muted";
+                    return (
+                      <div
+                        key={serviceName}
+                        className="p-3 rounded-lg border border-border bg-card"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <ServiceIcon className="h-5 w-5 text-muted-foreground" />
+                            <div>
+                              <div className="font-medium capitalize text-foreground">
+                                {serviceName}
+                              </div>
+                              {serviceData.response_time_ms != null && (
+                                <div className="text-xs text-muted-foreground">
+                                  {serviceData.response_time_ms.toFixed(0)}ms
+                                </div>
+                              )}
+                              {serviceData.workers !== undefined && (
+                                <div className="text-xs text-muted-foreground">
+                                  {serviceData.workers} worker(s),{" "}
+                                  {serviceData.active_tasks} active
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          {serviceData.response_time_ms != null && (
-                            <div className="text-xs text-muted-foreground">
-                              {serviceData.response_time_ms.toFixed(0)}ms
-                            </div>
-                          )}
-                          {serviceData.workers !== undefined && (
-                            <div className="text-xs text-muted-foreground">
-                              {serviceData.workers} worker(s), {serviceData.active_tasks} active
-                            </div>
-                          )}
+                          <Badge variant={badgeVariant} className="capitalize">
+                            {serviceData.status}
+                          </Badge>
                         </div>
+                        {serviceData.error && (
+                          <div className="text-xs mt-2 text-destructive">
+                            {serviceData.error}
+                          </div>
+                        )}
                       </div>
-                      <Badge variant={badgeVariant} className="capitalize">
-                        {serviceData.status}
-                      </Badge>
-                    </div>
-                    {serviceData.error && (
-                      <div className="text-xs mt-2 text-destructive">
-                        {serviceData.error}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                    );
+                  },
+                )}
             </div>
           </div>
 
@@ -319,8 +366,10 @@ export default function PerformanceMonitor() {
                         {/* Show in seconds if > 60s, otherwise ms */}
                         {(() => {
                           const avgDurationSeconds =
-                            perfMetrics.api?.avg_task_duration_seconds
-                            ?? (perfMetrics.api?.avg_response_time_ms != null ? perfMetrics.api.avg_response_time_ms / 1000 : 0);
+                            perfMetrics.api?.avg_task_duration_seconds ??
+                            (perfMetrics.api?.avg_response_time_ms != null
+                              ? perfMetrics.api.avg_response_time_ms / 1000
+                              : 0);
                           return avgDurationSeconds > 60
                             ? `${(avgDurationSeconds / 60).toFixed(1)}m`
                             : `${avgDurationSeconds.toFixed(0)}s`;
@@ -332,14 +381,18 @@ export default function PerformanceMonitor() {
                         Tasks (1h)
                       </div>
                       <div className="text-lg font-semibold text-foreground">
-                        {perfMetrics.api?.tasks_last_hour || perfMetrics.api?.requests_last_hour || 0}
+                        {perfMetrics.api?.tasks_last_hour ||
+                          perfMetrics.api?.requests_last_hour ||
+                          0}
                       </div>
                     </div>
                     <div>
                       <div className="text-xs text-muted-foreground">
                         Failed (1h)
                       </div>
-                      <div className={`text-lg font-semibold ${failedLastHour > 0 ? 'text-destructive' : 'text-foreground'}`}>
+                      <div
+                        className={`text-lg font-semibold ${failedLastHour > 0 ? "text-destructive" : "text-foreground"}`}
+                      >
                         {failedLastHour}
                       </div>
                     </div>
@@ -361,7 +414,9 @@ export default function PerformanceMonitor() {
                           Size
                         </div>
                         <div className="text-lg font-semibold text-foreground">
-                          {perfMetrics.database.size_mb != null ? `${perfMetrics.database.size_mb.toFixed(2)}MB` : '0MB'}
+                          {perfMetrics.database.size_mb != null
+                            ? `${perfMetrics.database.size_mb.toFixed(2)}MB`
+                            : "0MB"}
                         </div>
                       </div>
                       <div>
@@ -394,32 +449,32 @@ export default function PerformanceMonitor() {
                 <h3 className="text-sm font-semibold text-foreground">
                   Recent Errors
                 </h3>
-                <Badge variant="outline">
-                  {errors.total} total
-                </Badge>
+                <Badge variant="outline">{errors.total} total</Badge>
               </div>
               <div className="space-y-2">
-                {errors.errors.slice(0, DISPLAY_LIMITS.RECENT_ERRORS).map((error: TaskError) => (
-                  <div
-                    key={error.task_id}
-                    className="p-3 rounded-lg border border-border border-l-2 border-l-destructive bg-card"
-                  >
-                    <div className="flex items-start gap-3">
-                      <AlertCircle className="h-4 w-4 mt-0.5 text-destructive" />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-foreground">
-                          {error.type.replace(/_/g, ' ')} - {error.project}
-                        </div>
-                        <div className="text-xs mt-1 text-muted-foreground">
-                          {error.error}
-                        </div>
-                        <div className="text-xs mt-1 text-muted-foreground">
-                          {new Date(error.timestamp).toLocaleString()}
+                {errors.errors
+                  .slice(0, DISPLAY_LIMITS.RECENT_ERRORS)
+                  .map((error: TaskError) => (
+                    <div
+                      key={error.task_id}
+                      className="p-3 rounded-lg border border-border border-l-2 border-l-destructive bg-card"
+                    >
+                      <div className="flex items-start gap-3">
+                        <AlertCircle className="h-4 w-4 mt-0.5 text-destructive" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-foreground">
+                            {error.type.replace(/_/g, " ")} - {error.project}
+                          </div>
+                          <div className="text-xs mt-1 text-muted-foreground">
+                            {error.error}
+                          </div>
+                          <div className="text-xs mt-1 text-muted-foreground">
+                            {new Date(error.timestamp).toLocaleString()}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
               </div>
             </div>
           )}

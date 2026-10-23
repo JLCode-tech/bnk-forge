@@ -9,8 +9,10 @@ from dataclasses import dataclass
 # API GROUP CONSTANTS - DRY principle for commonly used API groups
 # =============================================================================
 
+
 class ApiGroups:
     """Common Kubernetes API groups."""
+
     CORE = ""  # Core API (v1)
     APPS = "apps"
     BATCH = "batch"
@@ -23,14 +25,21 @@ class ApiGroups:
     # Gateway API
     GATEWAY = "gateway.networking.k8s.io"
     # F5 BNK
-    F5_NET = "k8s.f5net.com"        # Data-plane CRDs: fw-policies, vlans, irules, etc.
-    F5_K8S = "k8s.f5.com"           # FLO-managed CRDs: CNEInstance, Analyzer, etc.
-    F5_GATEWAY_NET = "gateway.k8s.f5net.com"  # Gateway extensions: BNKSecPolicy, BNKNetPolicy, L4Route
-    F5_IPAM = "fic.f5.com"          # F5 IPAM Controller CRDs: IPAMRange, IPAM
+    F5_NET = "k8s.f5net.com"  # Data-plane CRDs: fw-policies, vlans, irules, etc.
+    F5_K8S = "k8s.f5.com"  # FLO-managed CRDs: CNEInstance, Analyzer, EPP, Observer
+    F5_GATEWAY_NET = "gateway.k8s.f5net.com"  # Gateway extensions (legacy <=2.3): BNKSecPolicy, BNKNetPolicy, L4Route
+    F5_GATEWAY = "gateway.k8s.f5.com"  # Modern BNK 2.4+ Gateway CRDs: Infra, GatewaySettings, EgressGateway, SecPolicy, NetPolicy, AppPolicy, L4Route
+    F5_INFERENCE = "inference.k8s.f5.com"  # BNK 2.4.1 LLM Gateway & AI Inference CRDs: AITenant, AICredential, AIProvider, AIModel, AIGatewayProfile, AIGateway, F5EPP
+    F5_METRICS = (
+        "metrics.f5.com"  # BNK 2.4.1 renamed Observer metric scraping CRDs: ScrapeTemplate, ScrapeClass, Scrape
+    )
+    F5_IPAM = "fic.f5.com"  # F5 IPAM Controller CRDs: IPAMRange, IPAM
+    # Gateway API Inference Extension (GAIE)
+    GAIE_INFERENCE = "inference.networking.k8s.io"  # InferencePool, InferenceModelRewrite
     # NVIDIA DPF (DOCA Platform Framework)
     DPF_PROVISIONING = "provisioning.dpu.nvidia.com"  # DPUDevice, DPUSet, DPUCluster, BFB, etc.
-    DPF_SERVICE = "svc.dpu.nvidia.com"                # DPUService, DPUServiceChain, etc.
-    DPF_OPERATOR = "operator.dpu.nvidia.com"          # DPFOperatorConfig
+    DPF_SERVICE = "svc.dpu.nvidia.com"  # DPUService, DPUServiceChain, etc.
+    DPF_OPERATOR = "operator.dpu.nvidia.com"  # DPFOperatorConfig
     # Third-party
     CERT_MANAGER = "cert-manager.io"
     MULTUS = "k8s.cni.cncf.io"
@@ -40,6 +49,7 @@ class ApiGroups:
 
 class ResourceCategory:
     """Categories for UI grouping."""
+
     CORE = "core"
     WORKLOADS = "workloads"
     NETWORKING = "networking"
@@ -54,11 +64,13 @@ class ResourceCategory:
     DPF = "dpf"
     CLUSTER = "cluster"
     F5_CIS = "f5-cis"  # F5 Container Ingress Services (D-023)
+    F5_CNF = "f5-cnf"  # F5 Cloud-Native Network Functions (D-024)
 
 
 @dataclass
 class K8sResourceType:
     """Definition of a Kubernetes resource type."""
+
     api_group: str
     api_version: str
     kind: str

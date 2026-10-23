@@ -1,14 +1,31 @@
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
+import { useState, useContext, useEffect } from "react";
+import { Button } from "@/components/ui/button";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '@/components/ui/popover';
-import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Bell, ChevronRight, CheckCircle2, XCircle, Search, AlertTriangle, Info, Loader2, ShieldAlert, X } from 'lucide-react';
-import { useLocation, Link, useNavigate } from 'react-router-dom';
+} from "@/components/ui/popover";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Bell,
+  ChevronRight,
+  CheckCircle2,
+  XCircle,
+  Search,
+  AlertTriangle,
+  Info,
+  Loader2,
+  ShieldAlert,
+  X,
+} from "lucide-react";
+import {
+  useLocation,
+  Link,
+  useNavigate,
+  UNSAFE_DataRouterStateContext,
+  UNSAFE_LocationContext,
+} from "react-router-dom";
 import {
   useUnreadCount,
   useMarkNotificationRead,
@@ -16,12 +33,15 @@ import {
   useDeleteNotification,
   useNotificationsInfinite,
   type NotificationFilters,
-} from '@/hooks/useNotifications';
-import type { NotificationData } from '@/lib/api/notifications';
-import { useUpgradeStatus } from '@/hooks/useSystem';
-import { ProcessMetricsBar } from './ProcessMetricsBar';
-import { useMaintenanceStatus } from '@/hooks/useBackup';
-import { formatTimeAgo } from '@/lib/time-utils';
+} from "@/hooks/useNotifications";
+import type { NotificationData } from "@/lib/api/notifications";
+import { useUpgradeStatus } from "@/hooks/useSystem";
+import { ProcessMetricsBar } from "./ProcessMetricsBar";
+import { useMaintenanceStatus } from "@/hooks/useBackup";
+import { formatTimeAgo } from "@/lib/time-utils";
+import { navigationSections } from "./nav-sections";
+import { getRouteHandle, type RouteHandle } from "@/router";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 function MaintenanceBanner() {
   const { data: maintenance, isLoading } = useMaintenanceStatus();
@@ -34,60 +54,98 @@ function MaintenanceBanner() {
     <Alert className="rounded-none border-x-0 border-t-0 bg-warning/10 text-warning">
       <Loader2 className="h-4 w-4 animate-spin" />
       <AlertDescription>
-        {maintenance.message || 'System maintenance in progress. Please wait...'}
+        {maintenance.message ||
+          "System maintenance in progress. Please wait..."}
       </AlertDescription>
     </Alert>
   );
 }
 
-// Page metadata for dynamic context
-const pageMetadata: Record<string, { title: string; breadcrumbs: { label: string; href?: string }[] }> = {
-  '/': {
-    title: 'Command Center',
-    breadcrumbs: [{ label: 'Observe' }],
-  },
-  '/projects': {
-    title: 'Projects',
-    breadcrumbs: [{ label: 'Build' }],
-  },
-  '/modules': {
-    title: 'Module Catalog',
-    breadcrumbs: [{ label: 'Build' }],
-  },
-  '/tasks': {
-    // K8S-UX-006: Renamed from "Activity" to "Operations Log"
-    title: 'Operations Log',
-    breadcrumbs: [{ label: 'Operate' }],
-  },
-  '/kubernetes': {
-    title: 'Kubernetes',
-    breadcrumbs: [{ label: 'Operate' }],
-  },
-  '/f5bnk': {
-    title: 'F5 BNK',
-    breadcrumbs: [{ label: 'Operate' }],
-  },
-  '/system': {
-    title: 'System',
-    breadcrumbs: [{ label: 'Operate' }],
-  },
-  '/settings': {
-    title: 'Settings',
-    breadcrumbs: [{ label: 'Configure' }],
-  },
-};
+function formatNavLabel(label: string): string {
+  if (!label) return "Home";
+  return label;
+}
+
+function findNavMatch(pathname: string): RouteHandle | null {
+  for (const section of navigationSections) {
+    const matchedItem = section.items.find(
+      (item) =>
+        item.href === pathname ||
+        (item.matchPaths?.includes(pathname) ?? false),
+    );
+    if (matchedItem) {
+      return {
+        title: matchedItem.name,
+        breadcrumbs: [{ label: formatNavLabel(section.label) }],
+      };
+    }
+  }
+  return null;
+}
+
+function getHeaderMetadata(pathname: string): RouteHandle {
+  // Prioritize the unified navigation taxonomy first
+  const navMatch = findNavMatch(pathname);
+  if (navMatch) {
+    return navMatch;
+  }
+
+  const handleFromRoutes = getRouteHandle(pathname);
+  if (handleFromRoutes) {
+    return handleFromRoutes;
+  }
+
+  // General fallback from path segment if not in sidebar
+  const segment = pathname.split("/").filter(Boolean)[0];
+  const fallbackTitle = segment
+    ? segment.charAt(0).toUpperCase() + segment.slice(1).replace(/-/g, " ")
+    : "Overview";
+
+  return {
+    title: fallbackTitle,
+    breadcrumbs: [{ label: "Home" }],
+  };
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function useHeaderMetadata(): RouteHandle {
+  const dataRouterState = useContext(UNSAFE_DataRouterStateContext);
+  const locationContext = useContext(UNSAFE_LocationContext);
+  const pathname = locationContext?.location?.pathname ?? "/";
+
+  const navMatch = findNavMatch(pathname);
+  if (navMatch) {
+    return navMatch;
+  }
+
+  if (dataRouterState?.matches) {
+    const matchWithHandle = [...dataRouterState.matches]
+      .reverse()
+      .find(
+        (m) =>
+          m.route?.handle &&
+          typeof m.route.handle === "object" &&
+          "title" in m.route.handle,
+      );
+    if (matchWithHandle?.route?.handle) {
+      return matchWithHandle.route.handle as RouteHandle;
+    }
+  }
+
+  return getHeaderMetadata(pathname);
+}
 
 // ─── Severity icon + colour ────────────────────────────────────────────────
 
 function SeverityIcon({ severity }: { severity: string }) {
   switch (severity) {
-    case 'success':
+    case "success":
       return <CheckCircle2 className="h-4 w-4 text-success" />;
-    case 'error':
+    case "error":
       return <XCircle className="h-4 w-4 text-destructive" />;
-    case 'critical':
+    case "critical":
       return <ShieldAlert className="h-4 w-4 text-destructive" />;
-    case 'warning':
+    case "warning":
       return <AlertTriangle className="h-4 w-4 text-warning" />;
     default:
       // info + anything else
@@ -103,7 +161,11 @@ interface NotificationItemProps {
   onDismiss: (id: number, e: React.MouseEvent) => void;
 }
 
-function NotificationItem({ notification, onActivate, onDismiss }: NotificationItemProps) {
+function NotificationItem({
+  notification,
+  onActivate,
+  onDismiss,
+}: NotificationItemProps) {
   const relativeTime = formatTimeAgo(notification.created_at);
 
   return (
@@ -111,10 +173,15 @@ function NotificationItem({ notification, onActivate, onDismiss }: NotificationI
       role="button"
       tabIndex={0}
       className={`group relative p-4 hover:bg-muted/50 transition-colors cursor-pointer ${
-        !notification.is_read ? 'bg-info/10' : ''
+        !notification.is_read ? "bg-info/10" : ""
       }`}
       onClick={() => onActivate(notification)}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(notification); } }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onActivate(notification);
+        }
+      }}
     >
       <div className="flex items-start gap-3 pr-6">
         <div className="mt-0.5 shrink-0">
@@ -122,12 +189,19 @@ function NotificationItem({ notification, onActivate, onDismiss }: NotificationI
         </div>
         <div className="flex-1 min-w-0 space-y-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-sm font-medium leading-tight">{notification.title}</p>
+            <p className="text-sm font-medium leading-tight">
+              {notification.title}
+            </p>
             {!notification.is_read && (
-              <div className="h-2 w-2 rounded-full bg-info shrink-0" aria-label="unread" />
+              <div
+                className="h-2 w-2 rounded-full bg-info shrink-0"
+                aria-label="unread"
+              />
             )}
           </div>
-          <p className="text-sm text-muted-foreground line-clamp-2">{notification.message}</p>
+          <p className="text-sm text-muted-foreground line-clamp-2">
+            {notification.message}
+          </p>
           <div className="flex items-center gap-2 flex-wrap">
             {notification.category && (
               <Badge variant="secondary" className="text-xs px-1.5 py-0">
@@ -135,7 +209,9 @@ function NotificationItem({ notification, onActivate, onDismiss }: NotificationI
               </Badge>
             )}
             {relativeTime && (
-              <span className="text-xs text-muted-foreground">{relativeTime}</span>
+              <span className="text-xs text-muted-foreground">
+                {relativeTime}
+              </span>
             )}
           </div>
         </div>
@@ -155,8 +231,24 @@ function NotificationItem({ notification, onActivate, onDismiss }: NotificationI
 
 // ─── Filter bar inside the popover ─────────────────────────────────────────
 
-const SEVERITY_OPTIONS = ['all', 'info', 'success', 'warning', 'error', 'critical'] as const;
-const CATEGORY_OPTIONS = ['all', 'deployment', 'cluster', 'credentials', 'system', 'security', 'fleet', 'general'] as const;
+const SEVERITY_OPTIONS = [
+  "all",
+  "info",
+  "success",
+  "warning",
+  "error",
+  "critical",
+] as const;
+const CATEGORY_OPTIONS = [
+  "all",
+  "deployment",
+  "cluster",
+  "credentials",
+  "system",
+  "security",
+  "fleet",
+  "general",
+] as const;
 
 interface FilterBarProps {
   filters: NotificationFilters;
@@ -167,20 +259,27 @@ function FilterBar({ filters, onChange }: FilterBarProps) {
   return (
     <div className="flex flex-col gap-2 px-3 pt-2 pb-3 border-b">
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs text-muted-foreground shrink-0">Severity:</span>
+        <span className="text-xs text-muted-foreground shrink-0">
+          Severity:
+        </span>
         <div className="flex flex-wrap gap-1">
           {SEVERITY_OPTIONS.map((s) => {
-            const active = (filters.severity ?? 'all') === s;
+            const active = (filters.severity ?? "all") === s;
             return (
               <button
                 key={s}
                 type="button"
                 className={`text-xs px-2 py-0.5 rounded border transition-colors ${
                   active
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'border-border hover:bg-muted'
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "border-border hover:bg-muted"
                 }`}
-                onClick={() => onChange({ ...filters, severity: s === 'all' ? undefined : s })}
+                onClick={() =>
+                  onChange({
+                    ...filters,
+                    severity: s === "all" ? undefined : s,
+                  })
+                }
               >
                 {s}
               </button>
@@ -189,20 +288,27 @@ function FilterBar({ filters, onChange }: FilterBarProps) {
         </div>
       </div>
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs text-muted-foreground shrink-0">Category:</span>
+        <span className="text-xs text-muted-foreground shrink-0">
+          Category:
+        </span>
         <div className="flex flex-wrap gap-1">
           {CATEGORY_OPTIONS.map((c) => {
-            const active = (filters.category ?? 'all') === c;
+            const active = (filters.category ?? "all") === c;
             return (
               <button
                 key={c}
                 type="button"
                 className={`text-xs px-2 py-0.5 rounded border transition-colors ${
                   active
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'border-border hover:bg-muted'
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "border-border hover:bg-muted"
                 }`}
-                onClick={() => onChange({ ...filters, category: c === 'all' ? undefined : c })}
+                onClick={() =>
+                  onChange({
+                    ...filters,
+                    category: c === "all" ? undefined : c,
+                  })
+                }
               >
                 {c}
               </button>
@@ -226,13 +332,8 @@ function NotificationBell() {
   const markAllRead = useMarkAllRead();
   const deleteNotification = useDeleteNotification();
 
-  const {
-    data,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    isLoading,
-  } = useNotificationsInfinite(filters);
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
+    useNotificationsInfinite(filters, { enabled: open });
 
   const notifications = data?.pages.flat() ?? [];
 
@@ -253,25 +354,30 @@ function NotificationBell() {
 
   const activeFiltersLabel =
     filters.severity || filters.category
-      ? `${filters.severity ?? ''}${filters.severity && filters.category ? ' · ' : ''}${filters.category ?? ''}`
+      ? `${filters.severity ?? ""}${filters.severity && filters.category ? " · " : ""}${filters.category ?? ""}`
       : null;
 
-  const emptyMessage =
-    activeFiltersLabel
-      ? `No ${activeFiltersLabel} notifications`
-      : 'No notifications';
+  const emptyMessage = activeFiltersLabel
+    ? `No ${activeFiltersLabel} notifications`
+    : "No notifications";
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative" title="Notifications" aria-label="Notifications">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative"
+          title="Notifications"
+          aria-label="Notifications"
+        >
           <Bell className="h-5 w-5" aria-hidden="true" />
           {unreadCount > 0 && (
             <Badge
               variant="destructive"
               className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
             >
-              {unreadCount > 99 ? '99+' : unreadCount}
+              {unreadCount > 99 ? "99+" : unreadCount}
             </Badge>
           )}
         </Button>
@@ -320,9 +426,12 @@ function NotificationBell() {
                     disabled={isFetchingNextPage}
                   >
                     {isFetchingNextPage ? (
-                      <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Loading...</>
+                      <>
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                        Loading...
+                      </>
                     ) : (
-                      'Load more'
+                      "Load more"
                     )}
                   </Button>
                 </div>
@@ -355,10 +464,23 @@ export function Header() {
   const location = useLocation();
   const { isUpgrading, upgradePhaseLabel } = useUpgradeStatus();
 
-  const currentPage = pageMetadata[location.pathname] || {
-    title: 'Infrastructure Management',
-    breadcrumbs: [{ label: 'Home' }],
-  };
+  const currentPage = useHeaderMetadata();
+  useEffect(() => {
+    document.title = currentPage.title
+      ? `${currentPage.title} | BNK Forge`
+      : "BNK Forge";
+  }, [currentPage.title]);
+  const parentBreadcrumbs = currentPage.breadcrumbs.filter(
+    (crumb, index) =>
+      index < currentPage.breadcrumbs.length - 1 ||
+      crumb.label !== currentPage.title,
+  );
+  const lastBreadcrumb =
+    currentPage.breadcrumbs[currentPage.breadcrumbs.length - 1];
+  const titleHref =
+    lastBreadcrumb?.label === currentPage.title
+      ? lastBreadcrumb.href
+      : undefined;
 
   return (
     <header className="border-b bg-card">
@@ -372,13 +494,16 @@ export function Header() {
           {upgradePhaseLabel && (
             <span className="opacity-80">— {upgradePhaseLabel}</span>
           )}
-          <Badge variant="outline" className="text-primary-foreground border-primary-foreground/40 text-xs ml-2">
+          <Badge
+            variant="outline"
+            className="text-primary-foreground border-primary-foreground/40 text-xs ml-2"
+          >
             <ShieldAlert className="h-3 w-3 mr-1" />
             Deployments locked
           </Badge>
-          {location.pathname !== '/settings' && (
+          {location.pathname !== "/system" && (
             <Link
-              to="/settings"
+              to="/system?tab=monitor"
               className="ml-2 text-xs underline underline-offset-2 opacity-80 hover:opacity-100"
             >
               View progress
@@ -386,26 +511,39 @@ export function Header() {
           )}
         </div>
       )}
-      <div className="flex items-center justify-between px-6 py-4">
+      <div className="h-12 flex items-center justify-between px-6">
         {/* Left side: Page context and breadcrumbs */}
-        <div className="flex items-center gap-4">
-          <div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-              {currentPage.breadcrumbs.map((crumb, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  {index > 0 && <ChevronRight className="h-3 w-3" />}
-                  {crumb.href ? (
-                    <Link to={crumb.href} className="hover:text-foreground transition-colors">
-                      {crumb.label}
-                    </Link>
-                  ) : (
-                    <span>{crumb.label}</span>
-                  )}
-                </div>
-              ))}
+        <div className="flex items-center gap-2 text-sm">
+          {parentBreadcrumbs.map((crumb, index) => (
+            <div
+              key={index}
+              className="flex items-center gap-2 text-muted-foreground"
+            >
+              {crumb.href ? (
+                <Link
+                  to={crumb.href}
+                  className="hover:text-foreground transition-colors"
+                >
+                  {crumb.label}
+                </Link>
+              ) : (
+                <span>{crumb.label}</span>
+              )}
+              <ChevronRight className="h-3 w-3 text-muted-foreground" />
             </div>
-            <h2 className="text-lg font-semibold">{currentPage.title}</h2>
-          </div>
+          ))}
+          <h2 className="text-sm font-semibold text-foreground">
+            {titleHref ? (
+              <Link
+                to={titleHref}
+                className="hover:text-primary transition-colors"
+              >
+                {currentPage.title}
+              </Link>
+            ) : (
+              currentPage.title
+            )}
+          </h2>
         </div>
 
         {/* Right side: Actions */}
@@ -419,8 +557,8 @@ export function Header() {
             className="hidden md:flex items-center gap-2 text-muted-foreground"
             onClick={() => {
               // This will be triggered by the command palette in AppShell
-              const event = new KeyboardEvent('keydown', {
-                key: 'k',
+              const event = new KeyboardEvent("keydown", {
+                key: "k",
                 metaKey: true,
                 bubbles: true,
               });
@@ -433,6 +571,9 @@ export function Header() {
               ⌘K
             </Badge>
           </Button>
+
+          {/* Theme Toggle */}
+          <ThemeToggle />
 
           {/* Notification Center */}
           <NotificationBell />

@@ -30,7 +30,7 @@ export function SecurityPolicyDetail({ resource }: DetailPanelProps) {
                     {ref.name}
                   </code>
                   {ref.sectionName && (
-                    <Badge variant="outline" className="text-[10px]">
+                    <Badge variant="outline" className="text-2xs">
                       listener: {ref.sectionName}
                     </Badge>
                   )}

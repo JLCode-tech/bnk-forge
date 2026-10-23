@@ -482,6 +482,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/k8s/clusters/detect-credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Detect And Register Clusters From Credentials
+         * @description Discover Kubernetes clusters via the project's bound cloud credential template.
+         */
+        post: operations["detect_and_register_clusters_from_credentials_api_projects__project_id__k8s_clusters_detect_credentials_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}/k8s/clusters": {
         parameters: {
             query?: never;
@@ -546,6 +566,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/connectivity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Project Batch Connectivity Check
+         * @description Probe connectivity for all clusters in a project in parallel.
+         */
+        get: operations["project_batch_connectivity_check_api_projects__project_id__connectivity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/k8s/clusters/{cluster_id}": {
         parameters: {
             query?: never;
@@ -569,6 +609,26 @@ export interface paths {
          * @description Delete cluster configuration (owner or admin only).
          */
         delete: operations["delete_cluster_api_k8s_clusters__cluster_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/k8s/clusters/{cluster_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Project Cluster
+         * @description Delete a cluster of this project (owner or admin only); 404 if it belongs elsewhere.
+         */
+        delete: operations["delete_project_cluster_api_projects__project_id__k8s_clusters__cluster_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -876,6 +936,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/k8s/clusters/{cluster_id}/crds/{crd_name}/schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Cluster Crd Schema
+         * @description Return the openAPIV3Schema, additionalPrinterColumns, shortNames, and status.conditions for a CRD.
+         */
+        get: operations["get_cluster_crd_schema_api_k8s_clusters__cluster_id__crds__crd_name__schema_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/k8s/clusters/{cluster_id}/topology": {
         parameters: {
             query?: never;
@@ -891,6 +971,7 @@ export interface paths {
          *     - Edges: Service→Pod (kind='selects') and Workload→Pod (kind='owns').
          *     - Cluster unreachable → 503 code=NETWORK_UNREACHABLE (via @with_breaker).
          *     - Namespace with >300 pods → truncated graph with non-null ``info``.
+         *     - Cached for 60 seconds per namespace; ``force=true`` rebuilds it.
          */
         get: operations["get_cluster_topology_api_k8s_clusters__cluster_id__topology_get"];
         put?: never;
@@ -959,8 +1040,7 @@ export interface paths {
          *
          *     `namespace=all` or `namespace=None` returns cluster-wide counts.
          *
-         *     Cached per (cluster, namespace) for ~20s to match the sidebar's polling
-         *     cadence without re-hitting the k8s API on every render.
+         *     Cached in Redis per (cluster, namespace) for 15s with in-process fallback.
          */
         get: operations["get_cluster_resource_summary_api_k8s_clusters__cluster_id__resource_summary_get"];
         put?: never;
@@ -1432,6 +1512,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/k8s/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Global Search
+         * @description Unified global multi-cluster and infrastructure search.
+         *
+         *     Searches across:
+         *     - Ingresses, HTTPRoutes, VirtualServers, and Services in all reachable clusters
+         *     - Clusters (by name, cloud provider, region)
+         *     - Projects (by name, description, cloud provider, region)
+         */
+        get: operations["global_search_api_k8s_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/k8s/clusters/{cluster_id}/f5bnk/data": {
         parameters: {
             query?: never;
@@ -1446,6 +1551,9 @@ export interface paths {
          *     Returns health analysis, topology graph, and policy associations
          *     in a single response. The frontend caches this under one query key
          *     so switching between Health, Topology, and Policy Map tabs is instant.
+         *
+         *     Query parameters:
+         *       - force: bypass the BNK data, pod discovery and TMM traffic-stats caches.
          */
         get: operations["get_bnk_data_api_k8s_clusters__cluster_id__f5bnk_data_get"];
         put?: never;
@@ -1788,6 +1896,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/k8s/llm-observability/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Llm Stats
+         * @description Summary tiles: total requests, success rate, avg latency, tokens, cost, models.
+         */
+        get: operations["get_llm_stats_api_k8s_llm_observability_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/k8s/clusters/{cluster_id}/llm-observability/histogram": {
         parameters: {
             query?: never;
@@ -1800,6 +1928,26 @@ export interface paths {
          * @description Time-series for one metric (requests|tokens|cost|models|latency).
          */
         get: operations["get_llm_histogram_api_k8s_clusters__cluster_id__llm_observability_histogram_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/llm-observability/histogram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Llm Histogram
+         * @description Time-series for one metric (requests|tokens|cost|models|latency).
+         */
+        get: operations["get_llm_histogram_api_k8s_llm_observability_histogram_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1828,6 +1976,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/k8s/llm-observability/rankings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Llm Rankings
+         * @description Per-model rows with window-over-window trend deltas.
+         */
+        get: operations["get_llm_rankings_api_k8s_llm_observability_rankings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/k8s/clusters/{cluster_id}/llm-observability/provider-usage": {
         parameters: {
             query?: never;
@@ -1840,6 +2008,26 @@ export interface paths {
          * @description Time-series folded to inferred provider (cost|tokens|latency).
          */
         get: operations["get_llm_provider_usage_api_k8s_clusters__cluster_id__llm_observability_provider_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/llm-observability/provider-usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Llm Provider Usage
+         * @description Time-series folded to inferred provider (cost|tokens|latency).
+         */
+        get: operations["get_llm_provider_usage_api_k8s_llm_observability_provider_usage_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1868,6 +2056,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/k8s/llm-observability/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Llm Logs
+         * @description Per-request log rows, newest first; ``next_end`` is the load-older cursor.
+         */
+        get: operations["get_llm_logs_api_k8s_llm_observability_logs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/k8s/clusters/{cluster_id}/llm-observability/filterdata": {
         parameters: {
             query?: never;
@@ -1882,6 +2090,586 @@ export interface paths {
         get: operations["get_llm_filterdata_api_k8s_clusters__cluster_id__llm_observability_filterdata_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/llm-observability/filterdata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Llm Filterdata
+         * @description Distinct model + status label values for filter dropdowns.
+         */
+        get: operations["get_llm_filterdata_api_k8s_llm_observability_filterdata_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/clusters/{cluster_id}/llm-observability/governance/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ai Governance Overview
+         * @description Multi-cluster AI Gateway catalog, routes, DSSM governance entities, readiness checks, and Dependency Fabric topology.
+         */
+        get: operations["get_ai_governance_overview_api_k8s_clusters__cluster_id__llm_observability_governance_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/llm-observability/governance/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ai Governance Overview
+         * @description Multi-cluster AI Gateway catalog, routes, DSSM governance entities, readiness checks, and Dependency Fabric topology.
+         */
+        get: operations["get_ai_governance_overview_api_k8s_llm_observability_governance_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/clusters/{cluster_id}/llm-observability/governance/tenants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Ai Tenant
+         * @description Create or update a cluster-scoped AITenant (inference.k8s.f5.com/v1alpha1).
+         */
+        post: operations["create_ai_tenant_api_k8s_clusters__cluster_id__llm_observability_governance_tenants_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/llm-observability/governance/tenants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Ai Tenant
+         * @description Create or update a cluster-scoped AITenant (inference.k8s.f5.com/v1alpha1).
+         */
+        post: operations["create_ai_tenant_api_k8s_llm_observability_governance_tenants_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/clusters/{cluster_id}/llm-observability/governance/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Ai Provider
+         * @description Create Secret + AICredential + AIProvider bundle for an upstream LLM vendor.
+         */
+        post: operations["create_ai_provider_api_k8s_clusters__cluster_id__llm_observability_governance_providers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/llm-observability/governance/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Ai Provider
+         * @description Create Secret + AICredential + AIProvider bundle for an upstream LLM vendor.
+         */
+        post: operations["create_ai_provider_api_k8s_llm_observability_governance_providers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/clusters/{cluster_id}/llm-observability/governance/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Ai Model
+         * @description Create or update an AIModel with weighted provider deployments and micro-USD/Mtok pricing.
+         */
+        post: operations["create_ai_model_api_k8s_clusters__cluster_id__llm_observability_governance_models_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/llm-observability/governance/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Ai Model
+         * @description Create or update an AIModel with weighted provider deployments and micro-USD/Mtok pricing.
+         */
+        post: operations["create_ai_model_api_k8s_llm_observability_governance_models_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/clusters/{cluster_id}/llm-observability/governance/routes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Ai Gateway Route
+         * @description Create or update Gateway + HTTPRoute + AIGatewayProfile + AppPolicy attachment bundle.
+         */
+        post: operations["create_ai_gateway_route_api_k8s_clusters__cluster_id__llm_observability_governance_routes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/llm-observability/governance/routes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Ai Gateway Route
+         * @description Create or update Gateway + HTTPRoute + AIGatewayProfile + AppPolicy attachment bundle.
+         */
+        post: operations["create_ai_gateway_route_api_k8s_llm_observability_governance_routes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/clusters/{cluster_id}/llm-observability/governance/routes/{route_name}/policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Ai Gateway Route Policies
+         * @description Toggle Semantic Cache, Virtual Key Auth, or Prompt Guardrails on an existing AIGatewayRoute.
+         */
+        patch: operations["update_ai_gateway_route_policies_api_k8s_clusters__cluster_id__llm_observability_governance_routes__route_name__policies_patch"];
+        trace?: never;
+    };
+    "/api/k8s/llm-observability/governance/routes/{route_name}/policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Ai Gateway Route Policies
+         * @description Toggle Semantic Cache, Virtual Key Auth, or Prompt Guardrails on an existing AIGatewayRoute.
+         */
+        patch: operations["update_ai_gateway_route_policies_api_k8s_llm_observability_governance_routes__route_name__policies_patch"];
+        trace?: never;
+    };
+    "/api/k8s/clusters/{cluster_id}/llm-observability/governance/orgs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Governance Org
+         * @description Create or update a DSSM Governance Organization with monthly budget and rate limits.
+         */
+        post: operations["create_governance_org_api_k8s_clusters__cluster_id__llm_observability_governance_orgs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/llm-observability/governance/orgs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Governance Org
+         * @description Create or update a DSSM Governance Organization with monthly budget and rate limits.
+         */
+        post: operations["create_governance_org_api_k8s_llm_observability_governance_orgs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/clusters/{cluster_id}/llm-observability/governance/teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Governance Team
+         * @description Create or update a DSSM Governance Team with model access scope and budgets.
+         */
+        post: operations["create_governance_team_api_k8s_clusters__cluster_id__llm_observability_governance_teams_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/llm-observability/governance/teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Governance Team
+         * @description Create or update a DSSM Governance Team with model access scope and budgets.
+         */
+        post: operations["create_governance_team_api_k8s_llm_observability_governance_teams_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/clusters/{cluster_id}/llm-observability/governance/principals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Governance Principal
+         * @description Create or update a DSSM Governance Principal (user/service/agent) with RBAC role and budgets.
+         */
+        post: operations["create_governance_principal_api_k8s_clusters__cluster_id__llm_observability_governance_principals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/llm-observability/governance/principals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Governance Principal
+         * @description Create or update a DSSM Governance Principal (user/service/agent) with RBAC role and budgets.
+         */
+        post: operations["create_governance_principal_api_k8s_llm_observability_governance_principals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/clusters/{cluster_id}/llm-observability/governance/virtual-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue Governance Virtual Key
+         * @description Issue a new f5vk_... Virtual Key for a DSSM Principal.
+         */
+        post: operations["issue_governance_virtual_key_api_k8s_clusters__cluster_id__llm_observability_governance_virtual_keys_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/llm-observability/governance/virtual-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue Governance Virtual Key
+         * @description Issue a new f5vk_... Virtual Key for a DSSM Principal.
+         */
+        post: operations["issue_governance_virtual_key_api_k8s_llm_observability_governance_virtual_keys_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/clusters/{cluster_id}/llm-observability/governance/virtual-keys/{key_id}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate Governance Virtual Key
+         * @description Rotate an existing DSSM Virtual Key in-place, invalidating the old token secret.
+         */
+        post: operations["rotate_governance_virtual_key_api_k8s_clusters__cluster_id__llm_observability_governance_virtual_keys__key_id__rotate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/llm-observability/governance/virtual-keys/{key_id}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate Governance Virtual Key
+         * @description Rotate an existing DSSM Virtual Key in-place, invalidating the old token secret.
+         */
+        post: operations["rotate_governance_virtual_key_api_k8s_llm_observability_governance_virtual_keys__key_id__rotate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/clusters/{cluster_id}/llm-observability/governance/virtual-keys/{key_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Governance Virtual Key
+         * @description Revoke an existing DSSM Virtual Key.
+         */
+        delete: operations["revoke_governance_virtual_key_api_k8s_clusters__cluster_id__llm_observability_governance_virtual_keys__key_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/llm-observability/governance/virtual-keys/{key_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Governance Virtual Key
+         * @description Revoke an existing DSSM Virtual Key.
+         */
+        delete: operations["revoke_governance_virtual_key_api_k8s_llm_observability_governance_virtual_keys__key_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/clusters/{cluster_id}/llm-observability/governance/remediate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remediate Ai Gateway
+         * @description Execute automated remediation for AI Gateway readiness checks (controller restart, DNS resolver, Multi-NUMA).
+         */
+        post: operations["remediate_ai_gateway_api_k8s_clusters__cluster_id__llm_observability_governance_remediate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/llm-observability/governance/remediate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remediate Ai Gateway
+         * @description Execute automated remediation for AI Gateway readiness checks (controller restart, DNS resolver, Multi-NUMA).
+         */
+        post: operations["remediate_ai_gateway_api_k8s_llm_observability_governance_remediate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/clusters/{cluster_id}/llm-observability/governance/test-request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Ai Gateway Request
+         * @description Polaris Step 8 live inference & policy tester across Virtual Key Auth, Budgets, Semantic Cache, and Failover.
+         */
+        post: operations["test_ai_gateway_request_api_k8s_clusters__cluster_id__llm_observability_governance_test_request_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/k8s/llm-observability/governance/test-request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Ai Gateway Request
+         * @description Polaris Step 8 live inference & policy tester across Virtual Key Auth, Budgets, Semantic Cache, and Failover.
+         */
+        post: operations["test_ai_gateway_request_api_k8s_llm_observability_governance_test_request_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3610,6 +4398,7 @@ export interface paths {
          *     - provider: Filter by 'aws', 'azure', 'gcp', 'on-prem'
          *     - official_only: Only show official BNK-Forge modules
          *     - tested_only: Only show tested modules
+         *     - include_details: Include heavy readme/variables_schema/inputs_metadata/outputs_metadata fields
          */
         get: operations["list_modules_api_module_library_get"];
         put?: never;
@@ -4873,6 +5662,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cloud-auth/azure/regions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Azure Regions
+         * @description List Azure regions in the canonical {value, label} shape.
+         */
+        get: operations["list_azure_regions_api_cloud_auth_azure_regions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cloud-auth/ibm/cos-instances/query": {
         parameters: {
             query?: never;
@@ -6073,6 +6882,26 @@ export interface paths {
          *     diffs consecutive samples to compute rates.
          */
         get: operations["get_process_metrics_api_system_process_metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/bnk-consumption": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Bnk Consumption
+         * @description Get fleet-wide BNK resource consumption.
+         */
+        get: operations["get_bnk_consumption_api_system_bnk_consumption_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -10146,6 +10975,8 @@ export interface paths {
          *
          *     Returns: certs_mounted, cwc_service_found, cwc_reachable, setup_complete,
          *     cert_manager_available, and the full CWC /status response if reachable.
+         *     Cached for 120 seconds (cleared by CWC setup and license changes); pass
+         *     force=true to bypass the cache.
          */
         get: operations["get_cwc_status_endpoint_api_licensing__cluster_id__cwc_status_get"];
         put?: never;
@@ -10690,6 +11521,7 @@ export interface paths {
          *       config_id           — link to a BenchmarkConfig row
          *       proxy_deployment_id — link to a ProxyDeployment row
          *       dataset_name        — dataset label (stored in result_json)
+         *       tags                — JSON object stored as the run's tags
          */
         post: operations["ingest_aiperf_result_api_benchmarks_results_aiperf_post"];
         delete?: never;
@@ -10901,10 +11733,110 @@ export interface paths {
          *
          *     Mutation route: requires operator role and, for project-scoped (managed)
          *     agents, project ownership — same pattern as delete_agent_host. Global /
-         *     self-registered agents (project_id NULL) have no owner, so operator alone
-         *     gates them.
+         *     self-registered agents (project_id NULL) have no owner, so admin role
+         *     is required (matching the mint gate).
          */
         delete: operations["delete_benchmark_agent_api_benchmarks_agents__agent_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Benchmark Agent
+         * @description Update a benchmark agent's settings (name, projects, tags, capabilities).
+         *
+         *     Mutation route: requires operator role and, for project-scoped (managed)
+         *     agents, project ownership.
+         */
+        patch: operations["update_benchmark_agent_api_benchmarks_agents__agent_id__patch"];
+        trace?: never;
+    };
+    "/api/benchmarks/agents/{agent_id}/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mint Benchmark Agent Token
+         * @description Mint an agent-bound bearer token for a registered benchmark agent.
+         *
+         *     External agents (awsbnkctl, customer hosts) register with an operator token,
+         *     then need a token that carries the ``agent_id`` claim the agent WebSocket
+         *     requires under BENCHMARK_AGENT_AUTH_REQUIRED. SSH-provisioned hosts get the
+         *     same token written to /etc/forge/agent.env; this route hands it to agents
+         *     Forge does not provision. Project-scoped agents need operator role plus
+         *     project ownership; unscoped agents (project_id NULL, every self-registered
+         *     agent) need admin. Each token records the minting user and agent token_version;
+         *     calling rotate bumps the token_version and immediately revokes all prior tokens.
+         */
+        post: operations["mint_benchmark_agent_token_api_benchmarks_agents__agent_id__token_post"];
+        /**
+         * Revoke Benchmark Agent Token
+         * @description Revoke all tokens for an agent without deleting the agent: bumps token_version and drops live WS.
+         */
+        delete: operations["revoke_benchmark_agent_token_api_benchmarks_agents__agent_id__token_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/benchmarks/agents/{agent_id}/token/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate Benchmark Agent Token
+         * @description Rotate an agent's token: bumps token_version, revokes earlier tokens, and force-closes live WS.
+         */
+        post: operations["rotate_benchmark_agent_token_api_benchmarks_agents__agent_id__token_rotate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/benchmarks/agents/{agent_id}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Benchmark Agent Connection
+         * @description Check live connection status and network reachability for an agent.
+         */
+        post: operations["check_benchmark_agent_connection_api_benchmarks_agents__agent_id__check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/benchmarks/agents/{agent_id}/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Connect Benchmark Agent
+         * @description Attempt to trigger or start the benchmark agent daemon on the remote host.
+         */
+        post: operations["connect_benchmark_agent_api_benchmarks_agents__agent_id__connect_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -10919,7 +11851,7 @@ export interface paths {
         };
         /**
          * List Agent Hosts
-         * @description List Forge-managed remote benchmark agent hosts, filtered by project.
+         * @description List Forge-managed or registered remote benchmark agent hosts, filtered by project.
          */
         get: operations["list_agent_hosts_api_benchmarks_agent_hosts_get"];
         put?: never;
@@ -11430,6 +12362,46 @@ export interface paths {
         get: operations["get_benchmark_run_group_api_benchmarks_run_groups__group_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/benchmarks/run-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Benchmark Run Groups
+         * @description Run-groups (scenario sweeps), newest first.
+         */
+        get: operations["list_benchmark_run_groups_api_benchmarks_run_groups_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/benchmarks/run-groups/curves": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Benchmark Run Group Curves
+         * @description Load curves for several sweeps (latency / throughput / goodput per load point).
+         */
+        post: operations["benchmark_run_group_curves_api_benchmarks_run_groups_curves_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -12240,6 +13212,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/fleet/configs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Configs
+         * @description List saved deployable configs for a fleet (or all).
+         */
+        get: operations["list_configs_api_fleet_configs_get"];
+        put?: never;
+        /**
+         * Create Config
+         * @description Save a new fleet deployable config.
+         */
+        post: operations["create_config_api_fleet_configs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/fleet/configs/{config_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Config
+         * @description Get a single fleet deployable config by ID.
+         */
+        get: operations["get_config_api_fleet_configs__config_id__get"];
+        /**
+         * Update Config
+         * @description Update a fleet deployable config.
+         */
+        put: operations["update_config_api_fleet_configs__config_id__put"];
+        post?: never;
+        /**
+         * Delete Config
+         * @description Delete a fleet deployable config.
+         */
+        delete: operations["delete_config_api_fleet_configs__config_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/fleet/configs/deploy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deploy Config To Fleet
+         * @description Validate (dry_run=True) or deploy (dry_run=False) a config across multiple clusters.
+         *
+         *     Either `config_id` or `config_yaml` must be provided.
+         */
+        post: operations["deploy_config_to_fleet_api_fleet_configs_deploy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ping": {
         parameters: {
             query?: never;
@@ -12590,6 +13636,571 @@ export interface components {
             message: string;
             /** Celery Task Id */
             celery_task_id: string;
+        };
+        /** AiGatewayRouteSummary */
+        AiGatewayRouteSummary: {
+            /** Name */
+            name: string;
+            /** Namespace */
+            namespace: string;
+            /**
+             * Tenant
+             * @default default
+             */
+            tenant: string;
+            /**
+             * Tenant Ref
+             * @default
+             */
+            tenant_ref: string;
+            /** Cluster Id */
+            cluster_id: number;
+            /**
+             * Cluster Name
+             * @default
+             */
+            cluster_name: string;
+            /** Gateway Name */
+            gateway_name: string;
+            /**
+             * Listener Name
+             * @default http
+             */
+            listener_name: string;
+            /**
+             * Listener Port
+             * @default 8080
+             */
+            listener_port: number;
+            /**
+             * Port
+             * @default 8080
+             */
+            port: number;
+            /** Vip Address */
+            vip_address?: string | null;
+            /**
+             * Route Name
+             * @default
+             */
+            route_name: string;
+            /**
+             * Path Prefix
+             * @default /v1
+             */
+            path_prefix: string;
+            /**
+             * Ai Gateway Profile
+             * @default
+             */
+            ai_gateway_profile: string;
+            /**
+             * App Policy Name
+             * @default
+             */
+            app_policy_name: string;
+            /** App Policy */
+            app_policy?: string | null;
+            /**
+             * Virtual Keys Enabled
+             * @default true
+             */
+            virtual_keys_enabled: boolean;
+            /**
+             * Jwt Enabled
+             * @default false
+             */
+            jwt_enabled: boolean;
+            /** Jwt Issuer */
+            jwt_issuer?: string | null;
+            /** Jwt Audiences */
+            jwt_audiences?: string[];
+            /** Jwks Uri */
+            jwks_uri?: string | null;
+            /** Jwks Refresh Interval */
+            jwks_refresh_interval?: string | null;
+            /** Jwt Secret Ref */
+            jwt_secret_ref?: string | null;
+            /** Jwt Header */
+            jwt_header?: string | null;
+            /** Jwt Scheme */
+            jwt_scheme?: string | null;
+            /** Jwt Clock Skew */
+            jwt_clock_skew?: string | null;
+            /** Jwt Principal Claim */
+            jwt_principal_claim?: string | null;
+            /** Jwt Team Claim */
+            jwt_team_claim?: string | null;
+            /** Jwt Org Claim */
+            jwt_org_claim?: string | null;
+            /**
+             * Auth Mode
+             * @default virtual_key
+             */
+            auth_mode: string;
+            /**
+             * Failover Enabled
+             * @default true
+             */
+            failover_enabled: boolean;
+            /**
+             * Failover Max Attempts
+             * @default 3
+             */
+            failover_max_attempts: number;
+            /**
+             * Failover On 429
+             * @default true
+             */
+            failover_on_429: boolean;
+            /**
+             * Failover On 5Xx
+             * @default true
+             */
+            failover_on_5xx: boolean;
+            /**
+             * Prompt Cache Enabled
+             * @default false
+             */
+            prompt_cache_enabled: boolean;
+            /**
+             * Semantic Cache Enabled
+             * @default false
+             */
+            semantic_cache_enabled: boolean;
+            /**
+             * Semantic Cache Similarity Threshold
+             * @default 0.92
+             */
+            semantic_cache_similarity_threshold: number;
+            /** Semantic Cache Pool Max Size */
+            semantic_cache_pool_max_size?: number | null;
+            /** Semantic Cache Pool Idle Timeout */
+            semantic_cache_pool_idle_timeout?: string | null;
+            /**
+             * Model Routing Enabled
+             * @default false
+             */
+            model_routing_enabled: boolean;
+            /** Default Model Ref */
+            default_model_ref?: string | null;
+            /** Semantic Router Service */
+            semantic_router_service?: string | null;
+            /** Semantic Router Namespace */
+            semantic_router_namespace?: string | null;
+            /**
+             * Semantic Router Port
+             * @default 8000
+             */
+            semantic_router_port: number;
+            /**
+             * Semantic Router Timeout
+             * @default 5s
+             */
+            semantic_router_timeout: string | null;
+            /** Providers */
+            providers?: string[];
+            /** Provider Credentials */
+            provider_credentials?: {
+                [key: string]: string;
+            };
+            /** Provider Overrides */
+            provider_overrides?: components["schemas"]["AiRouteProviderOverride"][];
+            /**
+             * Accepted
+             * @default true
+             */
+            accepted: boolean;
+            /**
+             * Programmed
+             * @default true
+             */
+            programmed: boolean;
+            /**
+             * Stuck Profile Bug
+             * @default false
+             */
+            stuck_profile_bug: boolean;
+            /**
+             * Status Message
+             * @default Profile programmed on Gateway
+             */
+            status_message: string;
+            /**
+             * Status
+             * @default Programmed
+             */
+            status: string;
+        };
+        /** AiGovernanceMutationResponse */
+        AiGovernanceMutationResponse: {
+            /**
+             * Status
+             * @default success
+             */
+            status: string;
+            /**
+             * Success
+             * @default true
+             */
+            success: boolean;
+            /**
+             * Action
+             * @default
+             */
+            action: string;
+            /** Message */
+            message: string;
+            /** Cluster Id */
+            cluster_id: number;
+            /** Manifests Applied */
+            manifests_applied?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Applied Yaml
+             * @default
+             */
+            applied_yaml: string;
+            /** Entity */
+            entity?: {
+                [key: string]: unknown;
+            } | null;
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            };
+            /** Id */
+            id?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Masked Key */
+            masked_key?: string | null;
+            /** Cleartext Key */
+            cleartext_key?: string | null;
+        };
+        /** AiGovernanceOverviewResponse */
+        AiGovernanceOverviewResponse: {
+            /** Available */
+            available: boolean;
+            /** Endpoint */
+            endpoint?: string | null;
+            /** Updated At */
+            updated_at: string;
+            /** Reason */
+            reason?: string | null;
+            /** Errors */
+            errors?: {
+                [key: string]: string;
+            };
+            /**
+             * Namespace
+             * @default f5-bnk
+             */
+            namespace: string;
+            /** Tenants */
+            tenants?: components["schemas"]["AiTenantSummary"][];
+            /** Providers */
+            providers?: components["schemas"]["AiProviderSummary"][];
+            /** Models */
+            models?: components["schemas"]["AiModelSummary"][];
+            /** Routes */
+            routes?: components["schemas"]["AiGatewayRouteSummary"][];
+            /** Orgs */
+            orgs?: components["schemas"]["GovernanceOrgItem"][];
+            /** Organizations */
+            organizations?: components["schemas"]["GovernanceOrgItem"][];
+            /** Teams */
+            teams?: components["schemas"]["GovernanceTeamItem"][];
+            /** Principals */
+            principals?: components["schemas"]["GovernancePrincipalItem"][];
+            /** Virtual Keys */
+            virtual_keys?: components["schemas"]["GovernanceVirtualKeyItem"][];
+            /** Readiness Checks */
+            readiness_checks?: components["schemas"]["AiReadinessCheckItem"][];
+            /** Diagnostics */
+            diagnostics?: components["schemas"]["AiReadinessCheckItem"][];
+            /** Request Audit Logs */
+            request_audit_logs?: components["schemas"]["ClickHouseRequestAuditItem"][];
+            /** Topology Nodes */
+            topology_nodes?: {
+                [key: string]: unknown;
+            }[];
+            /** Topology Edges */
+            topology_edges?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** AiModelDeploymentItem */
+        AiModelDeploymentItem: {
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /**
+             * Provider
+             * @default
+             */
+            provider: string;
+            /**
+             * Provider Ref
+             * @default
+             */
+            provider_ref: string;
+            /**
+             * Upstream
+             * @default
+             */
+            upstream: string;
+            /** Dialects */
+            dialects?: string[];
+            /**
+             * Weight
+             * @default 100
+             */
+            weight: number;
+            /**
+             * State
+             * @default Active
+             */
+            state: string;
+            /**
+             * Input Per Mtok
+             * @default 0
+             */
+            input_per_mtok: number;
+            /**
+             * Output Per Mtok
+             * @default 0
+             */
+            output_per_mtok: number;
+        };
+        /** AiModelSummary */
+        AiModelSummary: {
+            /** Name */
+            name: string;
+            /**
+             * Public Name
+             * @default
+             */
+            public_name: string;
+            /**
+             * Model Id
+             * @default
+             */
+            model_id: string;
+            /** Namespace */
+            namespace: string;
+            /**
+             * Tenant
+             * @default default
+             */
+            tenant: string;
+            /**
+             * Tenant Ref
+             * @default
+             */
+            tenant_ref: string;
+            /** Cluster Id */
+            cluster_id: number;
+            /**
+             * Cluster Name
+             * @default
+             */
+            cluster_name: string;
+            /** Deployments */
+            deployments?: components["schemas"]["AiModelDeploymentItem"][];
+            /**
+             * Input Token Cost Micro Usd
+             * @default 0
+             */
+            input_token_cost_micro_usd: number;
+            /**
+             * Output Token Cost Micro Usd
+             * @default 0
+             */
+            output_token_cost_micro_usd: number;
+            /**
+             * Ready
+             * @default true
+             */
+            ready: boolean;
+            /**
+             * Status Message
+             * @default AIModel is ready
+             */
+            status_message: string;
+            /**
+             * Status
+             * @default Ready
+             */
+            status: string;
+        };
+        /** AiProviderSummary */
+        AiProviderSummary: {
+            /** Name */
+            name: string;
+            /** Namespace */
+            namespace: string;
+            /**
+             * Tenant
+             * @default default
+             */
+            tenant: string;
+            /**
+             * Tenant Ref
+             * @default
+             */
+            tenant_ref: string;
+            /** Cluster Id */
+            cluster_id: number;
+            /**
+             * Cluster Name
+             * @default
+             */
+            cluster_name: string;
+            /**
+             * Vendor
+             * @default Generic
+             */
+            vendor: string;
+            /**
+             * Provider Type
+             * @default
+             */
+            provider_type: string;
+            /** Base Url */
+            base_url?: string | null;
+            /** Endpoint Url */
+            endpoint_url?: string | null;
+            /** Dialect */
+            dialect?: string | null;
+            /** Region */
+            region?: string | null;
+            /** Deployment */
+            deployment?: string | null;
+            /** Api Version */
+            api_version?: string | null;
+            /** Credential Name */
+            credential_name?: string | null;
+            /** Credential Ref */
+            credential_ref?: string | null;
+            /** Secret Name */
+            secret_name?: string | null;
+            /** Secret Ref */
+            secret_ref?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Ready
+             * @default true
+             */
+            ready: boolean;
+            /**
+             * Status Message
+             * @default AIProvider is ready
+             */
+            status_message: string;
+            /**
+             * Status
+             * @default Ready
+             */
+            status: string;
+        };
+        /** AiReadinessCheckItem */
+        AiReadinessCheckItem: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /** Category */
+            category: string;
+            /** Cluster Id */
+            cluster_id: number;
+            /**
+             * Cluster Name
+             * @default
+             */
+            cluster_name: string;
+            /** Status */
+            status: string;
+            /** Summary */
+            summary: string;
+            /** Remediation Action */
+            remediation_action?: string | null;
+            /** Remediation Label */
+            remediation_label?: string | null;
+            /** Remediation Hint */
+            remediation_hint?: string | null;
+            /** Details */
+            details?: {
+                [key: string]: string | number | boolean | null;
+            };
+        };
+        /** AiRouteProviderOverride */
+        AiRouteProviderOverride: {
+            /** Name */
+            name: string;
+            /** Credential Ref */
+            credential_ref?: string | null;
+        };
+        /** AiTenantSummary */
+        AiTenantSummary: {
+            /** Name */
+            name: string;
+            /**
+             * Display Name
+             * @default
+             */
+            display_name: string;
+            /** Cluster Id */
+            cluster_id: number;
+            /**
+             * Cluster Name
+             * @default
+             */
+            cluster_name: string;
+            /**
+             * Namespace
+             * @default f5-bnk
+             */
+            namespace: string;
+            /**
+             * Admin Secret
+             * @default polaris-bootstrap-admin
+             */
+            admin_secret: string;
+            /** Oidc Issuer */
+            oidc_issuer?: string | null;
+            /**
+             * Ready
+             * @default true
+             */
+            ready: boolean;
+            /**
+             * Status Message
+             * @default AITenant is ready
+             */
+            status_message: string;
+            /**
+             * Status
+             * @default Ready
+             */
+            status: string;
+            /**
+             * Models Count
+             * @default 0
+             */
+            models_count: number;
+            /**
+             * Providers Count
+             * @default 0
+             */
+            providers_count: number;
         };
         /** AlertChannelCreate */
         AlertChannelCreate: {
@@ -13073,6 +14684,48 @@ export interface components {
             summary: components["schemas"]["ConnectivitySummary"];
         };
         /**
+         * BenchmarkAgentCheckResponse
+         * @description Response for POST /api/benchmarks/agents/{agent_id}/check.
+         */
+        BenchmarkAgentCheckResponse: {
+            /** Agent Id */
+            agent_id: number;
+            /** Name */
+            name: string;
+            /** Status */
+            status: string;
+            /** Ws Connected */
+            ws_connected: boolean;
+            /** Ip Address */
+            ip_address?: string | null;
+            /** Host Reachable */
+            host_reachable?: boolean | null;
+            /** Last Heartbeat */
+            last_heartbeat?: string | null;
+            /** Message */
+            message: string;
+        };
+        /**
+         * BenchmarkAgentConnectResponse
+         * @description Response for POST /api/benchmarks/agents/{agent_id}/connect.
+         */
+        BenchmarkAgentConnectResponse: {
+            /** Agent Id */
+            agent_id: number;
+            /** Name */
+            name: string;
+            /** Status */
+            status: string;
+            /** Success */
+            success: boolean;
+            /** Method */
+            method: string;
+            /** Message */
+            message: string;
+            /** Error */
+            error?: string | null;
+        };
+        /**
          * BenchmarkAgentHostCreate
          * @description Create a Forge-managed remote benchmark agent host.
          *
@@ -13089,19 +14742,24 @@ export interface components {
             project_id: number;
             /**
              * Host Ip
-             * @description IP Forge will SSH to
+             * @description Host IP address or hostname (optional for outbound agents)
              */
-            host_ip: string;
+            host_ip?: string | null;
             /**
              * Ssh Credential Id
-             * @description FK to ssh_credentials.id — credential for SSH access
+             * @description FK to ssh_credentials.id — credential for SSH access (optional for outbound agents)
              */
-            ssh_credential_id: number;
+            ssh_credential_id?: number | null;
             /**
              * Ssh Port
              * @default 22
              */
             ssh_port: number;
+            /**
+             * Agent Mode
+             * @description Connection mode: 'outbound' (agent connects via WS) or 'ssh' (Forge SSHs to host)
+             */
+            agent_mode?: string | null;
             /**
              * Jumphost Chain
              * @description Optional jumphost chain: [{'ssh_credential_id': N}, ...]
@@ -13109,6 +14767,48 @@ export interface components {
             jumphost_chain?: {
                 [key: string]: unknown;
             }[] | null;
+            /**
+             * Connected Project Ids
+             * @description Optional additional projects this agent is connected to (e.g. on-prem shared)
+             */
+            connected_project_ids?: number[] | null;
+            /**
+             * Infra
+             * @description Optional infra type: aws | azure | gke | on-prem | generic
+             */
+            infra?: string | null;
+            /**
+             * Agent Type
+             * @description Agent type: aiperf | inferencex | cloud-jumphost | generic
+             * @default aiperf
+             */
+            agent_type: string | null;
+            /**
+             * Heartbeat Interval
+             * @description Heartbeat interval in seconds
+             * @default 15
+             */
+            heartbeat_interval: number | null;
+            /**
+             * Setup Mode
+             * @description Deployment setup mode: systemd | cli | managed
+             * @default systemd
+             */
+            setup_mode: string | null;
+            /**
+             * Tags
+             * @description Optional custom tags
+             */
+            tags?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Capabilities
+             * @description Optional custom capabilities
+             */
+            capabilities?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * BenchmarkAgentHostResponse
@@ -13137,6 +14837,12 @@ export interface components {
             last_heartbeat: string | null;
             /** Project Id */
             project_id: number | null;
+            /** Project Name */
+            project_name?: string | null;
+            /** Connected Projects */
+            connected_projects?: string[] | null;
+            /** Infra */
+            infra?: string | null;
             /** Host Ip */
             host_ip: string | null;
             /** Ssh Credential Id */
@@ -13177,6 +14883,12 @@ export interface components {
             hostname?: string | null;
             /** Ip Address */
             ip_address?: string | null;
+            /** Host Ip */
+            host_ip?: string | null;
+            /** Project Id */
+            project_id?: number | null;
+            /** Infra */
+            infra?: string | null;
             /** Tags */
             tags?: {
                 [key: string]: unknown;
@@ -13199,6 +14911,31 @@ export interface components {
             hostname: string | null;
             /** Ip Address */
             ip_address: string | null;
+            /** Host Ip */
+            host_ip?: string | null;
+            /** Project Id */
+            project_id?: number | null;
+            /** Project Name */
+            project_name?: string | null;
+            /** Connected Projects */
+            connected_projects?: string[] | null;
+            /** Infra */
+            infra?: string | null;
+            /**
+             * Managed
+             * @default false
+             */
+            managed: boolean | null;
+            /** Ssh Credential Id */
+            ssh_credential_id?: number | null;
+            /** Provision Status */
+            provision_status?: string | null;
+            /** Provision Message */
+            provision_message?: string | null;
+            /** Readiness */
+            readiness?: {
+                [key: string]: unknown;
+            } | null;
             /** Tags */
             tags: {
                 [key: string]: unknown;
@@ -13221,6 +14958,55 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * BenchmarkAgentTokenResponse
+         * @description Response for POST /api/benchmarks/agents/{agent_id}/token.
+         */
+        BenchmarkAgentTokenResponse: {
+            /** Agent Id */
+            agent_id: number;
+            /** Agent Name */
+            agent_name: string;
+            /** Token */
+            token: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Cloud Credentials */
+            cloud_credentials?: {
+                [key: string]: string;
+            } | null;
+        };
+        /**
+         * BenchmarkAgentUpdate
+         * @description Schema for PATCH /api/benchmarks/agents/{agent_id} — agent update.
+         */
+        BenchmarkAgentUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Hostname */
+            hostname?: string | null;
+            /** Ip Address */
+            ip_address?: string | null;
+            /** Host Ip */
+            host_ip?: string | null;
+            /** Project Id */
+            project_id?: number | null;
+            /** Connected Projects */
+            connected_projects?: string[] | null;
+            /** Infra */
+            infra?: string | null;
+            /** Tags */
+            tags?: {
+                [key: string]: unknown;
+            } | null;
+            /** Capabilities */
+            capabilities?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * BenchmarkCompareRequest
@@ -13246,6 +15032,11 @@ export interface components {
              * @default false
              */
             context_mismatch: boolean;
+            /**
+             * Server Mismatch
+             * @default false
+             */
+            server_mismatch: boolean;
         };
         /**
          * BenchmarkCompareRunMetrics
@@ -13286,10 +15077,24 @@ export interface components {
             tokens_per_sec: number | null;
             /** Duration Seconds */
             duration_seconds: number | null;
+            /** Total Output Tokens */
+            total_output_tokens?: number | null;
+            /** Total Input Tokens */
+            total_input_tokens?: number | null;
             /** Ttft Avg */
             ttft_avg?: number | null;
+            /** Ttft P50 */
+            ttft_p50?: number | null;
+            /** Ttft P90 */
+            ttft_p90?: number | null;
+            /** Ttft P99 */
+            ttft_p99?: number | null;
             /** Itl Avg */
             itl_avg?: number | null;
+            /** Itl P50 */
+            itl_p50?: number | null;
+            /** Itl P99 */
+            itl_p99?: number | null;
             /** Tst Avg */
             tst_avg?: number | null;
             /** Osl Avg */
@@ -13298,6 +15103,42 @@ export interface components {
             isl_avg?: number | null;
             /** Per User Throughput Avg */
             per_user_throughput_avg?: number | null;
+            /** Per User Throughput P50 */
+            per_user_throughput_p50?: number | null;
+            /** Goodput */
+            goodput?: number | null;
+            /** Good Request Pct */
+            good_request_pct?: number | null;
+            /** Error Rate Pct */
+            error_rate_pct?: number | null;
+            /** Requested Osl */
+            requested_osl?: number | null;
+            /** Effective Concurrency */
+            effective_concurrency?: number | null;
+            /** Cache Hit Pct */
+            cache_hit_pct?: number | null;
+            /** Load Spread */
+            load_spread?: number | null;
+            /** Max Share Pct */
+            max_share_pct?: number | null;
+            /** Preemptions */
+            preemptions?: number | null;
+            /** Ttft P10 */
+            ttft_p10?: number | null;
+            /** Ttft P25 */
+            ttft_p25?: number | null;
+            /** Pods */
+            pods?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Tags */
+            tags?: {
+                [key: string]: unknown;
+            } | null;
+            /** Config Snapshot */
+            config_snapshot?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * BenchmarkConfigCreate
@@ -13532,10 +15373,14 @@ export interface components {
             agent_id: number | null;
             /** Target Id */
             target_id: number | null;
+            /** Cluster Name */
+            cluster_name?: string | null;
             /** Proxy Deployment Id */
             proxy_deployment_id: number | null;
             /** Scenario Key */
             scenario_key?: string | null;
+            /** Variant Label */
+            variant_label?: string | null;
             /** Status */
             status: string;
             /** Error Message */
@@ -13637,10 +15482,14 @@ export interface components {
             agent_id: number | null;
             /** Target Id */
             target_id: number | null;
+            /** Cluster Name */
+            cluster_name?: string | null;
             /** Proxy Deployment Id */
             proxy_deployment_id: number | null;
             /** Scenario Key */
             scenario_key?: string | null;
+            /** Variant Label */
+            variant_label?: string | null;
             /** Status */
             status: string;
             /** Error Message */
@@ -13774,6 +15623,8 @@ export interface components {
             description: string | null;
             /** Cluster Id */
             cluster_id: number;
+            /** Cluster Name */
+            cluster_name?: string | null;
             /** Llm Base Url */
             llm_base_url: string;
             /** Llm Model */
@@ -13838,6 +15689,8 @@ export interface components {
             description: string | null;
             /** Cluster Id */
             cluster_id: number;
+            /** Cluster Name */
+            cluster_name?: string | null;
             /** Llm Base Url */
             llm_base_url: string;
             /** Llm Model */
@@ -14369,6 +16222,51 @@ export interface components {
              */
             dpu_ids?: number[];
         };
+        /**
+         * BnkClusterConsumption
+         * @description Per-cluster BNK resource consumption breakdown.
+         */
+        BnkClusterConsumption: {
+            /** Cluster Id */
+            cluster_id: number;
+            /** Cluster Name */
+            cluster_name: string;
+            /** Cloud Provider */
+            cloud_provider?: string | null;
+            /** Region */
+            region?: string | null;
+            /** Reachable */
+            reachable: boolean;
+            /** Bnk Installed */
+            bnk_installed: boolean;
+            /** Bnk Version */
+            bnk_version?: string | null;
+            /** Status */
+            status: string;
+            /** Node Count */
+            node_count?: number | null;
+            control_plane: components["schemas"]["BnkPlaneConsumption"];
+            data_plane: components["schemas"]["BnkPlaneConsumption"];
+            total: components["schemas"]["BnkPlaneConsumption"];
+            node_capacity?: components["schemas"]["BnkNodeCapacity"];
+            /** Metrics Available */
+            metrics_available: boolean;
+            /** Metrics Error */
+            metrics_error?: string | null;
+            dpf: components["schemas"]["BnkClusterDpfSummary"];
+            /** Top Pods */
+            top_pods?: components["schemas"]["BnkTopPod"][];
+        };
+        /**
+         * BnkClusterDpfSummary
+         * @description Lightweight DPF/DPU summary for a single cluster.
+         */
+        BnkClusterDpfSummary: {
+            /** Detected */
+            detected: boolean;
+            /** Dpu Count */
+            dpu_count: number;
+        };
         /** BnkClusterMemberAssignRequest */
         BnkClusterMemberAssignRequest: {
             /**
@@ -14406,6 +16304,503 @@ export interface components {
             }[];
             bnk_config: components["schemas"]["BnkClusterConfigSummary"];
         };
+        /**
+         * BnkConsumptionResponse
+         * @description Response for GET /api/system/bnk-consumption.
+         */
+        BnkConsumptionResponse: {
+            /** Timestamp */
+            timestamp: string;
+            fleet_summary: components["schemas"]["BnkFleetSummary"];
+            /** Clusters */
+            clusters: components["schemas"]["BnkClusterConsumption"][];
+        };
+        /**
+         * BnkDataResponse
+         * @description Wrapper for the unified /f5bnk/data endpoint.
+         *
+         *     The ``health`` and ``trafficStats`` keys are strongly typed; the remaining
+         *     keys are kept as loose dicts because their schemas are large and already
+         *     typed manually in the frontend. This lets OpenAPI capture new fields
+         *     without coupling the whole topology/palette response to Pydantic.
+         */
+        BnkDataResponse: {
+            health: components["schemas"]["BnkHealthResponse"];
+            /** Topology */
+            topology: {
+                [key: string]: unknown;
+            }[];
+            /** Dataplane */
+            dataPlane: {
+                [key: string]: unknown;
+            };
+            /** Referencegrants */
+            referenceGrants: {
+                [key: string]: unknown;
+            }[];
+            /** Topologycounts */
+            topologyCounts: {
+                [key: string]: unknown;
+            };
+            /** Policyassociations */
+            policyAssociations: {
+                [key: string]: unknown;
+            }[];
+            /** Policycount */
+            policyCount: number;
+            /** Backends */
+            backends?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Palette */
+            palette?: {
+                [key: string]: unknown;
+            } | null;
+            trafficStats?: components["schemas"]["BnkTrafficStatsResponse"] | null;
+            /** Cluster Id */
+            cluster_id: number;
+            /** Namespace */
+            namespace?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** BnkEgressTrafficStats */
+        BnkEgressTrafficStats: {
+            /** Egressname */
+            egressName: string;
+            /** Namespace */
+            namespace: string;
+            /**
+             * Clientsidebytesin
+             * @default 0
+             */
+            clientsideBytesIn: number;
+            /**
+             * Clientsidebytesout
+             * @default 0
+             */
+            clientsideBytesOut: number;
+            /**
+             * Clientsidecurconns
+             * @default 0
+             */
+            clientsideCurConns: number;
+            /**
+             * Clientsidetotconns
+             * @default 0
+             */
+            clientsideTotConns: number;
+            /**
+             * Serversidebytesin
+             * @default 0
+             */
+            serversideBytesIn: number;
+            /**
+             * Serversidebytesout
+             * @default 0
+             */
+            serversideBytesOut: number;
+            /**
+             * Serversidecurconns
+             * @default 0
+             */
+            serversideCurConns: number;
+            /**
+             * Serversidetotconns
+             * @default 0
+             */
+            serversideTotConns: number;
+        };
+        /** BnkFirewallRuleTrafficStats */
+        BnkFirewallRuleTrafficStats: {
+            /** Policyname */
+            policyName: string;
+            /** Namespace */
+            namespace: string;
+            /** Rulename */
+            ruleName: string;
+            /**
+             * Action
+             * @default
+             */
+            action: string;
+            /**
+             * Ipprotocol
+             * @default
+             */
+            ipProtocol: string;
+            /**
+             * Hitcount
+             * @default 0
+             */
+            hitCount: number;
+        };
+        /**
+         * BnkFleetSummary
+         * @description Fleet-wide BNK consumption rollup.
+         */
+        BnkFleetSummary: {
+            /** Total Clusters */
+            total_clusters: number;
+            /** Reachable Clusters */
+            reachable_clusters: number;
+            /** Bnk Installed Clusters */
+            bnk_installed_clusters: number;
+            /** Total Bnk Pods */
+            total_bnk_pods: number;
+            /** Control Plane Pods */
+            control_plane_pods: number;
+            /** Data Plane Pods */
+            data_plane_pods: number;
+            /** Total Cpu Millicores */
+            total_cpu_millicores: number;
+            /** Total Memory Bytes */
+            total_memory_bytes: number;
+            /**
+             * Node Capacity Cpu Millicores
+             * @default 0
+             */
+            node_capacity_cpu_millicores: number;
+            /**
+             * Node Capacity Memory Bytes
+             * @default 0
+             */
+            node_capacity_memory_bytes: number;
+            /** Dpf Detected Clusters */
+            dpf_detected_clusters: number;
+            /** Dpu Count */
+            dpu_count: number;
+        };
+        /** BnkHealthAISection */
+        BnkHealthAISection: {
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "healthy" | "warning" | "critical" | "unknown";
+            /** Analyzers */
+            analyzers: number;
+            /** Analyzerdetails */
+            analyzerDetails: components["schemas"]["HealthAnalyzerDetail"][];
+            /**
+             * F5Epps
+             * @default 0
+             */
+            f5epps: number;
+            /**
+             * Inferencepools
+             * @default 0
+             */
+            inferencePools: number;
+            /** Inferencepooldetails */
+            inferencePoolDetails?: components["schemas"]["HealthInferencePoolDetail"][];
+            /**
+             * Apppolicies
+             * @default 0
+             */
+            appPolicies: number;
+            /**
+             * Aigatewayprofiles
+             * @default 0
+             */
+            aiGatewayProfiles: number;
+            /**
+             * Aimodels
+             * @default 0
+             */
+            aiModels: number;
+            /**
+             * Aiproviders
+             * @default 0
+             */
+            aiProviders: number;
+            /**
+             * Aitenants
+             * @default 0
+             */
+            aiTenants: number;
+            /**
+             * Aicredentials
+             * @default 0
+             */
+            aiCredentials: number;
+            /**
+             * Aigateways
+             * @default 0
+             */
+            aiGateways: number;
+            /**
+             * Llmgatewayenabled
+             * @default false
+             */
+            llmGatewayEnabled: boolean;
+            /**
+             * Llmgatewayconsoleenabled
+             * @default false
+             */
+            llmGatewayConsoleEnabled: boolean;
+            /**
+             * Llmgwpluginpods
+             * @default 0
+             */
+            llmGwPluginPods: number;
+            /**
+             * Llmgwpluginready
+             * @default 0
+             */
+            llmGwPluginReady: number;
+            /**
+             * Aigatewayconsolepods
+             * @default 0
+             */
+            aigatewayConsolePods: number;
+            /**
+             * Aigatewayconsolerunning
+             * @default 0
+             */
+            aigatewayConsoleRunning: number;
+            /** Aigatewayprofiledetails */
+            aiGatewayProfileDetails?: {
+                [key: string]: unknown;
+            }[];
+            /** Aimodeldetails */
+            aiModelDetails?: {
+                [key: string]: unknown;
+            }[];
+            /** Aiproviderdetails */
+            aiProviderDetails?: {
+                [key: string]: unknown;
+            }[];
+            /** Aitenantdetails */
+            aiTenantDetails?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** BnkHealthDataPlaneSection */
+        BnkHealthDataPlaneSection: {
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "healthy" | "warning" | "critical" | "unknown";
+            tmm: components["schemas"]["HealthTmmComponent"];
+            /** Cneinstance */
+            cneInstance: components["schemas"]["HealthCneInstance"] | {
+                [key: string]: unknown;
+            };
+        };
+        /** BnkHealthEndpointResponse */
+        BnkHealthEndpointResponse: {
+            /**
+             * Overall
+             * @enum {string}
+             */
+            overall: "healthy" | "warning" | "critical" | "unknown";
+            /**
+             * Installshape
+             * @default unknown
+             */
+            installShape: string;
+            /**
+             * Installmethod
+             * @default Unknown
+             */
+            installMethod: string;
+            connectivity: components["schemas"]["HealthConnectivityStatus"];
+            integration: components["schemas"]["HealthIntegrationStatus"];
+            platform: components["schemas"]["BnkHealthPlatformSection"];
+            dataPlane: components["schemas"]["BnkHealthDataPlaneSection"];
+            networking: components["schemas"]["BnkHealthNetworkingSection"];
+            security: components["schemas"]["BnkHealthSecuritySection"];
+            ai: components["schemas"]["BnkHealthAISection"];
+            counts: components["schemas"]["HealthCounts"];
+            /** Cluster Id */
+            cluster_id: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** BnkHealthNetworkingSection */
+        BnkHealthNetworkingSection: {
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "healthy" | "warning" | "critical" | "unknown";
+            gateways: components["schemas"]["HealthGatewayComponent"];
+            vlans: components["schemas"]["HealthVlanComponent"];
+            infra?: components["schemas"]["HealthInfraComponent"] | null;
+            /**
+             * Gatewaysettings
+             * @default 0
+             */
+            gatewaySettings: number;
+            /**
+             * Egressgateways
+             * @default 0
+             */
+            egressGateways: number;
+            /** Listeners */
+            listeners: number;
+            /** Httproutes */
+            httpRoutes: number;
+            /** Staticroutes */
+            staticRoutes: number;
+            /** Snatpools */
+            snatPools: number;
+        };
+        /** BnkHealthPlatformSection */
+        BnkHealthPlatformSection: {
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "healthy" | "warning" | "critical" | "unknown";
+            flo: components["schemas"]["HealthPlatformComponent"];
+            controller: components["schemas"]["HealthPlatformComponent"];
+            crdInstaller: components["schemas"]["HealthPlatformComponent"];
+            analyzer: components["schemas"]["HealthPlatformComponent"];
+            aigatewayConsole?: components["schemas"]["HealthPlatformComponent"] | null;
+        };
+        /** BnkHealthResponse */
+        BnkHealthResponse: {
+            /**
+             * Overall
+             * @enum {string}
+             */
+            overall: "healthy" | "warning" | "critical" | "unknown";
+            /**
+             * Installshape
+             * @default unknown
+             */
+            installShape: string;
+            /**
+             * Installmethod
+             * @default Unknown
+             */
+            installMethod: string;
+            connectivity: components["schemas"]["HealthConnectivityStatus"];
+            integration: components["schemas"]["HealthIntegrationStatus"];
+            platform: components["schemas"]["BnkHealthPlatformSection"];
+            dataPlane: components["schemas"]["BnkHealthDataPlaneSection"];
+            networking: components["schemas"]["BnkHealthNetworkingSection"];
+            security: components["schemas"]["BnkHealthSecuritySection"];
+            ai: components["schemas"]["BnkHealthAISection"];
+            counts: components["schemas"]["HealthCounts"];
+        } & {
+            [key: string]: unknown;
+        };
+        /** BnkHealthSecuritySection */
+        BnkHealthSecuritySection: {
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "healthy" | "warning" | "critical" | "unknown";
+            /** Firewallpolicies */
+            firewallPolicies: number;
+            /** Securitypolicies */
+            securityPolicies: number;
+            /** Networkpolicies */
+            networkPolicies: number;
+            /**
+             * Apppolicies
+             * @default 0
+             */
+            appPolicies: number;
+            /** Addresslists */
+            addressLists: number;
+            /** Portlists */
+            portLists: number;
+            irules: components["schemas"]["HealthIRulesComponent"];
+        };
+        /** BnkListenerTrafficStats */
+        BnkListenerTrafficStats: {
+            /** Gatewayname */
+            gatewayName: string;
+            /** Gatewaynamespace */
+            gatewayNamespace: string;
+            /** Listenername */
+            listenerName: string;
+            /**
+             * Clientsidebytesin
+             * @default 0
+             */
+            clientsideBytesIn: number;
+            /**
+             * Clientsidebytesout
+             * @default 0
+             */
+            clientsideBytesOut: number;
+            /**
+             * Clientsidecurconns
+             * @default 0
+             */
+            clientsideCurConns: number;
+            /**
+             * Clientsidetotconns
+             * @default 0
+             */
+            clientsideTotConns: number;
+            /**
+             * Serversidebytesin
+             * @default 0
+             */
+            serversideBytesIn: number;
+            /**
+             * Serversidebytesout
+             * @default 0
+             */
+            serversideBytesOut: number;
+            /**
+             * Serversidecurconns
+             * @default 0
+             */
+            serversideCurConns: number;
+            /**
+             * Serversidetotconns
+             * @default 0
+             */
+            serversideTotConns: number;
+        };
+        /**
+         * BnkNodeCapacity
+         * @description Node allocatable CPU/memory capacity for a cluster.
+         */
+        BnkNodeCapacity: {
+            /**
+             * Cpu Millicores
+             * @description Aggregated node allocatable CPU in millicores
+             * @default 0
+             */
+            cpu_millicores: number;
+            /**
+             * Memory Bytes
+             * @description Aggregated node allocatable memory in bytes
+             * @default 0
+             */
+            memory_bytes: number;
+        };
+        /**
+         * BnkPlaneConsumption
+         * @description CPU/memory/pod count for a single BNK plane (control-plane or data-plane).
+         */
+        BnkPlaneConsumption: {
+            /**
+             * Count
+             * @description Number of BNK pods in this plane
+             */
+            count: number;
+            /**
+             * Cpu Millicores
+             * @description Aggregated CPU usage in millicores
+             */
+            cpu_millicores: number;
+            /**
+             * Memory Bytes
+             * @description Aggregated memory usage in bytes
+             */
+            memory_bytes: number;
+        };
         /** BnkReleaseListResponse */
         BnkReleaseListResponse: {
             /** Releases */
@@ -14423,6 +16818,47 @@ export interface components {
             unmatched: number;
             /** Upserted */
             upserted: number;
+        };
+        /**
+         * BnkTopPod
+         * @description A single BNK pod ranked by resource consumption.
+         */
+        BnkTopPod: {
+            /** Name */
+            name: string;
+            /** Namespace */
+            namespace: string;
+            /** Role */
+            role: string;
+            /** Cpu Millicores */
+            cpu_millicores: number;
+            /** Memory Bytes */
+            memory_bytes: number;
+        };
+        /**
+         * BnkTrafficStatsResponse
+         * @description Traffic statistics mapped from TMM dataplane counters.
+         */
+        BnkTrafficStatsResponse: {
+            /** Source */
+            source?: string | null;
+            /** Podname */
+            podName?: string | null;
+            /** Sampledat */
+            sampledAt?: string | null;
+            /**
+             * Available
+             * @default false
+             */
+            available: boolean;
+            /** Error */
+            error?: string | null;
+            /** Listeners */
+            listeners?: components["schemas"]["BnkListenerTrafficStats"][];
+            /** Egresses */
+            egresses?: components["schemas"]["BnkEgressTrafficStats"][];
+            /** Firewallrules */
+            firewallRules?: components["schemas"]["BnkFirewallRuleTrafficStats"][];
         };
         /** Body_create_file_secret_api_projects__project_id__secrets_file_post */
         Body_create_file_secret_api_projects__project_id__secrets_file_post: {
@@ -14766,6 +17202,145 @@ export interface components {
              */
             older_than_days: number;
         };
+        /** ClickHouseRequestAuditItem */
+        ClickHouseRequestAuditItem: {
+            /**
+             * Id
+             * @default
+             */
+            id: string;
+            /**
+             * Request Id
+             * @default
+             */
+            request_id: string;
+            /** Timestamp */
+            timestamp: string;
+            /** Cluster Id */
+            cluster_id: number;
+            /**
+             * Cluster Name
+             * @default
+             */
+            cluster_name: string;
+            /**
+             * Tenant
+             * @default default
+             */
+            tenant: string;
+            /**
+             * Route Name
+             * @default ai-platform-profile
+             */
+            route_name: string;
+            /**
+             * Org Name
+             * @default Enterprise AI Platform
+             */
+            org_name: string;
+            /**
+             * Team Name
+             * @default Inference Platform
+             */
+            team_name: string;
+            /**
+             * Principal Name
+             * @default prod-rag-pipeline
+             */
+            principal_name: string;
+            /**
+             * Virtual Key Id
+             * @default
+             */
+            virtual_key_id: string;
+            /**
+             * Virtual Key Name
+             * @default
+             */
+            virtual_key_name: string;
+            /**
+             * Method
+             * @default POST
+             */
+            method: string;
+            /**
+             * Path
+             * @default /v1/chat/completions
+             */
+            path: string;
+            /**
+             * Model
+             * @default gpt-4o
+             */
+            model: string;
+            /**
+             * Model Id
+             * @default
+             */
+            model_id: string;
+            /**
+             * Provider
+             * @default openai-primary
+             */
+            provider: string;
+            /**
+             * Provider Name
+             * @default
+             */
+            provider_name: string;
+            /**
+             * Status Code
+             * @default 200
+             */
+            status_code: number;
+            /**
+             * Latency Ms
+             * @default 420
+             */
+            latency_ms: number;
+            /**
+             * Prompt Tokens
+             * @default 128
+             */
+            prompt_tokens: number;
+            /**
+             * Completion Tokens
+             * @default 256
+             */
+            completion_tokens: number;
+            /**
+             * Total Tokens
+             * @default 384
+             */
+            total_tokens: number;
+            /**
+             * Cost Usd
+             * @default 0.00288
+             */
+            cost_usd: number;
+            /**
+             * Cache Status
+             * @default MISS
+             */
+            cache_status: string;
+            /**
+             * Semantic Cache Status
+             * @default
+             */
+            semantic_cache_status: string;
+            /**
+             * Failover Used
+             * @default false
+             */
+            failover_used: boolean;
+            /**
+             * Failover Triggered
+             * @default false
+             */
+            failover_triggered: boolean;
+            /** Error Reason */
+            error_reason?: string | null;
+        };
         /** CloudRegionItem */
         CloudRegionItem: {
             /** Value */
@@ -14910,6 +17485,23 @@ export interface components {
             /** Project Id */
             project_id?: number | null;
         };
+        /** ClusterDeployResult */
+        ClusterDeployResult: {
+            /** Cluster Id */
+            cluster_id: number | string;
+            /** Cluster Name */
+            cluster_name: string;
+            /** Success */
+            success: boolean;
+            /** Status */
+            status?: string | null;
+            /** Message */
+            message?: string | null;
+            /** Resources */
+            resources?: components["schemas"]["ClusterResourceResult"][];
+            /** Error */
+            error?: string | null;
+        };
         /**
          * ClusterDetailResponse
          * @description Response for GET /api/k8s/clusters/{id}.
@@ -14969,6 +17561,20 @@ export interface components {
             meta_data?: {
                 [key: string]: unknown;
             } | null;
+            /** Node Count */
+            node_count?: number | null;
+            /** Account Id */
+            account_id?: string | null;
+            /** Discovery Status */
+            discovery_status?: string | null;
+            /** Connectivity Status */
+            connectivity_status?: string | null;
+            /** Integration Status */
+            integration_status?: string | null;
+            /** Zones */
+            zones?: string[];
+            /** Access Method */
+            access_method?: string | null;
             /** Deployable Release Id */
             deployable_release_id?: number | null;
             /** Running Release Id */
@@ -15039,7 +17645,7 @@ export interface components {
         };
         /**
          * ClusterOperationResponse
-         * @description Generic response for cluster mutations (delete).
+         * @description Response for DELETE /api/k8s/clusters/{id} (cluster delete).
          */
         ClusterOperationResponse: {
             /**
@@ -15067,6 +17673,19 @@ export interface components {
             region?: string | null;
             /** Refresh Method */
             refresh_method?: string | null;
+        };
+        /** ClusterResourceResult */
+        ClusterResourceResult: {
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Namespace */
+            namespace?: string | null;
+            /** Status */
+            status: string;
+            /** Error */
+            error?: string | null;
         };
         /**
          * ClusterScanEnvelope
@@ -15103,6 +17722,25 @@ export interface components {
             platform_context?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** ClusterSearchResult */
+        ClusterSearchResult: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Project Id */
+            project_id?: number | null;
+            /** Cloud Provider */
+            cloud_provider?: string | null;
+            /** Region */
+            region?: string | null;
+            /** Status */
+            status: string;
+            /** Node Count */
+            node_count?: number | null;
+            /** Detected Platform Profile */
+            detected_platform_profile?: string | null;
         };
         /**
          * ClusterSummary
@@ -15162,6 +17800,18 @@ export interface components {
             bnk_config?: components["schemas"]["BnkClusterConfigSummary"] | null;
             /** Node Count */
             node_count?: number | null;
+            /** Account Id */
+            account_id?: string | null;
+            /** Discovery Status */
+            discovery_status?: string | null;
+            /** Connectivity Status */
+            connectivity_status?: string | null;
+            /** Integration Status */
+            integration_status?: string | null;
+            /** Zones */
+            zones?: string[];
+            /** Access Method */
+            access_method?: string | null;
             /** Deployable Release Id */
             deployable_release_id?: number | null;
             /** Running Release Id */
@@ -15232,6 +17882,36 @@ export interface components {
             config: {
                 [key: string]: unknown;
             };
+        };
+        /** ConfigOut */
+        ConfigOut: {
+            /** Id */
+            id: number;
+            /** Fleet Id */
+            fleet_id?: number | null;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Category
+             * @default custom
+             */
+            category: string;
+            /** Target Namespace */
+            target_namespace?: string | null;
+            /** Config Yaml */
+            config_yaml: string;
+            /** Source Cluster Id */
+            source_cluster_id?: number | null;
+            /** Source Cluster Name */
+            source_cluster_name?: string | null;
+            /** Created By */
+            created_by?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
         };
         /**
          * ConfirmCutoverRequest
@@ -15465,6 +18145,331 @@ export interface components {
             /** Info */
             info?: string | null;
         };
+        /**
+         * CrdPrinterColumn
+         * @description Additional printer column defined on a CRD version.
+         */
+        CrdPrinterColumn: {
+            /** Name */
+            name: string;
+            /**
+             * Type
+             * @default string
+             */
+            type: string;
+            /**
+             * Json Path
+             * @default
+             */
+            json_path: string;
+            /** Description */
+            description?: string | null;
+        };
+        /**
+         * CrdSchemaResponse
+         * @description Response for GET /api/k8s/clusters/{cluster_id}/crds/{crd_name}/schema.
+         */
+        CrdSchemaResponse: {
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** Plural */
+            plural: string;
+            /** Singular */
+            singular?: string | null;
+            /** Group */
+            group: string;
+            /** Version */
+            version?: string | null;
+            /**
+             * Scope
+             * @default Namespaced
+             */
+            scope: string;
+            /** Short Names */
+            short_names?: string[];
+            /** Versions */
+            versions?: string[];
+            /** Open Apiv3 Schema */
+            open_apiv3_schema?: {
+                [key: string]: unknown;
+            };
+            /** Additional Printer Columns */
+            additional_printer_columns?: components["schemas"]["CrdPrinterColumn"][];
+            /** Conditions */
+            conditions?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** CreateAiGatewayRouteRequest */
+        CreateAiGatewayRouteRequest: {
+            /**
+             * Cluster Id
+             * @default 1
+             */
+            cluster_id: number;
+            /**
+             * Namespace
+             * @default f5-bnk
+             */
+            namespace: string;
+            /**
+             * Tenant
+             * @default default
+             */
+            tenant: string;
+            /** Tenant Ref */
+            tenant_ref?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Gateway Name
+             * @default ai-gateway
+             */
+            gateway_name: string;
+            /**
+             * Listener Port
+             * @default 8080
+             */
+            listener_port: number;
+            /** Port */
+            port?: number | null;
+            /**
+             * Vip Address
+             * @default 10.100.10.200
+             */
+            vip_address: string;
+            /**
+             * Path Prefix
+             * @default /v1
+             */
+            path_prefix: string;
+            /** Auth Mode */
+            auth_mode?: string | null;
+            /**
+             * Virtual Keys Enabled
+             * @default true
+             */
+            virtual_keys_enabled: boolean;
+            /**
+             * Jwt Enabled
+             * @default false
+             */
+            jwt_enabled: boolean;
+            /** Jwt Issuer */
+            jwt_issuer?: string | null;
+            /** Jwt Audiences */
+            jwt_audiences?: string[];
+            /** Jwks Uri */
+            jwks_uri?: string | null;
+            /** Jwks Refresh Interval */
+            jwks_refresh_interval?: string | null;
+            /** Jwt Secret Ref */
+            jwt_secret_ref?: string | null;
+            /** Jwt Header */
+            jwt_header?: string | null;
+            /** Jwt Scheme */
+            jwt_scheme?: string | null;
+            /** Jwt Clock Skew */
+            jwt_clock_skew?: string | null;
+            /** Jwt Principal Claim */
+            jwt_principal_claim?: string | null;
+            /** Jwt Team Claim */
+            jwt_team_claim?: string | null;
+            /** Jwt Org Claim */
+            jwt_org_claim?: string | null;
+            /**
+             * Failover Enabled
+             * @default true
+             */
+            failover_enabled: boolean;
+            /**
+             * Failover Max Attempts
+             * @default 3
+             */
+            failover_max_attempts: number;
+            /**
+             * Failover On 429
+             * @default true
+             */
+            failover_on_429: boolean;
+            /**
+             * Failover On 5Xx
+             * @default true
+             */
+            failover_on_5xx: boolean;
+            /**
+             * Prompt Cache Enabled
+             * @default true
+             */
+            prompt_cache_enabled: boolean;
+            /** Semantic Cache Enabled */
+            semantic_cache_enabled?: boolean | null;
+            /** Semantic Cache Similarity Threshold */
+            semantic_cache_similarity_threshold?: number | null;
+            /**
+             * Semantic Cache Pool Max Size
+             * @default 64
+             */
+            semantic_cache_pool_max_size: number;
+            /**
+             * Semantic Cache Pool Idle Timeout
+             * @default 300s
+             */
+            semantic_cache_pool_idle_timeout: string;
+            /**
+             * Model Routing Enabled
+             * @default false
+             */
+            model_routing_enabled: boolean;
+            /** Default Model Ref */
+            default_model_ref?: string | null;
+            /** Semantic Router Service */
+            semantic_router_service?: string | null;
+            /** Semantic Router Namespace */
+            semantic_router_namespace?: string | null;
+            /**
+             * Semantic Router Port
+             * @default 8000
+             */
+            semantic_router_port: number;
+            /**
+             * Semantic Router Timeout
+             * @default 5s
+             */
+            semantic_router_timeout: string | null;
+            /** Providers */
+            providers?: string[];
+            /** Allowed Providers */
+            allowed_providers?: string[];
+            /** Provider Credentials */
+            provider_credentials?: {
+                [key: string]: string;
+            };
+            /** Provider Overrides */
+            provider_overrides?: components["schemas"]["AiRouteProviderOverride"][];
+        };
+        /** CreateAiModelRequest */
+        CreateAiModelRequest: {
+            /**
+             * Cluster Id
+             * @default 1
+             */
+            cluster_id: number;
+            /**
+             * Namespace
+             * @default f5-bnk
+             */
+            namespace: string;
+            /**
+             * Tenant
+             * @default default
+             */
+            tenant: string;
+            /** Tenant Ref */
+            tenant_ref?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Public Name
+             * @default
+             */
+            public_name: string;
+            /** Model Id */
+            model_id?: string | null;
+            /** Deployments */
+            deployments?: components["schemas"]["AiModelDeploymentItem"][];
+            /**
+             * Input Token Cost Micro Usd
+             * @default 0
+             */
+            input_token_cost_micro_usd: number;
+            /**
+             * Output Token Cost Micro Usd
+             * @default 0
+             */
+            output_token_cost_micro_usd: number;
+        };
+        /** CreateAiProviderRequest */
+        CreateAiProviderRequest: {
+            /**
+             * Cluster Id
+             * @default 1
+             */
+            cluster_id: number;
+            /**
+             * Namespace
+             * @default f5-bnk
+             */
+            namespace: string;
+            /**
+             * Tenant
+             * @default default
+             */
+            tenant: string;
+            /** Tenant Ref */
+            tenant_ref?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Vendor
+             * @default Generic
+             */
+            vendor: string;
+            /** Provider Type */
+            provider_type?: string | null;
+            /** Base Url */
+            base_url?: string | null;
+            /** Endpoint Url */
+            endpoint_url?: string | null;
+            /** Dialect */
+            dialect?: string | null;
+            /** Region */
+            region?: string | null;
+            /** Deployment */
+            deployment?: string | null;
+            /** Api Version */
+            api_version?: string | null;
+            /**
+             * Api Key
+             * @default sk-configured-via-console
+             */
+            api_key: string;
+            /** Credential Name */
+            credential_name?: string | null;
+            /** Secret Name */
+            secret_name?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+        };
+        /** CreateAiTenantRequest */
+        CreateAiTenantRequest: {
+            /**
+             * Cluster Id
+             * @default 1
+             */
+            cluster_id: number;
+            /** Name */
+            name: string;
+            /**
+             * Display Name
+             * @default
+             */
+            display_name: string;
+            /**
+             * Namespace
+             * @default f5-bnk
+             */
+            namespace: string;
+            /** Oidc Issuer */
+            oidc_issuer?: string | null;
+            /** Oidc Client Id */
+            oidc_client_id?: string | null;
+        };
         /** CreateBulkRunRequest */
         CreateBulkRunRequest: {
             /** Decision Id */
@@ -15481,6 +18486,157 @@ export interface components {
             gate_mode?: string | null;
             /** Strategy Id */
             strategy_id?: number | null;
+        };
+        /** CreateConfigRequest */
+        CreateConfigRequest: {
+            /** Name */
+            name: string;
+            /** Config Yaml */
+            config_yaml: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Category
+             * @default custom
+             */
+            category: string;
+            /** Target Namespace */
+            target_namespace?: string | null;
+            /** Fleet Id */
+            fleet_id?: number | null;
+            /** Source Cluster Id */
+            source_cluster_id?: number | null;
+            /** Source Cluster Name */
+            source_cluster_name?: string | null;
+        };
+        /** CreateGovernanceOrgRequest */
+        CreateGovernanceOrgRequest: {
+            /**
+             * Cluster Id
+             * @default 1
+             */
+            cluster_id: number;
+            /**
+             * Tenant
+             * @default default
+             */
+            tenant: string;
+            /** Tenant Ref */
+            tenant_ref?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Monthly Budget Usd
+             * @default 500
+             */
+            monthly_budget_usd: number;
+            /**
+             * Alert Threshold Pct
+             * @default 80
+             */
+            alert_threshold_pct: number;
+            /**
+             * Rate Limit Rpm
+             * @default 1200
+             */
+            rate_limit_rpm: number;
+            /**
+             * Rate Limit Tpm
+             * @default 500000
+             */
+            rate_limit_tpm: number;
+            /** Rpm Limit */
+            rpm_limit?: number | null;
+            /** Tpm Limit */
+            tpm_limit?: number | null;
+        };
+        /** CreateGovernancePrincipalRequest */
+        CreateGovernancePrincipalRequest: {
+            /**
+             * Cluster Id
+             * @default 1
+             */
+            cluster_id: number;
+            /**
+             * Tenant
+             * @default default
+             */
+            tenant: string;
+            /** Team Id */
+            team_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @default user
+             */
+            kind: string;
+            /** Principal Type */
+            principal_type?: string | null;
+            /**
+             * Role
+             * @default member
+             */
+            role: string;
+            /**
+             * Monthly Budget Usd
+             * @default 50
+             */
+            monthly_budget_usd: number;
+            /** Allowed Models */
+            allowed_models?: string[];
+            /**
+             * Rate Limit Rpm
+             * @default 120
+             */
+            rate_limit_rpm: number;
+            /**
+             * Rate Limit Tpm
+             * @default 60000
+             */
+            rate_limit_tpm: number;
+            /** Rpm Limit */
+            rpm_limit?: number | null;
+            /** Tpm Limit */
+            tpm_limit?: number | null;
+        };
+        /** CreateGovernanceTeamRequest */
+        CreateGovernanceTeamRequest: {
+            /**
+             * Cluster Id
+             * @default 1
+             */
+            cluster_id: number;
+            /**
+             * Tenant
+             * @default default
+             */
+            tenant: string;
+            /** Org Id */
+            org_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Monthly Budget Usd
+             * @default 200
+             */
+            monthly_budget_usd: number;
+            /** Allowed Models */
+            allowed_models?: string[];
+            /**
+             * Rate Limit Rpm
+             * @default 600
+             */
+            rate_limit_rpm: number;
+            /**
+             * Rate Limit Tpm
+             * @default 200000
+             */
+            rate_limit_tpm: number;
+            /** Rpm Limit */
+            rpm_limit?: number | null;
+            /** Tpm Limit */
+            tpm_limit?: number | null;
         };
         /**
          * CreateMigrationRequest
@@ -15574,9 +18730,9 @@ export interface components {
             /** Name */
             name: string;
             /** Selector */
-            selector: {
+            selector?: {
                 [key: string]: unknown;
-            };
+            } | null;
             /** Description */
             description?: string | null;
             /** Pinned Member Ids */
@@ -15621,8 +18777,11 @@ export interface components {
             name: string;
             /** Description */
             description?: string | null;
-            /** Provider */
-            provider: string;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "aws" | "azure" | "gcp" | "ibm" | "ssh";
             /** Aws Auth Method */
             aws_auth_method?: string | null;
             /** Aws Profile */
@@ -15652,10 +18811,16 @@ export interface components {
             gcp_credentials?: string | null;
             /** Gcp Project Id */
             gcp_project_id?: string | null;
+            /** Azure Auth Method */
+            azure_auth_method?: ("service_principal" | "sso") | null;
             /** Azure Subscription Id */
             azure_subscription_id?: string | null;
             /** Azure Tenant Id */
             azure_tenant_id?: string | null;
+            /** Azure Client Id */
+            azure_client_id?: string | null;
+            /** Azure Client Secret */
+            azure_client_secret?: string | null;
             /** Azure Credentials */
             azure_credentials?: string | null;
             /** Ibmcloud Api Key */
@@ -15736,12 +18901,28 @@ export interface components {
             gcp_project_id: string | null;
             /** Has Gcp Credentials */
             has_gcp_credentials: boolean;
+            /** Azure Auth Method */
+            azure_auth_method?: ("service_principal" | "sso") | null;
             /** Azure Subscription Id */
-            azure_subscription_id: string | null;
+            azure_subscription_id?: string | null;
             /** Azure Tenant Id */
-            azure_tenant_id: string | null;
-            /** Has Azure Credentials */
+            azure_tenant_id?: string | null;
+            /** Azure Client Id */
+            azure_client_id?: string | null;
+            /**
+             * Has Azure Client Secret
+             * @default false
+             */
+            has_azure_client_secret: boolean;
+            /**
+             * Has Azure Credentials
+             * @default false
+             */
             has_azure_credentials: boolean;
+            /** Azure Sso Authenticated At */
+            azure_sso_authenticated_at?: string | null;
+            /** Azure Sso Token Expiry */
+            azure_sso_token_expiry?: string | null;
             /** Has Ibmcloud Api Key */
             has_ibmcloud_api_key: boolean;
             /** Ibmcloud Resource Group */
@@ -15819,7 +19000,7 @@ export interface components {
             /** Description */
             description?: string | null;
             /** Provider */
-            provider?: string | null;
+            provider?: ("aws" | "azure" | "gcp" | "ibm" | "ssh") | null;
             /** Aws Auth Method */
             aws_auth_method?: string | null;
             /** Aws Profile */
@@ -15846,10 +19027,16 @@ export interface components {
             gcp_credentials?: string | null;
             /** Gcp Project Id */
             gcp_project_id?: string | null;
+            /** Azure Auth Method */
+            azure_auth_method?: ("service_principal" | "sso") | null;
             /** Azure Subscription Id */
             azure_subscription_id?: string | null;
             /** Azure Tenant Id */
             azure_tenant_id?: string | null;
+            /** Azure Client Id */
+            azure_client_id?: string | null;
+            /** Azure Client Secret */
+            azure_client_secret?: string | null;
             /** Azure Credentials */
             azure_credentials?: string | null;
             /** Ibmcloud Api Key */
@@ -15878,6 +19065,99 @@ export interface components {
             ssh_key_passphrase?: string | null;
             /** Is Default */
             is_default?: boolean | null;
+        };
+        /** CurveGroup */
+        CurveGroup: {
+            /** Id */
+            id: number;
+            /** Scenario Key */
+            scenario_key: string;
+            /** Scenario Name */
+            scenario_name: string | null;
+            /** Run Label */
+            run_label: string | null;
+            /** Status */
+            status: string;
+            /** Target Id */
+            target_id: number | null;
+            /** Cluster Name */
+            cluster_name?: string | null;
+            /** Proxy */
+            proxy: string | null;
+            /** Model */
+            model: string | null;
+            /** Total Runs */
+            total_runs: number;
+            /** Completed Runs */
+            completed_runs: number;
+            /** Failed Runs */
+            failed_runs: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Points */
+            points: components["schemas"]["CurvePoint"][];
+            /**
+             * Load Axis
+             * @default concurrency
+             */
+            load_axis: string;
+            /** Goodput Targets */
+            goodput_targets?: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * CurvePoint
+         * @description One load point of a sweep (a completed child run); latencies in ms except latency_p50/p99 (s).
+         */
+        CurvePoint: {
+            /** Run Id */
+            run_id: number;
+            /** Variant Label */
+            variant_label: string | null;
+            /** Concurrency */
+            concurrency?: number | null;
+            /** Request Rate */
+            request_rate?: number | null;
+            /** Benchmark Duration */
+            benchmark_duration?: number | null;
+            /** Total Requests */
+            total_requests?: number | null;
+            /** Latency P50 */
+            latency_p50?: number | null;
+            /** Latency P99 */
+            latency_p99?: number | null;
+            /** Overall Rps */
+            overall_rps?: number | null;
+            /** Tokens Per Sec */
+            tokens_per_sec?: number | null;
+            /** Success Rate Pct */
+            success_rate_pct?: number | null;
+            /** Ttft P50 */
+            ttft_p50?: number | null;
+            /** Ttft P99 */
+            ttft_p99?: number | null;
+            /** Itl P50 */
+            itl_p50?: number | null;
+            /** Itl P99 */
+            itl_p99?: number | null;
+            /** Per User Throughput P50 */
+            per_user_throughput_p50?: number | null;
+            /** Goodput */
+            goodput?: number | null;
+            /** Good Request Pct */
+            good_request_pct?: number | null;
+            /** Error Rate Pct */
+            error_rate_pct?: number | null;
+            /** Osl Avg */
+            osl_avg?: number | null;
+            /** Requested Osl */
+            requested_osl?: number | null;
+            /** Effective Concurrency */
+            effective_concurrency?: number | null;
         };
         /** DecisionOut */
         DecisionOut: {
@@ -15922,6 +19202,42 @@ export interface components {
              * @default false
              */
             parallel: boolean;
+        };
+        /** DeployConfigRequest */
+        DeployConfigRequest: {
+            /** Target Cluster Ids */
+            target_cluster_ids: number[];
+            /** Config Yaml */
+            config_yaml?: string | null;
+            /** Config Id */
+            config_id?: number | null;
+            /** Target Namespace */
+            target_namespace?: string | null;
+            /**
+             * Dry Run
+             * @default true
+             */
+            dry_run: boolean;
+        };
+        /** DeployFleetConfigResponse */
+        DeployFleetConfigResponse: {
+            /** Config Id */
+            config_id?: string | number | null;
+            /** Dry Run */
+            dry_run: boolean;
+            /** Total Clusters */
+            total_clusters: number;
+            /** Successful Clusters */
+            successful_clusters: number;
+            /**
+             * Failed Clusters
+             * @default 0
+             */
+            failed_clusters: number;
+            /** Results */
+            results?: components["schemas"]["ClusterDeployResult"][];
+            /** Cluster Results */
+            cluster_results?: components["schemas"]["ClusterDeployResult"][];
         };
         /**
          * DeployStackRequest
@@ -17121,6 +20437,95 @@ export interface components {
             /** Verify Https Cert */
             verify_https_cert?: boolean | null;
         };
+        /** F5EgressPolicyAssociation */
+        F5EgressPolicyAssociation: {
+            /**
+             * Kind
+             * @default egress
+             * @constant
+             */
+            kind: "egress";
+            /** Egress Name */
+            egress_name?: string | null;
+            /** Namespace */
+            namespace: string;
+            /** Captured Namespaces */
+            captured_namespaces?: string[];
+            /** Snat Type */
+            snat_type?: string | null;
+            /** Firewall Policy Name */
+            firewall_policy_name: string;
+            /** Rules Count */
+            rules_count?: number | null;
+            /** Rules */
+            rules?: components["schemas"]["F5FirewallRule"][];
+            egress_status?: components["schemas"]["PolicyStatus"];
+        };
+        /** F5FirewallRule */
+        F5FirewallRule: {
+            /** Name */
+            name: string;
+            /** Action */
+            action: string;
+            /** Ipprotocol */
+            ipProtocol: string;
+            source: components["schemas"]["F5FirewallRuleEndpoint"];
+            destination: components["schemas"]["F5FirewallRuleEndpoint"];
+            /** Logging */
+            logging: boolean;
+        };
+        /** F5FirewallRuleEndpoint */
+        F5FirewallRuleEndpoint: {
+            /** Addresses */
+            addresses: unknown[];
+            /** Ports */
+            ports: string[];
+            /** Addresslists */
+            addressLists: string[];
+            /** Portlists */
+            portLists: string[];
+        };
+        /** F5GatewayPolicyAssociation */
+        F5GatewayPolicyAssociation: {
+            /**
+             * Kind
+             * @default gateway
+             * @constant
+             */
+            kind: "gateway";
+            /** Bnk Policy Name */
+            bnk_policy_name: string;
+            /** Namespace */
+            namespace: string;
+            /** Gateway Name */
+            gateway_name?: string | null;
+            /** Listener Name */
+            listener_name?: string | null;
+            /** Firewall Policy Name */
+            firewall_policy_name: string;
+            /** Gateway Ip */
+            gateway_ip?: string | null;
+            /** Port */
+            port?: number | null;
+            /** Protocol */
+            protocol?: string | null;
+            /** Rules Count */
+            rules_count?: number | null;
+            /** Rules */
+            rules?: components["schemas"]["F5FirewallRule"][];
+            bnk_policy_status?: components["schemas"]["PolicyStatus"];
+        };
+        /** F5PolicyGatewayAssociationsResponse */
+        F5PolicyGatewayAssociationsResponse: {
+            /** Associations */
+            associations: (components["schemas"]["F5GatewayPolicyAssociation"] | components["schemas"]["F5EgressPolicyAssociation"])[];
+            /** Count */
+            count: number;
+            /** Cluster Id */
+            cluster_id: number;
+            /** Namespace */
+            namespace?: string | null;
+        };
         /**
          * FailedTag
          * @description A single tag that could not be added to the Catalog.
@@ -17444,6 +20849,167 @@ export interface components {
             detected_platform_profile: string;
             /** Detected Platform Provider */
             detected_platform_provider?: string | null;
+            /** Cloud Provider */
+            cloud_provider?: string | null;
+            /** Region */
+            region?: string | null;
+            /** Account Id */
+            account_id?: string | null;
+            /** Discovery Status */
+            discovery_status?: string | null;
+        };
+        /** GatewayInferenceTestRequest */
+        GatewayInferenceTestRequest: {
+            /**
+             * Cluster Id
+             * @default 1
+             */
+            cluster_id: number;
+            /**
+             * Namespace
+             * @default f5-bnk
+             */
+            namespace: string;
+            /**
+             * Route Name
+             * @default ai-platform-profile
+             */
+            route_name: string | null;
+            /**
+             * Method
+             * @default POST
+             */
+            method: string;
+            /**
+             * Path
+             * @default /v1/chat/completions
+             */
+            path: string;
+            /**
+             * Virtual Key
+             * @default
+             */
+            virtual_key: string | null;
+            /**
+             * Model
+             * @default gpt-4o
+             */
+            model: string;
+            /** Model Id */
+            model_id?: string | null;
+            /**
+             * Prompt
+             * @default Explain the F5 TMM + Envoy AI Gateway hybrid data plane.
+             */
+            prompt: string;
+            /**
+             * Simulate Primary Failure
+             * @default false
+             */
+            simulate_primary_failure: boolean;
+        };
+        /** GatewayInferenceTestResponse */
+        GatewayInferenceTestResponse: {
+            /** Status Code */
+            status_code: number;
+            /** Success */
+            success: boolean;
+            /** Route Name */
+            route_name: string;
+            /** Listener Port */
+            listener_port: number;
+            /** Tenant */
+            tenant: string;
+            /** Model */
+            model: string;
+            /** Selected Provider */
+            selected_provider?: string | null;
+            /**
+             * Failover Triggered
+             * @default false
+             */
+            failover_triggered: boolean;
+            /**
+             * Cache Status
+             * @default BYPASS
+             */
+            cache_status: string;
+            /**
+             * Semantic Cache Status
+             * @default
+             */
+            semantic_cache_status: string;
+            /**
+             * Latency Ms
+             * @default 0
+             */
+            latency_ms: number;
+            /**
+             * Prompt Tokens
+             * @default 0
+             */
+            prompt_tokens: number;
+            /**
+             * Completion Tokens
+             * @default 0
+             */
+            completion_tokens: number;
+            /**
+             * Total Tokens
+             * @default 0
+             */
+            total_tokens: number;
+            /**
+             * Cost Usd
+             * @default 0
+             */
+            cost_usd: number;
+            /**
+             * Estimated Cost Usd
+             * @default 0
+             */
+            estimated_cost_usd: number;
+            /**
+             * Auth Verified
+             * @default true
+             */
+            auth_verified: boolean;
+            /** Principal Name */
+            principal_name?: string | null;
+            /** Team Name */
+            team_name?: string | null;
+            /** Org Name */
+            org_name?: string | null;
+            /**
+             * Clickhouse Logged Id
+             * @default
+             */
+            clickhouse_logged_id: string;
+            /**
+             * Response Text
+             * @default
+             */
+            response_text: string;
+            /** Response Body */
+            response_body?: {
+                [key: string]: unknown;
+            };
+            /** Troubleshooting Hint */
+            troubleshooting_hint?: string | null;
+            audit_record?: components["schemas"]["ClickHouseRequestAuditItem"] | null;
+        };
+        /** GatewayTopologyResponse */
+        GatewayTopologyResponse: {
+            /** Topology */
+            topology: components["schemas"]["TopologyGateway"][];
+            dataPlane: components["schemas"]["TopologyDataPlane"];
+            /** Referencegrants */
+            referenceGrants: components["schemas"]["TopologyReferenceGrant"][];
+            counts: components["schemas"]["TopologyCounts"];
+            /** Cluster Id */
+            cluster_id: number;
+            /** Namespace */
+            namespace?: string | null;
         };
         /**
          * GitSourceValidation
@@ -17458,10 +21024,580 @@ export interface components {
              */
             git_ref: string;
         };
+        /** GlobalSearchResultResponse */
+        GlobalSearchResultResponse: {
+            /** Query */
+            query: string;
+            /** Ingresses */
+            ingresses?: components["schemas"]["IngressSearchResult"][];
+            /** Clusters */
+            clusters?: components["schemas"]["ClusterSearchResult"][];
+            /** Projects */
+            projects?: components["schemas"]["ProjectSearchResult"][];
+            /** Timed Out Clusters */
+            timed_out_clusters?: string[];
+        };
+        /** GovernanceOrgItem */
+        GovernanceOrgItem: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Tenant
+             * @default default
+             */
+            tenant: string;
+            /**
+             * Tenant Ref
+             * @default
+             */
+            tenant_ref: string;
+            /** Cluster Id */
+            cluster_id: number;
+            /**
+             * Cluster Name
+             * @default
+             */
+            cluster_name: string;
+            /**
+             * Monthly Budget Usd
+             * @default 500
+             */
+            monthly_budget_usd: number;
+            /**
+             * Current Spend Usd
+             * @default 0
+             */
+            current_spend_usd: number;
+            /**
+             * Alert Threshold Pct
+             * @default 80
+             */
+            alert_threshold_pct: number;
+            /**
+             * Rate Limit Rpm
+             * @default 1200
+             */
+            rate_limit_rpm: number;
+            /**
+             * Rate Limit Tpm
+             * @default 500000
+             */
+            rate_limit_tpm: number;
+            /**
+             * Rpm Limit
+             * @default 1200
+             */
+            rpm_limit: number;
+            /**
+             * Tpm Limit
+             * @default 500000
+             */
+            tpm_limit: number;
+            /**
+             * Teams Count
+             * @default 1
+             */
+            teams_count: number;
+        };
+        /** GovernancePrincipalItem */
+        GovernancePrincipalItem: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @default user
+             */
+            kind: string;
+            /**
+             * Principal Type
+             * @default user
+             */
+            principal_type: string;
+            /**
+             * Role
+             * @default member
+             */
+            role: string;
+            /** Team Id */
+            team_id: string;
+            /** Team Name */
+            team_name: string;
+            /**
+             * Org Id
+             * @default
+             */
+            org_id: string;
+            /**
+             * Tenant
+             * @default default
+             */
+            tenant: string;
+            /** Cluster Id */
+            cluster_id: number;
+            /**
+             * Cluster Name
+             * @default
+             */
+            cluster_name: string;
+            /**
+             * Monthly Budget Usd
+             * @default 50
+             */
+            monthly_budget_usd: number;
+            /**
+             * Current Spend Usd
+             * @default 0
+             */
+            current_spend_usd: number;
+            /** Allowed Models */
+            allowed_models?: string[];
+            /**
+             * Rate Limit Rpm
+             * @default 120
+             */
+            rate_limit_rpm: number;
+            /**
+             * Rate Limit Tpm
+             * @default 60000
+             */
+            rate_limit_tpm: number;
+            /**
+             * Rpm Limit
+             * @default 120
+             */
+            rpm_limit: number;
+            /**
+             * Tpm Limit
+             * @default 60000
+             */
+            tpm_limit: number;
+            /**
+             * Active Keys
+             * @default 1
+             */
+            active_keys: number;
+        };
+        /** GovernanceTeamItem */
+        GovernanceTeamItem: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Org Id */
+            org_id: string;
+            /** Org Name */
+            org_name: string;
+            /**
+             * Tenant
+             * @default default
+             */
+            tenant: string;
+            /** Cluster Id */
+            cluster_id: number;
+            /**
+             * Cluster Name
+             * @default
+             */
+            cluster_name: string;
+            /**
+             * Monthly Budget Usd
+             * @default 200
+             */
+            monthly_budget_usd: number;
+            /**
+             * Current Spend Usd
+             * @default 0
+             */
+            current_spend_usd: number;
+            /** Allowed Models */
+            allowed_models?: string[];
+            /**
+             * Rate Limit Rpm
+             * @default 600
+             */
+            rate_limit_rpm: number;
+            /**
+             * Rate Limit Tpm
+             * @default 200000
+             */
+            rate_limit_tpm: number;
+            /**
+             * Rpm Limit
+             * @default 600
+             */
+            rpm_limit: number;
+            /**
+             * Tpm Limit
+             * @default 200000
+             */
+            tpm_limit: number;
+        };
+        /** GovernanceVirtualKeyItem */
+        GovernanceVirtualKeyItem: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Masked Key */
+            masked_key: string;
+            /** Raw Key */
+            raw_key?: string | null;
+            /** Cleartext Key */
+            cleartext_key?: string | null;
+            /** Principal Id */
+            principal_id: string;
+            /** Principal Name */
+            principal_name: string;
+            /**
+             * Principal Type
+             * @default service
+             */
+            principal_type: string;
+            /**
+             * Team Name
+             * @default Platform AI
+             */
+            team_name: string;
+            /**
+             * Org Name
+             * @default Enterprise AI
+             */
+            org_name: string;
+            /**
+             * Tenant
+             * @default default
+             */
+            tenant: string;
+            /** Cluster Id */
+            cluster_id: number;
+            /**
+             * Cluster Name
+             * @default
+             */
+            cluster_name: string;
+            /** Allowed Models */
+            allowed_models?: string[];
+            /**
+             * Rpm Limit
+             * @default 120
+             */
+            rpm_limit: number;
+            /**
+             * Tpm Limit
+             * @default 60000
+             */
+            tpm_limit: number;
+            /**
+             * Monthly Budget Usd
+             * @default 50
+             */
+            monthly_budget_usd: number;
+            /**
+             * Spend Usd
+             * @default 0
+             */
+            spend_usd: number;
+            /**
+             * Current Spend Usd
+             * @default 0
+             */
+            current_spend_usd: number;
+            /**
+             * Status
+             * @default active
+             */
+            status: string;
+            /** Created At */
+            created_at: string;
+            /** Last Used At */
+            last_used_at?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HealthAnalyzerDetail */
+        HealthAnalyzerDetail: {
+            /** Name */
+            name: string;
+            /** Namespace */
+            namespace: string;
+            /** Schedule */
+            schedule: string;
+        };
+        /** HealthCneInstance */
+        HealthCneInstance: {
+            /** Name */
+            name: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** HealthConnectivityStatus */
+        HealthConnectivityStatus: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "connected" | "reachable" | "partial" | "unreachable" | "unknown";
+            /** Message */
+            message: string;
+            /** Checkedat */
+            checkedAt: string;
+        };
+        /** HealthCounts */
+        HealthCounts: {
+            /** Gateways */
+            gateways: number;
+            /** Listeners */
+            listeners: number;
+            /** Httproutes */
+            httpRoutes: number;
+            /** Vlans */
+            vlans: number;
+            /** Firewallpolicies */
+            firewallPolicies: number;
+            /**
+             * Apppolicies
+             * @default 0
+             */
+            appPolicies: number;
+            /** Irules */
+            irules: number;
+            /** Analyzers */
+            analyzers: number;
+            /**
+             * Aigatewayprofiles
+             * @default 0
+             */
+            aiGatewayProfiles: number;
+            /**
+             * Aimodels
+             * @default 0
+             */
+            aiModels: number;
+            /**
+             * Aiproviders
+             * @default 0
+             */
+            aiProviders: number;
+            /**
+             * Aitenants
+             * @default 0
+             */
+            aiTenants: number;
+            /**
+             * Aicredentials
+             * @default 0
+             */
+            aiCredentials: number;
+            /** Cneinstances */
+            cneInstances: number;
+            /** Tmm Pods */
+            tmm_pods: number;
+            /** Tmm Running */
+            tmm_running: number;
+            /** Tmm Containers */
+            tmm_containers: string;
+        };
+        /** HealthGatewayComponent */
+        HealthGatewayComponent: {
+            /** Total */
+            total: number;
+            /** Programmed */
+            programmed: number;
+            /** Accepted */
+            accepted: number;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "healthy" | "warning" | "critical" | "unknown";
+            /** Explanation */
+            explanation: string;
+            /** Addresses */
+            addresses: string[];
+        };
+        /** HealthIRuleDetail */
+        HealthIRuleDetail: {
+            /** Name */
+            name: string;
+            /** Accepted */
+            accepted: boolean;
+            /** Programmed */
+            programmed: boolean;
+            /** Error */
+            error?: string | null;
+        };
+        /** HealthIRulesComponent */
+        HealthIRulesComponent: {
+            /** Total */
+            total: number;
+            /** Accepted */
+            accepted: number;
+            /** Programmed */
+            programmed: number;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "healthy" | "warning" | "critical" | "unknown";
+            /** Explanation */
+            explanation: string;
+            /** Details */
+            details: components["schemas"]["HealthIRuleDetail"][];
+        };
+        /** HealthInferencePoolDetail */
+        HealthInferencePoolDetail: {
+            /** Name */
+            name: string;
+            /** Namespace */
+            namespace: string;
+            /** Targetports */
+            targetPorts: number[];
+            /** Endpointpicker */
+            endpointPicker: string;
+        };
+        /** HealthInfraComponent */
+        HealthInfraComponent: {
+            /** Total */
+            total: number;
+            /** Programmed */
+            programmed: number;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "healthy" | "warning" | "critical" | "unknown";
+            /** Explanation */
+            explanation: string;
+            /** Details */
+            details: components["schemas"]["HealthInfraDetail"][];
+        };
+        /** HealthInfraDetail */
+        HealthInfraDetail: {
+            /** Name */
+            name: string;
+            /** Programmed */
+            programmed: boolean;
+            /** Networks */
+            networks: number;
+            /** Ipams */
+            ipams: number;
+        };
+        /** HealthIntegrationStatus */
+        HealthIntegrationStatus: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "healthy" | "warning" | "critical" | "unknown";
+            /** Operatorconnected */
+            operatorConnected: boolean;
+            /**
+             * Operatormode
+             * @enum {string}
+             */
+            operatorMode: "direct_ws" | "reverse_ssh" | "polling" | "ngrok_tunnel" | "in_cluster" | "kubeconfig";
+            /** Operatorversion */
+            operatorVersion?: string | null;
+            /** Lastseen */
+            lastSeen?: string | null;
+            /** Message */
+            message: string;
+        };
+        /** HealthLlmGwPluginComponent */
+        HealthLlmGwPluginComponent: {
+            /**
+             * Podswithplugin
+             * @default 0
+             */
+            podsWithPlugin: number;
+            /**
+             * Ready
+             * @default 0
+             */
+            ready: number;
+            /**
+             * Severity
+             * @default unknown
+             * @enum {string}
+             */
+            severity: "healthy" | "warning" | "critical" | "unknown";
+            /**
+             * Explanation
+             * @default
+             */
+            explanation: string;
+        };
+        /** HealthPlatformComponent */
+        HealthPlatformComponent: {
+            /** Explanation */
+            explanation: string;
+            /** Poddetails */
+            podDetails: components["schemas"]["HealthPodDetail"][];
+            /** Remediationactions */
+            remediationActions: components["schemas"]["HealthRemediationAction"][];
+            /** Namespaces */
+            namespaces?: string[];
+            /** Zones */
+            zones?: string[];
+            /** Nodes */
+            nodes?: string[];
+            /** Total */
+            total: number;
+            /** Running */
+            running?: number | null;
+            /** Completed */
+            completed?: number | null;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "healthy" | "warning" | "critical" | "unknown";
+        };
+        /** HealthPodDetail */
+        HealthPodDetail: {
+            /** Podname */
+            podName: string;
+            /** Namespace */
+            namespace: string;
+            /** Nodename */
+            nodeName?: string | null;
+            /** Nodezone */
+            nodeZone?: string | null;
+            /** Nodeinstancetype */
+            nodeInstanceType?: string | null;
+            /** Hostip */
+            hostIP?: string | null;
+            /** Phase */
+            phase: string;
+            /** Restartcount */
+            restartCount: number;
+            /** Containersready */
+            containersReady: string;
+            /** Issue */
+            issue: string;
+        };
+        /** HealthRemediationAction */
+        HealthRemediationAction: {
+            /** Label */
+            label: string;
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "view_logs" | "restart_pod" | "describe" | "diagnostics";
+            /** Target */
+            target: string;
+            /** Namespace */
+            namespace: string;
         };
         /** HealthSubmission */
         HealthSubmission: {
@@ -17473,6 +21609,66 @@ export interface components {
             bnk?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** HealthTmmComponent */
+        HealthTmmComponent: {
+            /** Explanation */
+            explanation: string;
+            /** Poddetails */
+            podDetails: components["schemas"]["HealthPodDetail"][];
+            /** Remediationactions */
+            remediationActions: components["schemas"]["HealthRemediationAction"][];
+            /** Namespaces */
+            namespaces?: string[];
+            /** Zones */
+            zones?: string[];
+            /** Nodes */
+            nodes?: string[];
+            /** Pods */
+            pods: number;
+            /** Running */
+            running: number;
+            /** Containerstotal */
+            containersTotal: number;
+            /** Containersready */
+            containersReady: number;
+            /** Totalrestarts */
+            totalRestarts: number;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "healthy" | "warning" | "critical" | "unknown";
+            llmGwPlugin?: components["schemas"]["HealthLlmGwPluginComponent"] | null;
+        };
+        /** HealthVlanComponent */
+        HealthVlanComponent: {
+            /** Total */
+            total: number;
+            /** Programmed */
+            programmed: number;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "healthy" | "warning" | "critical" | "unknown";
+            /** Explanation */
+            explanation: string;
+            /** Details */
+            details: components["schemas"]["HealthVlanDetail"][];
+        };
+        /** HealthVlanDetail */
+        HealthVlanDetail: {
+            /** Name */
+            name: string;
+            /** Programmed */
+            programmed: boolean;
+            /** Interfaces */
+            interfaces: string[];
+            /** Selfips */
+            selfIPs: string[];
+            /** Mtu */
+            mtu?: number | null;
         };
         /** HeartbeatSubmission */
         HeartbeatSubmission: {
@@ -17792,6 +21988,38 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** IngressSearchResult */
+        IngressSearchResult: {
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Namespace */
+            namespace: string;
+            /** Matched Host */
+            matched_host: string;
+            /** All Hosts */
+            all_hosts?: string[];
+            /** Cluster Id */
+            cluster_id: number;
+            /** Cluster Name */
+            cluster_name: string;
+            /** Project Id */
+            project_id?: number | null;
+            /** Cloud Provider */
+            cloud_provider?: string | null;
+            /** Region */
+            region?: string | null;
+            /** Target Service */
+            target_service?: string | null;
+            /**
+             * Status
+             * @default active
+             */
+            status: string;
+            /** Resource Type */
+            resource_type?: string | null;
+        };
         /** InstallChartRequest */
         InstallChartRequest: {
             /**
@@ -17840,6 +22068,31 @@ export interface components {
              * @default 5m
              */
             timeout: string;
+        };
+        /** IssueVirtualKeyRequest */
+        IssueVirtualKeyRequest: {
+            /**
+             * Cluster Id
+             * @default 1
+             */
+            cluster_id: number;
+            /**
+             * Tenant
+             * @default default
+             */
+            tenant: string;
+            /** Principal Id */
+            principal_id: string;
+            /** Name */
+            name: string;
+            /** Allowed Models */
+            allowed_models?: string[];
+            /** Rpm Limit */
+            rpm_limit?: number | null;
+            /** Tpm Limit */
+            tpm_limit?: number | null;
+            /** Monthly Budget Usd */
+            monthly_budget_usd?: number | null;
         };
         /** LabelKeyEntry */
         LabelKeyEntry: {
@@ -18213,6 +22466,10 @@ export interface components {
             req_body: string;
             /** Resp Body */
             resp_body: string;
+            /** Cluster Id */
+            cluster_id?: number | null;
+            /** Cluster Name */
+            cluster_name?: string | null;
         };
         /**
          * LoginRequest
@@ -19141,6 +23398,23 @@ export interface components {
             /** Created At */
             created_at: string | null;
         };
+        /** PolicyStatus */
+        PolicyStatus: {
+            /**
+             * Resolved
+             * @default false
+             */
+            resolved: boolean;
+            /**
+             * Programmed
+             * @default false
+             */
+            programmed: boolean;
+            /** Messages */
+            messages?: {
+                [key: string]: string | null;
+            };
+        };
         /** PreviewMemberOut */
         PreviewMemberOut: {
             /** Id */
@@ -19708,6 +23982,34 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** ProjectSearchResult */
+        ProjectSearchResult: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Cloud Provider */
+            cloud_provider?: string | null;
+            /** Region */
+            region?: string | null;
+            /**
+             * Module Count
+             * @default 0
+             */
+            module_count: number;
+            /**
+             * Deployed Count
+             * @default 0
+             */
+            deployed_count: number;
+            /**
+             * Failed Count
+             * @default 0
+             */
+            failed_count: number;
+        };
         /**
          * ProjectUpdate
          * @description Schema for updating a project — all fields optional.
@@ -19868,6 +24170,10 @@ export interface components {
             proxy_url: string | null;
             /** External Url */
             external_url: string | null;
+            /** Routing Info */
+            routing_info?: {
+                [key: string]: unknown;
+            } | null;
             /** Status */
             status: string;
             /** Status Message */
@@ -20864,6 +25170,23 @@ export interface components {
             /** Description */
             description?: string | null;
         };
+        /** RemediateAiGatewayRequest */
+        RemediateAiGatewayRequest: {
+            /**
+             * Cluster Id
+             * @default 1
+             */
+            cluster_id: number;
+            /**
+             * Namespace
+             * @default f5-bnk
+             */
+            namespace: string;
+            /** Action */
+            action: string;
+            /** Target Name */
+            target_name?: string | null;
+        };
         /**
          * ResourceCreateRequest
          * @description Request model for creating a Kubernetes resource.
@@ -21136,6 +25459,8 @@ export interface components {
             status: string;
             /** Concurrency */
             concurrency?: number | null;
+            /** Request Rate */
+            request_rate?: number | null;
             /** Latency P50 */
             latency_p50?: number | null;
             /** Latency P99 */
@@ -21144,6 +25469,44 @@ export interface components {
             overall_rps?: number | null;
             /** Tokens Per Sec */
             tokens_per_sec?: number | null;
+            /** Cache Hit Pct */
+            cache_hit_pct?: number | null;
+            /** Ttft Avg */
+            ttft_avg?: number | null;
+            /** Ttft P50 */
+            ttft_p50?: number | null;
+            /** Ttft P99 */
+            ttft_p99?: number | null;
+            /** Error Rate Pct */
+            error_rate_pct?: number | null;
+        };
+        /**
+         * RunGroupCurvesRequest
+         * @description Sweeps to plot against each other (one line per group).
+         */
+        RunGroupCurvesRequest: {
+            /** Group Ids */
+            group_ids: number[];
+        };
+        /**
+         * RunGroupCurvesResponse
+         * @description Load curves for several sweeps, aligned by variant label.
+         */
+        RunGroupCurvesResponse: {
+            /** Groups */
+            groups: components["schemas"]["CurveGroup"][];
+            /** Mismatch Reasons */
+            mismatch_reasons?: string[];
+        };
+        /**
+         * RunGroupListResponse
+         * @description Response from GET /api/benchmarks/run-groups.
+         */
+        RunGroupListResponse: {
+            /** Groups */
+            groups: components["schemas"]["RunGroupSummary"][];
+            /** Total */
+            total: number;
         };
         /**
          * RunGroupResponse
@@ -21162,6 +25525,8 @@ export interface components {
             status: string;
             /** Target Id */
             target_id: number | null;
+            /** Cluster Name */
+            cluster_name?: string | null;
             /** Proxy */
             proxy: string | null;
             /** Model */
@@ -21210,6 +25575,41 @@ export interface components {
             updated_at: string;
             /** Runs */
             runs?: components["schemas"]["RunGroupChildSummary"][];
+        };
+        /**
+         * RunGroupSummary
+         * @description Compact run-group summary (list view).
+         */
+        RunGroupSummary: {
+            /** Id */
+            id: number;
+            /** Scenario Key */
+            scenario_key: string;
+            /** Scenario Name */
+            scenario_name: string | null;
+            /** Run Label */
+            run_label: string | null;
+            /** Status */
+            status: string;
+            /** Target Id */
+            target_id: number | null;
+            /** Cluster Name */
+            cluster_name?: string | null;
+            /** Proxy */
+            proxy: string | null;
+            /** Model */
+            model: string | null;
+            /** Total Runs */
+            total_runs: number;
+            /** Completed Runs */
+            completed_runs: number;
+            /** Failed Runs */
+            failed_runs: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /** RunProgress */
         RunProgress: {
@@ -21540,6 +25940,16 @@ export interface components {
             child_run_count: number;
             /** Tags */
             tags?: string[];
+            /** Sweep Param */
+            sweep_param?: string | null;
+            /** Default Steps */
+            default_steps?: number[];
+            /** Step Warmup S */
+            step_warmup_s?: number | null;
+            /** Step Duration Floor S */
+            step_duration_floor_s?: number | null;
+            /** Step Min Requests */
+            step_min_requests?: number | null;
         };
         /**
          * ScenarioCatalogResponse
@@ -21583,6 +25993,11 @@ export interface components {
             overrides?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Steps
+             * @description Load steps for a sweep preset (e.g. request rates in req/s); replaces its default steps.
+             */
+            steps?: number[] | null;
         };
         /**
          * ScenarioRunResponse
@@ -22312,6 +26727,152 @@ export interface components {
             /** Task Ids */
             task_ids: number[];
         };
+        /** TopologyAddressList */
+        TopologyAddressList: {
+            /** Name */
+            name: string;
+            /** Addresses */
+            addresses: unknown[];
+        };
+        /** TopologyAnalyzer */
+        TopologyAnalyzer: {
+            /** Name */
+            name: string;
+            /** Schedule */
+            schedule: string;
+            /** Scripttype */
+            scriptType: string;
+            /** Datasources */
+            dataSources: string[];
+            /** Parameters */
+            parameters: {
+                [key: string]: string;
+            };
+        };
+        /** TopologyCneInstance */
+        TopologyCneInstance: {
+            /** Name */
+            name: string;
+            /** Namespace */
+            namespace: string;
+            /** Features */
+            features: {
+                [key: string]: boolean;
+            };
+            /** Networkattachments */
+            networkAttachments: unknown[];
+            /** Containerplatform */
+            containerPlatform: string;
+            /** Phase */
+            phase: string;
+            /** Ready */
+            ready: boolean;
+        };
+        /** TopologyCondition */
+        TopologyCondition: {
+            /** Type */
+            type: string;
+            /** Status */
+            status: string;
+            /** Reason */
+            reason?: string | null;
+            /** Message */
+            message?: string | null;
+            /** Lasttransitiontime */
+            lastTransitionTime?: string | null;
+        };
+        /** TopologyCounts */
+        TopologyCounts: {
+            /** Gateways */
+            gateways: number;
+            /** Listeners */
+            listeners: number;
+            /** Httproutes */
+            httpRoutes: number;
+            /** Grpcroutes */
+            grpcRoutes: number;
+            /** Tcproutes */
+            tcpRoutes: number;
+            /** Udproutes */
+            udpRoutes: number;
+            /** Tlsroutes */
+            tlsRoutes: number;
+            /** L4Routes */
+            l4Routes: number;
+            /** Totalroutes */
+            totalRoutes: number;
+            /** Referencegrants */
+            referenceGrants: number;
+            /** Securitypolicies */
+            securityPolicies: number;
+            /** Networkpolicies */
+            networkPolicies: number;
+            /** Firewallpolicies */
+            firewallPolicies: number;
+            /** Irules */
+            iRules: number;
+            /** Analyzers */
+            analyzers: number;
+            /** Vlans */
+            vlans: number;
+            /** Cneinstances */
+            cneInstances: number;
+            /** Staticroutes */
+            staticRoutes: number;
+            /** Snatpools */
+            snatPools: number;
+            /** Egresses */
+            egresses: number;
+            /** Hslpublishers */
+            hslPublishers: number;
+            /** Logprofiles */
+            logProfiles: number;
+            /**
+             * Infra
+             * @default 0
+             */
+            infra: number;
+            /**
+             * Gatewaysettings
+             * @default 0
+             */
+            gatewaySettings: number;
+            /**
+             * Egressgateways
+             * @default 0
+             */
+            egressGateways: number;
+            /**
+             * Inferencepools
+             * @default 0
+             */
+            inferencePools: number;
+            /**
+             * F5Epps
+             * @default 0
+             */
+            f5epps: number;
+        };
+        /** TopologyDataPlane */
+        TopologyDataPlane: {
+            /** Vlans */
+            vlans: components["schemas"]["TopologyVlan"][];
+            /** Cneinstances */
+            cneInstances: components["schemas"]["TopologyCneInstance"][];
+            /** Staticroutes */
+            staticRoutes: components["schemas"]["TopologyStaticRoute"][];
+            /** Snatpools */
+            snatPools: components["schemas"]["TopologySnatPool"][];
+            /** Egresses */
+            egresses: components["schemas"]["TopologyEgress"][];
+            logging: components["schemas"]["TopologyLogging"];
+            /** Infra */
+            infra?: components["schemas"]["TopologyInfra"][];
+            /** Gatewaysettings */
+            gatewaySettings?: components["schemas"]["TopologyGatewaySettings"][];
+            /** Egressgateways */
+            egressGateways?: components["schemas"]["TopologyEgress"][];
+        };
         /**
          * TopologyEdge
          * @description A directed edge in the topology graph.
@@ -22325,6 +26886,141 @@ export interface components {
             target: string;
             /** Kind */
             kind: string;
+            /** Label */
+            label?: string | null;
+        };
+        /** TopologyEgress */
+        TopologyEgress: {
+            /** Name */
+            name: string;
+            /** Namespace */
+            namespace: string;
+            /**
+             * Kind
+             * @default
+             */
+            kind: string;
+            /** Snattype */
+            snatType: string;
+            /** Egresssnatpool */
+            egressSnatpool?: string | null;
+            /** Firewallenforcedpolicy */
+            firewallEnforcedPolicy?: string | null;
+            /** Logprofile */
+            logProfile?: string | null;
+            /** Capturednamespaces */
+            capturedNamespaces: string[];
+            /** Vxlan */
+            vxlan?: {
+                [key: string]: string;
+            } | null;
+            /** Ready */
+            ready: boolean;
+            /** Gatewayclassname */
+            gatewayClassName?: string | null;
+            /** Parametersref */
+            parametersRef?: {
+                [key: string]: unknown;
+            } | null;
+            /** Sourceselector */
+            sourceSelector?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** TopologyFirewallPolicy */
+        TopologyFirewallPolicy: {
+            /** Name */
+            name: string;
+            /** Rules */
+            rules: components["schemas"]["TopologyFwRule"][];
+            /** Addresslists */
+            addressLists: components["schemas"]["TopologyAddressList"][];
+            /** Portlists */
+            portLists: components["schemas"]["TopologyPortList"][];
+        };
+        /** TopologyFwRule */
+        TopologyFwRule: {
+            /** Name */
+            name: string;
+            /** Action */
+            action: string;
+            /** Ipprotocol */
+            ipProtocol: string;
+            /** Logging */
+            logging: boolean;
+        };
+        /** TopologyGateway */
+        TopologyGateway: {
+            /** Name */
+            name: string;
+            /** Namespace */
+            namespace: string;
+            /** Gatewayclassname */
+            gatewayClassName: string;
+            /** Addresses */
+            addresses: string[];
+            /**
+             * Accepted
+             * @default false
+             */
+            accepted: boolean;
+            /**
+             * Programmed
+             * @default false
+             */
+            programmed: boolean;
+            /** Conditions */
+            conditions?: components["schemas"]["TopologyCondition"][];
+            /** Listeners */
+            listeners: components["schemas"]["TopologyListener"][];
+            /** Securitypolicies */
+            securityPolicies: components["schemas"]["TopologySecurityPolicy"][];
+            gatewaySettings?: components["schemas"]["TopologyGatewaySettingsRef"] | null;
+        };
+        /** TopologyGatewaySettings */
+        TopologyGatewaySettings: {
+            /** Name */
+            name: string;
+            /** Namespace */
+            namespace: string;
+            /** Ingressconfig */
+            ingressConfig?: {
+                [key: string]: unknown;
+            };
+            /** Sourcenatpools */
+            sourceNATPools?: {
+                [key: string]: unknown;
+            }[];
+            /** Egressconfigs */
+            egressConfigs?: {
+                [key: string]: unknown;
+            }[];
+            /** Ready */
+            ready: boolean;
+            /** Conditions */
+            conditions?: components["schemas"]["TopologyCondition"][];
+        };
+        /**
+         * TopologyGatewaySettingsRef
+         * @description GatewaySettings resolved from a Gateway's spec.infrastructure.parametersRef (BNK 2.4).
+         */
+        TopologyGatewaySettingsRef: {
+            /** Name */
+            name: string;
+            /** Namespace */
+            namespace: string;
+            /** Ingressconfig */
+            ingressConfig?: {
+                [key: string]: unknown;
+            };
+            /** Sourcenatpools */
+            sourceNATPools?: {
+                [key: string]: unknown;
+            }[];
+            /** Egressconfigs */
+            egressConfigs?: {
+                [key: string]: unknown;
+            }[];
         };
         /**
          * TopologyGraphResponse
@@ -22342,9 +27038,125 @@ export interface components {
             /** Info */
             info?: string | null;
         };
+        /** TopologyInfra */
+        TopologyInfra: {
+            /** Name */
+            name: string;
+            /** Namespace */
+            namespace: string;
+            /** Networks */
+            networks?: {
+                [key: string]: unknown;
+            }[];
+            /** Ipams */
+            ipams?: {
+                [key: string]: unknown;
+            }[];
+            /** Networkattachments */
+            networkAttachments?: {
+                [key: string]: unknown;
+            }[];
+            /** Staticroutes */
+            staticRoutes?: {
+                [key: string]: unknown;
+            }[];
+            /** Vrfs */
+            vrfs?: unknown[];
+            /** Egressdefaults */
+            egressDefaults?: {
+                [key: string]: unknown;
+            };
+            /** Ready */
+            ready: boolean;
+            /** Conditions */
+            conditions?: components["schemas"]["TopologyCondition"][];
+        };
+        /** TopologyListener */
+        TopologyListener: {
+            /** Name */
+            name: string;
+            /** Protocol */
+            protocol: string;
+            /** Port */
+            port?: number | null;
+            /**
+             * Attachedroutecount
+             * @default 0
+             */
+            attachedRouteCount: number;
+            /** Conditions */
+            conditions?: components["schemas"]["TopologyCondition"][];
+            /** Routes */
+            routes: components["schemas"]["TopologyRoute"][];
+            /** Networkpolicies */
+            networkPolicies: components["schemas"]["TopologyNetworkPolicy"][];
+        };
+        /** TopologyLogging */
+        TopologyLogging: {
+            /** Hslpublishers */
+            hslPublishers: {
+                [key: string]: unknown;
+            }[];
+            /** Logprofiles */
+            logProfiles: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** TopologyMcpInfo */
+        TopologyMcpInfo: {
+            /** Auth */
+            auth: string;
+            /** Tools */
+            tools: string[];
+        };
+        /** TopologyNetworkPolicy */
+        TopologyNetworkPolicy: {
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @default
+             */
+            kind: string;
+            /** Namespace */
+            namespace: string;
+            /** Extensions */
+            extensions: components["schemas"]["TopologyNetworkPolicyExtension"][];
+            /** Resolvedcount */
+            resolvedCount: number;
+            /** Totalextensions */
+            totalExtensions: number;
+            /**
+             * Resolved
+             * @default false
+             */
+            resolved: boolean;
+            /**
+             * Programmed
+             * @default false
+             */
+            programmed: boolean;
+            /** Messages */
+            messages?: {
+                [key: string]: string | null;
+            };
+        };
+        /** TopologyNetworkPolicyExtension */
+        TopologyNetworkPolicyExtension: {
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Group */
+            group: string;
+            /** Linecount */
+            lineCount?: number | null;
+            /** Eventhandlers */
+            eventHandlers?: string[];
+        };
         /**
          * TopologyNode
-         * @description A single node in the topology graph (Service, Pod, or owning workload).
+         * @description A single node in the Dependency Fabric topology graph (Core, Workload, Gateway, AI Gateway, or CNF CRD).
          */
         TopologyNode: {
             /** Id */
@@ -22362,10 +27174,194 @@ export interface components {
              * @default unknown
              */
             severity: string;
+            /** Category */
+            category?: string | null;
             /** Meta */
             meta?: {
                 [key: string]: unknown;
             };
+        };
+        /** TopologyPortList */
+        TopologyPortList: {
+            /** Name */
+            name: string;
+            /** Ports */
+            ports: unknown[];
+        };
+        /** TopologyReferenceGrant */
+        TopologyReferenceGrant: {
+            /** Name */
+            name: string;
+            /** Namespace */
+            namespace: string;
+            /** From */
+            from: components["schemas"]["TopologyReferenceGrantFrom"][];
+            /** To */
+            to: components["schemas"]["TopologyReferenceGrantTo"][];
+        };
+        /** TopologyReferenceGrantFrom */
+        TopologyReferenceGrantFrom: {
+            /** Group */
+            group: string;
+            /** Kind */
+            kind: string;
+            /** Namespace */
+            namespace: string;
+        };
+        /** TopologyReferenceGrantTo */
+        TopologyReferenceGrantTo: {
+            /** Group */
+            group: string;
+            /** Kind */
+            kind: string;
+        };
+        /** TopologyRoute */
+        TopologyRoute: {
+            /** Name */
+            name: string;
+            /** Namespace */
+            namespace: string;
+            /** Kind */
+            kind: string;
+            /** Resourcetype */
+            resourceType?: string | null;
+            /** Hostnames */
+            hostnames: string[];
+            /** Backends */
+            backends: components["schemas"]["TopologyRouteBackend"][];
+            /** Analyzers */
+            analyzers: components["schemas"]["TopologyAnalyzer"][];
+            /**
+             * Accepted
+             * @default false
+             */
+            accepted: boolean;
+            /** Conditions */
+            conditions?: components["schemas"]["TopologyCondition"][];
+            /** Conditionmessage */
+            conditionMessage?: string | null;
+            /**
+             * Ismcp
+             * @default false
+             */
+            isMcp: boolean;
+            mcpInfo?: components["schemas"]["TopologyMcpInfo"] | null;
+            /** Servicesettings */
+            serviceSettings?: {
+                [key: string]: {
+                    [key: string]: number;
+                };
+            } | null;
+        };
+        /** TopologyRouteBackend */
+        TopologyRouteBackend: {
+            /** Name */
+            name: string;
+            /** Namespace */
+            namespace?: string | null;
+            /** Port */
+            port?: number | null;
+            /** Weight */
+            weight?: number | null;
+            /**
+             * Kind
+             * @default Service
+             */
+            kind: string;
+            /**
+             * Group
+             * @default
+             */
+            group: string;
+        };
+        /** TopologySecurityPolicy */
+        TopologySecurityPolicy: {
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @default
+             */
+            kind: string;
+            /** Namespace */
+            namespace: string;
+            /** Targetlistener */
+            targetListener: string;
+            /** Firewallpolicies */
+            firewallPolicies: components["schemas"]["TopologyFirewallPolicy"][];
+            /**
+             * Resolved
+             * @default false
+             */
+            resolved: boolean;
+            /**
+             * Programmed
+             * @default false
+             */
+            programmed: boolean;
+            /** Messages */
+            messages?: {
+                [key: string]: string | null;
+            };
+        };
+        /** TopologySnatPool */
+        TopologySnatPool: {
+            /** Name */
+            name: string;
+            /** Namespace */
+            namespace: string;
+            /** Addresses */
+            addresses: unknown[];
+        };
+        /** TopologyStaticRoute */
+        TopologyStaticRoute: {
+            /** Name */
+            name: string;
+            /** Namespace */
+            namespace: string;
+            /** Destination */
+            destination: string;
+            /** Gateway */
+            gateway: string;
+            /**
+             * Kind
+             * @default
+             */
+            kind: string;
+            /** Infraname */
+            infraName?: string | null;
+        };
+        /** TopologyVlan */
+        TopologyVlan: {
+            /** Name */
+            name: string;
+            /** Namespace */
+            namespace: string;
+            /**
+             * Kind
+             * @default
+             */
+            kind: string;
+            /** Infraname */
+            infraName?: string | null;
+            /** Interfaces */
+            interfaces: unknown[];
+            /** Selfipv4S */
+            selfipV4s: string[];
+            /** Prefixlen */
+            prefixLen?: number | string | null;
+            /** Mtu */
+            mtu?: number | null;
+            /** Internal */
+            internal: boolean;
+            /** Autolasthop */
+            autoLasthop: string;
+            /** Ready */
+            ready: boolean;
+            /** Type */
+            type?: string | null;
+            /** Tag */
+            tag?: number | null;
         };
         /**
          * TransferOwnershipRequest
@@ -22446,6 +27442,13 @@ export interface components {
              * @description Override HTTP request timeout (seconds)
              */
             timeout?: number | null;
+            /**
+             * Overrides
+             * @description aiperf settings applied over the saved config (e.g. {'concurrency': 64}). url/model/endpoint always come from the target/proxy.
+             */
+            overrides?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * TriggerRunResponse
@@ -22469,6 +27472,94 @@ export interface components {
         UnreadCountResponse: {
             /** Count */
             count: number;
+        };
+        /** UpdateAiGatewayRoutePoliciesRequest */
+        UpdateAiGatewayRoutePoliciesRequest: {
+            /**
+             * Cluster Id
+             * @default 1
+             */
+            cluster_id: number;
+            /**
+             * Namespace
+             * @default f5-bnk
+             */
+            namespace: string;
+            /** Auth Mode */
+            auth_mode?: string | null;
+            /** Virtual Keys Enabled */
+            virtual_keys_enabled?: boolean | null;
+            /** Jwt Enabled */
+            jwt_enabled?: boolean | null;
+            /** Jwt Issuer */
+            jwt_issuer?: string | null;
+            /** Jwt Audiences */
+            jwt_audiences?: string[] | null;
+            /** Jwks Uri */
+            jwks_uri?: string | null;
+            /** Jwks Refresh Interval */
+            jwks_refresh_interval?: string | null;
+            /** Jwt Secret Ref */
+            jwt_secret_ref?: string | null;
+            /** Jwt Header */
+            jwt_header?: string | null;
+            /** Jwt Scheme */
+            jwt_scheme?: string | null;
+            /** Jwt Clock Skew */
+            jwt_clock_skew?: string | null;
+            /** Jwt Principal Claim */
+            jwt_principal_claim?: string | null;
+            /** Jwt Team Claim */
+            jwt_team_claim?: string | null;
+            /** Jwt Org Claim */
+            jwt_org_claim?: string | null;
+            /** Failover Enabled */
+            failover_enabled?: boolean | null;
+            /** Prompt Cache Enabled */
+            prompt_cache_enabled?: boolean | null;
+            /** Semantic Cache Enabled */
+            semantic_cache_enabled?: boolean | null;
+            /** Semantic Cache Similarity Threshold */
+            semantic_cache_similarity_threshold?: number | null;
+            /** Semantic Cache Pool Max Size */
+            semantic_cache_pool_max_size?: number | null;
+            /** Semantic Cache Pool Idle Timeout */
+            semantic_cache_pool_idle_timeout?: string | null;
+            /** Model Routing Enabled */
+            model_routing_enabled?: boolean | null;
+            /** Default Model Ref */
+            default_model_ref?: string | null;
+            /** Semantic Router Service */
+            semantic_router_service?: string | null;
+            /** Semantic Router Namespace */
+            semantic_router_namespace?: string | null;
+            /** Semantic Router Port */
+            semantic_router_port?: number | null;
+            /** Semantic Router Timeout */
+            semantic_router_timeout?: string | null;
+            /** Providers */
+            providers?: string[] | null;
+            /** Provider Credentials */
+            provider_credentials?: {
+                [key: string]: string;
+            } | null;
+            /** Provider Overrides */
+            provider_overrides?: components["schemas"]["AiRouteProviderOverride"][] | null;
+        };
+        /** UpdateConfigRequest */
+        UpdateConfigRequest: {
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Category */
+            category?: string | null;
+            /** Target Namespace */
+            target_namespace?: string | null;
+            /** Config Yaml */
+            config_yaml?: string | null;
+            /** Fleet Id */
+            fleet_id?: number | null;
         };
         /**
          * UpdateModuleRequest
@@ -23867,6 +28958,37 @@ export interface operations {
             };
         };
     };
+    detect_and_register_clusters_from_credentials_api_projects__project_id__k8s_clusters_detect_credentials_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_project_clusters_api_projects__project_id__k8s_clusters_get: {
         parameters: {
             query?: never;
@@ -23973,6 +29095,37 @@ export interface operations {
             };
         };
     };
+    project_batch_connectivity_check_api_projects__project_id__connectivity_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchConnectivityResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_cluster_details_api_k8s_clusters__cluster_id__get: {
         parameters: {
             query?: never;
@@ -24070,6 +29223,38 @@ export interface operations {
             };
         };
     };
+    delete_project_cluster_api_projects__project_id__k8s_clusters__cluster_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+                cluster_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClusterOperationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     refresh_cluster_kubeconfig_api_k8s_clusters__cluster_id__refresh_kubeconfig_post: {
         parameters: {
             query?: never;
@@ -24134,7 +29319,9 @@ export interface operations {
     };
     list_cluster_namespaces_api_k8s_clusters__cluster_id__namespaces_get: {
         parameters: {
-            query?: never;
+            query?: {
+                force?: boolean;
+            };
             header?: never;
             path: {
                 cluster_id: number;
@@ -24165,7 +29352,9 @@ export interface operations {
     };
     get_cluster_node_count_api_k8s_clusters__cluster_id__nodes_count_get: {
         parameters: {
-            query?: never;
+            query?: {
+                force?: boolean;
+            };
             header?: never;
             path: {
                 cluster_id: number;
@@ -24521,10 +29710,45 @@ export interface operations {
             };
         };
     };
+    get_cluster_crd_schema_api_k8s_clusters__cluster_id__crds__crd_name__schema_get: {
+        parameters: {
+            query?: {
+                version?: string | null;
+            };
+            header?: never;
+            path: {
+                cluster_id: number;
+                crd_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CrdSchemaResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_cluster_topology_api_k8s_clusters__cluster_id__topology_get: {
         parameters: {
             query?: {
                 namespace?: string;
+                force?: boolean;
             };
             header?: never;
             path: {
@@ -25428,10 +30652,44 @@ export interface operations {
             };
         };
     };
+    global_search_api_k8s_search_get: {
+        parameters: {
+            query: {
+                /** @description Search query string (FQDN, hostname, IP, cluster, project) */
+                q: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GlobalSearchResultResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_bnk_data_api_k8s_clusters__cluster_id__f5bnk_data_get: {
         parameters: {
             query?: {
                 namespace?: string | null;
+                force?: boolean;
             };
             header?: never;
             path: {
@@ -25447,7 +30705,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["BnkDataResponse"];
                 };
             };
             /** @description Validation Error */
@@ -25480,7 +30738,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["BnkHealthEndpointResponse"];
                 };
             };
             /** @description Validation Error */
@@ -25513,7 +30771,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["GatewayTopologyResponse"];
                 };
             };
             /** @description Validation Error */
@@ -25546,7 +30804,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["F5PolicyGatewayAssociationsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -25944,11 +31202,49 @@ export interface operations {
                 range?: string;
                 model?: string | null;
                 status?: string | null;
+                /** @description Optional project ID to filter clusters */
+                project_id?: number | null;
             };
             header?: never;
             path: {
-                cluster_id: number;
+                cluster_id: number | null;
             };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmStatsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_llm_stats_api_k8s_llm_observability_stats_get: {
+        parameters: {
+            query?: {
+                cluster_id?: number | null;
+                range?: string;
+                model?: string | null;
+                status?: string | null;
+                /** @description Optional project ID to filter clusters */
+                project_id?: number | null;
+            };
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -25980,11 +31276,50 @@ export interface operations {
                 range?: string;
                 model?: string | null;
                 status?: string | null;
+                /** @description Optional project ID to filter clusters */
+                project_id?: number | null;
             };
             header?: never;
             path: {
-                cluster_id: number;
+                cluster_id: number | null;
             };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmHistogramResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_llm_histogram_api_k8s_llm_observability_histogram_get: {
+        parameters: {
+            query?: {
+                cluster_id?: number | null;
+                metric?: string;
+                range?: string;
+                model?: string | null;
+                status?: string | null;
+                /** @description Optional project ID to filter clusters */
+                project_id?: number | null;
+            };
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -26015,11 +31350,49 @@ export interface operations {
                 range?: string;
                 model?: string | null;
                 status?: string | null;
+                /** @description Optional project ID to filter clusters */
+                project_id?: number | null;
             };
             header?: never;
             path: {
-                cluster_id: number;
+                cluster_id: number | null;
             };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmRankingsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_llm_rankings_api_k8s_llm_observability_rankings_get: {
+        parameters: {
+            query?: {
+                cluster_id?: number | null;
+                range?: string;
+                model?: string | null;
+                status?: string | null;
+                /** @description Optional project ID to filter clusters */
+                project_id?: number | null;
+            };
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -26051,11 +31424,50 @@ export interface operations {
                 range?: string;
                 model?: string | null;
                 status?: string | null;
+                /** @description Optional project ID to filter clusters */
+                project_id?: number | null;
             };
             header?: never;
             path: {
-                cluster_id: number;
+                cluster_id: number | null;
             };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmProviderUsageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_llm_provider_usage_api_k8s_llm_observability_provider_usage_get: {
+        parameters: {
+            query?: {
+                cluster_id?: number | null;
+                metric?: string;
+                range?: string;
+                model?: string | null;
+                status?: string | null;
+                /** @description Optional project ID to filter clusters */
+                project_id?: number | null;
+            };
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -26090,11 +31502,53 @@ export interface operations {
                 content_search?: string | null;
                 /** @description nanosecond cursor for load-older */
                 end?: number | null;
+                /** @description Optional project ID to filter clusters */
+                project_id?: number | null;
             };
             header?: never;
             path: {
-                cluster_id: number;
+                cluster_id: number | null;
             };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmLogsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_llm_logs_api_k8s_llm_observability_logs_get: {
+        parameters: {
+            query?: {
+                cluster_id?: number | null;
+                range?: string;
+                model?: string | null;
+                status?: string | null;
+                limit?: number;
+                content_search?: string | null;
+                /** @description nanosecond cursor for load-older */
+                end?: number | null;
+                /** @description Optional project ID to filter clusters */
+                project_id?: number | null;
+            };
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -26123,10 +31577,12 @@ export interface operations {
         parameters: {
             query?: {
                 range?: string;
+                /** @description Optional project ID to filter clusters */
+                project_id?: number | null;
             };
             header?: never;
             path: {
-                cluster_id: number;
+                cluster_id: number | null;
             };
             cookie?: never;
         };
@@ -26139,6 +31595,1014 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LlmFilterDataResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_llm_filterdata_api_k8s_llm_observability_filterdata_get: {
+        parameters: {
+            query?: {
+                cluster_id?: number | null;
+                range?: string;
+                /** @description Optional project ID to filter clusters */
+                project_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmFilterDataResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ai_governance_overview_api_k8s_clusters__cluster_id__llm_observability_governance_overview_get: {
+        parameters: {
+            query?: {
+                /** @description Optional Kubernetes namespace filter */
+                namespace?: string | null;
+                /** @description Optional project ID to filter clusters */
+                project_id?: number | null;
+            };
+            header?: never;
+            path: {
+                cluster_id: number | null;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceOverviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ai_governance_overview_api_k8s_llm_observability_governance_overview_get: {
+        parameters: {
+            query?: {
+                cluster_id?: number | null;
+                /** @description Optional Kubernetes namespace filter */
+                namespace?: string | null;
+                /** @description Optional project ID to filter clusters */
+                project_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceOverviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_ai_tenant_api_k8s_clusters__cluster_id__llm_observability_governance_tenants_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cluster_id: number | null;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAiTenantRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_ai_tenant_api_k8s_llm_observability_governance_tenants_post: {
+        parameters: {
+            query?: {
+                cluster_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAiTenantRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_ai_provider_api_k8s_clusters__cluster_id__llm_observability_governance_providers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cluster_id: number | null;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAiProviderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_ai_provider_api_k8s_llm_observability_governance_providers_post: {
+        parameters: {
+            query?: {
+                cluster_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAiProviderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_ai_model_api_k8s_clusters__cluster_id__llm_observability_governance_models_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cluster_id: number | null;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAiModelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_ai_model_api_k8s_llm_observability_governance_models_post: {
+        parameters: {
+            query?: {
+                cluster_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAiModelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_ai_gateway_route_api_k8s_clusters__cluster_id__llm_observability_governance_routes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cluster_id: number | null;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAiGatewayRouteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_ai_gateway_route_api_k8s_llm_observability_governance_routes_post: {
+        parameters: {
+            query?: {
+                cluster_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAiGatewayRouteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_ai_gateway_route_policies_api_k8s_clusters__cluster_id__llm_observability_governance_routes__route_name__policies_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                route_name: string;
+                cluster_id: number | null;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAiGatewayRoutePoliciesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_ai_gateway_route_policies_api_k8s_llm_observability_governance_routes__route_name__policies_patch: {
+        parameters: {
+            query?: {
+                cluster_id?: number | null;
+            };
+            header?: never;
+            path: {
+                route_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAiGatewayRoutePoliciesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_governance_org_api_k8s_clusters__cluster_id__llm_observability_governance_orgs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cluster_id: number | null;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGovernanceOrgRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_governance_org_api_k8s_llm_observability_governance_orgs_post: {
+        parameters: {
+            query?: {
+                cluster_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGovernanceOrgRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_governance_team_api_k8s_clusters__cluster_id__llm_observability_governance_teams_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cluster_id: number | null;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGovernanceTeamRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_governance_team_api_k8s_llm_observability_governance_teams_post: {
+        parameters: {
+            query?: {
+                cluster_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGovernanceTeamRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_governance_principal_api_k8s_clusters__cluster_id__llm_observability_governance_principals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cluster_id: number | null;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGovernancePrincipalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_governance_principal_api_k8s_llm_observability_governance_principals_post: {
+        parameters: {
+            query?: {
+                cluster_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGovernancePrincipalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    issue_governance_virtual_key_api_k8s_clusters__cluster_id__llm_observability_governance_virtual_keys_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cluster_id: number | null;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IssueVirtualKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    issue_governance_virtual_key_api_k8s_llm_observability_governance_virtual_keys_post: {
+        parameters: {
+            query?: {
+                cluster_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IssueVirtualKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rotate_governance_virtual_key_api_k8s_clusters__cluster_id__llm_observability_governance_virtual_keys__key_id__rotate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key_id: string;
+                cluster_id: number | null;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rotate_governance_virtual_key_api_k8s_llm_observability_governance_virtual_keys__key_id__rotate_post: {
+        parameters: {
+            query?: {
+                cluster_id?: number | null;
+            };
+            header?: never;
+            path: {
+                key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_governance_virtual_key_api_k8s_clusters__cluster_id__llm_observability_governance_virtual_keys__key_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key_id: string;
+                cluster_id: number | null;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_governance_virtual_key_api_k8s_llm_observability_governance_virtual_keys__key_id__delete: {
+        parameters: {
+            query?: {
+                cluster_id?: number | null;
+            };
+            header?: never;
+            path: {
+                key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remediate_ai_gateway_api_k8s_clusters__cluster_id__llm_observability_governance_remediate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cluster_id: number | null;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemediateAiGatewayRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remediate_ai_gateway_api_k8s_llm_observability_governance_remediate_post: {
+        parameters: {
+            query?: {
+                cluster_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemediateAiGatewayRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiGovernanceMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_ai_gateway_request_api_k8s_clusters__cluster_id__llm_observability_governance_test_request_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cluster_id: number | null;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GatewayInferenceTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GatewayInferenceTestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_ai_gateway_request_api_k8s_llm_observability_governance_test_request_post: {
+        parameters: {
+            query?: {
+                cluster_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GatewayInferenceTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GatewayInferenceTestResponse"];
                 };
             };
             /** @description Validation Error */
@@ -29093,7 +35557,9 @@ export interface operations {
     };
     get_recovery_status_api_k8s_clusters__cluster_id__recovery_status_get: {
         parameters: {
-            query?: never;
+            query?: {
+                force?: boolean;
+            };
             header?: never;
             path: {
                 cluster_id: number;
@@ -29328,6 +35794,7 @@ export interface operations {
                 provider?: string | null;
                 official_only?: boolean;
                 tested_only?: boolean;
+                include_details?: boolean;
             };
             header?: never;
             path?: never;
@@ -31280,6 +37747,26 @@ export interface operations {
             };
         };
     };
+    list_azure_regions_api_cloud_auth_azure_regions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloudRegionsResponse"];
+                };
+            };
+        };
+    };
     query_ibm_cos_instances_api_cloud_auth_ibm_cos_instances_query_post: {
         parameters: {
             query?: never;
@@ -33097,6 +39584,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProcessMetricsResponse"];
+                };
+            };
+        };
+    };
+    get_bnk_consumption_api_system_bnk_consumption_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BnkConsumptionResponse"];
                 };
             };
         };
@@ -39654,7 +46161,9 @@ export interface operations {
     };
     get_license_status_endpoint_api_licensing__cluster_id__status_get: {
         parameters: {
-            query?: never;
+            query?: {
+                force?: boolean;
+            };
             header?: never;
             path: {
                 cluster_id: number;
@@ -39685,7 +46194,9 @@ export interface operations {
     };
     get_license_report_endpoint_api_licensing__cluster_id__report_get: {
         parameters: {
-            query?: never;
+            query?: {
+                force?: boolean;
+            };
             header?: never;
             path: {
                 cluster_id: number;
@@ -39914,7 +46425,9 @@ export interface operations {
     };
     get_cwc_status_endpoint_api_licensing__cluster_id__cwc_status_get: {
         parameters: {
-            query?: never;
+            query?: {
+                force?: boolean;
+            };
             header?: never;
             path: {
                 cluster_id: number;
@@ -40706,6 +47219,8 @@ export interface operations {
                 config_id?: number | null;
                 proxy_deployment_id?: number | null;
                 dataset_name?: string | null;
+                /** @description JSON object of run tags, e.g. the simulated model profile */
+                tags?: string | null;
             };
             header?: never;
             path?: never;
@@ -40905,6 +47420,12 @@ export interface operations {
                 tool?: string | null;
                 model?: string | null;
                 status?: string | null;
+                cluster_id?: number | null;
+                /** @description Search run label, model or proxy */
+                q?: string | null;
+                /** @description Sort column; unknown values sort by created_at */
+                sort?: string;
+                order?: string;
                 limit?: number;
                 offset?: number;
             };
@@ -41233,6 +47754,200 @@ export interface operations {
             };
         };
     };
+    update_benchmark_agent_api_benchmarks_agents__agent_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BenchmarkAgentUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BenchmarkAgentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mint_benchmark_agent_token_api_benchmarks_agents__agent_id__token_post: {
+        parameters: {
+            query?: {
+                /** @description Token lifetime in days (1-3650, default 365) */
+                expires_in_days?: number;
+            };
+            header?: never;
+            path: {
+                agent_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BenchmarkAgentTokenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_benchmark_agent_token_api_benchmarks_agents__agent_id__token_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rotate_benchmark_agent_token_api_benchmarks_agents__agent_id__token_rotate_post: {
+        parameters: {
+            query?: {
+                /** @description Token lifetime in days (1-3650, default 365) */
+                expires_in_days?: number;
+            };
+            header?: never;
+            path: {
+                agent_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BenchmarkAgentTokenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_benchmark_agent_connection_api_benchmarks_agents__agent_id__check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BenchmarkAgentCheckResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connect_benchmark_agent_api_benchmarks_agents__agent_id__connect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BenchmarkAgentConnectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_agent_hosts_api_benchmarks_agent_hosts_get: {
         parameters: {
             query?: {
@@ -41526,7 +48241,9 @@ export interface operations {
     };
     get_benchmark_summary_api_benchmarks_summary_get: {
         parameters: {
-            query?: never;
+            query?: {
+                cluster_id?: number | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -41540,6 +48257,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BenchmarkSummaryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -41584,6 +48310,8 @@ export interface operations {
             query?: {
                 status?: string | null;
                 cluster_id?: number | null;
+                /** @description Exact match filter by target name */
+                name?: string | null;
             };
             header?: never;
             path?: never;
@@ -42138,6 +48866,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunGroupResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_benchmark_run_groups_api_benchmarks_run_groups_get: {
+        parameters: {
+            query?: {
+                scenario_key?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunGroupListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    benchmark_run_group_curves_api_benchmarks_run_groups_curves_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunGroupCurvesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunGroupCurvesResponse"];
                 };
             };
             /** @description Validation Error */
@@ -43347,6 +50140,199 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PolicyEvaluationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_configs_api_fleet_configs_get: {
+        parameters: {
+            query?: {
+                fleet_id?: number | null;
+                category?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_config_api_fleet_configs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_config_api_fleet_configs__config_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                config_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_config_api_fleet_configs__config_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                config_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_config_api_fleet_configs__config_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                config_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deploy_config_to_fleet_api_fleet_configs_deploy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeployConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeployFleetConfigResponse"];
                 };
             };
             /** @description Validation Error */

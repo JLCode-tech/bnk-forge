@@ -27,7 +27,6 @@ TOTAL=0
 # Colors (if terminal supports them)
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
 
 assert_exit_code() {
@@ -67,7 +66,7 @@ assert_output_contains() {
     local output="$3"
     TOTAL=$((TOTAL + 1))
 
-    if echo "$output" | grep -qE "$pattern"; then
+    if echo "$output" | grep -qE -e "$pattern"; then
         echo -e "  ${GREEN}✓${NC} ${test_name}"
         PASS=$((PASS + 1))
     else
@@ -94,11 +93,15 @@ if [ -f "$REPO_ROOT/scripts/check-disk-space.sh" ]; then
     chmod +x "$TMPDIR/repo/scripts/check-disk-space.sh"
 fi
 
+if [ -f "$REPO_ROOT/MIN_UPGRADE_FROM" ]; then
+    cp "$REPO_ROOT/MIN_UPGRADE_FROM" "$TMPDIR/repo/MIN_UPGRADE_FROM"
+fi
+
 # Initialize git repo with a commit
 cd "$TMPDIR/repo"
 git init -q
 git checkout -b staging
-echo "1.0.0" > VERSION
+echo "3.1.6" > VERSION
 git add -A
 git commit -q -m "initial"
 
@@ -106,6 +109,7 @@ git commit -q -m "initial"
 git clone -q --bare "$TMPDIR/repo" "$TMPDIR/remote.git"
 git remote add origin "$TMPDIR/remote.git"
 git fetch -q origin
+git branch -q --set-upstream-to=origin/staging staging
 
 echo ""
 echo "=================================="
@@ -232,23 +236,102 @@ echo "Test group: version policy guard (D17)"
 git push -q origin staging
 
 # Now simulate: remote has a new commit with same VERSION
-echo "new file" > newfile.txt
-git add newfile.txt
+mkdir -p backend
+echo "new file" > backend/newfile.txt
+git add backend/newfile.txt
 git commit -q -m "new commit same version"
 git push -q origin staging
 
-# Reset local to old commit, then pull to simulate upgrade
+# Reset local to old commit, then run non-local upgrade so it pulls and hits D17
 git reset -q --hard HEAD~1
 
-# Non-local mode would pull, but we test the version check path directly
-# by using --local with the repo already at old commit and origin at new
-# The version check fires after pull in normal mode, but in --local mode
-# the commit doesn't change, so this specific gate won't fire.
-# Instead, test by manually simulating: old commit != new commit, same VERSION.
-# We already have the logic tested implicitly via the diverged check.
-# Mark this as a known limitation — version policy is best tested on server.
+set +e
+OUTPUT=$(./upgrade.sh --skip-disk-check 2>&1)
+RC=$?
+set -e
 
-echo -e "  ${YELLOW}⚠${NC} Version policy (D17) best tested on real server (requires commit drift during upgrade)"
+assert_exit_code "same VERSION on new commit fails without override" 6 "$RC"
+assert_output_contains "D17 error message shown" "Commit changed but VERSION was not bumped" "$OUTPUT"
+
+# Reset local to old commit again and test --allow-same-version override
+git reset -q --hard HEAD~1
+
+set +e
+OUTPUT=$(./upgrade.sh --allow-same-version --skip-disk-check 2>&1)
+RC=$?
+set -e
+
+assert_preflight_passed "same VERSION passes with --allow-same-version" "$RC"
+assert_output_contains "D17 override logged" "Version unchanged while commit changed" "$OUTPUT"
+
+echo ""
+
+# ---------------------------------------------------------------------------
+# Test 6: Minimum upgrade version compatibility guard (MIN_UPGRADE_FROM)
+# ---------------------------------------------------------------------------
+echo "Test group: minimum upgrade version guard (MIN_UPGRADE_FROM)"
+
+echo "2.9.0" > VERSION
+echo "3.0.0" > MIN_UPGRADE_FROM
+git add VERSION MIN_UPGRADE_FROM
+git commit -q -m "simulate old version 2.9.0 below MIN_UPGRADE_FROM 3.0.0"
+git push -q origin staging
+
+set +e
+OUTPUT=$(./upgrade.sh --local --skip-disk-check 2>&1)
+RC=$?
+set -e
+
+assert_exit_code "version below MIN_UPGRADE_FROM fails without override" 6 "$RC"
+assert_output_contains "MIN_UPGRADE_FROM error message shown" "Minimum supported upgrade version is 3.0.0" "$OUTPUT"
+
+set +e
+OUTPUT=$(./upgrade.sh --local --allow-unsupported-version --skip-disk-check 2>&1)
+RC=$?
+set -e
+
+assert_preflight_passed "version below MIN_UPGRADE_FROM passes with --allow-unsupported-version" "$RC"
+assert_output_contains "MIN_UPGRADE_FROM override logged" "Skipping minimum upgrade version check" "$OUTPUT"
+
+echo ""
+
+# ---------------------------------------------------------------------------
+# Test 7: --skip-build and --help flags
+# ---------------------------------------------------------------------------
+echo "Test group: --skip-build and --help flags"
+
+# Restore valid version >= MIN_UPGRADE_FROM
+echo "3.1.0" > VERSION
+git add VERSION
+git commit -q -m "bump to 3.1.0 for skip-build test"
+git push -q origin staging
+
+set +e
+HELP_OUTPUT=$(./upgrade.sh --help 2>&1)
+HELP_RC=$?
+set -e
+
+assert_exit_code "--help exits with 0" 0 "$HELP_RC"
+assert_output_contains "--help documents --skip-build" "--skip-build" "$HELP_OUTPUT"
+
+set +e
+UNKNOWN_OUTPUT=$(./upgrade.sh --unknown-flag 2>&1)
+UNKNOWN_RC=$?
+set -e
+
+assert_exit_code "unknown flag exits with 2" 2 "$UNKNOWN_RC"
+assert_output_contains "unknown flag prints error" "Unknown option: --unknown-flag" "$UNKNOWN_OUTPUT"
+
+set +e
+OUTPUT=$(./upgrade.sh --local --skip-build --skip-disk-check 2>&1)
+RC=$?
+set -e
+
+# With --skip-build, upgrade.sh skips docker compose build (exit 2) and proceeds
+# into ##PHASE:restart where docker compose up fails (exit 3) in the mock repo.
+assert_exit_code "--skip-build skips build and reaches restart phase" 3 "$RC"
+assert_output_contains "--skip-build logged" "Skipping image build \(--skip-build\)" "$OUTPUT"
+assert_output_contains "reaches restart phase" "##PHASE:restart" "$OUTPUT"
 
 echo ""
 

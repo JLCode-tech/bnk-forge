@@ -160,9 +160,7 @@ def _extract_cne_pull_secret_from_text(raw_text: str) -> str:
                 return None
             if parsed_sa.get("type") != "service_account":
                 return None
-            auth_value = base64.b64encode(
-                ("_json_key:" + candidate).encode("utf-8")
-            ).decode("utf-8")
+            auth_value = base64.b64encode(("_json_key:" + candidate).encode("utf-8")).decode("utf-8")
             docker_config = {"auths": {"repo.f5.com": {"auth": auth_value}}}
             canonical = json.dumps(docker_config, separators=(",", ":"))
             b64 = base64.b64encode(canonical.encode("utf-8")).decode("utf-8")
@@ -236,7 +234,12 @@ def _extract_cne_pull_secret_from_text(raw_text: str) -> str:
 
             # Broad fallback: scan any embedded string values for docker JSON/base64 payloads.
             for candidate in _collect_string_candidates(parsed):
-                for tryf in (_try_as_docker_json_string, _try_as_gcp_service_account_key, _try_as_base64_string, _try_b64_decode_then_sa):
+                for tryf in (
+                    _try_as_docker_json_string,
+                    _try_as_gcp_service_account_key,
+                    _try_as_base64_string,
+                    _try_b64_decode_then_sa,
+                ):
                     normalized = tryf(candidate)
                     if normalized:
                         return normalized
@@ -252,7 +255,12 @@ def _extract_cne_pull_secret_from_text(raw_text: str) -> str:
 
     # Text fallback: try to detect payload hidden in line/value wrappers.
     for candidate in _collect_string_candidates(text):
-        for tryf in (_try_as_docker_json_string, _try_as_gcp_service_account_key, _try_as_base64_string, _try_b64_decode_then_sa):
+        for tryf in (
+            _try_as_docker_json_string,
+            _try_as_gcp_service_account_key,
+            _try_as_base64_string,
+            _try_b64_decode_then_sa,
+        ):
             normalized = tryf(candidate)
             if normalized:
                 return normalized
@@ -329,10 +337,7 @@ def _normalize_special_secret_upload(secret_name: str, filename: str | None, con
 # --- List Secrets ---
 @router.get("/api/projects/{project_id}/secrets", dependencies=[Depends(require_viewer)])
 @handle_route_errors("list project secrets")
-def list_project_secrets(
-    project_id: int,
-    db: Session = Depends(get_db)
-):
+def list_project_secrets(project_id: int, db: Session = Depends(get_db)):
     """
     List all secrets for a project.
 
@@ -340,11 +345,7 @@ def list_project_secrets(
     """
     service = SecretsService(db)
     secrets = service.list_secrets(project_id)
-    return {
-        "success": True,
-        "secrets": secrets,
-        "count": len(secrets)
-    }
+    return {"success": True, "secrets": secrets, "count": len(secrets)}
 
 
 # --- Create File Secret ---
@@ -385,7 +386,7 @@ async def create_file_secret(
             "secret_type": secret.secret_type,
             "filename": secret.filename,
             "file_size": secret.file_size,
-        }
+        },
     }
 
 
@@ -421,7 +422,7 @@ def create_value_secret(
             "id": secret.id,
             "name": secret.name,
             "secret_type": secret.secret_type,
-        }
+        },
     }
 
 
@@ -452,36 +453,42 @@ async def import_special_secret(
     if not content:
         raise BadRequestError("Uploaded file is empty", code="EMPTY_UPLOAD")
 
-    normalized_value = _normalize_special_secret_upload(normalized_secret, file.filename, content)
+    import asyncio
 
-    service = SecretsService(db)
-    existing = service.get_secret_by_name(project_id, normalized_secret)
-    if existing:
-        updated = service.update_value_secret(
-            project_id=project_id,
-            secret_id=existing.id,
-            value=normalized_value,
-            target_variable_name=normalized_secret,
-        )
-        secret_id = updated.id
-        action = "updated"
-    else:
-        created = service.create_value_secret(
-            project_id=project_id,
-            name=normalized_secret,
-            value=normalized_value,
-            description=(
-                "F5 FAR pull secret imported from file"
-                if normalized_secret == "cne_pull_secret"
-                else "F5 license JWT token imported from file"
-            ),
-            target_variable_name=normalized_secret,
-        )
-        secret_id = created.id
-        action = "created"
+    def _upsert_special_secret():
+        normalized_value = _normalize_special_secret_upload(normalized_secret, file.filename, content)
 
-    db.commit()
-    _invalidate_secrets_cache(project_id)
+        service = SecretsService(db)
+        existing = service.get_secret_by_name(project_id, normalized_secret)
+        if existing:
+            updated = service.update_value_secret(
+                project_id=project_id,
+                secret_id=existing.id,
+                value=normalized_value,
+                target_variable_name=normalized_secret,
+            )
+            sec_id = updated.id
+            act = "updated"
+        else:
+            created = service.create_value_secret(
+                project_id=project_id,
+                name=normalized_secret,
+                value=normalized_value,
+                description=(
+                    "F5 FAR pull secret imported from file"
+                    if normalized_secret == "cne_pull_secret"
+                    else "F5 license JWT token imported from file"
+                ),
+                target_variable_name=normalized_secret,
+            )
+            sec_id = created.id
+            act = "created"
+
+        db.commit()
+        _invalidate_secrets_cache(project_id)
+        return sec_id, act
+
+    secret_id, action = await asyncio.to_thread(_upsert_special_secret)
     return {
         "success": True,
         "action": action,
@@ -526,7 +533,7 @@ async def update_file_secret(
             "name": secret.name,
             "filename": secret.filename,
             "file_size": secret.file_size,
-        }
+        },
     }
 
 
@@ -557,7 +564,7 @@ def update_value_secret(
         "secret": {
             "id": secret.id,
             "name": secret.name,
-        }
+        },
     }
 
 
@@ -695,11 +702,7 @@ def delete_stack_variable_secret(
 # --- Get Required Secrets for Stack ---
 @router.get("/api/projects/{project_id}/secrets/required", dependencies=[Depends(require_viewer)])
 @handle_route_errors("get required secrets")
-def get_required_secrets(
-    project_id: int,
-    stack_slug: str | None = None,
-    db: Session = Depends(get_db)
-):
+def get_required_secrets(project_id: int, stack_slug: str | None = None, db: Session = Depends(get_db)):
     """
     Get required secrets for a project or stack.
 
@@ -736,20 +739,22 @@ def get_required_secrets(
 
     if stack_slug:
         # Get secrets required by a specific stack
-        template = db.query(StackTemplate).filter(
-            StackTemplate.slug == stack_slug,
-            StackTemplate.is_active
-        ).first()
+        template = db.query(StackTemplate).filter(StackTemplate.slug == stack_slug, StackTemplate.is_active).first()
 
         if not template:
             raise NotFoundError("stack_template", stack_slug)
 
         # SEC-001: Find active stack instance for this project + template to get wizard-provided variables
-        active_stack = db.query(StackInstance).filter(
-            StackInstance.project_id == project_id,
-            StackInstance.template_id == template.id,
-            StackInstance.status.notin_(["destroyed"]),
-        ).order_by(StackInstance.created_at.desc()).first()
+        active_stack = (
+            db.query(StackInstance)
+            .filter(
+                StackInstance.project_id == project_id,
+                StackInstance.template_id == template.id,
+                StackInstance.status.notin_(["destroyed"]),
+            )
+            .order_by(StackInstance.created_at.desc())
+            .first()
+        )
         stack_variables = active_stack.variables if active_stack else None
         # Populate the nonlocal set so _is_satisfied_with_policy can use it
         policy_svc = StackDeploymentService(db)
@@ -769,9 +774,7 @@ def get_required_secrets(
 
         # Keep stack-level secret policy aligned with stack deploy prerequisite checks.
         policy_service = StackDeploymentService(db)
-        stack_prereq_check = policy_service.check_prerequisites(
-            project_id, template, stack_variables=stack_variables
-        )
+        stack_prereq_check = policy_service.check_prerequisites(project_id, template, stack_variables=stack_variables)
         stack_secret_policy = stack_prereq_check.get("secret_source_policy")
 
         existing_names = {s["name"] for s in existing_secrets}
@@ -828,21 +831,26 @@ def get_required_secrets(
         # Get secrets required by all modules in project
         # PERF-022: Use selectinload for collections to avoid cartesian products
         # joinedload on one-to-many causes row multiplication; selectinload uses separate IN query
-        project = db.query(Project).options(
-            selectinload(Project.project_modules).joinedload(
-                ProjectModule.library_module
-            ).load_only(
-                ModuleLibrary.id, ModuleLibrary.path, ModuleLibrary.inputs_metadata,
-                ModuleLibrary.pack_manifest,
+        project = (
+            db.query(Project)
+            .options(
+                selectinload(Project.project_modules)
+                .joinedload(ProjectModule.library_module)
+                .load_only(
+                    ModuleLibrary.id,
+                    ModuleLibrary.path,
+                    ModuleLibrary.inputs_metadata,
+                    ModuleLibrary.pack_manifest,
+                )
             )
-        ).filter(Project.id == project_id).first()
+            .filter(Project.id == project_id)
+            .first()
+        )
         if not project:
             raise NotFoundError("project", project_id)
 
         for pm in project.project_modules:
-            if pm.library_module and (
-                pm.library_module.inputs_metadata or pm.library_module.pack_manifest
-            ):
+            if pm.library_module and (pm.library_module.inputs_metadata or pm.library_module.pack_manifest):
                 module_secrets = service.get_required_secrets_for_module(
                     pm.library_module.path,
                     pm.library_module.inputs_metadata or {},

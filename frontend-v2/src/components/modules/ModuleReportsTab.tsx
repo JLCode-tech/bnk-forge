@@ -191,7 +191,7 @@ export function ModuleReportsTab({ moduleId }: Props) {
                       type="button"
                       onClick={() => setSelected(isActive ? null : file.path)}
                       className={cn(
-                        'inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-mono transition-colors',
+                        'inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-2xs font-mono transition-colors',
                         isActive
                           ? 'border-primary bg-primary/10 text-foreground'
                           : 'border-border bg-muted text-muted-foreground hover:bg-muted/70'
@@ -204,7 +204,7 @@ export function ModuleReportsTab({ moduleId }: Props) {
                   );
                 })}
                 {files.length === 0 && (
-                  <Badge variant="outline" className="text-[10px]">
+                  <Badge variant="outline" className="text-2xs">
                     no files
                   </Badge>
                 )}

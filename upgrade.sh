@@ -6,9 +6,11 @@
 # Usage:
 #   ./upgrade.sh              - pull + rebuild + restart
 #   ./upgrade.sh --local      - rebuild + restart (no git pull)
+#   ./upgrade.sh --skip-build - pull pre-built images + restart (skip docker build)
 #   ./upgrade.sh --no-cache   - rebuild without Docker cache (SLOW - 10+ min)
 #   ./upgrade.sh --allow-non-main     - allow running from non-staging branch
 #   ./upgrade.sh --allow-same-version - allow commit upgrade without VERSION bump
+#   ./upgrade.sh --help       - show usage and options
 #
 # Phase markers (##PHASE:xxx) are parsed by the backend to report structured
 # progress to the frontend UI. Do not remove or rename them.
@@ -25,28 +27,75 @@
 
 set -euo pipefail
 
+usage() {
+    cat <<'EOF'
+Usage: ./upgrade.sh [OPTIONS]
+
+Rebuilds (or pulls) containers, runs database migrations, and restarts services.
+
+Options:
+  --local, -l                  Skip git pull; upgrade using current local checkout
+  --skip-build                 Skip docker compose build (use pre-built GHCR images)
+  --no-cache                   Rebuild images without Docker cache (slow)
+  --allow-dirty                Allow running with uncommitted working tree changes
+  --allow-diverged             Allow running when HEAD does not match origin/staging
+  --allow-non-main             Allow running from a branch other than staging
+  --allow-same-version         Allow commit upgrade without a VERSION bump (D17)
+  --allow-unsupported-version  Bypass MIN_UPGRADE_FROM minimum version check
+  --skip-disk-check            Skip preflight disk space threshold check
+  --help, -h                   Show this help message and exit
+EOF
+}
+
 # ---------------------------------------------------------------------------
 # Parse arguments
 # ---------------------------------------------------------------------------
 LOCAL_ONLY=false
+SKIP_BUILD=false
 NO_CACHE=false
 ALLOW_DIRTY=false
 ALLOW_DIVERGED=false
 SKIP_DISK_CHECK=false
 ALLOW_NON_MAIN=false
 ALLOW_SAME_VERSION=false
+ALLOW_UNSUPPORTED_VERSION=false
 
 for arg in "$@"; do
     case $arg in
         --local|-l) LOCAL_ONLY=true ;;
+        --skip-build) SKIP_BUILD=true ;;
         --no-cache) NO_CACHE=true ;;
         --allow-dirty) ALLOW_DIRTY=true ;;
         --allow-diverged) ALLOW_DIVERGED=true ;;
         --skip-disk-check) SKIP_DISK_CHECK=true ;;
         --allow-non-main) ALLOW_NON_MAIN=true ;;
         --allow-same-version) ALLOW_SAME_VERSION=true ;;
+        --allow-unsupported-version) ALLOW_UNSUPPORTED_VERSION=true ;;
+        --help|-h)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "ERROR: Unknown option: $arg"
+            usage
+            exit 2
+            ;;
     esac
 done
+
+version_lt() {
+    local v1="${1#v}" v2="${2#v}"
+    local IFS=.
+    # shellcheck disable=SC2206
+    local i ver1=($v1) ver2=($v2)
+    for ((i=${#ver1[@]}; i<${#ver2[@]}; i++)); do ver1[i]=0; done
+    for ((i=0; i<${#ver1[@]}; i++)); do
+        if [[ -z ${ver2[i]:-} ]]; then ver2[i]=0; fi
+        if ((10#${ver1[i]} < 10#${ver2[i]})); then return 0; fi
+        if ((10#${ver1[i]} > 10#${ver2[i]})); then return 1; fi
+    done
+    return 1
+}
 
 echo "##PHASE:start"
 echo "BNK-Forge Upgrade"
@@ -64,6 +113,10 @@ else
     echo "##PHASE:failed"
     echo "Error: Docker Compose not found."
     exit 1
+fi
+
+if [ "$(uname -s)" = "Darwin" ] && [ -f "docker-compose.yml" ] && [ -f "docker-compose.local.yml" ]; then
+    COMPOSE="$COMPOSE -f docker-compose.yml -f docker-compose.local.yml"
 fi
 
 # Record current version for comparison
@@ -192,6 +245,25 @@ fi
 NEW_VERSION=$(cat VERSION 2>/dev/null || echo "unknown")
 echo "  Target version: ${NEW_VERSION}"
 
+# Minimum upgrade compatibility check (MIN_UPGRADE_FROM)
+if [ -f "MIN_UPGRADE_FROM" ]; then
+    MIN_UPGRADE_VERSION=$(tr -d '[:space:]' < MIN_UPGRADE_FROM 2>/dev/null || echo "")
+    if [ -n "$MIN_UPGRADE_VERSION" ] && [[ "$OLD_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ "$MIN_UPGRADE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        if [ "$ALLOW_UNSUPPORTED_VERSION" = false ] && version_lt "$OLD_VERSION" "$MIN_UPGRADE_VERSION"; then
+            echo ""
+            echo "##PHASE:failed"
+            echo "ERROR: Minimum supported upgrade version is ${MIN_UPGRADE_VERSION} (current: ${OLD_VERSION})."
+            echo "  Upgrade to ${MIN_UPGRADE_VERSION} first before upgrading to ${NEW_VERSION},"
+            echo "  or rerun with --allow-unsupported-version (not recommended)"
+            exit 6
+        elif [ "$ALLOW_UNSUPPORTED_VERSION" = true ] && version_lt "$OLD_VERSION" "$MIN_UPGRADE_VERSION"; then
+            echo "  ⚠ Skipping minimum upgrade version check (--allow-unsupported-version)"
+        else
+            echo "  ✓ Minimum upgrade version check passed (${OLD_VERSION} >= ${MIN_UPGRADE_VERSION})"
+        fi
+    fi
+fi
+
 # Version policy check (D17): if commit changed during this upgrade, VERSION should also change.
 CURRENT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 if [ "$ALLOW_SAME_VERSION" = false ] && [ "$OLD_COMMIT" != "$CURRENT_COMMIT" ] && [ "$OLD_VERSION" = "$NEW_VERSION" ]; then
@@ -221,6 +293,8 @@ echo "##PHASE:build"
 BACKEND_CHANGED=false
 FRONTEND_CHANGED=false
 PROXY_CHANGED=false
+MCP_CHANGED=false
+AGENT_CHANGED=false
 REQUIREMENTS_CHANGED=false
 
 if [ "$OLD_COMMIT" != "unknown" ] && [ "$CURRENT_COMMIT" != "unknown" ] && [ "$OLD_COMMIT" != "$CURRENT_COMMIT" ]; then
@@ -249,6 +323,16 @@ if [ "$OLD_COMMIT" != "unknown" ] && [ "$CURRENT_COMMIT" != "unknown" ] && [ "$O
         if echo "$CHANGED_FILES" | grep -q "^proxy/"; then
             PROXY_CHANGED=true
         fi
+
+        # Check MCP server changes
+        if echo "$CHANGED_FILES" | grep -qE "^(mcp_server/|Dockerfile\.mcp)"; then
+            MCP_CHANGED=true
+        fi
+
+        # Check AI Agent changes
+        if echo "$CHANGED_FILES" | grep -qE "^(agent/|Dockerfile\.agent)"; then
+            AGENT_CHANGED=true
+        fi
         
         # VERSION changes affect frontend (baked in at build time)
         if echo "$CHANGED_FILES" | grep -q "^VERSION$"; then
@@ -261,6 +345,8 @@ if [ "$OLD_COMMIT" != "unknown" ] && [ "$CURRENT_COMMIT" != "unknown" ] && [ "$O
             BACKEND_CHANGED=true
             FRONTEND_CHANGED=true
             PROXY_CHANGED=true
+            MCP_CHANGED=true
+            AGENT_CHANGED=true
         fi
     fi
 else
@@ -269,6 +355,8 @@ else
     BACKEND_CHANGED=true
     FRONTEND_CHANGED=true
     PROXY_CHANGED=true
+    MCP_CHANGED=true
+    AGENT_CHANGED=true
 fi
 
 # Build affected services
@@ -297,11 +385,30 @@ if [ "$PROXY_CHANGED" = true ]; then
     SERVICES_TO_RESTART="$SERVICES_TO_RESTART proxy"
 fi
 
+if [ "$MCP_CHANGED" = true ]; then
+    echo "  → MCP server changed"
+    SERVICES_TO_BUILD="$SERVICES_TO_BUILD mcp"
+    SERVICES_TO_RESTART="$SERVICES_TO_RESTART mcp"
+fi
+
+if [ "$AGENT_CHANGED" = true ]; then
+    echo "  → AI Agent changed"
+    SERVICES_TO_BUILD="$SERVICES_TO_BUILD agent"
+    SERVICES_TO_RESTART="$SERVICES_TO_RESTART agent"
+fi
+
 # Deduplicate and trim
 SERVICES_TO_BUILD=$(echo "$SERVICES_TO_BUILD" | tr ' ' '\n' | sort -u | tr '\n' ' ' | xargs)
 SERVICES_TO_RESTART=$(echo "$SERVICES_TO_RESTART" | tr ' ' '\n' | sort -u | tr '\n' ' ' | xargs)
 
-if [ -z "$SERVICES_TO_BUILD" ]; then
+if [ "$SKIP_BUILD" = true ]; then
+    echo "  ⚠ Skipping image build (--skip-build)"
+    if [ -n "$SERVICES_TO_RESTART" ]; then
+        echo "  Pulling pre-built images for: $SERVICES_TO_RESTART"
+        # shellcheck disable=SC2086
+        $COMPOSE pull $SERVICES_TO_RESTART 2>/dev/null || true
+    fi
+elif [ -z "$SERVICES_TO_BUILD" ]; then
     echo "  ✓ No code changes detected — skipping build"
 else
     echo ""
@@ -348,7 +455,9 @@ echo "##PHASE:restart"
 # runner with no network and fail every artifact step with "network not found".
 # Subnet resolution (explicit override, "auto", or auto-detection against host
 # routes/docker networks) lives in scripts/artifact_network.sh — see issue #422.
-./scripts/artifact_network.sh ensure
+if [ -x "./scripts/artifact_network.sh" ]; then
+    ./scripts/artifact_network.sh ensure
+fi
 
 if [ -z "$SERVICES_TO_RESTART" ]; then
     echo "No services to restart — skipping."
@@ -362,6 +471,11 @@ else
         echo "  Some containers may be in a bad state."
         echo "  Run: docker compose ps"
         exit 3
+    fi
+
+    # Refresh proxy upstream DNS when backend or frontend was recreated
+    if [ "$BACKEND_CHANGED" = true ] || [ "$FRONTEND_CHANGED" = true ]; then
+        docker restart bnk-forge-proxy >/dev/null 2>&1 || true
     fi
 fi
 
@@ -380,10 +494,23 @@ if ! docker exec -u root bnk-forge-backend chown -R bnkforge:bnkforge /app/state
 fi
 
 # ---------------------------------------------------------------------------
-# Phase 4: Database migrations
+# Phase 4: Database migrations (with pre-migration PostgreSQL backup)
 # ---------------------------------------------------------------------------
 echo ""
 echo "##PHASE:migrate"
+
+if docker inspect -f '{{.State.Running}}' bnk-forge-postgres 2>/dev/null | grep -q true; then
+    mkdir -p ./backups
+    BACKUP_FILE="./backups/pre-upgrade-${OLD_VERSION}-$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
+    echo "Creating pre-migration database backup: ${BACKUP_FILE}..."
+    if docker exec bnk-forge-postgres pg_dump -U "${POSTGRES_USER:-bnkforge}" -d "${POSTGRES_DB:-bnkforge}" 2>/dev/null | gzip > "$BACKUP_FILE"; then
+        echo "  ✓ Database backup saved to ${BACKUP_FILE}"
+    else
+        rm -f "$BACKUP_FILE"
+        echo "  WARNING: Could not create pre-migration database backup; proceeding with migrations."
+    fi
+fi
+
 echo "Running database migrations..."
 
 # Capture migration output and check for actual errors

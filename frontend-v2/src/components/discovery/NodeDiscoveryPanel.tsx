@@ -202,13 +202,13 @@ function BmcDetailPanel({ node }: { node: DiscoveredNode }) {
           <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-xs mt-1">
             {rows.map(([k, v]) => (
               <div key={k} className="flex flex-col">
-                <span className="text-muted-foreground text-[10px] uppercase tracking-wide">{k}</span>
+                <span className="text-muted-foreground text-2xs uppercase tracking-wide">{k}</span>
                 <span className="font-mono break-all">{v}</span>
               </div>
             ))}
           </div>
           {socStarved && (
-            <p className="text-[11px] text-muted-foreground italic mt-2">
+            <p className="text-2xs text-muted-foreground italic mt-2">
               The SoC has not pushed CPU/memory enumeration to the BMC —
               common with newer bf-bundle BSPs (3.1.0 / DPU-UEFI 4.12+).
               The BMC, identity, and firmware versions below are still
@@ -223,7 +223,7 @@ function BmcDetailPanel({ node }: { node: DiscoveredNode }) {
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-xs">
                 {fwRows.map(([k, v]) => (
                   <div key={k} className="flex flex-col">
-                    <span className="text-muted-foreground text-[10px] uppercase tracking-wide">{k}</span>
+                    <span className="text-muted-foreground text-2xs uppercase tracking-wide">{k}</span>
                     <span className="font-mono break-all">{v}</span>
                   </div>
                 ))}
@@ -503,7 +503,7 @@ function NodeRow({
                 </p>
                 <table className="text-xs w-full border-collapse mt-1">
                   <thead>
-                    <tr className="text-muted-foreground text-[10px] uppercase">
+                    <tr className="text-muted-foreground text-2xs uppercase">
                       <th className="text-left font-medium pr-3 py-0.5">Name</th>
                       <th className="text-left font-medium pr-3 py-0.5">Kind</th>
                       <th className="text-left font-medium pr-3 py-0.5">State</th>

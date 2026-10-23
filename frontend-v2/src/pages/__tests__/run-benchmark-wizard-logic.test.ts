@@ -13,6 +13,7 @@ import {
   autoSelectAgentId,
   canAdvanceStep,
   prefillFromRun,
+  parseSteps,
 } from '@/pages/run-benchmark-wizard-logic';
 import type { BenchmarkAgent, ProxyDeployment } from '@/types';
 
@@ -54,6 +55,14 @@ function mockAgent(overrides: Partial<BenchmarkAgent> = {}): BenchmarkAgent {
     ...overrides,
   };
 }
+
+describe('emptyWizardState', () => {
+  it('defaults to scenario mode with inferencex-agentx-mvp preset', () => {
+    const s = emptyWizardState();
+    expect(s.mode).toBe('scenario');
+    expect(s.scenarioKey).toBe('inferencex-agentx-mvp');
+  });
+});
 
 describe('eligibleProxies', () => {
   it('keeps ready and discovered proxies, drops the rest', () => {
@@ -170,6 +179,8 @@ describe('prefillFromRun', () => {
       configId: 40,
       scenarioKey: null,
       runLabel: 'nightly-envoy-run (re-run)',
+      overrides: {},
+      steps: '',
     });
   });
 
@@ -185,6 +196,8 @@ describe('prefillFromRun', () => {
       configId: null,
       scenarioKey: 'prefix-cache',
       runLabel: 'nightly-envoy-run (re-run)',
+      overrides: {},
+      steps: '',
     });
   });
 
@@ -223,5 +236,14 @@ describe('prefillFromRun', () => {
     expect(state.proxyId).toBeNull();
     expect(state.agentId).toBeNull();
     expect(state.configId).toBeNull();
+  });
+});
+
+describe('parseSteps', () => {
+  it('sorts and dedupes typed rates, empty means the scenario default, junk blocks launch', () => {
+    expect(parseSteps('8, 2 4,2')).toEqual([2, 4, 8]);
+    expect(parseSteps('  ')).toBeNull();
+    expect(parseSteps('2, abc')).toBe('invalid');
+    expect(parseSteps('0, 4')).toBe('invalid');
   });
 });

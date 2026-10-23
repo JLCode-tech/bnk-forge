@@ -8,16 +8,26 @@
  * Badge variants and 2px-border accents only.
  */
 
-import { useState, useMemo, memo, useCallback, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { SectionCard } from '@/components/ui/section-card';
-import { Tabs, TabsContent } from '@/components/ui/tabs';
-import { ResourceViewTabs } from '@/components/layout/ResourceViewTabs';
-import { cn } from '@/lib/utils';
+import { useState, useMemo, memo, useCallback, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { SectionCard } from "@/components/ui/section-card";
+import { ErrorState } from "@/components/ui/error-state";
+// eslint-disable-next-line no-restricted-imports -- Vertical flush sub-sidebar requires Radix TabsList + TabsTrigger
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ResourceViewTabs } from "@/components/layout/ResourceViewTabs";
+import { CollapsibleInnerSidebar } from "@/components/layout/InnerSidebar";
+import { cn } from "@/lib/utils";
 import {
   Globe,
   Plus,
@@ -36,18 +46,20 @@ import {
   AlertTriangle,
   Tag,
   List,
-  Pencil,
   Trash2,
   Flag,
   Users,
   ChevronLeft,
   ChevronRight,
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
+  ChevronDown,
+  LayoutGrid,
   Play,
   Square,
-} from 'lucide-react';
+  Gauge,
+  Send,
+  FileCode,
+  CheckSquare,
+} from "lucide-react";
 import {
   useFleetHealth,
   useFleetCompare,
@@ -78,28 +90,46 @@ import {
   useCreateStrategy,
   useDeleteStrategy,
   useRerunBulkRun,
-} from '@/hooks/useFleet';
-import type { FleetLifecycleState, FleetOperationStrategy, FleetPolicy, FleetRollup, RunSelectionRequest, WorstState } from '@/types/fleet';
-// useAllClusters removed — DpuInfrastructureView (which used it) relocated to /infrastructure.
-import { ConfigPromotionWizard } from '@/components/fleet/ConfigPromotionWizard';
-import { SelectorBuilder } from '@/components/fleet/SelectorBuilder';
+  useFleetConfigs,
+  useDeleteFleetConfig,
+} from "@/hooks/useFleet";
+import type {
+  FleetLifecycleState,
+  FleetOperationStrategy,
+  FleetPolicy,
+  FleetRollup,
+  RunSelectionRequest,
+} from "@/types/fleet";
+import { useAllClusters } from "@/hooks/useK8sClusters";
+import type { K8sCluster } from "@/types/kubernetes";
+
+const EMPTY_CLUSTERS: K8sCluster[] = [];
+import {
+  normalizeProvider,
+  type NormalizedCloudProvider,
+} from "@/lib/cloud-providers";
+import { ConfigPromotionWizard } from "@/components/fleet/ConfigPromotionWizard";
+import { SelectorBuilder } from "@/components/fleet/SelectorBuilder";
+import { FleetClusterPicker } from "@/components/fleet/FleetClusterPicker";
+import { SaveFleetConfigDialog } from "@/components/fleet/SaveFleetConfigDialog";
+import { FleetDeployConfigDialog } from "@/components/fleet/FleetDeployConfigDialog";
 import {
   FleetTrafficLights,
   EstateSummaryBar,
-} from '@/components/fleet/FleetTrafficLights';
-import { AddClusterFlowDialog } from '@/components/k8s/AddClusterFlowDialog';
-import { PageHeader } from '@/components/layout/PageHeader';
-import { usePageRefresh } from '@/hooks/usePageRefresh';
-import { queryKeys } from '@/lib/queryKeys';
+} from "@/components/fleet/FleetTrafficLights";
+import { AddClusterFlowDialog } from "@/components/k8s/AddClusterFlowDialog";
+import { usePageRefresh } from "@/hooks/usePageRefresh";
+import { useBnkConsumption } from "@/hooks/useSystem";
+import { BnkResourcesPanel } from "@/components/system/BnkResourcesPanel";
+import { queryKeys } from "@/lib/queryKeys";
 
 // DPFInfrastructurePanel is now rendered under /infrastructure (D-022 P6 IA).
 // Import removed — Fleet no longer owns the DPU hardware view.
-import { EmptyState } from '@/components/ui/empty-state';
-import { TimeAgo } from '@/components/ui/TimeAgo';
-import { ConnectionStatusBadge } from '@/components/ui/ConnectionStatusBadge';
-import { ClusterStatusBadge } from '@/components/ui/ClusterStatusBadge';
-import { useConnectivity } from '@/hooks/useConnectivity';
-import { reachabilityKey } from '@/lib/api/connectivity';
+import { EmptyState } from "@/components/ui/empty-state";
+import { TimeAgo } from "@/components/ui/TimeAgo";
+import { ClusterStatusBadge, StatusBadge } from "@/components/ui/StatusBadge";
+import { useConnectivity } from "@/hooks/useConnectivity";
+import { reachabilityKey } from "@/lib/api/connectivity";
 import type {
   FleetBulkRun,
   FleetDecision,
@@ -108,15 +138,16 @@ import type {
   FleetOperatorStatus,
   FleetCompareResult,
   FleetTarget,
-} from '@/types/fleet';
+} from "@/types/fleet";
 import {
   isClusterConfigComparison,
   isGroupedMembersResponse,
   isHealthReportComparison,
-} from '@/types/fleet';
-import { getPlatformProfileLabel } from '@/lib/platform-context';
-import { useProjects } from '@/hooks/useProjects';
-import { SSHConnectivityBadge } from '@/components/ui/SSHConnectivityBadge';
+} from "@/types/fleet";
+import { getPlatformProfileLabel } from "@/lib/platform-context";
+import { STORAGE_KEYS } from "@/lib/storage-keys";
+import { useProjects } from "@/hooks/useProjects";
+import { SSHConnectivityBadge } from "@/components/ui/SSHConnectivityBadge";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Sort helpers
@@ -132,7 +163,7 @@ const STATUS_PRIORITY: Record<FleetOperatorStatus, number> = {
   unknown: 4,
 };
 
-type SortField = 'status' | 'name' | 'last_seen';
+type SortField = "status" | "name" | "last_seen";
 
 function sortOperators(
   ops: FleetOperatorHealth[],
@@ -142,13 +173,13 @@ function sortOperators(
   return [...ops].sort((a, b) => {
     let cmp = 0;
     switch (field) {
-      case 'status':
+      case "status":
         cmp = STATUS_PRIORITY[a.status] - STATUS_PRIORITY[b.status];
         break;
-      case 'name':
+      case "name":
         cmp = a.cluster_name.localeCompare(b.cluster_name);
         break;
-      case 'last_seen': {
+      case "last_seen": {
         const dateA = a.last_seen ? new Date(a.last_seen).getTime() : 0;
         const dateB = b.last_seen ? new Date(b.last_seen).getTime() : 0;
         cmp = dateB - dateA;
@@ -159,34 +190,132 @@ function sortOperators(
   });
 }
 
+const PROVIDER_DEFS: Array<{
+  id: NormalizedCloudProvider;
+  name: string;
+  shortLabel: string;
+  badgeClass: string;
+  badgeVariant: "default" | "secondary" | "outline";
+}> = [
+  {
+    id: "aws",
+    name: "Amazon Web Services (EKS)",
+    shortLabel: "AWS",
+    badgeClass:
+      "border-warning/40 text-warning bg-warning/10 font-semibold text-2xs px-1.5 py-0.5",
+    badgeVariant: "outline",
+  },
+  {
+    id: "azure",
+    name: "Microsoft Azure (AKS)",
+    shortLabel: "AZR",
+    badgeClass:
+      "border-info/40 text-info bg-info/10 font-semibold text-2xs px-1.5 py-0.5",
+    badgeVariant: "outline",
+  },
+  {
+    id: "gke",
+    name: "Google Cloud Platform (GKE)",
+    shortLabel: "GKE",
+    badgeClass:
+      "border-primary/40 text-primary bg-primary/10 font-semibold text-2xs px-1.5 py-0.5",
+    badgeVariant: "outline",
+  },
+  {
+    id: "metal",
+    name: "Bare-Metal & On-Premises",
+    shortLabel: "METAL",
+    badgeClass:
+      "border-success/40 text-success bg-success/10 font-semibold text-2xs px-1.5 py-0.5",
+    badgeVariant: "outline",
+  },
+  {
+    id: "ibm",
+    name: "IBM Cloud (ROKS)",
+    shortLabel: "IBM",
+    badgeClass:
+      "border-secondary text-secondary-foreground bg-secondary/30 font-semibold text-2xs px-1.5 py-0.5",
+    badgeVariant: "outline",
+  },
+  {
+    id: "other",
+    name: "Other Infrastructure",
+    shortLabel: "OTHER",
+    badgeClass: "font-semibold text-2xs px-1.5 py-0.5",
+    badgeVariant: "secondary",
+  },
+];
+
+function getOperatorProvider(
+  op: FleetOperatorHealth,
+  cluster?: { cloud_provider?: string | null },
+): NormalizedCloudProvider {
+  if (cluster?.cloud_provider) return normalizeProvider(cluster.cloud_provider);
+  if (op.detected_platform_provider)
+    return normalizeProvider(op.detected_platform_provider);
+  const lower = op.cluster_name.toLowerCase();
+  if (lower.startsWith("aws") || lower.includes("eks")) return "aws";
+  if (
+    lower.startsWith("azr") ||
+    lower.startsWith("azure") ||
+    lower.includes("aks")
+  )
+    return "azure";
+  if (lower.startsWith("gke") || lower.startsWith("gcp")) return "gke";
+  if (lower.startsWith("ibm") || lower.includes("roks")) return "ibm";
+  if (
+    lower.includes("metal") ||
+    lower.includes("on-prem") ||
+    lower.includes("baremetal")
+  )
+    return "metal";
+  return normalizeProvider(op.detected_platform_profile);
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Aggregate stats — six small KPI tiles
 // ──────────────────────────────────────────────────────────────────────────────
 
 function AggregateStats({
-  total, healthy, stale, warning, critical, offline,
+  total,
+  healthy,
+  stale,
+  warning,
+  critical,
+  offline,
 }: {
-  total: number; healthy: number; stale: number; warning: number; critical: number; offline: number;
+  total: number;
+  healthy: number;
+  stale: number;
+  warning: number;
+  critical: number;
+  offline: number;
 }) {
-  const stats: { label: string; value: number; tone: 'foreground' | 'success' | 'warning' | 'destructive' | 'muted'; title?: string }[] = [
-    { label: 'Total', value: total, tone: 'foreground' },
-    { label: 'Healthy', value: healthy, tone: 'success' },
+  const stats: {
+    label: string;
+    value: number;
+    tone: "foreground" | "success" | "warning" | "destructive" | "muted";
+    title?: string;
+  }[] = [
+    { label: "Total", value: total, tone: "foreground" },
+    { label: "Healthy", value: healthy, tone: "success" },
     {
-      label: 'Stale',
+      label: "Stale",
       value: stale,
-      tone: 'warning',
-      title: 'Last reported healthy but currently unreachable from forge — operator may still be running, but we cannot verify.',
+      tone: "warning",
+      title:
+        "Last reported healthy but currently unreachable from forge — operator may still be running, but we cannot verify.",
     },
-    { label: 'Warning', value: warning, tone: 'warning' },
-    { label: 'Critical', value: critical, tone: 'destructive' },
-    { label: 'Offline', value: offline, tone: 'muted' },
+    { label: "Warning", value: warning, tone: "warning" },
+    { label: "Critical", value: critical, tone: "destructive" },
+    { label: "Offline", value: offline, tone: "muted" },
   ];
   const toneText: Record<string, string> = {
-    foreground: 'text-foreground',
-    success: 'text-success',
-    warning: 'text-warning',
-    destructive: 'text-destructive',
-    muted: 'text-muted-foreground',
+    foreground: "text-foreground",
+    success: "text-success",
+    warning: "text-warning",
+    destructive: "text-destructive",
+    muted: "text-muted-foreground",
   };
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -196,7 +325,11 @@ function AggregateStats({
           className="rounded-lg border border-border bg-card px-4 py-3 text-center"
           title={s.title}
         >
-          <div className={cn('text-2xl font-bold tabular-nums', toneText[s.tone])}>{s.value}</div>
+          <div
+            className={cn("text-2xl font-bold tabular-nums", toneText[s.tone])}
+          >
+            {s.value}
+          </div>
           <div className="text-xs text-muted-foreground mt-0.5">{s.label}</div>
         </div>
       ))}
@@ -218,44 +351,67 @@ interface ClusterRowProps {
 }
 
 const ClusterRow = memo(function ClusterRow({
-  op, selected, onToggleSelect, onViewHealth, onViewConfig, onViewDpf,
+  op,
+  selected,
+  onToggleSelect,
+  onViewHealth,
+  onViewConfig,
+  onViewDpf,
 }: ClusterRowProps) {
-  const isOffline = op.status === 'offline';
-  const bnkSeverity = op.bnk_severity ?? (op.status === 'offline' ? 'unknown' : op.status);
+  const isOffline = op.status === "offline";
+  const bnkSeverity =
+    op.bnk_severity ?? (op.status === "offline" ? "unknown" : op.status);
   const { states: connectivityStates } = useConnectivity();
-  const conn = connectivityStates[reachabilityKey('cluster', op.cluster_id)];
-  const isReachUnreachable = conn?.state === 'unreachable';
+  const conn = connectivityStates[reachabilityKey("cluster", op.cluster_id)];
+  const isReachUnreachable = conn?.state === "unreachable";
   const isStaleHealthy =
-    isReachUnreachable && ['healthy', 'warning', 'degraded'].includes(op.status);
+    isReachUnreachable &&
+    ["healthy", "warning", "degraded"].includes(op.status);
 
   return (
     <div
       className={cn(
-        'flex items-center gap-4 px-4 py-3 border-b border-border last:border-0 transition-colors',
-        isOffline && 'opacity-60',
-        selected ? 'bg-primary/5' : 'hover:bg-muted/40',
+        "flex items-center gap-4 px-4 py-3 border-b border-border last:border-0 transition-colors",
+        isOffline && "opacity-60",
+        selected ? "bg-primary/5" : "hover:bg-muted/40",
       )}
     >
       <button
         type="button"
         onClick={() => onToggleSelect(op.operator_id)}
         className={cn(
-          'h-5 w-5 rounded border flex items-center justify-center shrink-0 transition-colors',
+          "h-5 w-5 rounded border flex items-center justify-center shrink-0 transition-colors",
           selected
-            ? 'bg-primary border-primary text-primary-foreground'
-            : 'border-border hover:border-foreground/30',
+            ? "bg-primary border-primary text-primary-foreground"
+            : "border-border hover:border-foreground/30",
         )}
         aria-label={`Select ${op.cluster_name} for comparison`}
       >
         {selected && (
-          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          <svg
+            className="w-3 h-3"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={3}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M5 13l4 4L19 7"
+            />
           </svg>
         )}
       </button>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <h4 className="text-sm font-semibold text-foreground truncate">{op.cluster_name}</h4>
+          <button
+            type="button"
+            onClick={() => onViewConfig(op)}
+            className="text-sm font-semibold text-foreground hover:text-primary hover:underline truncate text-left"
+          >
+            {op.cluster_name}
+          </button>
           <ClusterStatusBadge
             cluster={{ id: op.cluster_id, name: op.cluster_name }}
             showStatusLabel={isOffline || isReachUnreachable}
@@ -272,15 +428,19 @@ const ClusterRow = memo(function ClusterRow({
               <span className="h-1.5 w-1.5 rounded-full bg-warning" />
               <span className="capitalize">{op.status}</span>
               {op.last_seen && (
-                <span className="opacity-70">· <TimeAgo dateStr={op.last_seen} /></span>
+                <span className="opacity-70">
+                  · <TimeAgo dateStr={op.last_seen} />
+                </span>
               )}
             </span>
           ) : (
-            <ConnectionStatusBadge status={bnkSeverity} className="opacity-90" />
+            <StatusBadge status={bnkSeverity} className="opacity-90" />
           )}
         </div>
         {isOffline && op.last_seen && (
-          <div className="text-xs text-muted-foreground mt-0.5">Last seen: <TimeAgo dateStr={op.last_seen} /></div>
+          <div className="text-xs text-muted-foreground mt-0.5">
+            Last seen: <TimeAgo dateStr={op.last_seen} />
+          </div>
         )}
         <div className="text-xs text-muted-foreground mt-0.5">
           Platform: {getPlatformProfileLabel(op.detected_platform_profile)}
@@ -291,8 +451,10 @@ const ClusterRow = memo(function ClusterRow({
               <span
                 key={issue.component}
                 className={cn(
-                  'inline-flex items-center gap-1 text-[11px]',
-                  ['critical', 'unhealthy'].includes(issue.severity) ? 'text-destructive' : 'text-warning',
+                  "inline-flex items-center gap-1 text-2xs",
+                  ["critical", "unhealthy"].includes(issue.severity)
+                    ? "text-destructive"
+                    : "text-warning",
                 )}
               >
                 <AlertTriangle className="h-3 w-3 shrink-0" />
@@ -303,20 +465,30 @@ const ClusterRow = memo(function ClusterRow({
         )}
       </div>
       <div className="hidden md:flex flex-col items-center w-20">
-        <div className="text-xs font-medium text-foreground tabular-nums">{op.bnk_version || '—'}</div>
-        <div className="text-[10px] text-muted-foreground uppercase tracking-wider">BNK</div>
+        <div className="text-xs font-medium text-foreground tabular-nums">
+          {op.bnk_version || "—"}
+        </div>
+        <div className="text-2xs text-muted-foreground uppercase tracking-wider">
+          BNK
+        </div>
       </div>
       <div className="hidden sm:flex items-center gap-1 w-14 justify-center text-muted-foreground">
         <Route className="h-3 w-3" />
-        <span className="text-xs font-medium text-foreground tabular-nums">{op.route_count}</span>
+        <span className="text-xs font-medium text-foreground tabular-nums">
+          {op.route_count}
+        </span>
       </div>
       <div className="hidden sm:flex items-center gap-1 w-14 justify-center text-muted-foreground">
         <Server className="h-3 w-3" />
-        <span className="text-xs font-medium text-foreground tabular-nums">{op.tmm_count}</span>
+        <span className="text-xs font-medium text-foreground tabular-nums">
+          {op.tmm_count}
+        </span>
       </div>
       <div className="hidden lg:flex items-center gap-1 w-14 justify-center text-muted-foreground">
         <Layers className="h-3 w-3" />
-        <span className="text-xs font-medium text-foreground tabular-nums">{op.gateway_count}</span>
+        <span className="text-xs font-medium text-foreground tabular-nums">
+          {op.gateway_count}
+        </span>
       </div>
       <div className="hidden lg:flex items-center gap-1 w-14 justify-center">
         {op.dpf_detected ? (
@@ -325,7 +497,12 @@ const ClusterRow = memo(function ClusterRow({
             className="flex items-center gap-1 hover:opacity-80 transition-opacity"
             title="View DPU Infrastructure"
           >
-            <Cpu className={cn('h-3 w-3', op.dpf_status === 'ready' ? 'text-success' : 'text-warning')} />
+            <Cpu
+              className={cn(
+                "h-3 w-3",
+                op.dpf_status === "ready" ? "text-success" : "text-warning",
+              )}
+            />
             <span className="text-xs font-medium text-foreground underline decoration-dotted underline-offset-2 tabular-nums">
               {op.dpu_count ?? 0}
             </span>
@@ -336,11 +513,17 @@ const ClusterRow = memo(function ClusterRow({
       </div>
       <div className="hidden lg:flex flex-col items-center w-20">
         {isOffline ? (
-          <div className="text-xs text-muted-foreground"><TimeAgo dateStr={op.last_seen} /></div>
+          <div className="text-xs text-muted-foreground">
+            <TimeAgo dateStr={op.last_seen} />
+          </div>
         ) : (
           <>
-            <div className="text-xs font-medium text-foreground tabular-nums">{op.uptime}</div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider">uptime</div>
+            <div className="text-xs font-medium text-foreground tabular-nums">
+              {op.uptime}
+            </div>
+            <div className="text-2xs text-muted-foreground uppercase tracking-wider">
+              uptime
+            </div>
           </>
         )}
       </div>
@@ -373,9 +556,13 @@ const ClusterRow = memo(function ClusterRow({
 // ──────────────────────────────────────────────────────────────────────────────
 
 function ComparePanel({
-  operators, selectedIds, onClose,
+  operators,
+  selectedIds,
+  onClose,
 }: {
-  operators: FleetOperatorHealth[]; selectedIds: number[]; onClose: () => void;
+  operators: FleetOperatorHealth[];
+  selectedIds: number[];
+  onClose: () => void;
 }) {
   const compare = useFleetCompare();
   const [operatorAId, setOperatorAId] = useState<number>(selectedIds[0] ?? 0);
@@ -388,11 +575,7 @@ function ComparePanel({
   };
 
   return (
-    <SectionCard
-      title="Compare configs"
-      compact
-      className="relative"
-    >
+    <SectionCard title="Compare configs" compact className="relative">
       <Button
         variant="ghost"
         size="sm"
@@ -404,33 +587,52 @@ function ComparePanel({
       </Button>
       <div className="space-y-3">
         <div className="flex flex-col md:flex-row md:items-center gap-3">
-          <select
-            value={operatorAId}
-            onChange={(e) => setOperatorAId(Number(e.target.value))}
-            className="flex-1 rounded-md border border-border bg-card text-foreground px-3 py-2 text-sm"
+          <Select
+            value={operatorAId ? String(operatorAId) : "0"}
+            onValueChange={(val) => setOperatorAId(Number(val))}
           >
-            <option value={0}>Select cluster A…</option>
-            {operators.map((op) => (
-              <option key={op.operator_id} value={op.operator_id}>{op.cluster_name}</option>
-            ))}
-          </select>
-          <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">vs</span>
-          <select
-            value={operatorBId}
-            onChange={(e) => setOperatorBId(Number(e.target.value))}
-            className="flex-1 rounded-md border border-border bg-card text-foreground px-3 py-2 text-sm"
+            <SelectTrigger className="flex-1">
+              <SelectValue placeholder="Select cluster A…" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="0">Select cluster A…</SelectItem>
+              {operators.map((op) => (
+                <SelectItem key={op.operator_id} value={String(op.operator_id)}>
+                  {op.cluster_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+            vs
+          </span>
+          <Select
+            value={operatorBId ? String(operatorBId) : "0"}
+            onValueChange={(val) => setOperatorBId(Number(val))}
           >
-            <option value={0}>Select cluster B…</option>
-            {operators.map((op) => (
-              <option key={op.operator_id} value={op.operator_id}>{op.cluster_name}</option>
-            ))}
-          </select>
+            <SelectTrigger className="flex-1">
+              <SelectValue placeholder="Select cluster B…" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="0">Select cluster B…</SelectItem>
+              {operators.map((op) => (
+                <SelectItem key={op.operator_id} value={String(op.operator_id)}>
+                  {op.cluster_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             onClick={handleCompare}
-            disabled={!operatorAId || !operatorBId || operatorAId === operatorBId || compare.isPending}
+            disabled={
+              !operatorAId ||
+              !operatorBId ||
+              operatorAId === operatorBId ||
+              compare.isPending
+            }
             size="sm"
           >
-            {compare.isPending ? 'Comparing…' : 'Compare'}
+            {compare.isPending ? "Comparing…" : "Compare"}
           </Button>
         </div>
         {compare.data && <CompareResult result={compare.data} />}
@@ -456,21 +658,29 @@ function CompareResult({ result }: { result: FleetCompareResult }) {
         <div className="text-xs text-muted-foreground">{result.summary}</div>
         <div className="rounded-md border border-border bg-muted/40 p-3 space-y-2">
           {result.differences.length === 0 ? (
-            <div className="text-sm text-muted-foreground">No health-report differences found.</div>
+            <div className="text-sm text-muted-foreground">
+              No health-report differences found.
+            </div>
           ) : (
             result.differences.map((diff) => (
               <div
                 key={diff.key}
                 className="grid grid-cols-[160px_1fr_1fr] gap-3 text-sm items-center text-foreground/80"
               >
-                <div className="font-medium text-muted-foreground">{diff.field}</div>
-                <div className="rounded px-2 py-1 text-xs bg-card border border-border">
-                  <span className="text-muted-foreground">{result.operator_a}: </span>
-                  {String(diff.value_a ?? '—')}
+                <div className="font-medium text-muted-foreground">
+                  {diff.field}
                 </div>
                 <div className="rounded px-2 py-1 text-xs bg-card border border-border">
-                  <span className="text-muted-foreground">{result.operator_b}: </span>
-                  {String(diff.value_b ?? '—')}
+                  <span className="text-muted-foreground">
+                    {result.operator_a}:{" "}
+                  </span>
+                  {String(diff.value_a ?? "—")}
+                </div>
+                <div className="rounded px-2 py-1 text-xs bg-card border border-border">
+                  <span className="text-muted-foreground">
+                    {result.operator_b}:{" "}
+                  </span>
+                  {String(diff.value_b ?? "—")}
                 </div>
               </div>
             ))
@@ -494,21 +704,33 @@ function CompareResult({ result }: { result: FleetCompareResult }) {
     const left = r.resources.only_in_a;
     const right = r.resources.only_in_b;
     const max = Math.max(left.length, right.length);
-    return Array.from({ length: max }, (_, i) => ({ left: left[i] ?? null, right: right[i] ?? null }));
+    return Array.from({ length: max }, (_, i) => ({
+      left: left[i] ?? null,
+      right: right[i] ?? null,
+    }));
   })();
 
   const alignModuleRows = (() => {
     const left = r.modules.only_in_a;
     const right = r.modules.only_in_b;
     const max = Math.max(left.length, right.length);
-    return Array.from({ length: max }, (_, i) => ({ left: left[i] ?? null, right: right[i] ?? null }));
+    return Array.from({ length: max }, (_, i) => ({
+      left: left[i] ?? null,
+      right: right[i] ?? null,
+    }));
   })();
 
-  const renderResourceRef = (item: { kind: string; name: string; namespace?: string }) => (
+  const renderResourceRef = (item: {
+    kind: string;
+    name: string;
+    namespace?: string;
+  }) => (
     <div className="rounded-md border border-border bg-card px-3 py-2 text-xs text-foreground/80">
       <div className="font-medium text-foreground">{item.kind}</div>
       <div>{item.name}</div>
-      {item.namespace && <div className="text-muted-foreground">ns: {item.namespace}</div>}
+      {item.namespace && (
+        <div className="text-muted-foreground">ns: {item.namespace}</div>
+      )}
     </div>
   );
 
@@ -527,14 +749,25 @@ function CompareResult({ result }: { result: FleetCompareResult }) {
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: `Only in ${r.operator_a}`, value: r.resources.only_in_a.length },
-          { label: `Only in ${r.operator_b}`, value: r.resources.only_in_b.length },
-          { label: 'Changed resources', value: r.resources.changed.length },
-          { label: 'Changed modules', value: r.modules.changed.length },
+          {
+            label: `Only in ${r.operator_a}`,
+            value: r.resources.only_in_a.length,
+          },
+          {
+            label: `Only in ${r.operator_b}`,
+            value: r.resources.only_in_b.length,
+          },
+          { label: "Changed resources", value: r.resources.changed.length },
+          { label: "Changed modules", value: r.modules.changed.length },
         ].map((tile) => (
-          <div key={tile.label} className="rounded-md border border-border bg-muted/40 p-3">
+          <div
+            key={tile.label}
+            className="rounded-md border border-border bg-muted/40 p-3"
+          >
             <div className="text-xs text-muted-foreground">{tile.label}</div>
-            <div className="mt-1 text-2xl font-semibold text-foreground tabular-nums">{tile.value}</div>
+            <div className="mt-1 text-2xl font-semibold text-foreground tabular-nums">
+              {tile.value}
+            </div>
           </div>
         ))}
       </div>
@@ -542,28 +775,49 @@ function CompareResult({ result }: { result: FleetCompareResult }) {
       <div className="rounded-md border border-border bg-card overflow-hidden">
         <div className="grid grid-cols-2 gap-px bg-border">
           <div className="p-3 bg-card">
-            <div className="text-sm font-semibold text-foreground">{r.operator_a}</div>
-            <div className="text-xs text-muted-foreground">Only in {r.cluster_a}</div>
+            <div className="text-sm font-semibold text-foreground">
+              {r.operator_a}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Only in {r.cluster_a}
+            </div>
           </div>
           <div className="p-3 bg-card">
-            <div className="text-sm font-semibold text-foreground">{r.operator_b}</div>
-            <div className="text-xs text-muted-foreground">Only in {r.cluster_b}</div>
+            <div className="text-sm font-semibold text-foreground">
+              {r.operator_b}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Only in {r.cluster_b}
+            </div>
           </div>
         </div>
         <div className="max-h-80 overflow-y-auto">
           {alignResourceRows.length === 0 ? (
-            <div className="p-3 text-sm text-muted-foreground">No unique resources on either side.</div>
+            <div className="p-3 text-sm text-muted-foreground">
+              No unique resources on either side.
+            </div>
           ) : (
             alignResourceRows.map((row, idx) => (
-              <div key={`resource-row-${idx}`} className="grid grid-cols-2 gap-px bg-border">
+              <div
+                key={`resource-row-${idx}`}
+                className="grid grid-cols-2 gap-px bg-border"
+              >
                 <div className="p-2 min-h-[84px] bg-card">
-                  {row.left ? renderResourceRef(row.left) : (
-                    <div className="h-full flex items-center text-xs text-muted-foreground">—</div>
+                  {row.left ? (
+                    renderResourceRef(row.left)
+                  ) : (
+                    <div className="h-full flex items-center text-xs text-muted-foreground">
+                      —
+                    </div>
                   )}
                 </div>
                 <div className="p-2 min-h-[84px] bg-card">
-                  {row.right ? renderResourceRef(row.right) : (
-                    <div className="h-full flex items-center text-xs text-muted-foreground">—</div>
+                  {row.right ? (
+                    renderResourceRef(row.right)
+                  ) : (
+                    <div className="h-full flex items-center text-xs text-muted-foreground">
+                      —
+                    </div>
                   )}
                 </div>
               </div>
@@ -575,14 +829,18 @@ function CompareResult({ result }: { result: FleetCompareResult }) {
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-md border border-border bg-muted/40 p-3 space-y-3">
           <div>
-            <div className="text-sm font-semibold text-foreground">Changed resources</div>
+            <div className="text-sm font-semibold text-foreground">
+              Changed resources
+            </div>
             <div className="text-xs text-muted-foreground">
               Resources that exist in both clusters but differ in spec.
             </div>
           </div>
           <div className="space-y-2 max-h-64 overflow-y-auto">
             {r.resources.changed.length === 0 ? (
-              <div className="text-sm text-muted-foreground">No changed resources.</div>
+              <div className="text-sm text-muted-foreground">
+                No changed resources.
+              </div>
             ) : (
               r.resources.changed.map((item) => (
                 <div
@@ -599,26 +857,45 @@ function CompareResult({ result }: { result: FleetCompareResult }) {
 
         <div className="rounded-md border border-border bg-muted/40 p-3 space-y-3">
           <div>
-            <div className="text-sm font-semibold text-foreground">Module differences</div>
-            <div className="text-xs text-muted-foreground">OpenTofu / module config drift summary.</div>
+            <div className="text-sm font-semibold text-foreground">
+              Module differences
+            </div>
+            <div className="text-xs text-muted-foreground">
+              OpenTofu / module config drift summary.
+            </div>
           </div>
           <div className="space-y-3 max-h-64 overflow-y-auto">
             {moduleDiffs === 0 ? (
-              <div className="text-sm text-muted-foreground">No module differences.</div>
+              <div className="text-sm text-muted-foreground">
+                No module differences.
+              </div>
             ) : (
               <>
                 <div className="rounded-md border border-border overflow-hidden">
                   <div className="grid grid-cols-2 gap-px bg-border">
-                    <div className="px-3 py-2 text-xs font-semibold bg-card text-foreground">{r.operator_a}</div>
-                    <div className="px-3 py-2 text-xs font-semibold bg-card text-foreground">{r.operator_b}</div>
+                    <div className="px-3 py-2 text-xs font-semibold bg-card text-foreground">
+                      {r.operator_a}
+                    </div>
+                    <div className="px-3 py-2 text-xs font-semibold bg-card text-foreground">
+                      {r.operator_b}
+                    </div>
                   </div>
                   {alignModuleRows.length === 0 ? (
-                    <div className="px-3 py-2 text-xs text-muted-foreground bg-card">No unique modules.</div>
+                    <div className="px-3 py-2 text-xs text-muted-foreground bg-card">
+                      No unique modules.
+                    </div>
                   ) : (
                     alignModuleRows.map((row, idx) => (
-                      <div key={`module-row-${idx}`} className="grid grid-cols-2 gap-px bg-border">
-                        <div className="px-3 py-2 text-xs bg-card text-foreground/80">{row.left ?? '—'}</div>
-                        <div className="px-3 py-2 text-xs bg-card text-foreground/80">{row.right ?? '—'}</div>
+                      <div
+                        key={`module-row-${idx}`}
+                        className="grid grid-cols-2 gap-px bg-border"
+                      >
+                        <div className="px-3 py-2 text-xs bg-card text-foreground/80">
+                          {row.left ?? "—"}
+                        </div>
+                        <div className="px-3 py-2 text-xs bg-card text-foreground/80">
+                          {row.right ?? "—"}
+                        </div>
                       </div>
                     ))
                   )}
@@ -646,9 +923,27 @@ function CompareResult({ result }: { result: FleetCompareResult }) {
 
 function OverviewView({ fleetId }: { fleetId?: number }) {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
 
-  const { data: fleet, isLoading, isFetching, isError, error } = useFleetHealth();
+  const {
+    data: fleet,
+    isLoading,
+    isFetching,
+    isError,
+    error,
+    refetch,
+  } = useFleetHealth();
+  const { data: allClustersData } = useAllClusters();
+  const allClusters = useMemo(
+    () =>
+      Array.isArray(allClustersData)
+        ? allClustersData
+        : (allClustersData?.clusters ?? EMPTY_CLUSTERS),
+    [allClustersData],
+  );
+  const clustersById = useMemo(
+    () => new Map(allClusters.map((c) => [c.id, c])),
+    [allClusters],
+  );
   const { states: connectivityStates } = useConnectivity();
 
   // When fleetId is set, resolve this fleet's cluster member ids and filter operators.
@@ -657,8 +952,8 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
     if (!fleetId || !fleetMembers) return null;
     return new Set(
       fleetMembers.members
-        .filter((m) => m.member_type === 'cluster')
-        .map((m) => m.member_id)
+        .filter((m) => m.member_type === "cluster")
+        .map((m) => m.member_id),
     );
   }, [fleetId, fleetMembers]);
 
@@ -670,14 +965,24 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
   // `fleetClusterIds`. We re-declare `operators` inline for the fleet-scoped
   // branch to keep a single useMemo.
   const counts = useMemo(() => {
-    if (!fleet) return { total: 0, healthy: 0, stale: 0, warning: 0, critical: 0, offline: 0 };
+    if (!fleet)
+      return {
+        total: 0,
+        healthy: 0,
+        stale: 0,
+        warning: 0,
+        critical: 0,
+        offline: 0,
+      };
 
     if (!fleetId || fleetClusterIds === null) {
       // Global view — use the aggregate from the API response directly.
       const stale = (fleet.operators ?? []).filter((op) => {
-        if (!['healthy', 'warning', 'degraded'].includes(op.status)) return false;
-        const conn = connectivityStates[reachabilityKey('cluster', op.cluster_id)];
-        return conn?.state === 'unreachable';
+        if (!["healthy", "warning", "degraded"].includes(op.status))
+          return false;
+        const conn =
+          connectivityStates[reachabilityKey("cluster", op.cluster_id)];
+        return conn?.state === "unreachable";
       }).length;
       return {
         total: fleet.total_clusters,
@@ -690,19 +995,27 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
     }
 
     // Fleet-scoped view — derive from the filtered operator list.
-    const filtered = (fleet.operators ?? []).filter((op) => fleetClusterIds.has(op.cluster_id));
+    const filtered = (fleet.operators ?? []).filter((op) =>
+      fleetClusterIds.has(op.cluster_id),
+    );
     const stale = filtered.filter((op) => {
-      if (!['healthy', 'warning', 'degraded'].includes(op.status)) return false;
-      const conn = connectivityStates[reachabilityKey('cluster', op.cluster_id)];
-      return conn?.state === 'unreachable';
+      if (!["healthy", "warning", "degraded"].includes(op.status)) return false;
+      const conn =
+        connectivityStates[reachabilityKey("cluster", op.cluster_id)];
+      return conn?.state === "unreachable";
     }).length;
     return {
       total: filtered.length,
-      healthy: Math.max(0, filtered.filter((op) => op.status === 'healthy').length - stale),
+      healthy: Math.max(
+        0,
+        filtered.filter((op) => op.status === "healthy").length - stale,
+      ),
       stale,
-      warning: filtered.filter((op) => op.status === 'warning').length,
-      critical: filtered.filter((op) => op.status === 'critical' || op.status === 'unhealthy').length,
-      offline: filtered.filter((op) => op.status === 'offline').length,
+      warning: filtered.filter((op) => op.status === "warning").length,
+      critical: filtered.filter(
+        (op) => op.status === "critical" || op.status === "unhealthy",
+      ).length,
+      offline: filtered.filter((op) => op.status === "offline").length,
     };
   }, [fleet, fleetId, fleetClusterIds, connectivityStates]);
 
@@ -710,13 +1023,8 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
   const [showPromotionWizard, setShowPromotionWizard] = useState(false);
   const [showAddCluster, setShowAddCluster] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [sortField, setSortField] = useState<SortField>('status');
+  const [sortField, setSortField] = useState<SortField>("status");
   const [sortAsc, setSortAsc] = useState(true);
-
-  const handleRefresh = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ['fleet'] });
-    queryClient.invalidateQueries({ queryKey: ['k8s', 'clusters', 'connectivity'] });
-  }, [queryClient]);
 
   // When scoped to a fleet, filter operators to those in the fleet's cluster members.
   const operators = useMemo(() => {
@@ -748,67 +1056,173 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
 
   const handleViewHealth = useCallback(
     (op: FleetOperatorHealth) => {
-      localStorage.setItem('bnk-forge-bnk-cluster', String(op.cluster_id));
-      navigate('/bnk');
+      localStorage.setItem(STORAGE_KEYS.CLUSTER_SCOPE, String(op.cluster_id));
+      navigate(`/bnk?cluster=${op.cluster_id}`);
     },
     [navigate],
   );
 
   const handleViewConfig = useCallback(
     (op: FleetOperatorHealth) => {
-      localStorage.setItem('bnk-forge-k8s-cluster', String(op.cluster_id));
-      navigate('/kubernetes');
+      localStorage.setItem(STORAGE_KEYS.CLUSTER_SCOPE, String(op.cluster_id));
+      navigate(`/kubernetes?cluster=${op.cluster_id}&view=advanced`);
     },
     [navigate],
   );
 
   const handleViewDpf = useCallback(
     (op: FleetOperatorHealth) => {
+      localStorage.setItem(STORAGE_KEYS.CLUSTER_SCOPE, String(op.cluster_id));
       // D-022 P6 IA: DPU hardware view moved to the Infrastructure section.
       navigate(`/infrastructure?tab=dpus&cluster=${op.cluster_id}`);
     },
     [navigate],
   );
 
+  const [selectedProvider, setSelectedProvider] = useState<
+    NormalizedCloudProvider | "all"
+  >("all");
+  const [viewLayout, setViewLayout] = useState<"grouped" | "flat">("grouped");
+  const [collapsedGroups, setCollapsedGroups] = useState<
+    Record<string, boolean>
+  >({});
+
+  const toggleGroup = (groupId: string) => {
+    setCollapsedGroups((prev) => ({
+      ...prev,
+      [groupId]: !prev[groupId],
+    }));
+  };
+
+  const providerCounts = useMemo(() => {
+    const c: Record<string, number> = { all: sortedOperators.length };
+    for (const op of sortedOperators) {
+      const prov = getOperatorProvider(op, clustersById.get(op.cluster_id));
+      c[prov] = (c[prov] || 0) + 1;
+    }
+    return c;
+  }, [sortedOperators, clustersById]);
+
+  const providerFilteredOperators = useMemo(() => {
+    if (selectedProvider === "all") return sortedOperators;
+    return sortedOperators.filter(
+      (op) =>
+        getOperatorProvider(op, clustersById.get(op.cluster_id)) ===
+        selectedProvider,
+    );
+  }, [sortedOperators, selectedProvider, clustersById]);
+
+  const groupedOperators = useMemo(() => {
+    const map = new Map<NormalizedCloudProvider, FleetOperatorHealth[]>();
+    for (const op of providerFilteredOperators) {
+      const prov = getOperatorProvider(op, clustersById.get(op.cluster_id));
+      const list = map.get(prov) || [];
+      list.push(op);
+      map.set(prov, list);
+    }
+    return PROVIDER_DEFS.map((def) => ({
+      ...def,
+      operators: map.get(def.id) || [],
+    })).filter((g) => g.operators.length > 0);
+  }, [providerFilteredOperators, clustersById]);
+
+  function renderClusterTable(ops: FleetOperatorHealth[]) {
+    return (
+      <div className="overflow-x-auto">
+        <div className="rounded-md border border-border overflow-hidden">
+          <div className="flex items-center gap-4 px-4 py-2 bg-muted/40 border-b border-border text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <div className="w-5" />
+            <button
+              type="button"
+              className="flex-1 flex items-center gap-1 hover:text-foreground transition-colors text-left"
+              onClick={() => handleSort("name")}
+            >
+              Cluster
+              <ArrowUpDown className="h-3 w-3" />
+            </button>
+            <div className="hidden md:block w-20 text-center">BNK</div>
+            <div className="hidden sm:flex w-14 items-center justify-center gap-1">
+              <Route className="h-3 w-3" />
+              Routes
+            </div>
+            <div className="hidden sm:flex w-14 items-center justify-center gap-1">
+              <Server className="h-3 w-3" />
+              TMM
+            </div>
+            <div className="hidden lg:flex w-14 items-center justify-center gap-1">
+              <Layers className="h-3 w-3" />
+              GW
+            </div>
+            <div className="hidden lg:flex w-14 items-center justify-center gap-1">
+              <Cpu className="h-3 w-3" />
+              DPU
+            </div>
+            <button
+              type="button"
+              className="hidden lg:flex w-20 items-center justify-center gap-1 hover:text-foreground transition-colors"
+              onClick={() => handleSort("last_seen")}
+            >
+              <Clock className="h-3 w-3" />
+              Uptime
+              <ArrowUpDown className="h-3 w-3" />
+            </button>
+            <div className="w-[68px] text-center">Actions</div>
+          </div>
+          {ops.map((op) => (
+            <ClusterRow
+              key={op.operator_uuid}
+              op={op}
+              selected={selectedIds.includes(op.operator_id)}
+              onToggleSelect={toggleSelect}
+              onViewHealth={handleViewHealth}
+              onViewConfig={handleViewConfig}
+              onViewDpf={handleViewDpf}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   const canCompare = selectedIds.length === 2;
 
   return (
     <div className="space-y-6">
-      {/* Action bar — global actions (Refresh / Promote config / Add cluster) are
+      {/* Action bar — global actions (Promote config / Add cluster) are
           hidden when rendered as a fleet Health facet (fleetId set); in that context
           the view is read-only health for the fleet's members only. */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-xs text-muted-foreground">
           {operators.length > 0 &&
-            `${operators.length} cluster${operators.length === 1 ? '' : 's'} · select two to compare`}
+            `${operators.length} cluster${operators.length === 1 ? "" : "s"} · select two to compare`}
         </div>
         <div className="flex items-center gap-2">
-          {!fleetId && (
+          {canCompare && (
             <Button
               variant="outline"
               size="sm"
-              onClick={handleRefresh}
-              disabled={isFetching}
-              title="Re-check connectivity for all clusters"
+              onClick={() => setShowCompare(true)}
             >
-              <RefreshCw className={cn('h-4 w-4 mr-1.5', isFetching && 'animate-spin')} />
-              {isFetching && !isLoading ? 'Checking…' : 'Refresh'}
-            </Button>
-          )}
-          {canCompare && (
-            <Button variant="outline" size="sm" onClick={() => setShowCompare(true)}>
               <GitCompare className="h-4 w-4 mr-1.5" />
               Compare selected
             </Button>
           )}
           {!fleetId && operators.length >= 2 && (
-            <Button variant="outline" size="sm" onClick={() => setShowPromotionWizard(true)}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowPromotionWizard(true)}
+            >
               <Upload className="h-4 w-4 mr-1.5" />
               Promote config
             </Button>
           )}
           {!fleetId && (
-            <Button variant="outline" size="sm" onClick={() => setShowAddCluster(true)}>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => setShowAddCluster(true)}
+            >
               <Plus className="h-4 w-4 mr-1.5" />
               Add cluster
             </Button>
@@ -846,15 +1260,11 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
 
       {/* Error */}
       {isError && (
-        <SectionCard>
-          <div className="text-center py-2">
-            <Activity className="h-10 w-10 mx-auto mb-3 text-destructive" />
-            <h3 className="text-sm font-semibold text-foreground mb-1">Failed to load fleet health</h3>
-            <p className="text-xs text-muted-foreground">
-              {error instanceof Error ? error.message : 'Unable to reach the backend.'}
-            </p>
-          </div>
-        </SectionCard>
+        <ErrorState
+          error={error}
+          title="Failed to load fleet health"
+          onRetry={() => refetch()}
+        />
       )}
 
       {/* Loading */}
@@ -863,14 +1273,21 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
           <div className="text-center space-y-4 py-2">
             <RefreshCw className="h-8 w-8 mx-auto text-primary animate-spin" />
             <div>
-              <h3 className="text-sm font-semibold text-foreground">Querying cluster health…</h3>
+              <h3 className="text-sm font-semibold text-foreground">
+                Querying cluster health…
+              </h3>
               <p className="text-xs text-muted-foreground mt-1 max-w-prose mx-auto">
-                Connecting to each cluster via kubeconfig, fetching BNK resources, and analyzing
-                health. This may take 10–30 seconds for on-prem or high-latency clusters.
+                Connecting to each cluster via kubeconfig, fetching BNK
+                resources, and analyzing health. This may take 10–30 seconds for
+                on-prem or high-latency clusters.
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-xs text-muted-foreground pt-2">
-              {['TCP connectivity check', 'Kubernetes API query', 'Health analysis'].map((s) => (
+              {[
+                "TCP connectivity check",
+                "Kubernetes API query",
+                "Health analysis",
+              ].map((s) => (
                 <span key={s} className="flex items-center gap-1.5">
                   <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
                   {s}
@@ -885,16 +1302,20 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
       {!isLoading && operators.length === 0 && (
         <EmptyState
           icon={Globe}
-          title={fleetId ? 'No cluster members in this fleet' : 'No clusters added yet'}
+          title={
+            fleetId
+              ? "No cluster members in this fleet"
+              : "No clusters added yet"
+          }
           description={
             fleetId
-              ? 'This fleet has no cluster members. Add clusters via the Members tab.'
-              : 'Add a Kubernetes cluster to see fleet health. Clusters are queried directly via kubeconfig — no operator installation required.'
+              ? "This fleet has no cluster members. Add clusters via the Members tab."
+              : "Add a Kubernetes cluster to see fleet health. Clusters are queried directly via kubeconfig — no operator installation required."
           }
           action={
             !fleetId
               ? {
-                  label: 'Add your first cluster',
+                  label: "Add your first cluster",
                   onClick: () => setShowAddCluster(true),
                   icon: <Plus className="h-4 w-4 mr-1.5" />,
                 }
@@ -903,62 +1324,154 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
         />
       )}
 
-      {/* Cluster table */}
+      {/* Provider selector pills + Grouped/Flat toggle (matching Command Center) */}
       {!isLoading && operators.length > 0 && (
-        <SectionCard compact>
-          <div className="overflow-x-auto">
-            <div className="rounded-md border border-border overflow-hidden">
-              <div className="flex items-center gap-4 px-4 py-2 bg-muted/40 border-b border-border text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                <div className="w-5" />
-                <button
-                  type="button"
-                  className="flex-1 flex items-center gap-1 hover:text-foreground transition-colors text-left"
-                  onClick={() => handleSort('name')}
-                >
-                  Cluster
-                  <ArrowUpDown className="h-3 w-3" />
-                </button>
-                <div className="hidden md:block w-20 text-center">BNK</div>
-                <div className="hidden sm:flex w-14 items-center justify-center gap-1">
-                  <Route className="h-3 w-3" />
-                  Routes
-                </div>
-                <div className="hidden sm:flex w-14 items-center justify-center gap-1">
-                  <Server className="h-3 w-3" />
-                  TMM
-                </div>
-                <div className="hidden lg:flex w-14 items-center justify-center gap-1">
-                  <Layers className="h-3 w-3" />
-                  GW
-                </div>
-                <div className="hidden lg:flex w-14 items-center justify-center gap-1">
-                  <Cpu className="h-3 w-3" />
-                  DPU
-                </div>
-                <button
-                  type="button"
-                  className="hidden lg:flex w-20 items-center justify-center gap-1 hover:text-foreground transition-colors"
-                  onClick={() => handleSort('last_seen')}
-                >
-                  <Clock className="h-3 w-3" />
-                  Uptime
-                  <ArrowUpDown className="h-3 w-3" />
-                </button>
-                <div className="w-[68px] text-center">Actions</div>
-              </div>
-              {sortedOperators.map((op) => (
-                <ClusterRow
-                  key={op.operator_uuid}
-                  op={op}
-                  selected={selectedIds.includes(op.operator_id)}
-                  onToggleSelect={toggleSelect}
-                  onViewHealth={handleViewHealth}
-                  onViewConfig={handleViewConfig}
-                  onViewDpf={handleViewDpf}
-                />
-              ))}
-            </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border/40">
+          <div className="flex items-center bg-muted/60 p-1 rounded-lg text-xs flex-wrap gap-0.5">
+            <button
+              type="button"
+              onClick={() => setSelectedProvider("all")}
+              className={cn(
+                "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer text-xs",
+                selectedProvider === "all"
+                  ? "bg-card text-foreground shadow-xs font-semibold"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Estate ({sortedOperators.length})
+            </button>
+            {PROVIDER_DEFS.filter(
+              (def) => (providerCounts[def.id] || 0) > 0,
+            ).map((def) => (
+              <button
+                key={def.id}
+                type="button"
+                onClick={() => setSelectedProvider(def.id)}
+                className={cn(
+                  "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer text-xs",
+                  selectedProvider === def.id
+                    ? "bg-card text-foreground shadow-xs font-semibold"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {def.shortLabel} ({providerCounts[def.id]})
+              </button>
+            ))}
           </div>
+
+          <div className="flex items-center bg-muted/60 p-1 rounded-lg text-xs border border-border/50">
+            <button
+              type="button"
+              onClick={() => setViewLayout("grouped")}
+              title="Grouped by Cloud Provider"
+              aria-label="Grouped by Cloud Provider"
+              className={cn(
+                "p-1.5 rounded-md transition-colors cursor-pointer",
+                viewLayout === "grouped"
+                  ? "bg-card text-primary shadow-xs"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Layers className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewLayout("flat")}
+              title="Flat View"
+              aria-label="Flat View"
+              className={cn(
+                "p-1.5 rounded-md transition-colors cursor-pointer",
+                viewLayout === "flat"
+                  ? "bg-card text-primary shadow-xs"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Cluster table - Grouped */}
+      {!isLoading && operators.length > 0 && viewLayout === "grouped" && (
+        <div className="space-y-4">
+          {groupedOperators.map((group) => {
+            const isCollapsed = collapsedGroups[group.id] ?? false;
+            const healthyCount = group.operators.filter(
+              (op) => op.status === "healthy",
+            ).length;
+            const warningCount = group.operators.filter(
+              (op) => op.status === "warning" || op.status === "degraded",
+            ).length;
+            const criticalCount = group.operators.filter(
+              (op) => op.status === "critical" || op.status === "unhealthy",
+            ).length;
+
+            return (
+              <div
+                key={group.id}
+                className="rounded-xl border border-border/80 bg-card overflow-hidden shadow-xs transition-all"
+              >
+                <div
+                  onClick={() => toggleGroup(group.id)}
+                  className="flex items-center justify-between px-4 py-3 bg-muted/40 hover:bg-muted/60 cursor-pointer border-b border-border/60 select-none transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-foreground transition-colors p-0.5"
+                      aria-label={
+                        isCollapsed ? "Expand group" : "Collapse group"
+                      }
+                    >
+                      {isCollapsed ? (
+                        <ChevronRight className="w-4 h-4" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4" />
+                      )}
+                    </button>
+                    <Badge
+                      variant={group.badgeVariant}
+                      className={group.badgeClass}
+                    >
+                      {group.shortLabel}
+                    </Badge>
+                    <div>
+                      <h3 className="font-semibold text-sm text-foreground">
+                        {group.name}
+                      </h3>
+                      <p className="text-xs text-muted-foreground font-mono">
+                        {group.operators.length} Cluster
+                        {group.operators.length !== 1 ? "s" : ""}
+                        {healthyCount > 0 && ` · ${healthyCount} healthy`}
+                        {warningCount > 0 && ` · ${warningCount} warning`}
+                        {criticalCount > 0 && ` · ${criticalCount} alert`}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      {isCollapsed ? "Expand" : "Collapse"}
+                    </span>
+                  </div>
+                </div>
+
+                {!isCollapsed && (
+                  <div className="p-0">
+                    {renderClusterTable(group.operators)}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Cluster table - Flat */}
+      {!isLoading && operators.length > 0 && viewLayout === "flat" && (
+        <SectionCard compact>
+          {renderClusterTable(providerFilteredOperators)}
         </SectionCard>
       )}
 
@@ -975,7 +1488,10 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
         onOpenChange={setShowPromotionWizard}
         operators={operators}
       />
-      <AddClusterFlowDialog open={showAddCluster} onOpenChange={setShowAddCluster} />
+      <AddClusterFlowDialog
+        open={showAddCluster}
+        onOpenChange={setShowAddCluster}
+      />
     </div>
   );
 }
@@ -990,28 +1506,33 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
 // ──────────────────────────────────────────────────────────────────────────────
 
 const MEMBER_TYPE_LABELS: Record<string, string> = {
-  'cluster': 'Cluster',
-  'bare-metal-host': 'Bare-Metal Host',
-  'dpu': 'DPU',
+  cluster: "Cluster",
+  "bare-metal-host": "Bare-Metal Host",
+  dpu: "DPU",
 };
 
 const MEMBER_TYPE_ICONS: Record<string, typeof Globe> = {
-  'cluster': Globe,
-  'bare-metal-host': Server,
-  'dpu': Cpu,
+  cluster: Globe,
+  "bare-metal-host": Server,
+  dpu: Cpu,
 };
 
 function MemberTypeBadge({ memberType }: { memberType: string }) {
   const label = MEMBER_TYPE_LABELS[memberType] ?? memberType;
   // Use design-token-adjacent semantic colors rather than raw zinc/blue/emerald/purple.
   const colorMap: Record<string, string> = {
-    'cluster': 'bg-primary/10 text-primary',
-    'bare-metal-host': 'bg-success/10 text-success',
-    'dpu': 'bg-info/10 text-info',
+    cluster: "bg-primary/10 text-primary",
+    "bare-metal-host": "bg-success/10 text-success",
+    dpu: "bg-info/10 text-info",
   };
-  const color = colorMap[memberType] ?? 'bg-muted text-muted-foreground';
+  const color = colorMap[memberType] ?? "bg-muted text-muted-foreground";
   return (
-    <span className={cn('inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium', color)}>
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium",
+        color,
+      )}
+    >
       {label}
     </span>
   );
@@ -1020,20 +1541,11 @@ function MemberTypeBadge({ memberType }: { memberType: string }) {
 /** Lifecycle state badge — derived unified state per fleet member (D-022 P4). */
 function LifecycleBadge({ state }: { state: FleetLifecycleState }) {
   if (!state) return null;
-  // status-color-as-badge: pill with a status dot, never a full-card tint.
-  const pillMap: Record<string, { pill: string; dot: string; extra?: string }> = {
-    provisioning: { pill: 'bg-warning/10 text-warning border-warning/20', dot: 'bg-warning' },
-    active: { pill: 'bg-success/10 text-success border-success/20', dot: 'bg-success' },
-    draining: { pill: 'bg-warning/10 text-warning border-warning/20', dot: 'bg-warning' },
-    decommissioned: { pill: 'bg-muted text-muted-foreground border-border', dot: 'bg-muted-foreground', extra: 'line-through' },
-    unknown: { pill: 'bg-destructive/10 text-destructive border-destructive/20', dot: 'bg-destructive' },
-  };
-  const { pill, dot, extra } = pillMap[state] ?? { pill: 'bg-muted text-muted-foreground border-border', dot: 'bg-muted-foreground' };
   return (
-    <span className={cn('inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border', pill, extra)}>
-      <span className={cn('h-1.5 w-1.5 rounded-full', dot)} />
-      {state}
-    </span>
+    <StatusBadge
+      status={state}
+      className={state === "decommissioned" ? "line-through" : undefined}
+    />
   );
 }
 
@@ -1047,7 +1559,8 @@ function LabelChips({ labels }: { labels: Record<string, string> }) {
           key={k}
           className="inline-flex items-center gap-0.5 rounded bg-muted/50 border border-border px-1.5 py-0.5 text-xs text-foreground/70"
         >
-          <span className="text-muted-foreground">{k}=</span>{v}
+          <span className="text-muted-foreground">{k}=</span>
+          {v}
         </span>
       ))}
     </div>
@@ -1062,14 +1575,19 @@ interface MemberRowProps {
   sshCredentialId?: number | null;
 }
 
-function MemberRow({ member, selected, onToggleSelect, sshCredentialId }: MemberRowProps) {
+function MemberRow({
+  member,
+  selected,
+  onToggleSelect,
+  sshCredentialId,
+}: MemberRowProps) {
   const Icon = MEMBER_TYPE_ICONS[member.member_type] ?? Server;
   const selectable = onToggleSelect != null;
   return (
     <div
       className={cn(
-        'flex items-start gap-4 px-4 py-3 border-b border-border last:border-0 transition-colors',
-        selectable && (selected ? 'bg-primary/5' : 'hover:bg-muted/40'),
+        "flex items-start gap-4 px-4 py-3 border-b border-border last:border-0 transition-colors",
+        selectable && (selected ? "bg-primary/5" : "hover:bg-muted/40"),
       )}
     >
       {/* Checkbox — only rendered when inside a fleet-scoped InventoryView */}
@@ -1078,16 +1596,26 @@ function MemberRow({ member, selected, onToggleSelect, sshCredentialId }: Member
           type="button"
           onClick={() => onToggleSelect(member.id)}
           className={cn(
-            'mt-0.5 h-5 w-5 rounded border flex items-center justify-center shrink-0 transition-colors',
+            "mt-0.5 h-5 w-5 rounded border flex items-center justify-center shrink-0 transition-colors",
             selected
-              ? 'bg-primary border-primary text-primary-foreground'
-              : 'border-border hover:border-foreground/30',
+              ? "bg-primary border-primary text-primary-foreground"
+              : "border-border hover:border-foreground/30",
           )}
           aria-label={`Select ${member.name}`}
         >
           {selected && (
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            <svg
+              className="w-3 h-3"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={3}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M5 13l4 4L19 7"
+              />
             </svg>
           )}
         </button>
@@ -1095,18 +1623,27 @@ function MemberRow({ member, selected, onToggleSelect, sshCredentialId }: Member
       <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-medium text-foreground truncate">{member.name}</span>
+          <span className="font-medium text-foreground truncate">
+            {member.name}
+          </span>
           <MemberTypeBadge memberType={member.member_type} />
           <LifecycleBadge state={member.lifecycle_state} />
           {/* SSH jumphost reachability — self-hides when no credential is associated */}
-          <SSHConnectivityBadge variant="compact" credentialId={sshCredentialId} />
+          <SSHConnectivityBadge
+            variant="compact"
+            credentialId={sshCredentialId}
+          />
           {member.health_status && (
-            <span className="text-xs text-muted-foreground">{member.health_status}</span>
+            <span className="text-xs text-muted-foreground">
+              {member.health_status}
+            </span>
           )}
         </div>
         {Object.keys(member.discovered_labels).length > 0 && (
           <div className="flex items-center gap-1">
-            <span className="text-xs text-muted-foreground shrink-0">discovered:</span>
+            <span className="text-xs text-muted-foreground shrink-0">
+              discovered:
+            </span>
             <LabelChips labels={member.discovered_labels} />
           </div>
         )}
@@ -1118,37 +1655,43 @@ function MemberRow({ member, selected, onToggleSelect, sshCredentialId }: Member
         )}
       </div>
       {member.fault_domain && (
-        <span className="shrink-0 text-xs text-muted-foreground">fd: {member.fault_domain}</span>
+        <span className="shrink-0 text-xs text-muted-foreground">
+          fd: {member.fault_domain}
+        </span>
       )}
     </div>
   );
 }
 
 /** Safe actions the verb bar can dispatch — mirrors backend SAFE_ACTIONS. */
-const FLEET_SAFE_ACTIONS = ['re-reconcile', 'set-labels'] as const;
-type FleetSafeAction = typeof FLEET_SAFE_ACTIONS[number];
+const FLEET_SAFE_ACTIONS = ["re-reconcile", "set-labels"] as const;
+type FleetSafeAction = (typeof FLEET_SAFE_ACTIONS)[number];
 
 /** Human-readable description of each safe action. */
 const FLEET_ACTION_DESCRIPTIONS: Record<string, string> = {
-  're-reconcile': 'Re-reconcile: asks each member to re-apply its desired state — useful after config drift or a failed deploy.',
-  'set-labels': 'Set-labels: assigns or updates labels on each member (e.g. mark tier=prod for an environment promotion).',
+  "re-reconcile":
+    "Re-reconcile: asks each member to re-apply its desired state — useful after config drift or a failed deploy.",
+  "set-labels":
+    "Set-labels: assigns or updates labels on each member (e.g. mark tier=prod for an environment promotion).",
 };
 
 function InventoryView({ fleetId }: { fleetId?: number }) {
-  const [filterText, setFilterText] = useState('');
-  const [groupBy, setGroupBy] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
-  const [lifecycleFilter, setLifecycleFilter] = useState('');
+  const [filterText, setFilterText] = useState("");
+  const [groupBy, setGroupBy] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
+  const [lifecycleFilter, setLifecycleFilter] = useState("");
 
   // Selection state — only meaningful when fleetId is set.
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   // Verb bar dialog state.
   const [showRelabelDialog, setShowRelabelDialog] = useState(false);
-  const [relabelInput, setRelabelInput] = useState('');
+  const [relabelInput, setRelabelInput] = useState("");
   const [showRunDialog, setShowRunDialog] = useState(false);
-  const [runAction, setRunAction] = useState<FleetSafeAction>('re-reconcile');
-  const [runConcurrency, setRunConcurrency] = useState<number | undefined>(undefined);
+  const [runAction, setRunAction] = useState<FleetSafeAction>("re-reconcile");
+  const [runConcurrency, setRunConcurrency] = useState<number | undefined>(
+    undefined,
+  );
 
   const updateLabels = useUpdateFleetMemberLabels();
   const runSelection = useRunSelection();
@@ -1179,16 +1722,18 @@ function InventoryView({ fleetId }: { fleetId?: number }) {
   // Relabel — fan-out PUT /members/{id}/labels per selected member.
   const handleRelabel = useCallback(async () => {
     const labels: Record<string, string> = {};
-    for (const pair of relabelInput.split(',')) {
-      const [k, v] = pair.trim().split('=');
+    for (const pair of relabelInput.split(",")) {
+      const [k, v] = pair.trim().split("=");
       if (k && v !== undefined) labels[k.trim()] = v.trim();
     }
     if (Object.keys(labels).length === 0) return;
     await Promise.all(
-      Array.from(selectedIds).map((id) => updateLabels.mutateAsync({ memberId: id, labels })),
+      Array.from(selectedIds).map((id) =>
+        updateLabels.mutateAsync({ memberId: id, labels }),
+      ),
     );
     setShowRelabelDialog(false);
-    setRelabelInput('');
+    setRelabelInput("");
     setSelectedIds(new Set());
   }, [relabelInput, selectedIds, updateLabels]);
 
@@ -1205,23 +1750,32 @@ function InventoryView({ fleetId }: { fleetId?: number }) {
     setSelectedIds(new Set());
     // Navigate to Operations tab to show the run.
     const next = new URLSearchParams(searchParams);
-    next.set('detail_tab', 'operations');
+    next.set("detail_tab", "operations");
     setSearchParams(next);
     void run; // result available if needed
-  }, [fleetId, selectedIds, runAction, runConcurrency, runSelection, searchParams, setSearchParams]);
+  }, [
+    fleetId,
+    selectedIds,
+    runAction,
+    runConcurrency,
+    runSelection,
+    searchParams,
+    setSearchParams,
+  ]);
 
   // Parse label filters from free-text input (key=value pairs, space-separated).
   const labelFilters = useMemo(() => {
-    return filterText
-      .split(/\s+/)
-      .filter((t) => t.includes('='));
+    return filterText.split(/\s+/).filter((t) => t.includes("="));
   }, [filterText]);
 
   // When fleetId is set, source from the per-fleet member resolver instead.
-  const { data: fleetMembersData, isLoading: fleetMembersLoading } = useFleetMembersByFleet(
-    fleetId ?? null,
-  );
-  const { data: globalData, isLoading: globalLoading, error } = useFleetMembers(
+  const { data: fleetMembersData, isLoading: fleetMembersLoading } =
+    useFleetMembersByFleet(fleetId ?? null);
+  const {
+    data: globalData,
+    isLoading: globalLoading,
+    error,
+  } = useFleetMembers(
     fleetId == null
       ? {
           label: labelFilters.length > 0 ? labelFilters : undefined,
@@ -1248,52 +1802,68 @@ function InventoryView({ fleetId }: { fleetId?: number }) {
           <span className="text-sm font-medium text-foreground">
             Fleet Inventory
           </span>
-          <span className="text-xs text-muted-foreground">({totalCount} members)</span>
+          <span className="text-xs text-muted-foreground">
+            ({totalCount} members)
+          </span>
         </div>
 
         {/* Type filter — hidden when fleet-scoped (data comes from fleet resolver) */}
         {fleetId == null && (
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="rounded border border-border bg-card text-foreground px-2 py-1 text-xs"
+          <Select
+            value={typeFilter || "all"}
+            onValueChange={(val) => setTypeFilter(val === "all" ? "" : val)}
           >
-            <option value="">All types</option>
-            <option value="cluster">Clusters</option>
-            <option value="bare-metal-host">Hosts</option>
-            <option value="dpu">DPUs</option>
-          </select>
+            <SelectTrigger className="h-7 text-xs w-[110px] bg-card">
+              <SelectValue placeholder="All types" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types</SelectItem>
+              <SelectItem value="cluster">Clusters</SelectItem>
+              <SelectItem value="bare-metal-host">Hosts</SelectItem>
+              <SelectItem value="dpu">DPUs</SelectItem>
+            </SelectContent>
+          </Select>
         )}
 
         {/* Lifecycle filter */}
-        <select
-          value={lifecycleFilter}
-          onChange={(e) => setLifecycleFilter(e.target.value)}
-          className="rounded border border-border bg-card text-foreground px-2 py-1 text-xs"
+        <Select
+          value={lifecycleFilter || "all"}
+          onValueChange={(val) => setLifecycleFilter(val === "all" ? "" : val)}
         >
-          <option value="">All lifecycle</option>
-          <option value="provisioning">Provisioning</option>
-          <option value="active">Active</option>
-          <option value="draining">Draining</option>
-          <option value="decommissioned">Decommissioned</option>
-          <option value="unknown">Unknown</option>
-        </select>
+          <SelectTrigger className="h-7 text-xs w-[120px] bg-card">
+            <SelectValue placeholder="All lifecycle" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All lifecycle</SelectItem>
+            <SelectItem value="provisioning">Provisioning</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="draining">Draining</SelectItem>
+            <SelectItem value="decommissioned">Decommissioned</SelectItem>
+            <SelectItem value="unknown">Unknown</SelectItem>
+          </SelectContent>
+        </Select>
 
         {/* Group-by — hidden when fleet-scoped */}
         {fleetId == null && (
-          <select
-            value={groupBy}
-            onChange={(e) => setGroupBy(e.target.value)}
-            className="rounded border border-border bg-card text-foreground px-2 py-1 text-xs"
+          <Select
+            value={groupBy || "none"}
+            onValueChange={(val) => setGroupBy(val === "none" ? "" : val)}
           >
-            <option value="">No grouping</option>
-            <option value="vendor">By vendor</option>
-            <option value="region">By region</option>
-            <option value="env">By env</option>
-            <option value="team">By team</option>
-            <option value="platform-profile">By platform profile</option>
-            <option value="has-dpu">By has-dpu</option>
-          </select>
+            <SelectTrigger className="h-7 text-xs w-[130px] bg-card">
+              <SelectValue placeholder="No grouping" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No grouping</SelectItem>
+              <SelectItem value="vendor">By vendor</SelectItem>
+              <SelectItem value="region">By region</SelectItem>
+              <SelectItem value="env">By env</SelectItem>
+              <SelectItem value="team">By team</SelectItem>
+              <SelectItem value="platform-profile">
+                By platform profile
+              </SelectItem>
+              <SelectItem value="has-dpu">By has-dpu</SelectItem>
+            </SelectContent>
+          </Select>
         )}
 
         {/* Label filter — hidden when fleet-scoped */}
@@ -1316,7 +1886,7 @@ function InventoryView({ fleetId }: { fleetId?: number }) {
               {selectionCount} selected
             </span>
             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
-              {selectionCount} member{selectionCount > 1 ? 's' : ''}
+              {selectionCount} member{selectionCount > 1 ? "s" : ""}
             </span>
 
             {/* Relabel */}
@@ -1330,10 +1900,7 @@ function InventoryView({ fleetId }: { fleetId?: number }) {
             </Button>
 
             {/* Run operation */}
-            <Button
-              size="sm"
-              onClick={() => setShowRunDialog(true)}
-            >
+            <Button size="sm" onClick={() => setShowRunDialog(true)}>
               <Play className="h-3.5 w-3.5 mr-1.5" />
               Run operation
             </Button>
@@ -1353,7 +1920,9 @@ function InventoryView({ fleetId }: { fleetId?: number }) {
           {showRelabelDialog && (
             <div className="mt-3 pt-3 border-t border-border space-y-2">
               <p className="text-xs text-muted-foreground">
-                Assign labels to {selectionCount} member{selectionCount > 1 ? 's' : ''} (key=value pairs, comma-separated):
+                Assign labels to {selectionCount} member
+                {selectionCount > 1 ? "s" : ""} (key=value pairs,
+                comma-separated):
               </p>
               <div className="flex items-center gap-2">
                 <input
@@ -1368,7 +1937,7 @@ function InventoryView({ fleetId }: { fleetId?: number }) {
                   onClick={() => void handleRelabel()}
                   disabled={updateLabels.isPending || !relabelInput.trim()}
                 >
-                  {updateLabels.isPending ? 'Applying…' : 'Apply'}
+                  {updateLabels.isPending ? "Applying…" : "Apply"}
                 </Button>
                 <Button
                   size="sm"
@@ -1379,7 +1948,9 @@ function InventoryView({ fleetId }: { fleetId?: number }) {
                 </Button>
               </div>
               {updateLabels.error && (
-                <p className="text-xs text-destructive">{String(updateLabels.error)}</p>
+                <p className="text-xs text-destructive">
+                  {String(updateLabels.error)}
+                </p>
               )}
             </div>
           )}
@@ -1388,32 +1959,51 @@ function InventoryView({ fleetId }: { fleetId?: number }) {
           {showRunDialog && (
             <div className="mt-3 pt-3 border-t border-border space-y-3">
               <p className="text-xs text-muted-foreground">
-                Run operation on {selectionCount} selected member{selectionCount > 1 ? 's' : ''}:
+                Run operation on {selectionCount} selected member
+                {selectionCount > 1 ? "s" : ""}:
               </p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-muted-foreground">Action</label>
-                  <select
+                  <label className="text-xs text-muted-foreground">
+                    Action
+                  </label>
+                  <Select
                     value={runAction}
-                    onChange={(e) => setRunAction(e.target.value as FleetSafeAction)}
-                    className="w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-sm mt-1"
+                    onValueChange={(val) =>
+                      setRunAction(val as FleetSafeAction)
+                    }
                   >
-                    {FLEET_SAFE_ACTIONS.map((a) => (
-                      <option key={a} value={a}>{a}</option>
-                    ))}
-                  </select>
+                    <SelectTrigger className="w-full mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {FLEET_SAFE_ACTIONS.map((a) => (
+                        <SelectItem key={a} value={a}>
+                          {a}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   {FLEET_ACTION_DESCRIPTIONS[runAction] && (
-                    <p className="mt-1 text-[11px] text-muted-foreground leading-snug">{FLEET_ACTION_DESCRIPTIONS[runAction]}</p>
+                    <p className="mt-1 text-2xs text-muted-foreground leading-snug">
+                      {FLEET_ACTION_DESCRIPTIONS[runAction]}
+                    </p>
                   )}
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground">Concurrency (leave blank for default)</label>
+                  <label className="text-xs text-muted-foreground">
+                    Concurrency (leave blank for default)
+                  </label>
                   <input
                     type="number"
                     min={1}
                     max={50}
-                    value={runConcurrency ?? ''}
-                    onChange={(e) => setRunConcurrency(e.target.value ? Number(e.target.value) : undefined)}
+                    value={runConcurrency ?? ""}
+                    onChange={(e) =>
+                      setRunConcurrency(
+                        e.target.value ? Number(e.target.value) : undefined,
+                      )
+                    }
                     placeholder="default"
                     className="w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-sm mt-1"
                   />
@@ -1425,7 +2015,7 @@ function InventoryView({ fleetId }: { fleetId?: number }) {
                   onClick={() => void handleRunOperation()}
                   disabled={runSelection.isPending}
                 >
-                  {runSelection.isPending ? 'Starting…' : 'Start run'}
+                  {runSelection.isPending ? "Starting…" : "Start run"}
                 </Button>
                 <Button
                   size="sm"
@@ -1436,7 +2026,9 @@ function InventoryView({ fleetId }: { fleetId?: number }) {
                 </Button>
               </div>
               {runSelection.error && (
-                <p className="text-xs text-destructive">{String(runSelection.error)}</p>
+                <p className="text-xs text-destructive">
+                  {String(runSelection.error)}
+                </p>
               )}
             </div>
           )}
@@ -1446,7 +2038,9 @@ function InventoryView({ fleetId }: { fleetId?: number }) {
       {/* Content */}
       {isLoading && (
         <div className="space-y-2">
-          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-16 w-full" />
+          ))}
         </div>
       )}
       {error && (
@@ -1454,73 +2048,99 @@ function InventoryView({ fleetId }: { fleetId?: number }) {
           Failed to load fleet members.
         </div>
       )}
-      {data && !isLoading && (() => {
-        // Client-side lifecycle filter (lifecycle_state is returned per-member
-        // but the backend list endpoint doesn't filter by it yet).
-        const matchesLifecycle = (m: { lifecycle_state: FleetLifecycleState }) =>
-          !lifecycleFilter || (m.lifecycle_state ?? 'unknown') === lifecycleFilter;
+      {data &&
+        !isLoading &&
+        (() => {
+          // Client-side lifecycle filter (lifecycle_state is returned per-member
+          // but the backend list endpoint doesn't filter by it yet).
+          const matchesLifecycle = (m: {
+            lifecycle_state: FleetLifecycleState;
+          }) =>
+            !lifecycleFilter ||
+            (m.lifecycle_state ?? "unknown") === lifecycleFilter;
 
-        if (isGroupedMembersResponse(data)) {
-          // Apply lifecycle filter within each group.
-          const filteredGroups = Object.fromEntries(
-            Object.entries(data.groups)
-              .map(([gv, members]) => [gv, members.filter(matchesLifecycle)] as const)
-              .filter(([, members]) => members.length > 0),
-          );
+          if (isGroupedMembersResponse(data)) {
+            // Apply lifecycle filter within each group.
+            const filteredGroups = Object.fromEntries(
+              Object.entries(data.groups)
+                .map(
+                  ([gv, members]) =>
+                    [gv, members.filter(matchesLifecycle)] as const,
+                )
+                .filter(([, members]) => members.length > 0),
+            );
+            return (
+              <div className="space-y-4">
+                {Object.entries(filteredGroups).map(([groupValue, members]) => (
+                  <SectionCard key={groupValue} compact>
+                    <div className="flex items-center gap-2 pb-2 mb-1 border-b border-border">
+                      <span className="text-xs font-medium text-foreground">
+                        {data.group_by}={groupValue}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        ({members.length})
+                      </span>
+                    </div>
+                    {members.map((m) => (
+                      <MemberRow
+                        key={m.id}
+                        member={m}
+                        selected={
+                          fleetId != null ? selectedIds.has(m.id) : undefined
+                        }
+                        onToggleSelect={
+                          fleetId != null ? handleToggleSelect : undefined
+                        }
+                        sshCredentialId={
+                          m.project_id != null
+                            ? projectSshCredMap.get(m.project_id)
+                            : null
+                        }
+                      />
+                    ))}
+                  </SectionCard>
+                ))}
+                {Object.keys(filteredGroups).length === 0 && (
+                  <EmptyState
+                    icon={List}
+                    title="No fleet members found"
+                    description="Adjust your label filter or add targets to see inventory here."
+                  />
+                )}
+              </div>
+            );
+          }
+          const filteredMembers = data.members.filter(matchesLifecycle);
           return (
-            <div className="space-y-4">
-              {Object.entries(filteredGroups).map(([groupValue, members]) => (
-                <SectionCard key={groupValue} compact>
-                  <div className="flex items-center gap-2 pb-2 mb-1 border-b border-border">
-                    <span className="text-xs font-medium text-foreground">
-                      {data.group_by}={groupValue}
-                    </span>
-                    <span className="text-xs text-muted-foreground">({members.length})</span>
-                  </div>
-                  {members.map((m) => (
-                    <MemberRow
-                      key={m.id}
-                      member={m}
-                      selected={fleetId != null ? selectedIds.has(m.id) : undefined}
-                      onToggleSelect={fleetId != null ? handleToggleSelect : undefined}
-                      sshCredentialId={m.project_id != null ? projectSshCredMap.get(m.project_id) : null}
-                    />
-                  ))}
-                </SectionCard>
-              ))}
-              {Object.keys(filteredGroups).length === 0 && (
+            <SectionCard compact>
+              {filteredMembers.length === 0 ? (
                 <EmptyState
                   icon={List}
                   title="No fleet members found"
                   description="Adjust your label filter or add targets to see inventory here."
                 />
+              ) : (
+                filteredMembers.map((m) => (
+                  <MemberRow
+                    key={m.id}
+                    member={m}
+                    selected={
+                      fleetId != null ? selectedIds.has(m.id) : undefined
+                    }
+                    onToggleSelect={
+                      fleetId != null ? handleToggleSelect : undefined
+                    }
+                    sshCredentialId={
+                      m.project_id != null
+                        ? projectSshCredMap.get(m.project_id)
+                        : null
+                    }
+                  />
+                ))
               )}
-            </div>
+            </SectionCard>
           );
-        }
-        const filteredMembers = data.members.filter(matchesLifecycle);
-        return (
-          <SectionCard compact>
-            {filteredMembers.length === 0 ? (
-              <EmptyState
-                icon={List}
-                title="No fleet members found"
-                description="Adjust your label filter or add targets to see inventory here."
-              />
-            ) : (
-              filteredMembers.map((m) => (
-                <MemberRow
-                  key={m.id}
-                  member={m}
-                  selected={fleetId != null ? selectedIds.has(m.id) : undefined}
-                  onToggleSelect={fleetId != null ? handleToggleSelect : undefined}
-                  sshCredentialId={m.project_id != null ? projectSshCredMap.get(m.project_id) : null}
-                />
-              ))
-            )}
-          </SectionCard>
-        );
-      })()}
+        })()}
     </div>
   );
 }
@@ -1529,28 +2149,9 @@ function InventoryView({ fleetId }: { fleetId?: number }) {
 // BULK-OPS VIEW — D-022 Phase 2: define target, blast-radius preview, run
 // ============================================================================
 
-/** Simple status pill for bulk run progress — status-color-as-badge. */
-function BulkRunStatusBadge({ status }: { status: FleetBulkRun['status'] }) {
-  const pillMap: Record<string, { pill: string; dot: string }> = {
-    pending: { pill: 'bg-muted text-muted-foreground border-border', dot: 'bg-muted-foreground' },
-    running: { pill: 'bg-primary/10 text-primary border-primary/20', dot: 'bg-primary' },
-    paused_gate: { pill: 'bg-warning/10 text-warning border-warning/20', dot: 'bg-warning' },
-    completed: { pill: 'bg-success/10 text-success border-success/20', dot: 'bg-success' },
-    failed: { pill: 'bg-destructive/10 text-destructive border-destructive/20', dot: 'bg-destructive' },
-    cancelled: { pill: 'bg-muted text-muted-foreground border-border', dot: 'bg-muted-foreground' },
-  };
-  const { pill, dot } = pillMap[status] ?? pillMap['pending'];
-  return (
-    <span className={cn('inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border', pill)}>
-      <span className={cn('h-1.5 w-1.5 rounded-full', dot)} />
-      {status}
-    </span>
-  );
-}
-
 /** Countdown display for timed_wait gate — "resumes in HH:MM:SS". */
 function TimedWaitCountdown({ resumesAt }: { resumesAt: string }) {
-  const [remaining, setRemaining] = useState<string>('');
+  const [remaining, setRemaining] = useState<string>("");
 
   useEffect(() => {
     const compute = () => {
@@ -1561,8 +2162,8 @@ function TimedWaitCountdown({ resumesAt }: { resumesAt: string }) {
       const sec = s % 60;
       setRemaining(
         h > 0
-          ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
-          : `${m}:${String(sec).padStart(2, '0')}`
+          ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`
+          : `${m}:${String(sec).padStart(2, "0")}`,
       );
     };
     compute();
@@ -1573,7 +2174,7 @@ function TimedWaitCountdown({ resumesAt }: { resumesAt: string }) {
   return (
     <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border bg-info/10 text-info border-info/20">
       <Clock className="h-3 w-3" />
-      resumes in {remaining || '…'}
+      resumes in {remaining || "…"}
     </span>
   );
 }
@@ -1590,38 +2191,67 @@ function WaveProgressView({ run }: { run: FleetBulkRun }) {
 
   return (
     <div className="space-y-3">
-      {Object.entries(byWave).sort(([a], [b]) => Number(a) - Number(b)).map(([waveIdx, rows]) => {
-        const fd = rows[0]?.fault_domain ?? '(none)';
-        const succeeded = rows.filter((r) => r.status === 'succeeded').length;
-        const failed = rows.filter((r) => r.status === 'failed').length;
-        return (
-          <div key={waveIdx} className="rounded-md border border-border bg-muted/40 p-3 space-y-2">
-            <div className="flex items-center gap-2 border-b border-border pb-2">
-              <span className="text-xs font-medium text-foreground">Wave {Number(waveIdx) + 1}</span>
-              <span className="text-xs text-muted-foreground">fault_domain={fd}</span>
-              <span className="text-xs text-success">{succeeded} succeeded</span>
-              {failed > 0 && <span className="text-xs text-destructive">{failed} failed</span>}
+      {Object.entries(byWave)
+        .sort(([a], [b]) => Number(a) - Number(b))
+        .map(([waveIdx, rows]) => {
+          const fd = rows[0]?.fault_domain ?? "(none)";
+          const succeeded = rows.filter((r) => r.status === "succeeded").length;
+          const failed = rows.filter((r) => r.status === "failed").length;
+          return (
+            <div
+              key={waveIdx}
+              className="rounded-md border border-border bg-muted/40 p-3 space-y-2"
+            >
+              <div className="flex items-center gap-2 border-b border-border pb-2">
+                <span className="text-xs font-medium text-foreground">
+                  Wave {Number(waveIdx) + 1}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  fault_domain={fd}
+                </span>
+                <span className="text-xs text-success">
+                  {succeeded} succeeded
+                </span>
+                {failed > 0 && (
+                  <span className="text-xs text-destructive">
+                    {failed} failed
+                  </span>
+                )}
+              </div>
+              {rows.map((r) => {
+                const rowColor: Record<string, string> = {
+                  succeeded: "text-success",
+                  failed: "text-destructive",
+                  running: "text-primary",
+                };
+                return (
+                  <div
+                    key={r.id}
+                    className="flex items-start gap-3 px-1 py-1 text-xs"
+                  >
+                    <span
+                      className={cn(
+                        "shrink-0",
+                        rowColor[r.status] ?? "text-muted-foreground",
+                      )}
+                    >
+                      {r.status}
+                    </span>
+                    <span className="text-muted-foreground shrink-0">
+                      member #{r.fleet_member_id}
+                    </span>
+                    {/* detail = why-stuck / why-failed line */}
+                    {r.detail && (
+                      <span className="text-muted-foreground break-all leading-tight">
+                        {r.detail}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-            {rows.map((r) => {
-              const rowColor: Record<string, string> = {
-                succeeded: 'text-success',
-                failed: 'text-destructive',
-                running: 'text-primary',
-              };
-              return (
-                <div key={r.id} className="flex items-start gap-3 px-1 py-1 text-xs">
-                  <span className={cn('shrink-0', rowColor[r.status] ?? 'text-muted-foreground')}>{r.status}</span>
-                  <span className="text-muted-foreground shrink-0">member #{r.fleet_member_id}</span>
-                  {/* detail = why-stuck / why-failed line */}
-                  {r.detail && (
-                    <span className="text-muted-foreground break-all leading-tight">{r.detail}</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        );
-      })}
+          );
+        })}
     </div>
   );
 }
@@ -1630,26 +2260,34 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
   const queryClient = useQueryClient();
 
   // Target state
-  const [targetName, setTargetName] = useState('');
-  const [labelInput, setLabelInput] = useState('');
+  const [targetName, setTargetName] = useState("");
+  const [labelInput, setLabelInput] = useState("");
 
   // Run state — when fleetId is set, pre-select that target.
-  const [selectedTargetId, setSelectedTargetId] = useState<number | null>(fleetId ?? null);
+  const [selectedTargetId, setSelectedTargetId] = useState<number | null>(
+    fleetId ?? null,
+  );
   const [decisionId, setDecisionId] = useState<number | null>(null);
   const [activeRunId, setActiveRunId] = useState<number | null>(null);
-  const [action, setAction] = useState('re-reconcile');
+  const [action, setAction] = useState("re-reconcile");
   const [concurrency, setConcurrency] = useState(5);
-  const [gateMode, setGateMode] = useState<'manual' | 'health_stable'>('manual');
+  const [gateMode, setGateMode] = useState<"manual" | "health_stable">(
+    "manual",
+  );
   // D-022 P6 Slice D: optional strategy to snapshot onto run
-  const [selectedStrategyId, setSelectedStrategyId] = useState<number | null>(null);
+  const [selectedStrategyId, setSelectedStrategyId] = useState<number | null>(
+    null,
+  );
 
   // Strategy authoring state
   const [showStrategyForm, setShowStrategyForm] = useState(false);
-  const [strategyName, setStrategyName] = useState('');
-  const [strategyWaveBy, setStrategyWaveBy] = useState('fault_domain');
-  const [strategyLabelKey, setStrategyLabelKey] = useState('');
+  const [strategyName, setStrategyName] = useState("");
+  const [strategyWaveBy, setStrategyWaveBy] = useState("fault_domain");
+  const [strategyLabelKey, setStrategyLabelKey] = useState("");
   const [strategyPct, setStrategyPct] = useState(25);
-  const [strategyGateKind, setStrategyGateKind] = useState<'approval' | 'timed_wait' | 'health_stable'>('approval');
+  const [strategyGateKind, setStrategyGateKind] = useState<
+    "approval" | "timed_wait" | "health_stable"
+  >("approval");
   const [strategyWaitSeconds, setStrategyWaitSeconds] = useState(300);
 
   const { data: targets } = useFleetTargets();
@@ -1661,7 +2299,9 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
   const rerunBulkRun = useRerunBulkRun();
   const { data: bulkRun } = useFleetBulkRun(activeRunId);
   // When fleet-scoped, filter recent runs to this fleet.
-  const { data: recentRuns } = useFleetBulkRuns(fleetId != null ? { fleet_id: fleetId } : undefined);
+  const { data: recentRuns } = useFleetBulkRuns(
+    fleetId != null ? { fleet_id: fleetId } : undefined,
+  );
   // Strategies — fleet-scoped when fleetId set
   const { data: strategies } = useStrategies(fleetId);
   const createStrategy = useCreateStrategy();
@@ -1672,16 +2312,16 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
 
   const handleCreateTarget = () => {
     if (!targetName.trim()) return;
-    const labels = labelInput.split(/\s+/).filter((l) => l.includes('='));
+    const labels = labelInput.split(/\s+/).filter((l) => l.includes("="));
     createTarget.mutate(
       { name: targetName.trim(), selector: { labels } },
       {
         onSuccess: () => {
-          setTargetName('');
-          setLabelInput('');
-          queryClient.invalidateQueries({ queryKey: ['fleet', 'targets'] });
+          setTargetName("");
+          setLabelInput("");
+          queryClient.invalidateQueries({ queryKey: ["fleet", "targets"] });
         },
-      }
+      },
     );
   };
 
@@ -1711,7 +2351,7 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
           setDecision(null);
           setDecisionId(null);
         },
-      }
+      },
     );
   };
 
@@ -1719,7 +2359,9 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
     if (!activeRunId) return;
     resumeBulkRun.mutate(activeRunId, {
       onSuccess: (run) => {
-        queryClient.invalidateQueries({ queryKey: queryKeys.fleet.bulkRun(run.id) });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.fleet.bulkRun(run.id),
+        });
       },
     });
   };
@@ -1739,9 +2381,10 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
 
   const handleCreateStrategy = () => {
     if (!strategyName.trim()) return;
-    const waveBy = strategyWaveBy === 'fault_domain'
-      ? 'fault_domain'
-      : `label:${strategyLabelKey.trim()}`;
+    const waveBy =
+      strategyWaveBy === "fault_domain"
+        ? "fault_domain"
+        : `label:${strategyLabelKey.trim()}`;
     createStrategy.mutate(
       {
         name: strategyName.trim(),
@@ -1749,23 +2392,24 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
         wave_by: waveBy,
         max_concurrency_pct: strategyPct,
         gate_kind: strategyGateKind,
-        gate_wait_seconds: strategyGateKind === 'timed_wait' ? strategyWaitSeconds : undefined,
+        gate_wait_seconds:
+          strategyGateKind === "timed_wait" ? strategyWaitSeconds : undefined,
       },
       {
         onSuccess: () => {
-          setStrategyName('');
-          setStrategyWaveBy('fault_domain');
-          setStrategyLabelKey('');
+          setStrategyName("");
+          setStrategyWaveBy("fault_domain");
+          setStrategyLabelKey("");
           setStrategyPct(25);
-          setStrategyGateKind('approval');
+          setStrategyGateKind("approval");
           setStrategyWaitSeconds(300);
           setShowStrategyForm(false);
         },
-      }
+      },
     );
   };
 
-  const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+  const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"]);
 
   const hasStrategies = (strategies ?? []).length > 0;
   const hasRuns = (recentRuns ?? []).length > 0;
@@ -1779,15 +2423,23 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
             <div className="flex items-start gap-3">
               <RefreshCw className="h-5 w-5 text-primary shrink-0 mt-0.5" />
               <div className="space-y-1">
-                <p className="text-sm font-semibold text-foreground">Operations run an action across fleet members in safe, staged waves</p>
+                <p className="text-sm font-semibold text-foreground">
+                  Operations run an action across fleet members in safe, staged
+                  waves
+                </p>
                 <p className="text-xs text-muted-foreground leading-relaxed max-w-2xl">
-                  A <span className="font-medium text-foreground">Strategy</span> is a reusable rollout plan — which order to process members,
-                  how many to touch at once (blast radius), and a pause or gate between waves.
-                  A <span className="font-medium text-foreground">Run</span> is one execution of an action using a strategy — you watch it
+                  A{" "}
+                  <span className="font-medium text-foreground">Strategy</span>{" "}
+                  is a reusable rollout plan — which order to process members,
+                  how many to touch at once (blast radius), and a pause or gate
+                  between waves. A{" "}
+                  <span className="font-medium text-foreground">Run</span> is
+                  one execution of an action using a strategy — you watch it
                   progress wave-by-wave and can pause, cancel, or re-run it.
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Start with a default strategy or create your own, then pick an action and launch a Run.
+                  Start with a default strategy or create your own, then pick an
+                  action and launch a Run.
                 </p>
               </div>
             </div>
@@ -1809,9 +2461,18 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
           <span className="text-xs text-muted-foreground ml-auto">
             {(strategies ?? []).length} defined
           </span>
-          <Button size="sm" variant="outline" onClick={() => setShowStrategyForm((v) => !v)}>
-            {showStrategyForm ? 'Cancel' : (
-              <><Plus className="h-3.5 w-3.5 mr-1" />New strategy</>
+          <Button
+            size="sm"
+            variant={showStrategyForm ? "outline" : "default"}
+            onClick={() => setShowStrategyForm((v) => !v)}
+          >
+            {showStrategyForm ? (
+              "Cancel"
+            ) : (
+              <>
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                New strategy
+              </>
             )}
           </Button>
         </div>
@@ -1820,12 +2481,18 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
         {(strategies ?? []).length > 0 && (
           <div className="space-y-1 mb-3">
             {(strategies ?? []).map((s: FleetOperationStrategy) => (
-              <div key={s.id} className="flex items-center gap-3 px-2 py-1.5 rounded-md border border-border bg-muted/20 text-xs">
+              <div
+                key={s.id}
+                className="flex items-center gap-3 px-2 py-1.5 rounded-md border border-border bg-muted/20 text-xs"
+              >
                 <div className="flex-1 min-w-0">
                   <span className="font-medium text-foreground">{s.name}</span>
                   <span className="ml-2 text-muted-foreground">
-                    waves={s.wave_by} · {s.max_concurrency_pct}% blast radius · gate={s.gate_kind}
-                    {s.gate_kind === 'timed_wait' && s.gate_wait_seconds != null && ` (${s.gate_wait_seconds}s)`}
+                    waves={s.wave_by} · {s.max_concurrency_pct}% blast radius ·
+                    gate={s.gate_kind}
+                    {s.gate_kind === "timed_wait" &&
+                      s.gate_wait_seconds != null &&
+                      ` (${s.gate_wait_seconds}s)`}
                   </span>
                 </div>
                 <Button
@@ -1847,11 +2514,14 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
         {showStrategyForm && (
           <div className="space-y-3 pt-2 border-t border-border">
             <p className="text-xs text-muted-foreground">
-              Suggested defaults: fault-domain waves · 25% concurrency · approval gate (safest for first-time use).
+              Suggested defaults: fault-domain waves · 25% concurrency ·
+              approval gate (safest for first-time use).
             </p>
             <div className="grid grid-cols-2 gap-2">
               <div className="col-span-2">
-                <label className="text-xs font-medium text-muted-foreground">Name</label>
+                <label className="text-xs font-medium text-muted-foreground">
+                  Name
+                </label>
                 <input
                   value={strategyName}
                   onChange={(e) => setStrategyName(e.target.value)}
@@ -1860,38 +2530,50 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Wave by</label>
-                <select
+                <label className="text-xs font-medium text-muted-foreground">
+                  Wave by
+                </label>
+                <Select
                   value={strategyWaveBy}
-                  onChange={(e) => setStrategyWaveBy(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-xs"
+                  onValueChange={(val) => setStrategyWaveBy(val)}
                 >
-                  <option value="fault_domain">fault_domain</option>
-                  <option value="label">label (pick key below)</option>
-                </select>
-                <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
-                  {strategyWaveBy === 'label'
-                    ? 'Members are grouped into waves by a label key (e.g. region → one wave per region).'
-                    : 'Members are grouped into waves by fault-domain — roll out zone-by-zone for blast-radius control.'}
+                  <SelectTrigger className="mt-1 w-full text-xs h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fault_domain">fault_domain</SelectItem>
+                    <SelectItem value="label">
+                      label (pick key below)
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="mt-1 text-2xs text-muted-foreground leading-snug">
+                  {strategyWaveBy === "label"
+                    ? "Members are grouped into waves by a label key (e.g. region → one wave per region)."
+                    : "Members are grouped into waves by fault-domain — roll out zone-by-zone for blast-radius control."}
                 </p>
               </div>
-              {strategyWaveBy === 'label' && (
+              {strategyWaveBy === "label" && (
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Label key</label>
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Label key
+                  </label>
                   <input
                     value={strategyLabelKey}
                     onChange={(e) => setStrategyLabelKey(e.target.value)}
                     placeholder="region"
                     className="mt-1 w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-xs"
                   />
-                  <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
-                    E.g. <code className="bg-muted px-1 rounded">region</code> → one wave per unique region value.
+                  <p className="mt-1 text-2xs text-muted-foreground leading-snug">
+                    E.g. <code className="bg-muted px-1 rounded">region</code> →
+                    one wave per unique region value.
                   </p>
                 </div>
               )}
               <div>
                 <label className="text-xs font-medium text-muted-foreground">
-                  Max concurrency % <span className="font-normal">(blast radius)</span>
+                  Max concurrency %{" "}
+                  <span className="font-normal">(blast radius)</span>
                 </label>
                 <input
                   type="range"
@@ -1902,52 +2584,79 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
                   className="mt-1 w-full"
                 />
                 <span className="text-xs text-foreground">{strategyPct}%</span>
-                <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
-                  How many members in a wave run at once. Smaller = safer; larger = faster. 25% is a safe starting point.
+                <p className="mt-1 text-2xs text-muted-foreground leading-snug">
+                  How many members in a wave run at once. Smaller = safer;
+                  larger = faster. 25% is a safe starting point.
                 </p>
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Gate kind</label>
-                <select
+                <label className="text-xs font-medium text-muted-foreground">
+                  Gate kind
+                </label>
+                <Select
                   value={strategyGateKind}
-                  onChange={(e) => setStrategyGateKind(e.target.value as typeof strategyGateKind)}
-                  className="mt-1 w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-xs"
+                  onValueChange={(val) =>
+                    setStrategyGateKind(val as typeof strategyGateKind)
+                  }
                 >
-                  <option value="approval">approval (manual resume)</option>
-                  <option value="timed_wait">timed_wait (auto-resume after delay)</option>
-                  <option value="health_stable">health_stable (auto-proceed)</option>
-                </select>
-                <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
-                  {strategyGateKind === 'approval'
-                    ? 'Pauses between waves for a human OK — safest choice for production.'
-                    : strategyGateKind === 'timed_wait'
-                    ? 'Pauses N seconds between waves to soak before proceeding automatically.'
-                    : 'Proceeds automatically once members in the completed wave stay healthy.'}
+                  <SelectTrigger className="mt-1 w-full text-xs h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="approval">
+                      approval (manual resume)
+                    </SelectItem>
+                    <SelectItem value="timed_wait">
+                      timed_wait (auto-resume after delay)
+                    </SelectItem>
+                    <SelectItem value="health_stable">
+                      health_stable (auto-proceed)
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="mt-1 text-2xs text-muted-foreground leading-snug">
+                  {strategyGateKind === "approval"
+                    ? "Pauses between waves for a human OK — safest choice for production."
+                    : strategyGateKind === "timed_wait"
+                      ? "Pauses N seconds between waves to soak before proceeding automatically."
+                      : "Proceeds automatically once members in the completed wave stay healthy."}
                 </p>
               </div>
-              {strategyGateKind === 'timed_wait' && (
+              {strategyGateKind === "timed_wait" && (
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Wait (seconds)</label>
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Wait (seconds)
+                  </label>
                   <input
                     type="number"
                     min={1}
                     value={strategyWaitSeconds}
-                    onChange={(e) => setStrategyWaitSeconds(Number(e.target.value))}
+                    onChange={(e) =>
+                      setStrategyWaitSeconds(Number(e.target.value))
+                    }
                     className="mt-1 w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-xs"
                   />
-                  <p className="mt-1 text-[11px] text-muted-foreground leading-snug">300s (5 min) is a reasonable soak time.</p>
+                  <p className="mt-1 text-2xs text-muted-foreground leading-snug">
+                    300s (5 min) is a reasonable soak time.
+                  </p>
                 </div>
               )}
             </div>
             <Button
               size="sm"
               onClick={handleCreateStrategy}
-              disabled={createStrategy.isPending || !strategyName.trim() || (strategyWaveBy === 'label' && !strategyLabelKey.trim())}
+              disabled={
+                createStrategy.isPending ||
+                !strategyName.trim() ||
+                (strategyWaveBy === "label" && !strategyLabelKey.trim())
+              }
             >
-              {createStrategy.isPending ? 'Creating…' : 'Create strategy'}
+              {createStrategy.isPending ? "Creating…" : "Create strategy"}
             </Button>
             {createStrategy.isError && (
-              <p className="text-xs text-destructive">{String(createStrategy.error)}</p>
+              <p className="text-xs text-destructive">
+                {String(createStrategy.error)}
+              </p>
             )}
           </div>
         )}
@@ -1957,7 +2666,9 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
       <SectionCard compact>
         <div className="flex items-center gap-2 pb-2 mb-3 border-b border-border">
           <Tag className="w-4 h-4 text-primary" />
-          <h3 className="text-sm font-semibold text-foreground">Define Target</h3>
+          <h3 className="text-sm font-semibold text-foreground">
+            Define Target
+          </h3>
         </div>
         <div className="space-y-3">
           <div className="flex gap-2">
@@ -1975,12 +2686,18 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
               onChange={(e) => setLabelInput(e.target.value)}
               className="flex-1 rounded-md border border-border bg-card text-foreground px-2 py-1 text-xs"
             />
-            <Button size="sm" onClick={handleCreateTarget} disabled={createTarget.isPending || !targetName.trim()}>
-              {createTarget.isPending ? 'Creating...' : 'Create Target'}
+            <Button
+              size="sm"
+              onClick={handleCreateTarget}
+              disabled={createTarget.isPending || !targetName.trim()}
+            >
+              {createTarget.isPending ? "Creating..." : "Create Target"}
             </Button>
           </div>
           {createTarget.isError && (
-            <div className="text-xs text-destructive">{String(createTarget.error)}</div>
+            <div className="text-xs text-destructive">
+              {String(createTarget.error)}
+            </div>
           )}
         </div>
       </SectionCard>
@@ -1989,22 +2706,39 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
       <SectionCard compact>
         <div className="flex items-center gap-2 pb-2 mb-3 border-b border-border">
           <Eye className="w-4 h-4 text-warning" />
-          <h3 className="text-sm font-semibold text-foreground">Blast-Radius Preview</h3>
+          <h3 className="text-sm font-semibold text-foreground">
+            Blast-Radius Preview
+          </h3>
         </div>
         <div className="space-y-3">
           <div className="flex gap-2 items-center">
-            <select
-              value={selectedTargetId ?? ''}
-              onChange={(e) => { setSelectedTargetId(Number(e.target.value) || null); setDecision(null); setDecisionId(null); }}
-              className="flex-1 rounded-md border border-border bg-card text-foreground px-2 py-1 text-xs"
+            <Select
+              value={selectedTargetId ? String(selectedTargetId) : "none"}
+              onValueChange={(val) => {
+                setSelectedTargetId(val === "none" ? null : Number(val));
+                setDecision(null);
+                setDecisionId(null);
+              }}
             >
-              <option value="">Select a target...</option>
-              {(targets ?? []).map((t: FleetTarget) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-            <Button size="sm" variant="outline" onClick={handleResolve} disabled={!selectedTargetId || resolveTarget.isPending}>
-              {resolveTarget.isPending ? 'Resolving...' : 'Resolve'}
+              <SelectTrigger className="flex-1 text-xs h-8">
+                <SelectValue placeholder="Select a target..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Select a target...</SelectItem>
+                {(targets ?? []).map((t: FleetTarget) => (
+                  <SelectItem key={t.id} value={String(t.id)}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleResolve}
+              disabled={!selectedTargetId || resolveTarget.isPending}
+            >
+              {resolveTarget.isPending ? "Resolving..." : "Resolve"}
             </Button>
           </div>
 
@@ -2013,25 +2747,33 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
               <div className="flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-warning" />
                 <span className="text-sm font-semibold text-foreground">
-                  This will act on {decision.member_count} member{decision.member_count !== 1 ? 's' : ''}
+                  This will act on {decision.member_count} member
+                  {decision.member_count !== 1 ? "s" : ""}
                 </span>
               </div>
               {(decision.members ?? []).length > 0 && (
                 <div className="space-y-1 max-h-40 overflow-y-auto">
                   {(decision.members ?? []).slice(0, 20).map((m) => (
-                    <div key={m.id} className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <div
+                      key={m.id}
+                      className="flex items-center gap-2 text-xs text-muted-foreground"
+                    >
                       <span className="text-foreground">{m.name}</span>
                       <MemberTypeBadge memberType={m.member_type} />
                       {m.fault_domain && <span>fd:{m.fault_domain}</span>}
                     </div>
                   ))}
-                  {(decision.member_count) > 20 && (
-                    <div className="text-xs text-muted-foreground">…and {decision.member_count - 20} more</div>
+                  {decision.member_count > 20 && (
+                    <div className="text-xs text-muted-foreground">
+                      …and {decision.member_count - 20} more
+                    </div>
                   )}
                 </div>
               )}
               {decision.member_count === 0 && (
-                <div className="text-xs text-muted-foreground">No members matched the selector.</div>
+                <div className="text-xs text-muted-foreground">
+                  No members matched the selector.
+                </div>
               )}
             </div>
           )}
@@ -2043,41 +2785,64 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
         <SectionCard compact>
           <div className="flex items-center gap-2 pb-2 mb-3 border-b border-border">
             <RefreshCw className="w-4 h-4 text-primary" />
-            <h3 className="text-sm font-semibold text-foreground">Configure Bulk Operation</h3>
+            <h3 className="text-sm font-semibold text-foreground">
+              Configure Bulk Operation
+            </h3>
           </div>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Action</label>
-                <select
-                  value={action}
-                  onChange={(e) => setAction(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-xs"
-                >
-                  <option value="re-reconcile">re-reconcile</option>
-                  <option value="set-labels">set-labels</option>
-                </select>
+                <label className="text-xs font-medium text-muted-foreground">
+                  Action
+                </label>
+                <Select value={action} onValueChange={(val) => setAction(val)}>
+                  <SelectTrigger className="mt-1 w-full text-xs h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="re-reconcile">re-reconcile</SelectItem>
+                    <SelectItem value="set-labels">set-labels</SelectItem>
+                  </SelectContent>
+                </Select>
                 {FLEET_ACTION_DESCRIPTIONS[action] && (
-                  <p className="mt-1 text-[11px] text-muted-foreground leading-snug">{FLEET_ACTION_DESCRIPTIONS[action]}</p>
+                  <p className="mt-1 text-2xs text-muted-foreground leading-snug">
+                    {FLEET_ACTION_DESCRIPTIONS[action]}
+                  </p>
                 )}
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Strategy (optional)</label>
-                <select
-                  value={selectedStrategyId ?? ''}
-                  onChange={(e) => setSelectedStrategyId(Number(e.target.value) || null)}
-                  className="mt-1 w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-xs"
+                <label className="text-xs font-medium text-muted-foreground">
+                  Strategy (optional)
+                </label>
+                <Select
+                  value={
+                    selectedStrategyId ? String(selectedStrategyId) : "none"
+                  }
+                  onValueChange={(val) =>
+                    setSelectedStrategyId(val === "none" ? null : Number(val))
+                  }
                 >
-                  <option value="">No strategy (use manual settings)</option>
-                  {(strategies ?? []).map((s: FleetOperationStrategy) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
+                  <SelectTrigger className="mt-1 w-full text-xs h-8">
+                    <SelectValue placeholder="No strategy (use manual settings)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">
+                      No strategy (use manual settings)
+                    </SelectItem>
+                    {(strategies ?? []).map((s: FleetOperationStrategy) => (
+                      <SelectItem key={s.id} value={String(s.id)}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               {!selectedStrategyId && (
                 <>
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground">Concurrency</label>
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Concurrency
+                    </label>
                     <input
                       type="number"
                       min={1}
@@ -2088,15 +2853,27 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground">Gate mode</label>
-                    <select
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Gate mode
+                    </label>
+                    <Select
                       value={gateMode}
-                      onChange={(e) => setGateMode(e.target.value as 'manual' | 'health_stable')}
-                      className="mt-1 w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-xs"
+                      onValueChange={(val) =>
+                        setGateMode(val as "manual" | "health_stable")
+                      }
                     >
-                      <option value="manual">manual (pause between waves)</option>
-                      <option value="health_stable">health_stable (auto-proceed)</option>
-                    </select>
+                      <SelectTrigger className="mt-1 w-full text-xs h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="manual">
+                          manual (pause between waves)
+                        </SelectItem>
+                        <SelectItem value="health_stable">
+                          health_stable (auto-proceed)
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </>
               )}
@@ -2104,18 +2881,26 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
             {/* What will happen summary */}
             {decision && (
               <p className="text-xs text-muted-foreground border border-border rounded-md px-3 py-2 bg-muted/30">
-                <span className="font-medium text-foreground">What will happen: </span>
-                Run <code className="bg-muted px-1 rounded">{action}</code> on{' '}
-                <span className="font-medium text-foreground">{decision.member_count} member{decision.member_count !== 1 ? 's' : ''}</span>
+                <span className="font-medium text-foreground">
+                  What will happen:{" "}
+                </span>
+                Run <code className="bg-muted px-1 rounded">{action}</code> on{" "}
+                <span className="font-medium text-foreground">
+                  {decision.member_count} member
+                  {decision.member_count !== 1 ? "s" : ""}
+                </span>
                 {selectedStrategyId
                   ? (() => {
-                      const s = (strategies ?? []).find((st: FleetOperationStrategy) => st.id === selectedStrategyId);
+                      const s = (strategies ?? []).find(
+                        (st: FleetOperationStrategy) =>
+                          st.id === selectedStrategyId,
+                      );
                       return s
                         ? `, using strategy "${s.name}" (${s.wave_by} waves · ${s.max_concurrency_pct}% concurrency · ${s.gate_kind} gate)`
-                        : ' using the selected strategy';
+                        : " using the selected strategy";
                     })()
-                  : `, in waves of ≤${concurrency} with ${gateMode === 'manual' ? 'a manual approval gate' : 'auto-proceed when members are healthy'} between waves`
-                }.
+                  : `, in waves of ≤${concurrency} with ${gateMode === "manual" ? "a manual approval gate" : "auto-proceed when members are healthy"} between waves`}
+                .
               </p>
             )}
             <Button
@@ -2123,7 +2908,9 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
               disabled={startBulkOp.isPending}
               className="w-full"
             >
-              {startBulkOp.isPending ? 'Starting...' : `Run ${action} on ${decision.member_count} members`}
+              {startBulkOp.isPending
+                ? "Starting..."
+                : `Run ${action} on ${decision.member_count} members`}
             </Button>
           </div>
         </SectionCard>
@@ -2135,17 +2922,23 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
           <div className="flex items-center justify-between pb-2 mb-3 border-b border-border">
             <div className="flex items-center gap-2 flex-wrap">
               <Activity className="w-4 h-4 text-primary" />
-              <h3 className="text-sm font-semibold text-foreground">Run #{bulkRun.id} — {bulkRun.action}</h3>
-              <BulkRunStatusBadge status={bulkRun.status} />
+              <h3 className="text-sm font-semibold text-foreground">
+                Run #{bulkRun.id} — {bulkRun.action}
+              </h3>
+              <StatusBadge status={bulkRun.status} />
               {/* timed_wait countdown — shown when paused with gate_resumes_at */}
-              {bulkRun.status === 'paused_gate' && bulkRun.gate_resumes_at && (
+              {bulkRun.status === "paused_gate" && bulkRun.gate_resumes_at && (
                 <TimedWaitCountdown resumesAt={bulkRun.gate_resumes_at} />
               )}
             </div>
             <div className="flex items-center gap-2">
-              {bulkRun.status === 'paused_gate' && !bulkRun.gate_resumes_at && (
-                <Button size="sm" onClick={handleResume} disabled={resumeBulkRun.isPending}>
-                  {resumeBulkRun.isPending ? 'Resuming...' : 'Resume next wave'}
+              {bulkRun.status === "paused_gate" && !bulkRun.gate_resumes_at && (
+                <Button
+                  size="sm"
+                  onClick={handleResume}
+                  disabled={resumeBulkRun.isPending}
+                >
+                  {resumeBulkRun.isPending ? "Resuming..." : "Resume next wave"}
                 </Button>
               )}
               {TERMINAL_STATUSES.has(bulkRun.status) && (
@@ -2155,7 +2948,7 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
                   onClick={() => handleRerun(bulkRun.id)}
                   disabled={rerunBulkRun.isPending}
                 >
-                  {rerunBulkRun.isPending ? 'Re-running…' : 'Re-run'}
+                  {rerunBulkRun.isPending ? "Re-running…" : "Re-run"}
                 </Button>
               )}
               {!TERMINAL_STATUSES.has(bulkRun.status) && (
@@ -2166,7 +2959,7 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
                   disabled={cancelBulkRun.isPending}
                   className="border-destructive/30 text-destructive hover:bg-destructive/10"
                 >
-                  {cancelBulkRun.isPending ? 'Cancelling...' : 'Cancel'}
+                  {cancelBulkRun.isPending ? "Cancelling..." : "Cancel"}
                 </Button>
               )}
             </div>
@@ -2174,13 +2967,18 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
           <div className="space-y-2">
             <div className="text-xs text-muted-foreground">
               Wave {bulkRun.current_wave_index + 1}
-              {bulkRun.total_waves != null ? ` of ${bulkRun.total_waves}` : ''} •
-              Gate: {bulkRun.gate_mode} •
-              Concurrency: {bulkRun.concurrency}
-              {bulkRun.strategy_id && <span> · Strategy #{bulkRun.strategy_id}</span>}
+              {bulkRun.total_waves != null
+                ? ` of ${bulkRun.total_waves}`
+                : ""}{" "}
+              • Gate: {bulkRun.gate_mode} • Concurrency: {bulkRun.concurrency}
+              {bulkRun.strategy_id && (
+                <span> · Strategy #{bulkRun.strategy_id}</span>
+              )}
             </div>
             {bulkRun.error_message && (
-              <div className="text-xs text-destructive">{bulkRun.error_message}</div>
+              <div className="text-xs text-destructive">
+                {bulkRun.error_message}
+              </div>
             )}
             <WaveProgressView run={bulkRun} />
           </div>
@@ -2192,18 +2990,23 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
         <SectionCard compact>
           <div className="flex items-center gap-2 pb-2 mb-3 border-b border-border">
             <List className="w-4 h-4 text-muted-foreground" />
-            <h3 className="text-sm font-semibold text-foreground">Recent Runs</h3>
-            <span className="text-xs text-muted-foreground ml-auto">{(recentRuns ?? []).length} run{(recentRuns ?? []).length !== 1 ? 's' : ''}</span>
+            <h3 className="text-sm font-semibold text-foreground">
+              Recent Runs
+            </h3>
+            <span className="text-xs text-muted-foreground ml-auto">
+              {(recentRuns ?? []).length} run
+              {(recentRuns ?? []).length !== 1 ? "s" : ""}
+            </span>
           </div>
           <div className="space-y-1">
             {(recentRuns ?? []).slice(0, 20).map((run) => (
               <div
                 key={run.id}
                 className={cn(
-                  'flex items-center gap-2 px-2 py-2 rounded-md text-xs border transition-colors',
+                  "flex items-center gap-2 px-2 py-2 rounded-md text-xs border transition-colors",
                   activeRunId === run.id
-                    ? 'border-primary/30 bg-primary/5'
-                    : 'border-transparent hover:bg-muted/60',
+                    ? "border-primary/30 bg-primary/5"
+                    : "border-transparent hover:bg-muted/60",
                 )}
               >
                 <button
@@ -2211,7 +3014,7 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
                   onClick={() => setActiveRunId(run.id)}
                   className="flex items-center gap-2 flex-1 text-left"
                 >
-                  <BulkRunStatusBadge status={run.status} />
+                  <StatusBadge status={run.status} />
                   <span className="font-medium text-foreground flex-1 truncate">
                     #{run.id} — {run.action}
                   </span>
@@ -2247,22 +3050,6 @@ function BulkOpsView({ fleetId }: { fleetId?: number }) {
 // COMPLIANCE VIEW — D-022 Phase 3: fleet policies + compliance dashboard
 // ============================================================================
 
-/** Status pill for a single member's compliance status — status-color-as-badge. */
-function ComplianceStatusBadge({ status }: { status: string }) {
-  const pillMap: Record<string, { pill: string; dot: string }> = {
-    compliant: { pill: 'bg-success/10 text-success border-success/20', dot: 'bg-success' },
-    drifted: { pill: 'bg-warning/10 text-warning border-warning/20', dot: 'bg-warning' },
-    unknown: { pill: 'bg-muted text-muted-foreground border-border', dot: 'bg-muted-foreground' },
-  };
-  const { pill, dot } = pillMap[status] ?? pillMap['unknown'];
-  return (
-    <span className={cn('inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border', pill)}>
-      <span className={cn('h-1.5 w-1.5 rounded-full', dot)} />
-      {status}
-    </span>
-  );
-}
-
 /** Per-policy compliance card — includes edit + delete affordances (D-022 P5 S3). */
 const PolicyComplianceCard = memo(function PolicyComplianceCard({
   policy,
@@ -2273,7 +3060,9 @@ const PolicyComplianceCard = memo(function PolicyComplianceCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
-  const { data: rollup, refetch: refetchRollup } = usePolicyCompliance(policy.id);
+  const { data: rollup, refetch: refetchRollup } = usePolicyCompliance(
+    policy.id,
+  );
   const evaluateMut = useEvaluateFleetPolicy();
   const enforceMut = useEnforceFleetPolicy();
   const updateMut = useUpdateFleetPolicy();
@@ -2290,12 +3079,15 @@ const PolicyComplianceCard = memo(function PolicyComplianceCard({
   };
 
   const handleDelete = async () => {
-    if (!window.confirm(`Delete policy "${policy.name}"? This cannot be undone.`)) return;
+    if (
+      !window.confirm(`Delete policy "${policy.name}"? This cannot be undone.`)
+    )
+      return;
     await deleteMut.mutateAsync(policy.id);
     onDeleted();
   };
 
-  const canEnforce = rollup?.supports_enforce && policy.mode === 'enforce';
+  const canEnforce = rollup?.supports_enforce && policy.mode === "enforce";
   const hasDrift = (rollup?.drifted_count ?? 0) > 0;
 
   return (
@@ -2303,14 +3095,23 @@ const PolicyComplianceCard = memo(function PolicyComplianceCard({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-sm text-foreground">{policy.name}</span>
-            <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{policy.kind}</span>
+            <span className="font-semibold text-sm text-foreground">
+              {policy.name}
+            </span>
+            <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+              {policy.kind}
+            </span>
             <span
-              className={cn('text-xs px-1.5 py-0.5 rounded cursor-default', policy.mode === 'enforce' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}
+              className={cn(
+                "text-xs px-1.5 py-0.5 rounded cursor-default",
+                policy.mode === "enforce"
+                  ? "bg-primary/10 text-primary"
+                  : "bg-muted text-muted-foreground",
+              )}
               title={
-                policy.mode === 'enforce'
-                  ? 'Enforce: drift is auto-remediated on the next run via a gated rollout.'
-                  : 'Inform: reports drift only — no changes are made to members. Switch to Enforce to auto-remediate.'
+                policy.mode === "enforce"
+                  ? "Enforce: drift is auto-remediated on the next run via a gated rollout."
+                  : "Inform: reports drift only — no changes are made to members. Switch to Enforce to auto-remediate."
               }
             >
               {policy.mode}
@@ -2318,15 +3119,29 @@ const PolicyComplianceCard = memo(function PolicyComplianceCard({
           </div>
           {rollup && (
             <div className="mt-2 flex items-center gap-4 text-xs">
-              <span className="text-success">{rollup.compliant_count} compliant</span>
-              <span className={hasDrift ? 'text-warning' : 'text-muted-foreground'}>{rollup.drifted_count} drifted</span>
-              <span className="text-muted-foreground">{rollup.unknown_count} unknown</span>
+              <span className="text-success">
+                {rollup.compliant_count} compliant
+              </span>
+              <span
+                className={hasDrift ? "text-warning" : "text-muted-foreground"}
+              >
+                {rollup.drifted_count} drifted
+              </span>
+              <span className="text-muted-foreground">
+                {rollup.unknown_count} unknown
+              </span>
               {rollup.last_evaluated_at && (
-                <span className="text-muted-foreground">last: {new Date(rollup.last_evaluated_at).toLocaleString()}</span>
+                <span className="text-muted-foreground">
+                  last: {new Date(rollup.last_evaluated_at).toLocaleString()}
+                </span>
               )}
             </div>
           )}
-          {!rollup && <p className="text-xs mt-1 text-muted-foreground">No evaluations yet — run Evaluate to see compliance.</p>}
+          {!rollup && (
+            <p className="text-xs mt-1 text-muted-foreground">
+              No evaluations yet — run Evaluate to see compliance.
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
           <Button
@@ -2335,16 +3150,22 @@ const PolicyComplianceCard = memo(function PolicyComplianceCard({
             onClick={handleEvaluate}
             disabled={evaluateMut.isPending}
           >
-            {evaluateMut.isPending ? 'Evaluating…' : 'Evaluate'}
+            {evaluateMut.isPending ? "Evaluating…" : "Evaluate"}
           </Button>
           {canEnforce && (
             <Button
               size="sm"
               onClick={handleEnforce}
               disabled={enforceMut.isPending || !hasDrift}
-              className={hasDrift ? 'bg-destructive hover:bg-destructive/90 text-destructive-foreground' : ''}
+              className={
+                hasDrift
+                  ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                  : ""
+              }
             >
-              {enforceMut.isPending ? 'Enforcing…' : `Enforce (${rollup?.drifted_count ?? 0} drifted)`}
+              {enforceMut.isPending
+                ? "Enforcing…"
+                : `Enforce (${rollup?.drifted_count ?? 0} drifted)`}
             </Button>
           )}
           {rollup && rollup.drifted_count > 0 && (
@@ -2352,7 +3173,7 @@ const PolicyComplianceCard = memo(function PolicyComplianceCard({
               onClick={() => setExpanded(!expanded)}
               className="text-xs text-muted-foreground hover:underline"
             >
-              {expanded ? 'Hide drift' : 'Show drift'}
+              {expanded ? "Hide drift" : "Show drift"}
             </button>
           )}
           <Button
@@ -2360,7 +3181,7 @@ const PolicyComplianceCard = memo(function PolicyComplianceCard({
             variant="outline"
             onClick={() => setEditing(!editing)}
           >
-            {editing ? 'Cancel' : 'Edit'}
+            {editing ? "Cancel" : "Edit"}
           </Button>
           <Button
             size="sm"
@@ -2369,7 +3190,7 @@ const PolicyComplianceCard = memo(function PolicyComplianceCard({
             disabled={deleteMut.isPending}
             className="text-destructive hover:text-destructive border-destructive/40 hover:border-destructive"
           >
-            {deleteMut.isPending ? 'Deleting…' : 'Delete'}
+            {deleteMut.isPending ? "Deleting…" : "Delete"}
           </Button>
         </div>
       </div>
@@ -2391,13 +3212,19 @@ const PolicyComplianceCard = memo(function PolicyComplianceCard({
       {/* Drifted member list */}
       {expanded && rollup && rollup.drifted_members.length > 0 && (
         <div className="mt-3 border-t border-border pt-3">
-          <p className="text-xs font-medium mb-2 text-muted-foreground">Drifted members</p>
+          <p className="text-xs font-medium mb-2 text-muted-foreground">
+            Drifted members
+          </p>
           <div className="space-y-1">
             {rollup.drifted_members.map((m) => (
               <div key={m.member_id} className="flex items-start gap-2 text-xs">
-                <ComplianceStatusBadge status={m.status} />
-                <span className="text-muted-foreground">member #{m.member_id}</span>
-                {m.detail && <span className="text-muted-foreground"> — {m.detail}</span>}
+                <StatusBadge status={m.status} />
+                <span className="text-muted-foreground">
+                  member #{m.member_id}
+                </span>
+                {m.detail && (
+                  <span className="text-muted-foreground"> — {m.detail}</span>
+                )}
               </div>
             ))}
           </div>
@@ -2406,13 +3233,19 @@ const PolicyComplianceCard = memo(function PolicyComplianceCard({
 
       {/* Mutation errors */}
       {evaluateMut.error && (
-        <p className="mt-2 text-xs text-destructive">{String(evaluateMut.error)}</p>
+        <p className="mt-2 text-xs text-destructive">
+          {String(evaluateMut.error)}
+        </p>
       )}
       {enforceMut.error && (
-        <p className="mt-2 text-xs text-destructive">{String(enforceMut.error)}</p>
+        <p className="mt-2 text-xs text-destructive">
+          {String(enforceMut.error)}
+        </p>
       )}
       {deleteMut.error && (
-        <p className="mt-2 text-xs text-destructive">{String(deleteMut.error)}</p>
+        <p className="mt-2 text-xs text-destructive">
+          {String(deleteMut.error)}
+        </p>
       )}
     </SectionCard>
   );
@@ -2435,27 +3268,38 @@ function EditPolicyForm({
   updateMut: ReturnType<typeof useUpdateFleetPolicy>;
 }) {
   const [name, setName] = useState(policy.name);
-  const [kind, setKind] = useState<'label-compliance' | 'os-compliance-seed'>(
-    policy.kind as 'label-compliance' | 'os-compliance-seed'
+  const [kind, setKind] = useState<"label-compliance" | "os-compliance-seed">(
+    policy.kind as "label-compliance" | "os-compliance-seed",
   );
-  const [mode, setMode] = useState<'inform' | 'enforce'>(policy.mode as 'inform' | 'enforce');
+  const [mode, setMode] = useState<"inform" | "enforce">(
+    policy.mode as "inform" | "enforce",
+  );
   const [requiredLabels, setRequiredLabels] = useState(() => {
-    const rl = (policy.desired as { required_labels?: string[] }).required_labels;
-    return rl ? rl.join(', ') : '';
+    const rl = (policy.desired as { required_labels?: string[] })
+      .required_labels;
+    return rl ? rl.join(", ") : "";
   });
   const [osName, setOsName] = useState(
-    () => (policy.desired as { os?: string }).os ?? ''
+    () => (policy.desired as { os?: string }).os ?? "",
   );
   const [minVersion, setMinVersion] = useState(
-    () => (policy.desired as { min_version?: string }).min_version ?? ''
+    () => (policy.desired as { min_version?: string }).min_version ?? "",
   );
 
   const handleSave = async () => {
     const desired =
-      kind === 'label-compliance'
-        ? { required_labels: requiredLabels.split(',').map((s) => s.trim()).filter(Boolean) }
+      kind === "label-compliance"
+        ? {
+            required_labels: requiredLabels
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean),
+          }
         : { os: osName, min_version: minVersion };
-    await updateMut.mutateAsync({ policyId: policy.id, body: { name, kind, mode, desired } });
+    await updateMut.mutateAsync({
+      policyId: policy.id,
+      body: { name, kind, mode, desired },
+    });
     onSaved();
   };
 
@@ -2473,38 +3317,50 @@ function EditPolicyForm({
         </div>
         <div>
           <label className="text-xs text-muted-foreground">Kind</label>
-          <select
-            className="w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-sm mt-1"
+          <Select
             value={kind}
-            onChange={(e) => setKind(e.target.value as typeof kind)}
+            onValueChange={(val) => setKind(val as typeof kind)}
           >
-            <option value="label-compliance">label-compliance</option>
-            <option value="os-compliance-seed">os-compliance-seed (inform-only)</option>
-          </select>
+            <SelectTrigger className="w-full mt-1">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="label-compliance">label-compliance</SelectItem>
+              <SelectItem value="os-compliance-seed">
+                os-compliance-seed (inform-only)
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div>
           <label className="text-xs text-muted-foreground">Mode</label>
-          <select
-            className="w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-sm mt-1"
+          <Select
             value={mode}
-            onChange={(e) => setMode(e.target.value as typeof mode)}
-            disabled={kind === 'os-compliance-seed'}
+            onValueChange={(val) => setMode(val as typeof mode)}
+            disabled={kind === "os-compliance-seed"}
           >
-            <option value="inform">inform</option>
-            <option value="enforce">enforce</option>
-          </select>
-          {kind !== 'os-compliance-seed' && (
-            <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
-              {mode === 'enforce'
-                ? 'Switch to Enforce → drift will be auto-remediated on the next run.'
-                : 'Inform = report drift only (safe, no changes). Switch to Enforce to auto-remediate.'}
+            <SelectTrigger className="w-full mt-1">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="inform">inform</SelectItem>
+              <SelectItem value="enforce">enforce</SelectItem>
+            </SelectContent>
+          </Select>
+          {kind !== "os-compliance-seed" && (
+            <p className="mt-1 text-2xs text-muted-foreground leading-snug">
+              {mode === "enforce"
+                ? "Switch to Enforce → drift will be auto-remediated on the next run."
+                : "Inform = report drift only (safe, no changes). Switch to Enforce to auto-remediate."}
             </p>
           )}
         </div>
       </div>
-      {kind === 'label-compliance' && (
+      {kind === "label-compliance" && (
         <div>
-          <label className="text-xs text-muted-foreground">Required labels (comma-separated k=v)</label>
+          <label className="text-xs text-muted-foreground">
+            Required labels (comma-separated k=v)
+          </label>
           <input
             className="w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-sm mt-1"
             value={requiredLabels}
@@ -2513,7 +3369,7 @@ function EditPolicyForm({
           />
         </div>
       )}
-      {kind === 'os-compliance-seed' && (
+      {kind === "os-compliance-seed" && (
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs text-muted-foreground">OS</label>
@@ -2541,13 +3397,15 @@ function EditPolicyForm({
           onClick={() => void handleSave()}
           disabled={updateMut.isPending || !name}
         >
-          {updateMut.isPending ? 'Saving…' : 'Save'}
+          {updateMut.isPending ? "Saving…" : "Save"}
         </Button>
         <Button size="sm" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
         {updateMut.error && (
-          <span className="text-xs text-destructive">{String(updateMut.error)}</span>
+          <span className="text-xs text-destructive">
+            {String(updateMut.error)}
+          </span>
         )}
       </div>
     </div>
@@ -2569,37 +3427,53 @@ function CreatePolicyForm({
 }) {
   const { data: targets } = useFleetTargets();
   const createMut = useCreateFleetPolicy();
-  const [name, setName] = useState('');
+  const [name, setName] = useState("");
   // When fleet-scoped, targetId is locked to fleetId; otherwise user picks.
   const [targetId, setTargetId] = useState<number | null>(fleetId ?? null);
-  const [kind, setKind] = useState<'label-compliance' | 'os-compliance-seed'>('label-compliance');
+  const [kind, setKind] = useState<"label-compliance" | "os-compliance-seed">(
+    "label-compliance",
+  );
   // Default to inform — safe first step, no changes to members.
-  const [mode, setMode] = useState<'inform' | 'enforce'>('inform');
-  const [requiredLabels, setRequiredLabels] = useState('');
-  const [osName, setOsName] = useState('');
-  const [minVersion, setMinVersion] = useState('');
+  const [mode, setMode] = useState<"inform" | "enforce">("inform");
+  const [requiredLabels, setRequiredLabels] = useState("");
+  const [osName, setOsName] = useState("");
+  const [minVersion, setMinVersion] = useState("");
 
   const handleSubmit = async () => {
     if (!name || !targetId) return;
     const desired =
-      kind === 'label-compliance'
-        ? { required_labels: requiredLabels.split(',').map((s) => s.trim()).filter(Boolean) }
+      kind === "label-compliance"
+        ? {
+            required_labels: requiredLabels
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean),
+          }
         : { os: osName, min_version: minVersion };
-    await createMut.mutateAsync({ name, target_id: targetId, kind, mode, desired });
+    await createMut.mutateAsync({
+      name,
+      target_id: targetId,
+      kind,
+      mode,
+      desired,
+    });
     onCreated();
   };
 
   // When called from fleet-scoped ComplianceView, resolve the fleet's name for display.
-  const fleetName = fleetId != null
-    ? (targets ?? []).find((t) => t.id === fleetId)?.name ?? `Fleet #${fleetId}`
-    : null;
+  const fleetName =
+    fleetId != null
+      ? ((targets ?? []).find((t) => t.id === fleetId)?.name ??
+        `Fleet #${fleetId}`)
+      : null;
 
   // What will happen when saved — shown as a one-line summary below the form.
   const saveSummary = (() => {
     if (!name) return null;
     const n = memberCount ?? 0;
-    const memberPhrase = n > 0 ? `${n} member${n !== 1 ? 's' : ''}` : 'all members';
-    if (mode === 'inform') {
+    const memberPhrase =
+      n > 0 ? `${n} member${n !== 1 ? "s" : ""}` : "all members";
+    if (mode === "inform") {
       return `Saving will check ${memberPhrase} and report any drift — no changes made.`;
     }
     return `Saving will check ${memberPhrase} and automatically fix drift on the next run.`;
@@ -2623,16 +3497,24 @@ function CreatePolicyForm({
           {fleetId == null ? (
             <div>
               <label className="text-xs text-muted-foreground">Target</label>
-              <select
-                className="w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-sm mt-1"
-                value={targetId ?? ''}
-                onChange={(e) => setTargetId(Number(e.target.value))}
+              <Select
+                value={targetId ? String(targetId) : "none"}
+                onValueChange={(val) =>
+                  setTargetId(val === "none" ? null : Number(val))
+                }
               >
-                <option value="">Select target…</option>
-                {(targets ?? []).map((t) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
+                <SelectTrigger className="w-full mt-1">
+                  <SelectValue placeholder="Select target…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Select target…</SelectItem>
+                  {(targets ?? []).map((t) => (
+                    <SelectItem key={t.id} value={String(t.id)}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           ) : (
             <div>
@@ -2641,68 +3523,88 @@ function CreatePolicyForm({
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
                   {fleetName}
                 </span>
-                <span className="text-xs text-muted-foreground">(this fleet)</span>
+                <span className="text-xs text-muted-foreground">
+                  (this fleet)
+                </span>
               </div>
             </div>
           )}
           <div className="col-span-2 grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-muted-foreground">Kind</label>
-              <select
-                className="w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-sm mt-1"
+              <Select
                 value={kind}
-                onChange={(e) => {
-                  const next = e.target.value as typeof kind;
+                onValueChange={(val) => {
+                  const next = val as typeof kind;
                   setKind(next);
                   // os-compliance-seed is inform-only — reset mode to inform.
-                  if (next === 'os-compliance-seed') setMode('inform');
+                  if (next === "os-compliance-seed") setMode("inform");
                 }}
               >
-                <option value="label-compliance">label-compliance</option>
-                <option value="os-compliance-seed">os-compliance-seed</option>
-              </select>
-              <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
-                {kind === 'label-compliance'
-                  ? 'Members must carry specific labels (e.g. tier=prod).'
-                  : 'Members must run a minimum OS/version — inform-only, reports drift without auto-fixing.'}
+                <SelectTrigger className="w-full mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="label-compliance">
+                    label-compliance
+                  </SelectItem>
+                  <SelectItem value="os-compliance-seed">
+                    os-compliance-seed
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-2xs text-muted-foreground leading-snug">
+                {kind === "label-compliance"
+                  ? "Members must carry specific labels (e.g. tier=prod)."
+                  : "Members must run a minimum OS/version — inform-only, reports drift without auto-fixing."}
               </p>
             </div>
             <div>
               <label className="text-xs text-muted-foreground">Mode</label>
-              <select
-                className="w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-sm mt-1"
+              <Select
                 value={mode}
-                onChange={(e) => setMode(e.target.value as typeof mode)}
-                disabled={kind === 'os-compliance-seed'}
+                onValueChange={(val) => setMode(val as typeof mode)}
+                disabled={kind === "os-compliance-seed"}
               >
-                <option value="inform">inform</option>
-                <option value="enforce">enforce</option>
-              </select>
-              <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
-                {kind === 'os-compliance-seed'
-                  ? 'os-compliance-seed is always inform — it reports drift but never auto-fixes.'
-                  : mode === 'inform'
-                  ? 'Inform = report drift only (safe, no changes to members).'
-                  : 'Enforce = auto-remediate drift via a gated rollout. Switch to Inform first if unsure.'}
+                <SelectTrigger className="w-full mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="inform">inform</SelectItem>
+                  <SelectItem value="enforce">enforce</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-2xs text-muted-foreground leading-snug">
+                {kind === "os-compliance-seed"
+                  ? "os-compliance-seed is always inform — it reports drift but never auto-fixes."
+                  : mode === "inform"
+                    ? "Inform = report drift only (safe, no changes to members)."
+                    : "Enforce = auto-remediate drift via a gated rollout. Switch to Inform first if unsure."}
               </p>
             </div>
           </div>
         </div>
-        {kind === 'label-compliance' && (
+        {kind === "label-compliance" && (
           <div>
-            <label className="text-xs text-muted-foreground">Required labels (comma-separated key=value)</label>
+            <label className="text-xs text-muted-foreground">
+              Required labels (comma-separated key=value)
+            </label>
             <input
               className="w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-sm mt-1"
               value={requiredLabels}
               onChange={(e) => setRequiredLabels(e.target.value)}
               placeholder="tier=prod,env=production"
             />
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Example: <code className="bg-muted px-1 py-0.5 rounded">tier=prod,team=platform</code> — every member must carry all listed labels.
+            <p className="mt-1 text-2xs text-muted-foreground">
+              Example:{" "}
+              <code className="bg-muted px-1 py-0.5 rounded">
+                tier=prod,team=platform
+              </code>{" "}
+              — every member must carry all listed labels.
             </p>
           </div>
         )}
-        {kind === 'os-compliance-seed' && (
+        {kind === "os-compliance-seed" && (
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-muted-foreground">OS name</label>
@@ -2714,27 +3616,42 @@ function CreatePolicyForm({
               />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground">Minimum version</label>
+              <label className="text-xs text-muted-foreground">
+                Minimum version
+              </label>
               <input
                 className="w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-sm mt-1"
                 value={minVersion}
                 onChange={(e) => setMinVersion(e.target.value)}
                 placeholder="22.04"
               />
-              <p className="mt-1 text-[11px] text-muted-foreground col-span-2">
-                Example: OS <code className="bg-muted px-1 py-0.5 rounded">ubuntu</code> min version <code className="bg-muted px-1 py-0.5 rounded">22.04</code>.
+              <p className="mt-1 text-2xs text-muted-foreground col-span-2">
+                Example: OS{" "}
+                <code className="bg-muted px-1 py-0.5 rounded">ubuntu</code> min
+                version{" "}
+                <code className="bg-muted px-1 py-0.5 rounded">22.04</code>.
               </p>
             </div>
           </div>
         )}
         <div className="flex items-center gap-2 flex-wrap">
-          <Button size="sm" onClick={() => void handleSubmit()} disabled={createMut.isPending || !name || !targetId}>
-            {createMut.isPending ? 'Creating…' : 'Create Policy'}
+          <Button
+            size="sm"
+            onClick={() => void handleSubmit()}
+            disabled={createMut.isPending || !name || !targetId}
+          >
+            {createMut.isPending ? "Creating…" : "Create Policy"}
           </Button>
-          {createMut.error && <span className="text-xs text-destructive">{String(createMut.error)}</span>}
+          {createMut.error && (
+            <span className="text-xs text-destructive">
+              {String(createMut.error)}
+            </span>
+          )}
         </div>
         {saveSummary && (
-          <p className="text-[11px] text-muted-foreground border-t border-border pt-2">{saveSummary}</p>
+          <p className="text-2xs text-muted-foreground border-t border-border pt-2">
+            {saveSummary}
+          </p>
         )}
       </div>
     </SectionCard>
@@ -2742,7 +3659,11 @@ function CreatePolicyForm({
 }
 
 function ComplianceView({ fleetId }: { fleetId?: number }) {
-  const { data: allPolicies, refetch: refetchPolicies, isLoading } = useFleetPolicies();
+  const {
+    data: allPolicies,
+    refetch: refetchPolicies,
+    isLoading,
+  } = useFleetPolicies();
   const { data: fleetMembers } = useFleetMembersByFleet(fleetId ?? null);
   const [showCreate, setShowCreate] = useState(false);
 
@@ -2758,13 +3679,16 @@ function ComplianceView({ fleetId }: { fleetId?: number }) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-semibold text-foreground">Fleet Compliance</h2>
+          <h2 className="text-base font-semibold text-foreground">
+            Fleet Compliance
+          </h2>
           <p className="text-xs mt-0.5 text-muted-foreground">
-            Desired-state policies over fleet targets. Inform mode reports drift; enforce remediates via gated bulk ops.
+            Desired-state policies over fleet targets. Inform mode reports
+            drift; enforce remediates via gated bulk ops.
           </p>
         </div>
         <Button size="sm" onClick={() => setShowCreate(!showCreate)}>
-          {showCreate ? 'Cancel' : 'New Policy'}
+          {showCreate ? "Cancel" : "New Policy"}
         </Button>
       </div>
 
@@ -2781,7 +3705,9 @@ function ComplianceView({ fleetId }: { fleetId?: number }) {
 
       {isLoading && (
         <div className="space-y-3">
-          {[1, 2].map((i) => <Skeleton key={i} className="h-20 w-full rounded-xl" />)}
+          {[1, 2].map((i) => (
+            <Skeleton key={i} className="h-20 w-full rounded-xl" />
+          ))}
         </div>
       )}
 
@@ -2791,16 +3717,28 @@ function ComplianceView({ fleetId }: { fleetId?: number }) {
             <div className="flex items-start gap-3">
               <AlertTriangle className="h-5 w-5 text-primary shrink-0 mt-0.5" />
               <div className="space-y-1">
-                <p className="text-sm font-semibold text-foreground">No policies defined yet</p>
+                <p className="text-sm font-semibold text-foreground">
+                  No policies defined yet
+                </p>
                 <p className="text-xs text-muted-foreground leading-relaxed max-w-2xl">
-                  Policies are compliance rules for this fleet's members. Define what "good" looks like — then forge
-                  continuously checks every member against it.{' '}
-                  <span className="font-medium text-foreground">Inform</span> shows you which members have drifted;{' '}
-                  <span className="font-medium text-foreground">Enforce</span> automatically fixes them via a gated rollout.
+                  Policies are compliance rules for this fleet's members. Define
+                  what "good" looks like — then forge continuously checks every
+                  member against it.{" "}
+                  <span className="font-medium text-foreground">Inform</span>{" "}
+                  shows you which members have drifted;{" "}
+                  <span className="font-medium text-foreground">Enforce</span>{" "}
+                  automatically fixes them via a gated rollout.
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Examples: require every member to carry label <code className="bg-muted px-1 py-0.5 rounded text-foreground">tier=prod</code>,
-                  or run OS ≥ <code className="bg-muted px-1 py-0.5 rounded text-foreground">ubuntu 22.04</code>.
+                  Examples: require every member to carry label{" "}
+                  <code className="bg-muted px-1 py-0.5 rounded text-foreground">
+                    tier=prod
+                  </code>
+                  , or run OS ≥{" "}
+                  <code className="bg-muted px-1 py-0.5 rounded text-foreground">
+                    ubuntu 22.04
+                  </code>
+                  .
                 </p>
               </div>
             </div>
@@ -2815,7 +3753,11 @@ function ComplianceView({ fleetId }: { fleetId?: number }) {
       {!isLoading && policies && policies.length > 0 && (
         <div className="space-y-3">
           {policies.map((p) => (
-            <PolicyComplianceCard key={p.id} policy={p} onDeleted={() => void refetchPolicies()} />
+            <PolicyComplianceCard
+              key={p.id}
+              policy={p}
+              onDeleted={() => void refetchPolicies()}
+            />
           ))}
         </div>
       )}
@@ -2830,41 +3772,27 @@ function ComplianceView({ fleetId }: { fleetId?: number }) {
 // D-022 P6 Slice B: rollup helpers + Fleet detail drill-down
 // ──────────────────────────────────────────────────────────────────────────────
 
-/** Worst-state pill badge — mirrors LifecycleBadge/BulkRunStatusBadge pattern. */
-function WorstStateBadge({ state }: { state: WorstState | undefined }) {
-  if (!state) return null;
-  const map: Record<WorstState, { pill: string; icon: typeof CheckCircle2 | typeof XCircle | typeof AlertCircle | null; label: string }> = {
-    error:        { pill: 'bg-destructive/10 text-destructive border-destructive/20', icon: XCircle, label: 'Error' },
-    drifted:      { pill: 'bg-warning/10 text-warning border-warning/20', icon: AlertCircle, label: 'Drifted' },
-    provisioning: { pill: 'bg-primary/10 text-primary border-primary/20', icon: null, label: 'Provisioning' },
-    unreachable:  { pill: 'bg-muted text-muted-foreground border-border', icon: null, label: 'Unreachable' },
-    ready:        { pill: 'bg-success/10 text-success border-success/20', icon: CheckCircle2, label: 'Ready' },
-    unknown:      { pill: 'bg-muted text-muted-foreground border-border', icon: null, label: 'Unknown' },
-  };
-  const { pill, icon: Icon, label } = map[state] ?? map.unknown;
-  return (
-    <span className={cn('inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border', pill)}>
-      {Icon && <Icon className="h-3 w-3" />}
-      {label}
-    </span>
-  );
-}
-
 /** Compact rollup summary strip — member count · compliant/total · drift · worst-state. */
 function RollupSummaryStrip({ rollup }: { rollup: FleetRollup }) {
   return (
     <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-      <span className="text-foreground font-medium">{rollup.member_count} members</span>
+      <span className="text-foreground font-medium">
+        {rollup.member_count} members
+      </span>
       {rollup.total_evaluated > 0 && (
-        <span className="text-success">{rollup.compliant_count}/{rollup.total_evaluated} compliant</span>
+        <span className="text-success">
+          {rollup.compliant_count}/{rollup.total_evaluated} compliant
+        </span>
       )}
       {rollup.drift_count > 0 && (
         <span className="text-warning">{rollup.drift_count} drifted</span>
       )}
       {rollup.unreachable_count > 0 && (
-        <span className="text-muted-foreground">{rollup.unreachable_count} unreachable</span>
+        <span className="text-muted-foreground">
+          {rollup.unreachable_count} unreachable
+        </span>
       )}
-      <WorstStateBadge state={rollup.worst_state} />
+      {rollup.worst_state && <StatusBadge status={rollup.worst_state} />}
     </div>
   );
 }
@@ -2876,15 +3804,185 @@ function RollupSummaryStrip({ rollup }: { rollup: FleetRollup }) {
 // ──────────────────────────────────────────────────────────────────────────────
 
 // ──────────────────────────────────────────────────────────────────────────────
-// FleetDetailShell — per-fleet sub-tabs: Health / Members / Policies / Operations
+// FleetConfigsDetailTab — Deployable Configs & Multi-Cluster Deployment Tab
 // ──────────────────────────────────────────────────────────────────────────────
 
-type FleetDetailTab = 'health' | 'members' | 'policies' | 'operations';
+function FleetConfigsDetailTab({
+  fleetId,
+  fleetName,
+}: {
+  fleetId: number;
+  fleetName: string;
+}) {
+  const { data: configs, isLoading } = useFleetConfigs(fleetId);
+  const deleteConfig = useDeleteFleetConfig();
+
+  const [deployModalConfigId, setDeployModalConfigId] = useState<number | null>(
+    null,
+  );
+  const [showSaveModal, setShowSaveModal] = useState(false);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-border">
+        <div>
+          <h4 className="text-sm font-semibold text-foreground">
+            Fleet Deployable Configurations
+          </h4>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Reusable configurations that can be validated with preflight check
+            and deployed across clusters in this fleet.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs gap-1.5"
+            onClick={() => setShowSaveModal(true)}
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Save New Config
+          </Button>
+          <Button
+            size="sm"
+            className="h-8 text-xs gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
+            onClick={() =>
+              setDeployModalConfigId(
+                configs && configs.length > 0 ? configs[0].id : -1,
+              )
+            }
+          >
+            <Send className="w-3.5 h-3.5" />
+            Deploy to Fleet
+          </Button>
+        </div>
+      </div>
+
+      {isLoading && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Skeleton className="h-28 rounded-lg" />
+          <Skeleton className="h-28 rounded-lg" />
+        </div>
+      )}
+
+      {!isLoading && (!configs || configs.length === 0) && (
+        <EmptyState
+          icon={FileCode}
+          title="No deployable configs saved yet"
+          description="Save a config from an existing cluster or create a new template to deploy across this fleet."
+          action={{
+            label: "Save First Config",
+            onClick: () => setShowSaveModal(true),
+          }}
+        />
+      )}
+
+      {!isLoading && configs && configs.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {configs.map((cfg) => (
+            <div
+              key={cfg.id}
+              className="p-3.5 rounded-lg border border-border bg-card space-y-2 hover:border-primary/40 transition-colors"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground truncate">
+                      {cfg.name}
+                    </span>
+                    <Badge
+                      variant="secondary"
+                      className="text-2xs px-1.5 py-0 h-4 uppercase shrink-0"
+                    >
+                      {cfg.category}
+                    </Badge>
+                  </div>
+                  {cfg.description && (
+                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                      {cfg.description}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    size="sm"
+                    variant="default"
+                    className="h-7 text-xs gap-1 bg-primary text-primary-foreground hover:bg-primary/90"
+                    onClick={() => setDeployModalConfigId(cfg.id)}
+                  >
+                    <Send className="w-3 h-3" />
+                    Deploy
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                    onClick={() => deleteConfig.mutate(cfg.id)}
+                    disabled={deleteConfig.isPending}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between text-2xs text-muted-foreground pt-1.5 border-t border-border/50">
+                <span className="font-mono">
+                  {cfg.config_yaml.split("\n").length} lines YAML
+                </span>
+                {cfg.target_namespace && (
+                  <span>ns: {cfg.target_namespace}</span>
+                )}
+                {cfg.source_cluster_name && (
+                  <span>from: {cfg.source_cluster_name}</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {deployModalConfigId !== null && (
+        <FleetDeployConfigDialog
+          open={deployModalConfigId !== null}
+          onOpenChange={(open) => !open && setDeployModalConfigId(null)}
+          fleetId={fleetId}
+          fleetName={fleetName}
+          preselectedConfigId={
+            deployModalConfigId === -1 ? undefined : deployModalConfigId
+          }
+        />
+      )}
+
+      {showSaveModal && (
+        <SaveFleetConfigDialog
+          open={showSaveModal}
+          onOpenChange={setShowSaveModal}
+          fleetId={fleetId}
+        />
+      )}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// FleetDetailShell — per-fleet sub-tabs: Health / Members / Configs / Policies / Operations
+// ──────────────────────────────────────────────────────────────────────────────
+
+type FleetDetailTab =
+  | "health"
+  | "members"
+  | "configs"
+  | "policies"
+  | "operations";
 
 function FleetDetailShell({ fleetId }: { fleetId: number }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<FleetDetailTab>('health');
+  const [activeTab, setActiveTab] = useState<FleetDetailTab>("health");
+  const [deployModalOpen, setDeployModalOpen] = useState(false);
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
 
   const { data: targets } = useFleetTargets();
   const { data: rollup, isLoading: rollupLoading } = useFleetRollup(fleetId);
@@ -2892,29 +3990,47 @@ function FleetDetailShell({ fleetId }: { fleetId: number }) {
 
   const handleBack = useCallback(() => {
     const next = new URLSearchParams(searchParams);
-    next.delete('fleet');
+    next.delete("fleet");
     navigate(`?${next.toString()}`);
   }, [navigate, searchParams]);
 
-  const handleTabChange = useCallback((tab: FleetDetailTab) => {
-    setActiveTab(tab);
-    const next = new URLSearchParams(searchParams);
-    next.set('detail_tab', tab);
-    setSearchParams(next);
-  }, [searchParams, setSearchParams]);
+  const handleTabChange = useCallback(
+    (tab: FleetDetailTab) => {
+      setActiveTab(tab);
+      const next = new URLSearchParams(searchParams);
+      next.set("detail_tab", tab);
+      setSearchParams(next);
+    },
+    [searchParams, setSearchParams],
+  );
 
   // Restore tab from URL.
-  const urlTab = searchParams.get('detail_tab') as FleetDetailTab | null;
-  const validDetailTabs: FleetDetailTab[] = ['health', 'members', 'policies', 'operations'];
+  const urlTab = searchParams.get("detail_tab") as FleetDetailTab | null;
+  const validDetailTabs: FleetDetailTab[] = [
+    "health",
+    "members",
+    "configs",
+    "policies",
+    "operations",
+  ];
   if (urlTab && validDetailTabs.includes(urlTab) && urlTab !== activeTab) {
     setActiveTab(urlTab);
   }
 
   const tabs = [
-    { key: 'health' as FleetDetailTab, label: 'Health', icon: Globe },
-    { key: 'members' as FleetDetailTab, label: 'Members', icon: Users },
-    { key: 'policies' as FleetDetailTab, label: 'Policies', icon: AlertTriangle },
-    { key: 'operations' as FleetDetailTab, label: 'Operations', icon: RefreshCw },
+    { key: "health" as FleetDetailTab, label: "Health", icon: Globe },
+    { key: "members" as FleetDetailTab, label: "Members", icon: Users },
+    { key: "configs" as FleetDetailTab, label: "Deploy & Configs", icon: Send },
+    {
+      key: "policies" as FleetDetailTab,
+      label: "Policies",
+      icon: AlertTriangle,
+    },
+    {
+      key: "operations" as FleetDetailTab,
+      label: "Operations",
+      icon: RefreshCw,
+    },
   ];
 
   return (
@@ -2939,19 +4055,44 @@ function FleetDetailShell({ fleetId }: { fleetId: number }) {
                 </span>
               </div>
               {fleet?.description && (
-                <p className="text-xs text-muted-foreground mt-1">{fleet.description}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {fleet.description}
+                </p>
               )}
               <div className="mt-2">
                 {rollupLoading && <Skeleton className="h-4 w-48" />}
                 {rollup && <RollupSummaryStrip rollup={rollup} />}
               </div>
             </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1.5"
+                onClick={() => setSaveModalOpen(true)}
+              >
+                <FileCode className="w-3.5 h-3.5" />
+                Save Config
+              </Button>
+              <Button
+                size="sm"
+                className="h-7 text-xs gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
+                onClick={() => setDeployModalOpen(true)}
+              >
+                <Send className="w-3.5 h-3.5" />
+                Deploy Config
+              </Button>
+            </div>
           </div>
         </div>
       </SectionCard>
 
       {/* Sub-tabs */}
-      <Tabs value={activeTab} onValueChange={(v) => handleTabChange(v as FleetDetailTab)}>
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => handleTabChange(v as FleetDetailTab)}
+      >
         <ResourceViewTabs
           variant="inline"
           aria-label="Fleet detail views"
@@ -2968,6 +4109,13 @@ function FleetDetailShell({ fleetId }: { fleetId: number }) {
           <InventoryView fleetId={fleetId} />
         </TabsContent>
 
+        <TabsContent value="configs" className="mt-6">
+          <FleetConfigsDetailTab
+            fleetId={fleetId}
+            fleetName={fleet?.name || `Fleet #${fleetId}`}
+          />
+        </TabsContent>
+
         <TabsContent value="policies" className="mt-6">
           <ComplianceView fleetId={fleetId} />
         </TabsContent>
@@ -2976,6 +4124,23 @@ function FleetDetailShell({ fleetId }: { fleetId: number }) {
           <BulkOpsView fleetId={fleetId} />
         </TabsContent>
       </Tabs>
+
+      {deployModalOpen && (
+        <FleetDeployConfigDialog
+          open={deployModalOpen}
+          onOpenChange={setDeployModalOpen}
+          fleetId={fleetId}
+          fleetName={fleet?.name || `Fleet #${fleetId}`}
+        />
+      )}
+
+      {saveModalOpen && (
+        <SaveFleetConfigDialog
+          open={saveModalOpen}
+          onOpenChange={setSaveModalOpen}
+          fleetId={fleetId}
+        />
+      )}
     </div>
   );
 }
@@ -3011,46 +4176,65 @@ function FleetsView() {
 
   // Create form state
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [createName, setCreateName] = useState('');
-  const [createDescription, setCreateDescription] = useState('');
+  const [createName, setCreateName] = useState("");
+  const [createDescription, setCreateDescription] = useState("");
   const [createLabels, setCreateLabels] = useState<string[]>([]);
+  const [createSelectedClusterIds, setCreateSelectedClusterIds] = useState<
+    number[]
+  >([]);
+  const [showAdvancedSelectors, setShowAdvancedSelectors] = useState(false);
 
   // Edit state
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [editName, setEditName] = useState('');
-  const [editDescription, setEditDescription] = useState('');
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
   const [editLabels, setEditLabels] = useState<string[]>([]);
+  const [editSelectedClusterIds, setEditSelectedClusterIds] = useState<
+    number[]
+  >([]);
+
+  // Dialog state
+  const [deployModalFleet, setDeployModalFleet] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
+  const [saveConfigFleetId, setSaveConfigFleetId] = useState<number | null>(
+    null,
+  );
 
   const handleCreate = () => {
     if (!createName.trim()) return;
-    const labels = createLabels.filter((l) => l.includes('='));
+    const labels = createLabels.filter((l) => l.includes("="));
     createTarget.mutate(
       {
         name: createName.trim(),
         description: createDescription.trim() || undefined,
         selector: { labels },
+        pinned_member_ids: createSelectedClusterIds,
       },
       {
         onSuccess: () => {
-          setCreateName('');
-          setCreateDescription('');
+          setCreateName("");
+          setCreateDescription("");
           setCreateLabels([]);
+          setCreateSelectedClusterIds([]);
           setShowCreateForm(false);
-          queryClient.invalidateQueries({ queryKey: ['fleet', 'targets'] });
+          queryClient.invalidateQueries({ queryKey: ["fleet", "targets"] });
         },
-      }
+      },
     );
   };
 
-  const startEdit = (target: import('@/types/fleet').FleetTarget) => {
+  const startEdit = (target: import("@/types/fleet").FleetTarget) => {
     setEditingId(target.id);
     setEditName(target.name);
-    setEditDescription(target.description ?? '');
+    setEditDescription(target.description ?? "");
     setEditLabels(target.selector.labels ?? []);
+    setEditSelectedClusterIds(target.pinned_member_ids ?? []);
   };
 
   const handleUpdate = (targetId: number) => {
-    const labels = editLabels.filter((l) => l.includes('='));
+    const labels = editLabels.filter((l) => l.includes("="));
     updateTarget.mutate(
       {
         targetId,
@@ -3058,31 +4242,37 @@ function FleetsView() {
           name: editName.trim() || undefined,
           description: editDescription.trim() || undefined,
           selector: { labels },
+          pinned_member_ids: editSelectedClusterIds,
         },
       },
       {
         onSuccess: () => {
           setEditingId(null);
-          queryClient.invalidateQueries({ queryKey: ['fleet', 'targets'] });
-          queryClient.invalidateQueries({ queryKey: ['fleet', 'fleet-members', targetId] });
+          queryClient.invalidateQueries({ queryKey: ["fleet", "targets"] });
+          queryClient.invalidateQueries({
+            queryKey: ["fleet", "fleet-members", targetId],
+          });
         },
-      }
+      },
     );
   };
 
   const handleDelete = (targetId: number) => {
     deleteTarget.mutate(targetId, {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['fleet', 'targets'] });
+        queryClient.invalidateQueries({ queryKey: ["fleet", "targets"] });
       },
     });
   };
 
-  const handleOpenFleet = useCallback((targetId: number) => {
-    const next = new URLSearchParams(searchParams);
-    next.set('fleet', String(targetId));
-    navigate(`?${next.toString()}`);
-  }, [navigate, searchParams]);
+  const handleOpenFleet = useCallback(
+    (targetId: number) => {
+      const next = new URLSearchParams(searchParams);
+      next.set("fleet", String(targetId));
+      navigate(`?${next.toString()}`);
+    },
+    [navigate, searchParams],
+  );
 
   return (
     <div className="space-y-6">
@@ -3098,47 +4288,114 @@ function FleetsView() {
               </Badge>
             )}
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 text-xs gap-1"
-            onClick={() => setShowCreateForm(!showCreateForm)}
-          >
-            <Plus className="w-3 h-3" />
-            New Fleet
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs gap-1"
+              onClick={() => setSaveConfigFleetId(-1)}
+            >
+              <FileCode className="w-3 h-3" />
+              New Config
+            </Button>
+            <Button
+              size="sm"
+              className="h-7 text-xs gap-1"
+              onClick={() => setShowCreateForm(!showCreateForm)}
+            >
+              <Plus className="w-3 h-3" />
+              New Fleet
+            </Button>
+          </div>
         </div>
 
         {/* Create form */}
         {showCreateForm && (
-          <div className="mb-4 p-3 rounded-lg border border-border bg-muted/40 space-y-2">
-            <div className="text-xs font-medium text-foreground">New Fleet</div>
-            <input
-              placeholder="Fleet name (e.g. prod-clusters)"
-              value={createName}
-              onChange={(e) => setCreateName(e.target.value)}
-              className="w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-xs"
-            />
-            <input
-              placeholder="Description (optional)"
-              value={createDescription}
-              onChange={(e) => setCreateDescription(e.target.value)}
-              className="w-full rounded-md border border-border bg-card text-foreground px-2 py-1 text-xs"
-            />
-            <div className="text-xs text-muted-foreground font-medium">Label selectors (AND)</div>
-            <SelectorBuilder
-              value={createLabels}
-              onChange={setCreateLabels}
-              disabled={createTarget.isPending}
-            />
-            <div className="flex gap-2 pt-1">
+          <div className="mb-4 p-4 rounded-lg border border-border bg-card shadow-sm space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-border">
+              <span className="text-xs font-semibold text-foreground">
+                Create New Fleet
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 w-6 p-0 text-muted-foreground"
+                onClick={() => setShowCreateForm(false)}
+              >
+                <X className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label className="text-2xs font-medium text-foreground">
+                  Fleet Name *
+                </label>
+                <input
+                  placeholder="e.g. prod-clusters, edge-gateways"
+                  value={createName}
+                  onChange={(e) => setCreateName(e.target.value)}
+                  className="w-full rounded-md border border-border bg-background text-foreground px-2.5 py-1 text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-2xs font-medium text-foreground">
+                  Description (optional)
+                </label>
+                <input
+                  placeholder="e.g. Production edge clusters running F5 BNK"
+                  value={createDescription}
+                  onChange={(e) => setCreateDescription(e.target.value)}
+                  className="w-full rounded-md border border-border bg-background text-foreground px-2.5 py-1 text-xs"
+                />
+              </div>
+            </div>
+
+            {/* Tickbox Clusters & Projects */}
+            <div className="space-y-1 pt-1">
+              <label className="text-xs font-semibold text-foreground">
+                Fleet Membership (Tick Clusters & Projects)
+              </label>
+              <FleetClusterPicker
+                selectedClusterIds={createSelectedClusterIds}
+                onChange={setCreateSelectedClusterIds}
+                disabled={createTarget.isPending}
+              />
+            </div>
+
+            {/* Advanced Label Selectors (Collapsible) */}
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setShowAdvancedSelectors(!showAdvancedSelectors)}
+                className="text-2xs text-muted-foreground hover:text-foreground flex items-center gap-1 font-medium"
+              >
+                {showAdvancedSelectors ? (
+                  <ChevronDown className="w-3 h-3" />
+                ) : (
+                  <ChevronRight className="w-3 h-3" />
+                )}
+                Advanced Label Selectors (optional)
+              </button>
+              {showAdvancedSelectors && (
+                <div className="mt-2 pl-2 border-l-2 border-border">
+                  <SelectorBuilder
+                    value={createLabels}
+                    onChange={setCreateLabels}
+                    disabled={createTarget.isPending}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-2 border-t border-border">
               <Button
                 size="sm"
                 className="h-7 text-xs"
                 onClick={handleCreate}
                 disabled={createTarget.isPending || !createName.trim()}
               >
-                {createTarget.isPending ? 'Creating…' : 'Create'}
+                {createTarget.isPending ? "Creating…" : "Create Fleet"}
               </Button>
               <Button
                 size="sm"
@@ -3172,7 +4429,7 @@ function FleetsView() {
           <EmptyState
             icon={Flag}
             title="No fleets defined yet"
-            description="Create a fleet to group clusters by label selectors and run bulk operations."
+            description="Create a fleet to group clusters by tickboxes or label selectors, validate configs, and deploy across clusters."
           />
         )}
 
@@ -3188,38 +4445,54 @@ function FleetsView() {
                 >
                   {editingId === target.id ? (
                     /* Edit inline form */
-                    <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        className="w-full rounded border border-border bg-background text-foreground px-2 py-1 text-xs"
-                        placeholder="Fleet name"
-                      />
-                      <input
-                        value={editDescription}
-                        onChange={(e) => setEditDescription(e.target.value)}
-                        className="w-full rounded border border-border bg-background text-foreground px-2 py-1 text-xs"
-                        placeholder="Description (optional)"
-                      />
-                      <div className="text-xs text-muted-foreground font-medium pt-1">Label selectors (AND)</div>
-                      <SelectorBuilder
-                        value={editLabels}
-                        onChange={setEditLabels}
-                        disabled={updateTarget.isPending}
-                      />
-                      <div className="flex gap-2 pt-1">
+                    <div
+                      className="space-y-3 p-3 bg-muted/20 rounded-lg border border-border"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="text-xs font-semibold text-foreground">
+                        Edit Fleet & Membership
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <input
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          className="w-full rounded border border-border bg-background text-foreground px-2.5 py-1 text-xs"
+                          placeholder="Fleet name"
+                        />
+                        <input
+                          value={editDescription}
+                          onChange={(e) => setEditDescription(e.target.value)}
+                          className="w-full rounded border border-border bg-background text-foreground px-2.5 py-1 text-xs"
+                          placeholder="Description (optional)"
+                        />
+                      </div>
+
+                      {/* Tickbox Clusters & Projects */}
+                      <div className="space-y-1 pt-1">
+                        <label className="text-xs font-semibold text-foreground">
+                          Fleet Membership (Tick Clusters & Projects into/out of
+                          fleet)
+                        </label>
+                        <FleetClusterPicker
+                          selectedClusterIds={editSelectedClusterIds}
+                          onChange={setEditSelectedClusterIds}
+                          disabled={updateTarget.isPending}
+                        />
+                      </div>
+
+                      <div className="flex gap-2 pt-2 border-t border-border">
                         <Button
                           size="sm"
-                          className="h-6 text-xs"
+                          className="h-7 text-xs"
                           onClick={() => handleUpdate(target.id)}
                           disabled={updateTarget.isPending}
                         >
-                          {updateTarget.isPending ? 'Saving…' : 'Save'}
+                          {updateTarget.isPending ? "Saving…" : "Save Changes"}
                         </Button>
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="h-6 text-xs"
+                          className="h-7 text-xs"
                           onClick={() => setEditingId(null)}
                         >
                           Cancel
@@ -3234,6 +4507,18 @@ function FleetsView() {
                           <span className="text-sm font-medium text-foreground truncate">
                             {target.name}
                           </span>
+                          {target.pinned_member_ids &&
+                            target.pinned_member_ids.length > 0 && (
+                              <Badge
+                                variant="outline"
+                                className="text-2xs px-1.5 py-0 h-4"
+                              >
+                                {target.pinned_member_ids.length} cluster
+                                {target.pinned_member_ids.length === 1
+                                  ? ""
+                                  : "s"}
+                              </Badge>
+                            )}
                           <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                         </div>
                         {target.description && (
@@ -3242,19 +4527,22 @@ function FleetsView() {
                           </div>
                         )}
                         <div className="flex flex-wrap gap-1 mt-1.5">
-                          {(target.selector.labels ?? []).length === 0 ? (
-                            <span className="text-xs text-muted-foreground italic">no selectors</span>
-                          ) : (
-                            (target.selector.labels ?? []).map((l) => (
-                              <Badge
-                                key={l}
-                                variant="outline"
-                                className="text-xs font-mono px-1.5 py-0"
-                              >
-                                {l}
-                              </Badge>
-                            ))
-                          )}
+                          {(target.selector.labels ?? []).length === 0
+                            ? (!target.pinned_member_ids ||
+                                target.pinned_member_ids.length === 0) && (
+                                <span className="text-xs text-muted-foreground italic">
+                                  no members selected
+                                </span>
+                              )
+                            : (target.selector.labels ?? []).map((l) => (
+                                <Badge
+                                  key={l}
+                                  variant="outline"
+                                  className="text-xs font-mono px-1.5 py-0"
+                                >
+                                  {l}
+                                </Badge>
+                              ))}
                         </div>
                         {/* Traffic lights + rollup strip */}
                         {rollup && (
@@ -3265,18 +4553,51 @@ function FleetsView() {
                         )}
                       </div>
                       <div
-                        className="flex items-center gap-1 shrink-0"
+                        className="flex items-center gap-1.5 shrink-0"
                         onClick={(e) => e.stopPropagation()}
                       >
+                        {/* Deploy Config button */}
                         <Button
                           size="sm"
-                          variant="ghost"
-                          className="h-7 w-7 p-0"
-                          title="Edit fleet"
+                          variant="default"
+                          className="h-7 text-xs gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
+                          title="Deploy a config across clusters in this fleet"
+                          onClick={() =>
+                            setDeployModalFleet({
+                              id: target.id,
+                              name: target.name,
+                            })
+                          }
+                        >
+                          <Send className="w-3 h-3" />
+                          Deploy Config
+                        </Button>
+
+                        {/* Save Config button */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs gap-1"
+                          title="Save a reusable config for this fleet"
+                          onClick={() => setSaveConfigFleetId(target.id)}
+                        >
+                          <FileCode className="w-3 h-3" />
+                          Save Config
+                        </Button>
+
+                        {/* Edit Membership */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs gap-1"
+                          title="Edit fleet membership (tick clusters in/out)"
                           onClick={() => startEdit(target)}
                         >
-                          <Pencil className="w-3 h-3" />
+                          <CheckSquare className="w-3 h-3" />
+                          Membership
                         </Button>
+
+                        {/* Delete fleet */}
                         <Button
                           size="sm"
                           variant="ghost"
@@ -3296,6 +4617,23 @@ function FleetsView() {
           </div>
         )}
       </SectionCard>
+
+      {deployModalFleet && (
+        <FleetDeployConfigDialog
+          open={Boolean(deployModalFleet)}
+          onOpenChange={(open) => !open && setDeployModalFleet(null)}
+          fleetId={deployModalFleet.id}
+          fleetName={deployModalFleet.name}
+        />
+      )}
+
+      {saveConfigFleetId !== null && (
+        <SaveFleetConfigDialog
+          open={saveConfigFleetId !== null}
+          onOpenChange={(open) => !open && setSaveConfigFleetId(null)}
+          fleetId={saveConfigFleetId === -1 ? undefined : saveConfigFleetId}
+        />
+      )}
     </div>
   );
 }
@@ -3304,95 +4642,200 @@ function FleetsView() {
 // Main page
 // ──────────────────────────────────────────────────────────────────────────────
 
-// D-022 P6 IA: 'dpf' removed — DPU Infrastructure relocated to /infrastructure.
-type FleetView = 'overview' | 'inventory' | 'bulkops' | 'compliance' | 'fleets';
+/// D-022 P6 IA: Top-level tabs: Overview, BNK Resources, and Fleets (Fleets last).
+type FleetView = "overview" | "bnk" | "fleets";
+
+const VALID_VIEWS: FleetView[] = ["overview", "bnk", "fleets"];
 
 export default function Fleet() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // D-022 P6 Slice B: ?fleet=<id> triggers the per-fleet detail drill-down.
-  const fleetParam = searchParams.get('fleet');
+  const fleetParam = searchParams.get("fleet");
   const fleetDetailId = fleetParam ? Number(fleetParam) : null;
 
   // backward compat with ?view=overview etc. (dpf deep-links now redirect to /infrastructure)
-  const urlView = searchParams.get('view') ?? searchParams.get('tab');
-  const validViews: FleetView[] = ['fleets', 'inventory', 'bulkops', 'compliance', 'overview'];
+  const rawView = searchParams.get("tab") ?? searchParams.get("view");
+  const urlView =
+    rawView === "operators"
+      ? "overview"
+      : rawView === "inventory" ||
+          rawView === "bulkops" ||
+          rawView === "compliance"
+        ? "fleets"
+        : rawView;
   const initialView: FleetView =
-    urlView && validViews.includes(urlView as FleetView) ? (urlView as FleetView) : 'fleets';
+    urlView && VALID_VIEWS.includes(urlView as FleetView)
+      ? (urlView as FleetView)
+      : "overview";
   const [activeView, setActiveView] = useState<FleetView>(initialView);
+
+  // Keep state in sync with URL tab param
+  useEffect(() => {
+    if (urlView && VALID_VIEWS.includes(urlView as FleetView)) {
+      setActiveView(urlView as FleetView);
+    } else if (!urlView) {
+      setActiveView("overview");
+    }
+  }, [urlView]);
+
+  // Redirect legacy DPF deep-links to /infrastructure and legacy facet tabs to ?tab=fleets
+  useEffect(() => {
+    const raw = searchParams.get("tab") ?? searchParams.get("view");
+    if (raw === "dpf" || raw === "dpus") {
+      const cluster = searchParams.get("cluster");
+      navigate(
+        `/infrastructure?tab=dpus${cluster ? `&cluster=${cluster}` : ""}`,
+        { replace: true },
+      );
+    } else if (
+      raw === "inventory" ||
+      raw === "bulkops" ||
+      raw === "compliance"
+    ) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("view");
+      next.set("tab", "fleets");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, navigate, setSearchParams]);
 
   const handleSelectView = useCallback(
     (view: string) => {
-      const v = validViews.includes(view as FleetView) ? (view as FleetView) : 'fleets';
+      const v = VALID_VIEWS.includes(view as FleetView)
+        ? (view as FleetView)
+        : "overview";
       setActiveView(v);
       // Clear the fleet drill-down when switching top-level tabs.
       const next = new URLSearchParams(searchParams);
-      next.delete('fleet');
-      next.delete('detail_tab');
-      if (v === 'fleets') {
-        next.delete('view');
-        next.delete('tab');
+      next.delete("fleet");
+      next.delete("detail_tab");
+      next.delete("view"); // clear legacy alias
+      if (v === "overview") {
+        next.delete("tab");
       } else {
-        next.set('view', v);
-        next.delete('tab');
+        next.set("tab", v);
       }
-      setSearchParams(next);
+      setSearchParams(next, { replace: true });
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [searchParams, setSearchParams],
   );
 
   const { refresh, isRefreshing } = usePageRefresh();
+  const {
+    data: bnkConsumption,
+    isLoading: bnkLoading,
+    error: bnkError,
+  } = useBnkConsumption({ enabled: activeView === "bnk" });
 
-  const subtitle = 'Group clusters into fleets and operate them at scale — health, policy, compliance, and staged operations.';
+  const subtitle =
+    "Group clusters into fleets and operate them at scale — health, policy, compliance, and staged operations.";
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <PageHeader
-        title="Fleet"
-        subtitle={subtitle}
-        onRefresh={refresh}
-        isRefreshing={isRefreshing}
-      />
+    <Tabs
+      value={fleetDetailId != null ? "" : activeView}
+      onValueChange={handleSelectView}
+      orientation="vertical"
+      className="flex min-h-[calc(100vh-3rem)]"
+    >
+      {/* Left Flush Inner Sub-Sidebar */}
+      <CollapsibleInnerSidebar className="w-52 shrink-0 border-r border-border bg-card/30 p-3 space-y-4">
+        <div className="px-2 py-1 space-y-1">
+          <h1 className="text-sm font-semibold tracking-tight text-foreground">
+            Cluster Fleet
+          </h1>
+          <p className="text-2xs text-muted-foreground leading-relaxed">
+            {subtitle}
+          </p>
+        </div>
 
-      {/* When ?fleet=<id> is set, show per-fleet detail shell (no top-level tabs). */}
-      {fleetDetailId != null ? (
-        <FleetDetailShell fleetId={fleetDetailId} />
-      ) : (
-        <Tabs value={activeView} onValueChange={handleSelectView}>
-          {/* D-022 P6 IA: 'DPU Infrastructure' tab removed — relocated to /infrastructure.
-              Fleets is the only top-level tab; all per-fleet views live in FleetDetailShell. */}
-          <ResourceViewTabs
-            variant="inline"
+        <div className="space-y-1">
+          <div className="px-2.5 py-1 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+            FLEET VIEWS
+          </div>
+          <TabsList
             aria-label="Fleet views"
-            active={activeView}
-            onChange={(key) => handleSelectView(key)}
-            tabs={[
-              { key: 'fleets', label: 'Fleets', icon: Flag },
-            ]}
-          />
+            className="flex flex-col items-stretch h-auto bg-transparent p-0 gap-1"
+          >
+            <TabsTrigger
+              value="overview"
+              className="w-full justify-start gap-2 px-2.5 py-1.5 text-xs font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
+            >
+              <Activity className="h-3.5 w-3.5 shrink-0" />
+              <span>Overview</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="bnk"
+              className="w-full justify-start gap-2 px-2.5 py-1.5 text-xs font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
+            >
+              <Gauge className="h-3.5 w-3.5 shrink-0" />
+              <span>BNK Resources</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="fleets"
+              className="w-full justify-start gap-2 px-2.5 py-1.5 text-xs font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
+            >
+              <Flag className="h-3.5 w-3.5 shrink-0" />
+              <span>Fleets</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
+      </CollapsibleInnerSidebar>
 
-          <TabsContent value="fleets" className="mt-6">
-            <FleetsView />
-          </TabsContent>
+      {/* Right Content Pane */}
+      <div className="flex-1 min-w-0 p-6 space-y-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold tracking-tight text-foreground">
+              {activeView === "bnk"
+                ? "BNK Resources"
+                : activeView === "fleets"
+                  ? "Fleets"
+                  : "Cluster Fleet Overview"}
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={refresh}
+            disabled={isRefreshing}
+            aria-label="Refresh"
+          >
+            <RefreshCw
+              className={cn(
+                "h-3.5 w-3.5 mr-1.5",
+                isRefreshing && "animate-spin",
+              )}
+            />
+            Refresh
+          </Button>
+        </div>
 
-          {/* Legacy deep-links: ?view=inventory|bulkops|compliance|overview are forwarded to
-              the Fleets list tab (the views now live inside FleetDetailShell). */}
-          <TabsContent value="inventory" className="mt-6">
-            <FleetsView />
-          </TabsContent>
-          <TabsContent value="bulkops" className="mt-6">
-            <FleetsView />
-          </TabsContent>
-          <TabsContent value="compliance" className="mt-6">
-            <FleetsView />
-          </TabsContent>
-          <TabsContent value="overview" className="mt-6">
-            <FleetsView />
-          </TabsContent>
-        </Tabs>
-      )}
-    </div>
+        {/* When ?fleet=<id> is set, show per-fleet detail shell. */}
+        {fleetDetailId != null ? (
+          <FleetDetailShell fleetId={fleetDetailId} />
+        ) : (
+          <>
+            <TabsContent value="overview" className="mt-0">
+              <OverviewView />
+            </TabsContent>
+
+            <TabsContent value="bnk" className="mt-0">
+              <BnkResourcesPanel
+                data={bnkConsumption}
+                isLoading={bnkLoading}
+                error={bnkError}
+              />
+            </TabsContent>
+
+            <TabsContent value="fleets" className="mt-0">
+              <FleetsView />
+            </TabsContent>
+          </>
+        )}
+      </div>
+    </Tabs>
   );
 }

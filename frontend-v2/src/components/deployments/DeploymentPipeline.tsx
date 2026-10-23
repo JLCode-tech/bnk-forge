@@ -10,7 +10,7 @@
  * Uses existing WebSocket hooks for real-time status updates.
  */
 
-import { useMemo, useCallback, useState } from 'react';
+import { useMemo, useCallback, useState } from "react";
 import ReactFlow, {
   Node,
   Edge,
@@ -21,12 +21,12 @@ import ReactFlow, {
   BackgroundVariant,
   MarkerType,
   Position,
-} from 'reactflow';
-import 'reactflow/dist/style.css';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import { useTheme, useThemeClasses } from '@/context/ThemeContext';
-import { cn } from '@/lib/utils';
+} from "reactflow";
+import "reactflow/dist/style.css";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { useTheme, useThemeClasses } from "@/context/ThemeContext";
+import { cn } from "@/lib/utils";
 import {
   CheckCircle2,
   Clock,
@@ -34,13 +34,9 @@ import {
   XCircle,
   AlertTriangle,
   SkipForward,
-} from 'lucide-react';
-import type {
-  RunProgress,
-  ExecutionPlan,
-  ProjectModule,
-} from '@/types';
-import { LogViewerModal } from '@/components/deployments/LogViewerModal';
+} from "lucide-react";
+import type { RunProgress, ExecutionPlan, ProjectModule } from "@/types";
+import { LogViewerModal } from "@/components/deployments/LogViewerModal";
 
 // ============================================================================
 // Types
@@ -57,7 +53,12 @@ interface DeploymentPipelineProps {
   containerHeight?: number;
 }
 
-type ModuleNodeStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+type ModuleNodeStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "skipped";
 
 interface ModuleNodeData {
   label: string;
@@ -75,88 +76,108 @@ interface ModuleNodeData {
 // Status helpers
 // ============================================================================
 
-const statusConfig: Record<ModuleNodeStatus, {
-  icon: React.ElementType;
-  color: string;
-  bgColor: string;
-  borderColor: string;
-  label: string;
-  animate?: boolean;
-}> = {
+const statusConfig: Record<
+  ModuleNodeStatus,
+  {
+    icon: React.ElementType;
+    color: string;
+    bgColor: string;
+    borderColor: string;
+    label: string;
+    animate?: boolean;
+  }
+> = {
   pending: {
     icon: Clock,
-    color: 'text-zinc-400',
-    bgColor: 'bg-zinc-500/10',
-    borderColor: 'border-zinc-500/30',
-    label: 'Waiting',
+    color: "text-muted-foreground",
+    bgColor: "bg-muted",
+    borderColor: "border-border",
+    label: "Waiting",
   },
   running: {
     icon: Loader2,
-    color: 'text-blue-400',
-    bgColor: 'bg-blue-500/10',
-    borderColor: 'border-blue-500/50',
-    label: 'Running',
+    color: "text-info",
+    bgColor: "bg-info/10",
+    borderColor: "border-info/50",
+    label: "Running",
     animate: true,
   },
   completed: {
     icon: CheckCircle2,
-    color: 'text-emerald-400',
-    bgColor: 'bg-emerald-500/10',
-    borderColor: 'border-emerald-500/30',
-    label: 'Done',
+    color: "text-success",
+    bgColor: "bg-success/10",
+    borderColor: "border-success/30",
+    label: "Done",
   },
   failed: {
     icon: XCircle,
-    color: 'text-red-400',
-    bgColor: 'bg-red-500/10',
-    borderColor: 'border-red-500/50',
-    label: 'Failed',
+    color: "text-destructive",
+    bgColor: "bg-destructive/10",
+    borderColor: "border-destructive/50",
+    label: "Failed",
   },
   skipped: {
     icon: SkipForward,
-    color: 'text-amber-400',
-    bgColor: 'bg-amber-500/10',
-    borderColor: 'border-amber-500/30',
-    label: 'Skipped',
+    color: "text-warning",
+    bgColor: "bg-warning/10",
+    borderColor: "border-warning/30",
+    label: "Skipped",
   },
 };
 
 function resolveModuleStatus(
   moduleId: number,
   executionStatus: RunProgress | undefined,
-  moduleStatus: string
+  moduleStatus: string,
 ): ModuleNodeStatus {
   // module.status is the live truth — kept fresh via WebSocket task-update
   // invalidation. Prefer it when it has a definitive answer.
-  if (moduleStatus === 'deployed' || moduleStatus === 'applied') return 'completed';
-  if (moduleStatus === 'failed' || moduleStatus === 'apply_failed' || moduleStatus === 'plan_failed' || moduleStatus === 'destroy_failed' || moduleStatus === 'init_failed') return 'failed';
-  if (moduleStatus === 'applying' || moduleStatus === 'planning' || moduleStatus === 'initializing' || moduleStatus === 'destroying') return 'running';
+  if (moduleStatus === "deployed" || moduleStatus === "applied")
+    return "completed";
+  if (
+    moduleStatus === "failed" ||
+    moduleStatus === "apply_failed" ||
+    moduleStatus === "plan_failed" ||
+    moduleStatus === "destroy_failed" ||
+    moduleStatus === "init_failed"
+  )
+    return "failed";
+  if (
+    moduleStatus === "applying" ||
+    moduleStatus === "planning" ||
+    moduleStatus === "initializing" ||
+    moduleStatus === "destroying"
+  )
+    return "running";
 
   // Module hasn't started yet — fall back to orchestrator hints if present
   // (skipped tracking, layer pending state).
   if (executionStatus) {
-    if (executionStatus.skipped_modules?.includes(moduleId)) return 'skipped';
+    if (executionStatus.skipped_modules?.includes(moduleId)) return "skipped";
     for (const layer of executionStatus.layers || []) {
-      if (layer.module_ids?.includes(moduleId) && layer.status === 'in_progress') {
-        return 'running';
+      if (
+        layer.module_ids?.includes(moduleId) &&
+        layer.status === "in_progress"
+      ) {
+        return "running";
       }
     }
   }
 
-  return 'pending';
+  return "pending";
 }
 
 function calculateElapsedPercent(
   moduleId: number,
   estimatedMinutes: number,
-  executionStatus: RunProgress | undefined
+  executionStatus: RunProgress | undefined,
 ): number {
   if (!executionStatus || !executionStatus.started_at) return 0;
 
-  const status = resolveModuleStatus(moduleId, executionStatus, '');
-  if (status === 'completed') return 100;
-  if (status === 'failed') return 100;
-  if (status === 'pending' || status === 'skipped') return 0;
+  const status = resolveModuleStatus(moduleId, executionStatus, "");
+  if (status === "completed") return 100;
+  if (status === "failed") return 100;
+  if (status === "pending" || status === "skipped") return 0;
 
   // Running: estimate from elapsed time
   const startedAt = new Date(executionStatus.started_at).getTime();
@@ -179,46 +200,58 @@ function ModuleNodeLabel({ data }: { data: ModuleNodeData }) {
       <div className="flex items-center gap-2">
         {/* While running with a live phase, the spinner moves down to the phase
             line, so the name row shows just the module name. */}
-        {!(data.status === 'running' && data.stageDetail) && (
+        {!(data.status === "running" && data.stageDetail) && (
           <StatusIcon
-            className={cn('h-4 w-4 flex-shrink-0', cfg.color, cfg.animate && 'animate-spin')}
+            className={cn(
+              "h-4 w-4 flex-shrink-0",
+              cfg.color,
+              cfg.animate && "animate-spin",
+            )}
           />
         )}
-        <span className="text-xs font-semibold truncate flex-1">{data.label}</span>
+        <span className="text-xs font-semibold truncate flex-1">
+          {data.label}
+        </span>
       </div>
 
       {/* Live phase (stage_detail) while running, e.g. "[3/6] deploy-prereqs",
           with the spinner on the same line. */}
-      {data.status === 'running' && data.stageDetail && (
+      {data.status === "running" && data.stageDetail && (
         <div className="flex items-center gap-1.5">
           <StatusIcon
-            className={cn('h-3.5 w-3.5 flex-shrink-0', cfg.color, cfg.animate && 'animate-spin')}
+            className={cn(
+              "h-3.5 w-3.5 flex-shrink-0",
+              cfg.color,
+              cfg.animate && "animate-spin",
+            )}
           />
-          <span className="text-[10px] font-medium text-info truncate animate-pulse" title={data.stageDetail}>
+          <span
+            className="text-2xs font-medium text-info truncate animate-pulse"
+            title={data.stageDetail}
+          >
             {data.stageDetail}
           </span>
         </div>
       )}
 
       {/* Progress bar */}
-      {(data.status === 'running' || data.status === 'completed' || data.status === 'failed') && (
+      {(data.status === "running" ||
+        data.status === "completed" ||
+        data.status === "failed") && (
         <div className="w-full">
-          <Progress
-            value={data.elapsedPercent}
-            className="h-1.5"
-          />
+          <Progress value={data.elapsedPercent} className="h-1.5" />
         </div>
       )}
 
       <div className="flex items-center justify-between">
         <Badge
           variant="outline"
-          className={cn('text-[9px] py-0 px-1.5', cfg.color, cfg.borderColor)}
+          className={cn("text-2xs py-0 px-1.5", cfg.color, cfg.borderColor)}
         >
           {cfg.label}
         </Badge>
         {data.estimatedTimeMinutes > 0 && (
-          <span className="text-[9px] text-zinc-500">
+          <span className="text-2xs text-muted-foreground">
             ~{data.estimatedTimeMinutes}m
           </span>
         )}
@@ -226,8 +259,10 @@ function ModuleNodeLabel({ data }: { data: ModuleNodeData }) {
 
       {data.error && (
         <div className="flex items-start gap-1 mt-0.5">
-          <AlertTriangle className="h-3 w-3 text-red-400 flex-shrink-0 mt-0.5" />
-          <span className="text-[9px] text-red-400 line-clamp-2">{data.error}</span>
+          <AlertTriangle className="h-3 w-3 text-destructive flex-shrink-0 mt-0.5" />
+          <span className="text-2xs text-destructive line-clamp-2">
+            {data.error}
+          </span>
         </div>
       )}
     </div>
@@ -250,7 +285,11 @@ export function DeploymentPipeline({
 
   // Build nodes and edges from execution plan
   const { flowNodes, flowEdges } = useMemo(() => {
-    if (!executionPlan || !executionPlan.layers || executionPlan.layers.length === 0) {
+    if (
+      !executionPlan ||
+      !executionPlan.layers ||
+      executionPlan.layers.length === 0
+    ) {
       return { flowNodes: [], flowEdges: [] };
     }
 
@@ -282,12 +321,12 @@ export function DeploymentPipeline({
         const moduleStatus = resolveModuleStatus(
           mod.id,
           executionStatus,
-          projectModule?.status || mod.status
+          projectModule?.status || mod.status,
         );
         const elapsedPercent = calculateElapsedPercent(
           mod.id,
           mod.estimated_time_minutes,
-          executionStatus
+          executionStatus,
         );
 
         // Get error from execution results
@@ -317,27 +356,37 @@ export function DeploymentPipeline({
 
         nodes.push({
           id: `module-${mod.id}`,
-          type: 'default',
-          position: { x: startOffset + modIdx * tbHSpacing, y: layerIdx * tbVSpacing },
+          type: "default",
+          position: {
+            x: startOffset + modIdx * tbHSpacing,
+            y: layerIdx * tbVSpacing,
+          },
           data: nodeData,
           sourcePosition: Position.Bottom,
           targetPosition: Position.Top,
           style: {
-            background: isDark ? '#18181b' : '#ffffff',
+            background: isDark ? "#18181b" : "#ffffff",
             border: `2px solid ${
-              moduleStatus === 'running' ? '#3b82f6' :
-              moduleStatus === 'completed' ? '#10b981' :
-              moduleStatus === 'failed' ? '#ef4444' :
-              moduleStatus === 'skipped' ? '#f59e0b' :
-              isDark ? '#3f3f46' : '#e2e8f0'
+              moduleStatus === "running"
+                ? "#3b82f6"
+                : moduleStatus === "completed"
+                  ? "#10b981"
+                  : moduleStatus === "failed"
+                    ? "#ef4444"
+                    : moduleStatus === "skipped"
+                      ? "#f59e0b"
+                      : isDark
+                        ? "#3f3f46"
+                        : "#e2e8f0"
             }`,
-            borderRadius: '12px',
-            padding: '12px',
+            borderRadius: "12px",
+            padding: "12px",
             minWidth: `${nodeWidth}px`,
-            cursor: 'pointer',
-            boxShadow: moduleStatus === 'running'
-              ? '0 0 12px rgba(59, 130, 246, 0.3)'
-              : 'none',
+            cursor: "pointer",
+            boxShadow:
+              moduleStatus === "running"
+                ? "0 0 12px rgba(59, 130, 246, 0.3)"
+                : "none",
           },
         });
 
@@ -353,18 +402,22 @@ export function DeploymentPipeline({
                 id: `edge-${mod.id}-${nextMod.id}`,
                 source: `module-${mod.id}`,
                 target: `module-${nextMod.id}`,
-                type: 'smoothstep',
-                animated: moduleStatus === 'running' || moduleStatus === 'completed',
+                type: "smoothstep",
+                animated:
+                  moduleStatus === "running" || moduleStatus === "completed",
                 markerEnd: {
                   type: MarkerType.ArrowClosed,
-                  color: isDark ? '#52525b' : '#94a3b8',
+                  color: isDark ? "#52525b" : "#94a3b8",
                 },
                 style: {
-                  stroke: moduleStatus === 'completed'
-                    ? '#10b981'
-                    : moduleStatus === 'running'
-                      ? '#3b82f6'
-                      : isDark ? '#3f3f46' : '#cbd5e1',
+                  stroke:
+                    moduleStatus === "completed"
+                      ? "#10b981"
+                      : moduleStatus === "running"
+                        ? "#3b82f6"
+                        : isDark
+                          ? "#3f3f46"
+                          : "#cbd5e1",
                   strokeWidth: 2,
                 },
               });
@@ -384,25 +437,32 @@ export function DeploymentPipeline({
         if (currentMods.length > 0 && nextMods.length > 0) {
           currentMods.forEach((curMod) => {
             nextMods.forEach((nextMod) => {
-              const curStatus = resolveModuleStatus(curMod.id, executionStatus, curMod.status);
+              const curStatus = resolveModuleStatus(
+                curMod.id,
+                executionStatus,
+                curMod.status,
+              );
               edges.push({
                 id: `layer-edge-${curMod.id}-${nextMod.id}`,
                 source: `module-${curMod.id}`,
                 target: `module-${nextMod.id}`,
-                type: 'smoothstep',
-                animated: curStatus === 'running' || curStatus === 'completed',
+                type: "smoothstep",
+                animated: curStatus === "running" || curStatus === "completed",
                 markerEnd: {
                   type: MarkerType.ArrowClosed,
-                  color: isDark ? '#52525b' : '#94a3b8',
+                  color: isDark ? "#52525b" : "#94a3b8",
                 },
                 style: {
-                  stroke: curStatus === 'completed'
-                    ? '#10b981'
-                    : curStatus === 'running'
-                      ? '#3b82f6'
-                      : isDark ? '#3f3f46' : '#cbd5e1',
+                  stroke:
+                    curStatus === "completed"
+                      ? "#10b981"
+                      : curStatus === "running"
+                        ? "#3b82f6"
+                        : isDark
+                          ? "#3f3f46"
+                          : "#cbd5e1",
                   strokeWidth: 1.5,
-                  strokeDasharray: '5,5',
+                  strokeDasharray: "5,5",
                 },
               });
             });
@@ -424,15 +484,16 @@ export function DeploymentPipeline({
   }, [flowNodes, flowEdges, setNodes, setEdges]);
 
   // Custom node rendering via data.label
-  const nodesWithLabels = useMemo(() =>
-    nodes.map((node) => ({
-      ...node,
-      data: {
-        ...node.data,
-        label: <ModuleNodeLabel data={node.data as ModuleNodeData} />,
-      },
-    })),
-    [nodes]
+  const nodesWithLabels = useMemo(
+    () =>
+      nodes.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          label: <ModuleNodeLabel data={node.data as ModuleNodeData} />,
+        },
+      })),
+    [nodes],
   );
 
   const handleNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
@@ -454,14 +515,13 @@ export function DeploymentPipeline({
 
   if (!executionPlan || flowNodes.length === 0) {
     return (
-      <div className={cn(
-        'flex items-center justify-center py-12 text-center',
-        isDark ? 'text-zinc-500' : 'text-slate-400'
-      )}>
+      <div className="flex items-center justify-center py-12 text-center text-muted-foreground">
         <div>
           <Clock className="h-10 w-10 mx-auto mb-3 opacity-30" />
           <p className="text-sm font-medium">No execution plan available</p>
-          <p className="text-xs mt-1">Run Deploy All to see the visual pipeline</p>
+          <p className="text-xs mt-1">
+            Run Deploy All to see the visual pipeline
+          </p>
         </div>
       </div>
     );
@@ -470,30 +530,33 @@ export function DeploymentPipeline({
   return (
     <>
       <div
-        className={cn(
-          'rounded-xl border overflow-hidden',
-          borderDefault,
-          isDark ? 'bg-zinc-900/50' : 'bg-white'
-        )}
-        style={{ height: effectiveHeight, display: 'flex', flexDirection: 'column' }}
+        className="rounded-lg border border-border bg-card overflow-hidden"
+        style={{
+          height: effectiveHeight,
+          display: "flex",
+          flexDirection: "column",
+        }}
       >
         {/* Pipeline header */}
-        <div className={cn(
-          'px-4 py-2 border-b flex items-center justify-between',
-          borderDefault,
-          isDark ? 'bg-zinc-800/50' : 'bg-slate-50'
-        )}>
+        <div
+          className={cn(
+            "px-4 py-2 border-b flex items-center justify-between",
+            borderDefault,
+            "bg-muted/50",
+          )}
+        >
           <div className="flex items-center gap-2">
-            <span className={cn('text-sm font-semibold', isDark ? 'text-white' : 'text-slate-900')}>
+            <span className="text-sm font-semibold text-foreground">
               Deployment Pipeline
             </span>
             <Badge variant="outline" className="text-xs">
-              {executionPlan.total_layers} layers / {executionPlan.total_modules} modules
+              {executionPlan.total_layers} layers /{" "}
+              {executionPlan.total_modules} modules
             </Badge>
           </div>
           {executionStatus && (
             <div className="flex items-center gap-3 text-xs">
-              <span className={isDark ? 'text-zinc-400' : 'text-slate-500'}>
+              <span className="text-muted-foreground">
                 {Math.round(executionStatus.progress_percent)}% complete
               </span>
             </div>
@@ -528,14 +591,14 @@ export function DeploymentPipeline({
             variant={BackgroundVariant.Dots}
             gap={20}
             size={1}
-            color={isDark ? '#27272a' : '#e2e8f0'}
+            color={isDark ? "#27272a" : "#e2e8f0"}
           />
           <Controls
             showZoom
             showFitView
             showInteractive={false}
             position="bottom-right"
-            className={isDark ? 'react-flow__controls-dark' : ''}
+            className={isDark ? "react-flow__controls-dark" : ""}
           />
         </ReactFlow>
       </div>
@@ -544,7 +607,9 @@ export function DeploymentPipeline({
       {logModuleId && (
         <LogViewerModal
           moduleId={logModuleId}
-          moduleName={modules.find((m) => m.id === logModuleId)?.name || 'Module'}
+          moduleName={
+            modules.find((m) => m.id === logModuleId)?.name || "Module"
+          }
           open={!!logModuleId}
           onOpenChange={(open) => {
             if (!open) setLogModuleId(null);

@@ -22,6 +22,7 @@ from services.defaults_service import (
 # _convert_value (pure function)
 # ---------------------------------------------------------------------------
 
+
 class TestConvertValue:
     """Type conversion for stored string values."""
 
@@ -57,6 +58,7 @@ class TestConvertValue:
 # seed_defaults
 # ---------------------------------------------------------------------------
 
+
 class TestSeedDefaults:
     """Seed default settings into DB on first run."""
 
@@ -74,10 +76,31 @@ class TestSeedDefaults:
         value = get_default(db, "cloud.aws.default_region")
         assert value == "us-east-1"
 
+    def test_migrates_legacy_f5devcentral_repo_urls(self, db):
+        seed_defaults(db)
+        set_default(db, "system.update_repo_url", "https://github.com/f5devcentral/bnk-forge")
+        set_default(db, "module_library.git_url", "https://github.com/f5devcentral/bnk-forge-modules.git")
+        db.commit()
+        count2 = seed_defaults(db)
+        assert count2 == 0
+        assert get_default(db, "system.update_repo_url") == "https://github.com/JLCode-tech/bnk-forge"
+        assert get_default(db, "module_library.git_url") == "https://github.com/JLCode-tech/bnk-forge-modules.git"
+
+    def test_migrates_legacy_bonnyr_f5_repo_urls(self, db):
+        seed_defaults(db)
+        set_default(db, "system.update_repo_url", "https://github.com/bonnyr-f5/bnk-forge")
+        set_default(db, "module_library.git_url", "https://github.com/bonnyr-f5/bnk-forge-modules.git")
+        db.commit()
+        count2 = seed_defaults(db)
+        assert count2 == 0
+        assert get_default(db, "system.update_repo_url") == "https://github.com/JLCode-tech/bnk-forge"
+        assert get_default(db, "module_library.git_url") == "https://github.com/JLCode-tech/bnk-forge-modules.git"
+
 
 # ---------------------------------------------------------------------------
 # get_default
 # ---------------------------------------------------------------------------
+
 
 class TestGetDefault:
     """Read a single setting from DB."""
@@ -112,6 +135,7 @@ class TestGetDefault:
 # ---------------------------------------------------------------------------
 # set_default
 # ---------------------------------------------------------------------------
+
 
 class TestSetDefault:
     """Write a single setting to DB."""
@@ -151,15 +175,19 @@ class TestSetDefault:
 # set_defaults_batch
 # ---------------------------------------------------------------------------
 
+
 class TestSetDefaultsBatch:
     """Batch update multiple settings."""
 
     def test_batch_update(self, db):
         seed_defaults(db)
-        results = set_defaults_batch(db, {
-            "cloud.aws.default_region": "ap-northeast-1",
-            "execution.max_retries": 10,
-        })
+        results = set_defaults_batch(
+            db,
+            {
+                "cloud.aws.default_region": "ap-northeast-1",
+                "execution.max_retries": 10,
+            },
+        )
         db.commit()
         assert results["cloud.aws.default_region"] is True
         assert results["execution.max_retries"] is True
@@ -167,10 +195,13 @@ class TestSetDefaultsBatch:
         assert get_default(db, "execution.max_retries") == 10
 
     def test_batch_with_unknown_key(self, db):
-        results = set_defaults_batch(db, {
-            "cloud.aws.default_region": "us-west-2",
-            "invalid.key": "value",
-        })
+        results = set_defaults_batch(
+            db,
+            {
+                "cloud.aws.default_region": "us-west-2",
+                "invalid.key": "value",
+            },
+        )
         assert results["invalid.key"] is False
         assert results["cloud.aws.default_region"] is True
 
@@ -178,6 +209,7 @@ class TestSetDefaultsBatch:
 # ---------------------------------------------------------------------------
 # get_all_defaults
 # ---------------------------------------------------------------------------
+
 
 class TestGetAllDefaults:
     """Retrieve all settings organized by category."""
@@ -224,6 +256,7 @@ class TestGetAllDefaults:
 # check_required_configured
 # ---------------------------------------------------------------------------
 
+
 class TestCheckRequiredConfigured:
     """Check if all required settings are configured."""
 
@@ -260,6 +293,7 @@ class TestCheckRequiredConfigured:
 # SYSTEM_DEFAULTS constant
 # ---------------------------------------------------------------------------
 
+
 class TestSystemDefaults:
     """Validate the SYSTEM_DEFAULTS definition itself."""
 
@@ -276,7 +310,17 @@ class TestSystemDefaults:
             assert defn["value_type"] in valid_types, f"{key} has invalid type: {defn['value_type']}"
 
     def test_categories_are_known(self):
-        known = {"module_library", "blueprint_library", "project", "cloud", "opentofu", "execution", "system", "bnk", "container"}
+        known = {
+            "module_library",
+            "blueprint_library",
+            "project",
+            "cloud",
+            "opentofu",
+            "execution",
+            "system",
+            "bnk",
+            "container",
+        }
         for key, defn in SYSTEM_DEFAULTS.items():
             assert defn["category"] in known, f"{key} has unknown category: {defn['category']}"
 
@@ -284,9 +328,7 @@ class TestSystemDefaults:
         seed_defaults(db)
         assert set_default(db, "bnk.far_pull_secret_default", "abc123") is True
 
-        row = db.query(ApplicationSetting).filter(
-            ApplicationSetting.key == "bnk.far_pull_secret_default"
-        ).first()
+        row = db.query(ApplicationSetting).filter(ApplicationSetting.key == "bnk.far_pull_secret_default").first()
         assert row is not None
         assert row.is_encrypted is True
         assert row.value != "abc123"

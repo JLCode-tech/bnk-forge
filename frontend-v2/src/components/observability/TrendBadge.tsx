@@ -17,7 +17,7 @@ export function TrendBadge({ delta, className }: TrendBadgeProps) {
     return (
       <span
         className={cn(
-          'inline-flex items-center rounded px-1 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground',
+          'inline-flex items-center rounded px-1 py-0.5 text-2xs font-medium bg-muted text-muted-foreground',
           className,
         )}
       >
@@ -27,7 +27,7 @@ export function TrendBadge({ delta, className }: TrendBadgeProps) {
   }
 
   if (Math.abs(delta) < 0.001) {
-    return <span className={cn('text-[10px] text-muted-foreground/70', className)}>—</span>;
+    return <span className={cn('text-2xs text-muted-foreground/70', className)}>—</span>;
   }
 
   const up = delta > 0;
@@ -35,7 +35,7 @@ export function TrendBadge({ delta, className }: TrendBadgeProps) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-0.5 text-[10px] font-medium tabular-nums',
+        'inline-flex items-center gap-0.5 text-2xs font-medium tabular-nums',
         up ? 'text-success' : 'text-destructive',
         className,
       )}

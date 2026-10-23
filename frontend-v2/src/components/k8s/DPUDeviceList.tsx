@@ -99,7 +99,7 @@ function DeviceRow({ device }: { device: DpfDpuDevice }) {
         </span>
 
         {/* Type */}
-        <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">
+        <Badge variant="outline" className="text-2xs px-1.5 py-0 shrink-0">
           {device.status?.dpuType ?? 'Unknown'}
         </Badge>
 
@@ -131,7 +131,7 @@ function DeviceRow({ device }: { device: DpfDpuDevice }) {
         <div className="flex-1" />
 
         {/* Stage badge */}
-        <Badge variant={stageVariant} className="text-[10px] px-2 py-0">
+        <Badge variant={stageVariant} className="text-2xs px-2 py-0">
           {stage}
         </Badge>
       </button>
@@ -218,7 +218,7 @@ function DetailField({
   if (!value) return null;
   return (
     <div>
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+      <span className="text-2xs uppercase tracking-wider text-muted-foreground">
         {label}
       </span>
       <p className={cn('mt-0.5 text-foreground/80', mono && 'font-mono')}>

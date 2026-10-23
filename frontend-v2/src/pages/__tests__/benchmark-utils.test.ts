@@ -3,15 +3,19 @@
  * no rendering. Diffs a completed run's latency_p99 / overall_rps against its
  * context's baseline using the shared REGRESSION_THRESHOLD_PCT (10%).
  */
-import { describe, it, expect } from 'vitest';
-import { getRegressionStatus, REGRESSION_THRESHOLD_PCT } from '@/pages/benchmark-utils';
+import { describe, it, expect } from "vitest";
+import {
+  getRegressionStatus,
+  REGRESSION_THRESHOLD_PCT,
+  targetOptionLabel,
+} from "@/pages/benchmark-constants";
 
-describe('getRegressionStatus', () => {
+describe("getRegressionStatus", () => {
   it('returns "baseline" when the run itself is the baseline', () => {
-    expect(getRegressionStatus({ is_baseline: true })).toBe('baseline');
+    expect(getRegressionStatus({ is_baseline: true })).toBe("baseline");
   });
 
-  it('returns null when there is no baseline context to compare against', () => {
+  it("returns null when there is no baseline context to compare against", () => {
     expect(
       getRegressionStatus({
         is_baseline: false,
@@ -30,7 +34,7 @@ describe('getRegressionStatus', () => {
       overall_rps: 100,
       baseline_overall_rps: 100,
     });
-    expect(status).toBe('regression');
+    expect(status).toBe("regression");
   });
 
   it('returns "regression" when overall_rps is more than 10% lower than baseline', () => {
@@ -40,7 +44,7 @@ describe('getRegressionStatus', () => {
       overall_rps: 80, // 20% lower than 100
       baseline_overall_rps: 100,
     });
-    expect(status).toBe('regression');
+    expect(status).toBe("regression");
   });
 
   it('returns "improvement" when latency_p99 is more than 10% better than baseline', () => {
@@ -50,7 +54,7 @@ describe('getRegressionStatus', () => {
       overall_rps: 100,
       baseline_overall_rps: 100,
     });
-    expect(status).toBe('improvement');
+    expect(status).toBe("improvement");
   });
 
   it('returns "improvement" when overall_rps is more than 10% higher than baseline', () => {
@@ -60,7 +64,7 @@ describe('getRegressionStatus', () => {
       overall_rps: 120, // 20% higher than 100
       baseline_overall_rps: 100,
     });
-    expect(status).toBe('improvement');
+    expect(status).toBe("improvement");
   });
 
   it('returns "neutral" when within the threshold band both ways', () => {
@@ -70,20 +74,47 @@ describe('getRegressionStatus', () => {
       overall_rps: 98, // 2% lower — within threshold
       baseline_overall_rps: 100,
     });
-    expect(status).toBe('neutral');
+    expect(status).toBe("neutral");
   });
 
-  it('regression takes precedence over an improving metric when signals conflict', () => {
+  it("regression takes precedence over an improving metric when signals conflict", () => {
     const status = getRegressionStatus({
       latency_p99: 0.25, // regresses
       baseline_latency_p99: 0.2,
       overall_rps: 130, // improves
       baseline_overall_rps: 100,
     });
-    expect(status).toBe('regression');
+    expect(status).toBe("regression");
   });
 
-  it('exposes the shared 10% threshold constant', () => {
+  it("exposes the shared 10% threshold constant", () => {
     expect(REGRESSION_THRESHOLD_PCT).toBe(10);
+  });
+});
+
+describe("targetOptionLabel", () => {
+  it("tells apart same-named targets on same-named clusters in different projects", () => {
+    const a = targetOptionLabel({
+      name: "mcp-route",
+      cluster_id: 18,
+      cluster_name: "bnk-staging-test",
+    });
+    const b = targetOptionLabel({
+      name: "mcp-route",
+      cluster_id: 21,
+      cluster_name: "bnk-staging-test",
+    });
+    expect(a).toBe("mcp-route (bnk-staging-test #18)");
+    expect(a).not.toBe(b);
+  });
+
+  it("falls back to the cluster id when the cluster name is not loaded", () => {
+    expect(
+      targetOptionLabel({
+        name: "mcp-route",
+        cluster_id: 7,
+        cluster_name: null,
+      }),
+    ).toBe("mcp-route (cluster #7)");
   });
 });

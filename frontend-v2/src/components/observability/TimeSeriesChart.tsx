@@ -35,8 +35,9 @@ interface MergedRow {
   [seriesName: string]: string | number;
 }
 
-function mergeSeries(series: LlmSeries[]): MergedRow[] {
+function mergeSeries(series: LlmSeries[], zeroFillMissing = false): MergedRow[] {
   const byTs = new Map<string, MergedRow>();
+  const names = series.map((s) => s.name);
   for (const s of series) {
     for (const p of s.points) {
       const row = byTs.get(p.ts) ?? { ts: p.ts };
@@ -44,7 +45,22 @@ function mergeSeries(series: LlmSeries[]): MergedRow[] {
       byTs.set(p.ts, row);
     }
   }
-  return Array.from(byTs.values()).sort((a, b) => (a.ts < b.ts ? -1 : 1));
+  const rows = Array.from(byTs.values()).sort((a, b) => {
+    const ta = new Date(a.ts).getTime();
+    const tb = new Date(b.ts).getTime();
+    if (!Number.isNaN(ta) && !Number.isNaN(tb)) return ta - tb;
+    return a.ts < b.ts ? -1 : 1;
+  });
+  if (zeroFillMissing) {
+    for (const row of rows) {
+      for (const n of names) {
+        if (row[n] === undefined) {
+          row[n] = 0;
+        }
+      }
+    }
+  }
+  return rows;
 }
 
 function fmtTick(ts: string): string {
@@ -61,7 +77,7 @@ export function TimeSeriesChart({
   height = 220,
   valueFormatter,
 }: TimeSeriesChartProps) {
-  const data = mergeSeries(series);
+  const data = mergeSeries(series, type === 'bar' || type === 'area');
   const names = series.map((s) => s.name);
   const fmt = valueFormatter ?? ((v: number) => String(v));
 
@@ -69,7 +85,7 @@ export function TimeSeriesChart({
     <>
       <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
       <XAxis dataKey="ts" tickFormatter={fmtTick} tick={{ fill: CHART_TEXT, fontSize: 10 }} minTickGap={24} />
-      <YAxis tickFormatter={(v) => fmt(Number(v))} tick={{ fill: CHART_TEXT, fontSize: 10 }} width={48} />
+      <YAxis tickFormatter={(v) => fmt(Number(v))} tick={{ fill: CHART_TEXT, fontSize: 10 }} width={56} />
       <RechartsTooltip
         contentStyle={CHART_TOOLTIP}
         labelFormatter={(l) => fmtTick(String(l))}
@@ -79,8 +95,8 @@ export function TimeSeriesChart({
   );
 
   return (
-    <div style={{ width: '100%', height: `${height}px` }}>
-    <ResponsiveContainer width="100%" height="100%" debounce={50}>
+    <div style={{ width: '100%', height: `${height}px`, minWidth: 0 }}>
+    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={height} initialDimension={{ width: 300, height }} debounce={50}>
       {type === 'bar' ? (
         <BarChart data={data}>
           {axes}
@@ -107,6 +123,7 @@ export function TimeSeriesChart({
               stroke={colors[i % colors.length]}
               fill={colors[i % colors.length]}
               fillOpacity={0.25}
+              connectNulls
               isAnimationActive={false}
             />
           ))}
@@ -122,6 +139,7 @@ export function TimeSeriesChart({
               stroke={colors[i % colors.length]}
               dot={false}
               strokeWidth={1.5}
+              connectNulls
               isAnimationActive={false}
             />
           ))}

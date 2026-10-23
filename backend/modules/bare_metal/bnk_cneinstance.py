@@ -48,15 +48,20 @@ class BnkCneInstanceSSHModule(BnkSSHModule):
         "instance_namespace": InputSpec(name="instance_namespace", source="profile", default="f5-operator"),
         "instance_name": InputSpec(name="instance_name", source="profile", default="bnk-instance"),
         "manifest_version": InputSpec(
-            name="manifest_version", source="module", required=True,
-            from_module="bare-metal/bnk-prerequisites", from_output="manifest_version",
+            name="manifest_version",
+            source="module",
+            required=True,
+            from_module="bare-metal/bnk-prerequisites",
+            from_output="manifest_version",
         ),
         "far_secret_name": InputSpec(name="far_secret_name", source="profile", default="far-secret"),
         "cluster_issuer_name": InputSpec(name="cluster_issuer_name", source="profile", default="bnk-ca-cluster-issuer"),
         "deployment_size": InputSpec(name="deployment_size", source="profile", default="Small"),
         "whole_cluster": InputSpec(name="whole_cluster", type="bool", source="profile", default=True),
         "dpu_enabled": InputSpec(name="dpu_enabled", type="bool", source="profile", default=False),
-        "dynamic_routing_enabled": InputSpec(name="dynamic_routing_enabled", type="bool", source="profile", default=True),
+        "dynamic_routing_enabled": InputSpec(
+            name="dynamic_routing_enabled", type="bool", source="profile", default=True
+        ),
         "firewall_acl_enabled": InputSpec(name="firewall_acl_enabled", type="bool", source="profile", default=True),
         "pseudo_cni_enabled": InputSpec(name="pseudo_cni_enabled", type="bool", source="profile", default=True),
         "intelligent_lb_enabled": InputSpec(name="intelligent_lb_enabled", type="bool", source="profile", default=True),
@@ -69,6 +74,10 @@ class BnkCneInstanceSSHModule(BnkSSHModule):
         "internal_pci_bus_id": InputSpec(name="internal_pci_bus_id", source="module", default="0000:00:08.0"),
         "cloud_provider": InputSpec(name="cloud_provider", source="auto", default=""),
         "bnk_cr_kind": InputSpec(name="bnk_cr_kind", source="profile", required=True),
+        "ai_gateway_enabled": InputSpec(name="ai_gateway_enabled", type="bool", source="profile", default=False),
+        "ai_gateway_console_enabled": InputSpec(
+            name="ai_gateway_console_enabled", type="bool", source="profile", default=True
+        ),
     }
 
     outputs = {
@@ -118,6 +127,15 @@ class BnkCneInstanceSSHModule(BnkSSHModule):
         spec["pseudoCNI"] = {"enabled": _b(v.get("pseudo_cni_enabled"), True)}
         spec["intelligentLB"] = {"enabled": _b(v.get("intelligent_lb_enabled"), True)}
         spec["coreCollection"] = {"enabled": False}
+        if isinstance(v.get("ai_gateway"), dict):
+            spec["aiGateway"] = v["ai_gateway"]
+        elif _b(v.get("ai_gateway_enabled"), False) or _b(v.get("llm_gateway"), False):
+            spec["aiGateway"] = {
+                "enabled": True,
+                "console": {
+                    "enabled": _b(v.get("ai_gateway_console_enabled"), True),
+                },
+            }
 
         cne_env: list[dict[str, str]] = [{"name": "TMM_DEFAULT_MTU", "value": f"{mtu}"}]
         if cloud_provider:

@@ -262,7 +262,7 @@ export function RepositoryManagementDialog({ open, onOpenChange }: RepositoryMan
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <h4 className="font-semibold text-sm">{repo.name}</h4>
-                          <Badge variant="outline" className="text-[10px]">
+                          <Badge variant="outline" className="text-2xs">
                             {repo.charts_count || 0} charts
                           </Badge>
                         </div>
@@ -270,7 +270,7 @@ export function RepositoryManagementDialog({ open, onOpenChange }: RepositoryMan
                           {repo.url}
                         </p>
                         {repo.last_update && (
-                          <p className="text-[10px] text-muted-foreground mt-1">
+                          <p className="text-2xs text-muted-foreground mt-1">
                             Updated: {new Date(repo.last_update).toLocaleDateString()}
                           </p>
                         )}

@@ -12,88 +12,69 @@ import pytest
 import requests
 from botocore.exceptions import ClientError, ReadTimeoutError
 
+from core.encryption import decrypt_value, encrypt_value
 from core.errors import BadRequestError, InternalError, NotFoundError
-from models import CloudCredentialTemplate
+from models import CloudCredentialTemplate, Notification, Project
+from services.azure_auth_service import AzureAuthError
+from services.credential_refresh_service import azure_refresh_failure_key
 from services.credential_template_service import CredentialTemplateService
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+_DEFAULT_TEMPLATE = {
+    "name": "aws-prod",
+    "description": "Production AWS credentials",
+    "provider": "aws",
+    "aws_auth_method": "access_keys",
+    "aws_profile": None,
+    "region": "us-east-1",
+    "aws_access_key_id": "AKIATEST123",
+    "aws_secret_access_key": "secret-key-value",
+    "aws_session_token": None,
+    "aws_sso_enabled": False,
+    "aws_sso_start_url": None,
+    "aws_sso_region": None,
+    "aws_sso_account_id": None,
+    "aws_sso_role_name": None,
+    "gcp_project_id": None,
+    "gcp_credentials": None,
+    "azure_auth_method": None,
+    "azure_subscription_id": None,
+    "azure_tenant_id": None,
+    "azure_client_id": None,
+    "azure_client_secret": None,
+    "azure_credentials": None,
+    "ibmcloud_api_key": None,
+    "ibmcloud_resource_group": "default",
+    "ssh_host": None,
+    "ssh_port": None,
+    "ssh_username": None,
+    "ssh_auth_type": None,
+    "ssh_password": None,
+    "ssh_private_key": None,
+    "ssh_key_passphrase": None,
+    "is_default": False,
+}
+
+
 def _make_template_data(**overrides):
     """Build a SimpleNamespace mimicking the Pydantic request model."""
-    defaults = {
-        "name": "aws-prod",
-        "description": "Production AWS credentials",
-        "provider": "aws",
-        "aws_auth_method": "access_keys",
-        "aws_profile": None,
-        "region": "us-east-1",
-        "aws_access_key_id": "AKIATEST123",
-        "aws_secret_access_key": "secret-key-value",
-        "aws_session_token": None,
-        "aws_sso_enabled": False,
-        "aws_sso_start_url": None,
-        "aws_sso_region": None,
-        "aws_sso_account_id": None,
-        "aws_sso_role_name": None,
-        "gcp_project_id": None,
-        "gcp_credentials": None,
-        "azure_subscription_id": None,
-        "azure_tenant_id": None,
-        "azure_credentials": None,
-        "ibmcloud_api_key": None,
-        "ibmcloud_resource_group": "default",
-        "ssh_host": None,
-        "ssh_port": None,
-        "ssh_username": None,
-        "ssh_auth_type": None,
-        "ssh_password": None,
-        "ssh_private_key": None,
-        "ssh_key_passphrase": None,
-        "is_default": False,
-    }
-    defaults.update(overrides)
-    return SimpleNamespace(**defaults)
+    return SimpleNamespace(**{**_DEFAULT_TEMPLATE, **overrides})
 
 
 def _make_update_data(**overrides):
     """Build a SimpleNamespace mimicking the Pydantic update model with model_dump."""
-    defaults = {
-        "name": None,
-        "description": None,
-        "provider": None,
-        "aws_auth_method": None,
-        "aws_profile": None,
-        "region": None,
-        "aws_access_key_id": None,
-        "aws_secret_access_key": None,
-        "aws_session_token": None,
-        "is_default": None,
-        "ssh_host": None,
-        "ssh_port": None,
-        "ssh_username": None,
-        "ssh_auth_type": None,
-        "ssh_password": None,
-        "ssh_private_key": None,
-        "ssh_key_passphrase": None,
-        "gcp_credentials": None,
-        "azure_credentials": None,
-        "ibmcloud_api_key": None,
-        "ibmcloud_resource_group": None,
-    }
-    defaults.update(overrides)
-    ns = SimpleNamespace(**defaults)
-    # Mimic model_dump(exclude_unset=True) — return only keys that were explicitly set
-    ns.model_dump = lambda exclude_unset=False: {
-        k: v for k, v in overrides.items()
-    } if exclude_unset else defaults
+    base = {k: None for k in _DEFAULT_TEMPLATE}
+    base.update(overrides)
+    ns = SimpleNamespace(**base)
+    ns.model_dump = lambda exclude_unset=False: {k: v for k, v in overrides.items()} if exclude_unset else base
     return ns
 
 
 def _create_template_in_db(db, **overrides):
     """Directly create a CloudCredentialTemplate in DB for read/update/delete tests."""
-    from core.encryption import encrypt_value
     defaults = {
         "name": "test-template",
         "provider": "aws",
@@ -103,14 +84,16 @@ def _create_template_in_db(db, **overrides):
     }
     defaults.update(overrides)
 
-    # Handle encryption of secret fields
     secret = defaults.pop("_secret_key", None)
     ibm_api_key = defaults.pop("_ibm_api_key", None)
+    gcp_credentials = defaults.pop("_gcp_credentials", None)
     template = CloudCredentialTemplate(**defaults)
     if secret:
         template.aws_secret_access_key_encrypted = encrypt_value(secret)
     if ibm_api_key:
         template.ibmcloud_api_key_encrypted = encrypt_value(ibm_api_key)
+    if gcp_credentials:
+        template.gcp_credentials_encrypted = encrypt_value(gcp_credentials)
 
     db.add(template)
     db.flush()
@@ -118,9 +101,42 @@ def _create_template_in_db(db, **overrides):
     return template
 
 
+def _create_sso_template(db, name, **overrides):
+    """Create a CloudCredentialTemplate with encrypted SSO token fields ready for poll/refresh tests."""
+    t = _create_template_in_db(
+        db,
+        name=name,
+        aws_sso_enabled=True,
+        aws_sso_start_url="https://start.awsapps.com/start",
+        aws_sso_region="us-east-1",
+        aws_sso_account_id="123456789012",
+        aws_sso_role_name="AdministratorAccess",
+        **overrides,
+    )
+    t.aws_sso_client_id = "client-id-abc"
+    t.aws_sso_client_secret_encrypted = encrypt_value("client-secret-xyz")
+    t.aws_sso_refresh_token_encrypted = encrypt_value("refresh-token-abc")
+    db.flush()
+    db.refresh(t)
+    return t
+
+
+_SSO_DEVICE_AUTH_RESULT = {
+    "client_id": "c-123",
+    "client_secret": "s-456",
+    "user_code": "ABCD-EFGH",
+    "verification_uri": "https://device.sso.example.com/",
+    "verification_uri_complete": "https://device.sso.example.com/?user_code=ABCD-EFGH",
+    "expires_in": 600,
+    "interval": 5,
+    "device_code": "dc-789",
+}
+
+
 # ---------------------------------------------------------------------------
 # create_template
 # ---------------------------------------------------------------------------
+
 
 class TestCreateTemplate:
     """Create credential templates with field encryption."""
@@ -139,7 +155,6 @@ class TestCreateTemplate:
     def test_encrypts_secret_key(self, mock_get_default, db):
         svc = CredentialTemplateService(db)
         result = svc.create_template(_make_template_data())
-        # Verify the encrypted field is not plaintext
         template = db.query(CloudCredentialTemplate).filter(CloudCredentialTemplate.id == result["id"]).first()
         assert template.aws_secret_access_key_encrypted is not None
         assert "secret-key-value" not in template.aws_secret_access_key_encrypted
@@ -163,7 +178,6 @@ class TestCreateTemplate:
         svc.create_template(_make_template_data(name="first", is_default=True))
         svc.create_template(_make_template_data(name="second", is_default=True))
         db.flush()
-        # The first template should no longer be default
         first = db.query(CloudCredentialTemplate).filter(CloudCredentialTemplate.name == "first").first()
         second = db.query(CloudCredentialTemplate).filter(CloudCredentialTemplate.name == "second").first()
         assert first.is_default is False
@@ -172,35 +186,39 @@ class TestCreateTemplate:
     @patch("services.credential_template_service.get_default", return_value="us-east-1")
     def test_creates_ssh_template(self, mock_get_default, db):
         svc = CredentialTemplateService(db)
-        result = svc.create_template(_make_template_data(
-            name="ssh-cred",
-            provider="ssh",
-            aws_auth_method=None,
-            aws_access_key_id=None,
-            aws_secret_access_key=None,
-            ssh_host="10.0.0.1",
-            ssh_port=22,
-            ssh_username="admin",
-            ssh_auth_type="password",
-            ssh_password="s3cret",
-        ))
+        result = svc.create_template(
+            _make_template_data(
+                name="ssh-cred",
+                provider="ssh",
+                aws_auth_method=None,
+                aws_access_key_id=None,
+                aws_secret_access_key=None,
+                ssh_host="10.0.0.1",
+                ssh_port=22,
+                ssh_username="admin",
+                ssh_auth_type="password",
+                ssh_password="s3cret",
+            )
+        )
         assert result["provider"] == "ssh"
         assert result["has_ssh_password"] is True
         assert result["ssh_host"] == "10.0.0.1"
 
     def test_creates_ibm_template(self, db):
         svc = CredentialTemplateService(db)
-        result = svc.create_template(_make_template_data(
-            name="ibm-prod",
-            description="Production IBM Cloud credentials",
-            provider="ibm",
-            aws_auth_method=None,
-            region="us-south",
-            aws_access_key_id=None,
-            aws_secret_access_key=None,
-            ibmcloud_api_key="ibm-api-key-value",
-            ibmcloud_resource_group="team-rg",
-        ))
+        result = svc.create_template(
+            _make_template_data(
+                name="ibm-prod",
+                description="Production IBM Cloud credentials",
+                provider="ibm",
+                aws_auth_method=None,
+                region="us-south",
+                aws_access_key_id=None,
+                aws_secret_access_key=None,
+                ibmcloud_api_key="ibm-api-key-value",
+                ibmcloud_resource_group="team-rg",
+            )
+        )
         assert result["name"] == "ibm-prod"
         assert result["provider"] == "ibm"
         assert result["region"] == "us-south"
@@ -209,146 +227,206 @@ class TestCreateTemplate:
 
     def test_encrypts_ibm_api_key(self, db):
         svc = CredentialTemplateService(db)
-        result = svc.create_template(_make_template_data(
-            name="ibm-encrypted",
-            provider="ibm",
-            aws_auth_method=None,
-            region="us-south",
-            aws_access_key_id=None,
-            aws_secret_access_key=None,
-            ibmcloud_api_key="ibm-api-key-value",
-        ))
+        result = svc.create_template(
+            _make_template_data(
+                name="ibm-encrypted",
+                provider="ibm",
+                aws_auth_method=None,
+                region="us-south",
+                aws_access_key_id=None,
+                aws_secret_access_key=None,
+                ibmcloud_api_key="ibm-api-key-value",
+            )
+        )
         template = db.query(CloudCredentialTemplate).filter(CloudCredentialTemplate.id == result["id"]).first()
         assert template.ibmcloud_api_key_encrypted is not None
         assert "ibm-api-key-value" not in template.ibmcloud_api_key_encrypted
 
     def test_ibm_resource_group_defaults_to_default(self, db):
         svc = CredentialTemplateService(db)
-        result = svc.create_template(_make_template_data(
-            name="ibm-default-rg",
-            provider="ibm",
-            aws_auth_method=None,
-            region="us-south",
-            aws_access_key_id=None,
-            aws_secret_access_key=None,
-            ibmcloud_api_key="ibm-api-key-value",
-            ibmcloud_resource_group=None,
-        ))
+        result = svc.create_template(
+            _make_template_data(
+                name="ibm-default-rg",
+                provider="ibm",
+                aws_auth_method=None,
+                region="us-south",
+                aws_access_key_id=None,
+                aws_secret_access_key=None,
+                ibmcloud_api_key="ibm-api-key-value",
+                ibmcloud_resource_group=None,
+            )
+        )
         assert result["ibmcloud_resource_group"] == "default"
+
+
+# ---------------------------------------------------------------------------
+# provider validation (issue #191)
+# ---------------------------------------------------------------------------
+
+
+class TestProviderValidation:
+    """A credential template's provider must match a real injection path."""
+
+    @patch("services.credential_template_service.get_default", return_value="us-east-1")
+    def test_create_rejects_misspelled_ibmcloud_provider(self, mock_get_default, db):
+        svc = CredentialTemplateService(db)
+        with pytest.raises(BadRequestError, match="Unsupported credential-template provider 'ibmcloud'"):
+            svc.create_template(_make_template_data(name="ibm-roks", provider="ibmcloud"))
+        assert db.query(CloudCredentialTemplate).filter(CloudCredentialTemplate.name == "ibm-roks").first() is None
+
+    @patch("services.credential_template_service.get_default", return_value="us-east-1")
+    def test_create_rejects_unknown_provider_with_enumerated_message(self, mock_get_default, db):
+        svc = CredentialTemplateService(db)
+        with pytest.raises(BadRequestError) as exc:
+            svc.create_template(_make_template_data(name="bogus", provider="digitalocean"))
+        msg = str(exc.value)
+        assert "digitalocean" in msg
+        for supported in ("aws", "azure", "gcp", "ibm", "ssh"):
+            assert supported in msg
+
+    @patch("services.credential_template_service.get_default", return_value="us-east-1")
+    def test_create_rejects_empty_provider(self, mock_get_default, db):
+        svc = CredentialTemplateService(db)
+        with pytest.raises(BadRequestError):
+            svc.create_template(_make_template_data(name="empty-prov", provider=""))
+
+    @pytest.mark.parametrize("provider", ["aws", "gcp", "azure", "ibm", "ssh"])
+    @patch("services.credential_template_service.get_default", return_value="us-east-1")
+    def test_create_accepts_every_supported_provider(self, mock_get_default, provider, db):
+        svc = CredentialTemplateService(db)
+        result = svc.create_template(
+            _make_template_data(
+                name=f"tpl-{provider}",
+                provider=provider,
+                ibmcloud_api_key="ibm-api-key-value" if provider == "ibm" else None,
+            )
+        )
+        assert result["provider"] == provider
+
+    def test_update_rejects_switch_to_unknown_provider(self, db):
+        t = _create_template_in_db(db, name="aws-live", provider="aws")
+        svc = CredentialTemplateService(db)
+        with pytest.raises(BadRequestError, match="Unsupported credential-template provider 'ibmcloud'"):
+            svc.update_template(t.id, _make_update_data(provider="ibmcloud"))
+        db.refresh(t)
+        assert t.provider == "aws"
+
+    def test_update_without_provider_change_is_allowed(self, db):
+        t = _create_template_in_db(db, name="aws-keep", provider="aws")
+        svc = CredentialTemplateService(db)
+        result = svc.update_template(t.id, _make_update_data(description="just a note"))
+        assert result["provider"] == "aws"
+        assert result["description"] == "just a note"
+
+    def test_update_with_explicit_null_provider_leaves_it_unchanged(self, db):
+        t = _create_template_in_db(db, name="aws-null-prov", provider="aws")
+        svc = CredentialTemplateService(db)
+        result = svc.update_template(t.id, _make_update_data(provider=None, description="edit"))
+        assert result["provider"] == "aws"
+        assert result["description"] == "edit"
+        db.refresh(t)
+        assert t.provider == "aws"
 
 
 # ---------------------------------------------------------------------------
 # list_templates / get_template
 # ---------------------------------------------------------------------------
 
+
 class TestListAndGetTemplates:
     """Template retrieval operations."""
 
     def test_list_empty(self, db):
         svc = CredentialTemplateService(db)
-        result = svc.list_templates()
-        assert result == []
+        assert svc.list_templates() == []
 
     def test_list_all(self, db):
         _create_template_in_db(db, name="t1")
         _create_template_in_db(db, name="t2")
-        svc = CredentialTemplateService(db)
-        result = svc.list_templates()
-        assert len(result) == 2
+        assert len(CredentialTemplateService(db).list_templates()) == 2
 
     def test_list_filtered_by_provider(self, db):
         _create_template_in_db(db, name="aws-cred", provider="aws")
         _create_template_in_db(db, name="ssh-cred", provider="ssh")
-        svc = CredentialTemplateService(db)
-        result = svc.list_templates(provider="ssh")
+        result = CredentialTemplateService(db).list_templates(provider="ssh")
         assert len(result) == 1
         assert result[0]["provider"] == "ssh"
 
     def test_list_filtered_by_provider_ibm(self, db):
         _create_template_in_db(db, name="aws-cred", provider="aws")
         _create_template_in_db(db, name="ibm-cred", provider="ibm", _ibm_api_key="ibm-key")
-        svc = CredentialTemplateService(db)
-        result = svc.list_templates(provider="ibm")
+        result = CredentialTemplateService(db).list_templates(provider="ibm")
         assert len(result) == 1
         assert result[0]["provider"] == "ibm"
         assert result[0]["has_ibmcloud_api_key"] is True
 
     def test_get_existing(self, db):
         t = _create_template_in_db(db, name="get-me")
-        svc = CredentialTemplateService(db)
-        result = svc.get_template(t.id)
-        assert result["name"] == "get-me"
+        assert CredentialTemplateService(db).get_template(t.id)["name"] == "get-me"
 
     def test_get_nonexistent_raises(self, db):
-        svc = CredentialTemplateService(db)
         with pytest.raises(NotFoundError):
-            svc.get_template(99999)
+            CredentialTemplateService(db).get_template(99999)
 
 
 # ---------------------------------------------------------------------------
 # update_template
 # ---------------------------------------------------------------------------
 
+
 class TestUpdateTemplate:
     """Update credential templates."""
 
     def test_update_name(self, db):
         t = _create_template_in_db(db, name="old-name")
-        svc = CredentialTemplateService(db)
-        result = svc.update_template(t.id, _make_update_data(name="new-name"))
-        assert result["name"] == "new-name"
+        res = CredentialTemplateService(db).update_template(t.id, _make_update_data(name="new-name"))
+        assert res["name"] == "new-name"
 
     def test_update_duplicate_name_raises(self, db):
         _create_template_in_db(db, name="existing")
         t2 = _create_template_in_db(db, name="to-rename")
-        svc = CredentialTemplateService(db)
         with pytest.raises(BadRequestError, match="already exists"):
-            svc.update_template(t2.id, _make_update_data(name="existing"))
+            CredentialTemplateService(db).update_template(t2.id, _make_update_data(name="existing"))
 
     def test_update_secret_encrypts(self, db):
         t = _create_template_in_db(db, name="update-secret")
-        svc = CredentialTemplateService(db)
-        svc.update_template(t.id, _make_update_data(aws_secret_access_key="new-secret"))
+        CredentialTemplateService(db).update_template(t.id, _make_update_data(aws_secret_access_key="new-secret"))
         db.refresh(t)
         assert t.aws_secret_access_key_encrypted is not None
 
     def test_update_region(self, db):
         t = _create_template_in_db(db, name="update-region")
-        svc = CredentialTemplateService(db)
-        result = svc.update_template(t.id, _make_update_data(region="eu-west-1"))
-        assert result["region"] == "eu-west-1"
+        res = CredentialTemplateService(db).update_template(t.id, _make_update_data(region="eu-west-1"))
+        assert res["region"] == "eu-west-1"
 
     def test_update_ibm_api_key_encrypts(self, db):
         t = _create_template_in_db(db, name="update-ibm", provider="ibm")
-        svc = CredentialTemplateService(db)
-        svc.update_template(t.id, _make_update_data(ibmcloud_api_key="new-ibm-secret"))
+        CredentialTemplateService(db).update_template(t.id, _make_update_data(ibmcloud_api_key="new-ibm-secret"))
         db.refresh(t)
         assert t.ibmcloud_api_key_encrypted is not None
 
     def test_update_ibm_blank_key_preserves_existing(self, db):
         t = _create_template_in_db(db, name="update-ibm-preserve", provider="ibm", _ibm_api_key="existing-ibm-secret")
-        original = t.ibmcloud_api_key_encrypted
-        svc = CredentialTemplateService(db)
-        svc.update_template(t.id, _make_update_data(ibmcloud_api_key=""))
+        orig = t.ibmcloud_api_key_encrypted
+        CredentialTemplateService(db).update_template(t.id, _make_update_data(ibmcloud_api_key=""))
         db.refresh(t)
-        assert t.ibmcloud_api_key_encrypted == original
+        assert t.ibmcloud_api_key_encrypted == orig
 
     def test_update_ibm_resource_group(self, db):
         t = _create_template_in_db(db, name="update-ibm-rg", provider="ibm", _ibm_api_key="existing-ibm-secret")
-        svc = CredentialTemplateService(db)
-        result = svc.update_template(t.id, _make_update_data(ibmcloud_resource_group="platform-rg"))
-        assert result["ibmcloud_resource_group"] == "platform-rg"
+        res = CredentialTemplateService(db).update_template(
+            t.id, _make_update_data(ibmcloud_resource_group="platform-rg")
+        )
+        assert res["ibmcloud_resource_group"] == "platform-rg"
 
     def test_update_nonexistent_raises(self, db):
-        svc = CredentialTemplateService(db)
         with pytest.raises(NotFoundError):
-            svc.update_template(99999, _make_update_data(name="x"))
+            CredentialTemplateService(db).update_template(99999, _make_update_data(name="x"))
 
     def test_update_sets_default_clears_others(self, db):
         t1 = _create_template_in_db(db, name="default-t1", is_default=True)
         t2 = _create_template_in_db(db, name="default-t2", is_default=False)
-        svc = CredentialTemplateService(db)
-        svc.update_template(t2.id, _make_update_data(is_default=True))
+        CredentialTemplateService(db).update_template(t2.id, _make_update_data(is_default=True))
         db.refresh(t1)
         assert t1.is_default is False
 
@@ -357,32 +435,31 @@ class TestUpdateTemplate:
 # delete_template
 # ---------------------------------------------------------------------------
 
+
 class TestDeleteTemplate:
     """Template deletion with project-usage guard."""
 
     def test_delete_removes_template(self, db):
         t = _create_template_in_db(db, name="to-delete")
-        svc = CredentialTemplateService(db)
-        svc.delete_template(t.id)
+        CredentialTemplateService(db).delete_template(t.id)
         db.flush()
         assert db.query(CloudCredentialTemplate).filter(CloudCredentialTemplate.id == t.id).first() is None
 
     def test_delete_nonexistent_raises(self, db):
-        svc = CredentialTemplateService(db)
         with pytest.raises(NotFoundError):
-            svc.delete_template(99999)
+            CredentialTemplateService(db).delete_template(99999)
 
     def test_delete_in_use_raises(self, db, make_project):
         t = _create_template_in_db(db, name="in-use")
-        project = make_project(credential_template_id=t.id)
-        svc = CredentialTemplateService(db)
+        make_project(credential_template_id=t.id)
         with pytest.raises(BadRequestError, match="Cannot delete"):
-            svc.delete_template(t.id)
+            CredentialTemplateService(db).delete_template(t.id)
 
 
 # ---------------------------------------------------------------------------
 # test_template (AWS)
 # ---------------------------------------------------------------------------
+
 
 class TestTestTemplateAWS:
     """AWS credential testing via STS (boto3)."""
@@ -397,69 +474,73 @@ class TestTestTemplateAWS:
             "Arn": "arn:aws:iam::123:user/test",
         }
         mock_session.return_value.client.return_value = sts
-        svc = CredentialTemplateService(db)
-        result = svc.test_template(t.id)
+        result = CredentialTemplateService(db).test_template(t.id)
         assert result["success"] is True
         assert result["account_id"] == "123456789012"
 
+    @pytest.mark.parametrize(
+        "exc, match",
+        [
+            (
+                ClientError({"Error": {"Code": "ExpiredToken", "Message": "Token expired"}}, "GetCallerIdentity"),
+                "expired",
+            ),
+            (
+                ClientError({"Error": {"Code": "InvalidClientTokenId", "Message": "Bad key"}}, "GetCallerIdentity"),
+                "Invalid credentials",
+            ),
+            (ReadTimeoutError(endpoint_url="https://sts.amazonaws.com"), "timed out"),
+        ],
+        ids=["expired_token", "invalid_key", "timeout"],
+    )
     @patch("boto3.Session")
-    def test_expired_token(self, mock_session, db):
-        t = _create_template_in_db(db, name="test-expired", _secret_key="mysecret")
+    def test_aws_errors(self, mock_session, exc, match, db):
+        t = _create_template_in_db(db, name="test-aws-err", _secret_key="mysecret")
         sts = MagicMock()
-        sts.get_caller_identity.side_effect = ClientError(
-            {"Error": {"Code": "ExpiredToken", "Message": "Token expired"}},
-            "GetCallerIdentity",
-        )
+        sts.get_caller_identity.side_effect = exc
         mock_session.return_value.client.return_value = sts
-        svc = CredentialTemplateService(db)
-        result = svc.test_template(t.id)
+        result = CredentialTemplateService(db).test_template(t.id)
         assert result["success"] is False
-        assert "expired" in result["error"].lower()
-
-    @patch("boto3.Session")
-    def test_invalid_key(self, mock_session, db):
-        t = _create_template_in_db(db, name="test-invalid", _secret_key="mysecret")
-        sts = MagicMock()
-        sts.get_caller_identity.side_effect = ClientError(
-            {"Error": {"Code": "InvalidClientTokenId", "Message": "Bad key"}},
-            "GetCallerIdentity",
-        )
-        mock_session.return_value.client.return_value = sts
-        svc = CredentialTemplateService(db)
-        result = svc.test_template(t.id)
-        assert result["success"] is False
-        assert "Invalid credentials" in result["error"]
-
-    @patch("boto3.Session")
-    def test_timeout(self, mock_session, db):
-        t = _create_template_in_db(db, name="test-timeout", _secret_key="mysecret")
-        sts = MagicMock()
-        sts.get_caller_identity.side_effect = ReadTimeoutError(endpoint_url="https://sts.amazonaws.com")
-        mock_session.return_value.client.return_value = sts
-        svc = CredentialTemplateService(db)
-        result = svc.test_template(t.id)
-        assert result["success"] is False
-        assert "timed out" in result["error"].lower()
+        assert match.lower() in result["error"].lower()
 
     def test_no_access_key_returns_error(self, db):
         t = _create_template_in_db(db, name="no-key", aws_access_key_id=None)
-        svc = CredentialTemplateService(db)
-        result = svc.test_template(t.id)
+        result = CredentialTemplateService(db).test_template(t.id)
         assert result["success"] is False
         assert "No access key" in result["error"]
 
     def test_profile_no_profile_returns_error(self, db):
         t = _create_template_in_db(db, name="no-profile", aws_auth_method="profile", aws_profile=None)
-        svc = CredentialTemplateService(db)
-        result = svc.test_template(t.id)
+        result = CredentialTemplateService(db).test_template(t.id)
         assert result["success"] is False
         assert "No AWS profile" in result["error"]
 
     def test_unsupported_provider_raises(self, db):
-        t = _create_template_in_db(db, name="gcp-cred", provider="gcp")
-        svc = CredentialTemplateService(db)
-        with pytest.raises(BadRequestError, match="only supported for AWS and SSH"):
-            svc.test_template(t.id)
+        t = _create_template_in_db(db, name="oracle-cred", provider="oracle")
+        with pytest.raises(BadRequestError, match="only supported for AWS, Azure, GCP, IBM, and SSH"):
+            CredentialTemplateService(db).test_template(t.id)
+
+
+class TestTestTemplateGCP:
+    """GCP credential testing via Service Account OAuth2 token."""
+
+    @patch("google.oauth2.service_account.Credentials.from_service_account_info")
+    def test_valid_gcp_credentials(self, mock_creds_cls, db):
+        mock_creds = MagicMock(token="mock-gcp-token")
+        mock_creds_cls.return_value = mock_creds
+        sa_json = '{"client_email": "test-sa@project.iam.gserviceaccount.com", "project_id": "test-project"}'
+        t = _create_template_in_db(db, name="gcp-valid", provider="gcp", _gcp_credentials=sa_json)
+        result = CredentialTemplateService(db).test_template(t.id)
+        assert result["success"] is True
+        assert result["account_id"] == "test-sa@project.iam.gserviceaccount.com"
+        assert "test-project" in result["details"]
+
+    def test_missing_gcp_credentials_returns_error(self, db):
+        t = _create_template_in_db(db, name="gcp-missing", provider="gcp")
+        result = CredentialTemplateService(db).test_template(t.id)
+        assert result["success"] is False
+        assert "No GCP credentials" in result["error"]
+
 
 class TestTestTemplateIBM:
     """IBM Cloud API key testing via IAM token exchange."""
@@ -471,9 +552,7 @@ class TestTestTemplateIBM:
             ok=True,
             json=lambda: {"access_token": "token", "iam_id": "IBMid-123", "expires_in": 3600},
         )
-
-        svc = CredentialTemplateService(db)
-        result = svc.test_template(t.id)
+        result = CredentialTemplateService(db).test_template(t.id)
         assert result["success"] is True
         assert result["iam_id"] == "IBMid-123"
         assert result["expires_in"] == 3600
@@ -487,16 +566,13 @@ class TestTestTemplateIBM:
             text='{"errorCode":"BXNIM0415E"}',
             json=lambda: {"errorCode": "BXNIM0415E", "error_description": "Provided API key could not be found"},
         )
-
-        svc = CredentialTemplateService(db)
-        result = svc.test_template(t.id)
+        result = CredentialTemplateService(db).test_template(t.id)
         assert result["success"] is False
         assert result["error"] == "Invalid IBM Cloud API key"
 
     def test_missing_ibm_api_key_returns_error(self, db):
         t = _create_template_in_db(db, name="ibm-missing", provider="ibm")
-        svc = CredentialTemplateService(db)
-        result = svc.test_template(t.id)
+        result = CredentialTemplateService(db).test_template(t.id)
         assert result["success"] is False
         assert "No IBM Cloud API key" in result["error"]
 
@@ -504,48 +580,37 @@ class TestTestTemplateIBM:
     def test_ibm_timeout(self, mock_post, db):
         t = _create_template_in_db(db, name="ibm-timeout", provider="ibm", _ibm_api_key="ibm-key")
         mock_post.side_effect = requests.Timeout()
-
-        svc = CredentialTemplateService(db)
-        result = svc.test_template(t.id)
+        result = CredentialTemplateService(db).test_template(t.id)
         assert result["success"] is False
         assert "timed out" in result["error"].lower()
 
-
-# ---------------------------------------------------------------------------
-# test_template (SSH)
-# ---------------------------------------------------------------------------
 
 class TestTestTemplateSSH:
     """SSH credential testing."""
 
     @patch("services.ssh_tunnel_manager.get_tunnel_manager")
     def test_ssh_test_delegates(self, mock_get_mgr, db):
-        t = _create_template_in_db(db, name="ssh-test", provider="ssh", ssh_host="10.0.0.1",
-                                    ssh_port=22, ssh_username="admin", ssh_auth_type="password")
+        t = _create_template_in_db(
+            db,
+            name="ssh-test",
+            provider="ssh",
+            ssh_host="10.0.0.1",
+            ssh_port=22,
+            ssh_username="admin",
+            ssh_auth_type="password",
+        )
         mock_mgr = MagicMock()
         mock_mgr.test_ssh_connection.return_value = {"success": True, "message": "Connected"}
         mock_get_mgr.return_value = mock_mgr
 
-        svc = CredentialTemplateService(db)
-        result = svc.test_template(t.id)
+        result = CredentialTemplateService(db).test_template(t.id)
         assert result["success"] is True
         mock_mgr.test_ssh_connection.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
-# initiate_sso
+# initiate_sso / get_sso_status
 # ---------------------------------------------------------------------------
-
-_SSO_DEVICE_AUTH_RESULT = {
-    "client_id": "c-123",
-    "client_secret": "s-456",
-    "user_code": "ABCD-EFGH",
-    "verification_uri": "https://device.sso.example.com/",
-    "verification_uri_complete": "https://device.sso.example.com/?user_code=ABCD-EFGH",
-    "expires_in": 600,
-    "interval": 5,
-    "device_code": "dc-789",
-}
 
 
 class TestInitiateSSO:
@@ -553,30 +618,28 @@ class TestInitiateSSO:
 
     @patch("services.credential_template_service.AWSAuthService")
     def test_initiate_success(self, mock_aws, db):
-        t = _create_template_in_db(db, name="sso-template", aws_sso_enabled=True,
-                                    aws_sso_start_url="https://start.awsapps.com/start",
-                                    aws_sso_region="us-east-1",
-                                    aws_sso_account_id="123456789012",
-                                    aws_sso_role_name="AdministratorAccess")
+        t = _create_template_in_db(
+            db,
+            name="sso-template",
+            aws_sso_enabled=True,
+            aws_sso_start_url="https://start.awsapps.com/start",
+            aws_sso_region="us-east-1",
+            aws_sso_account_id="123456789012",
+            aws_sso_role_name="AdministratorAccess",
+        )
         mock_auth = MagicMock()
         mock_auth.initiate_device_authorization.return_value = _SSO_DEVICE_AUTH_RESULT
         mock_aws.return_value = mock_auth
 
-        svc = CredentialTemplateService(db)
-        result = svc.initiate_sso(t.id)
+        result = CredentialTemplateService(db).initiate_sso(t.id)
         assert result["success"] is True
         assert result["data"]["user_code"] == "ABCD-EFGH"
 
     @patch("services.credential_template_service.AWSAuthService")
     def test_initiate_allowed_when_sso_disabled_but_config_complete(self, mock_aws, db):
-        """Templates with aws_sso_enabled=False but complete SSO config can still initiate.
-
-        This covers the regression introduced by the token-refresh PR that changed
-        auth_method to 'access_keys' / aws_sso_enabled=False while preserving SSO
-        config fields and previous authenticated_at/token_expiry.
-        """
         t = _create_template_in_db(
-            db, name="sso-disabled-complete-config",
+            db,
+            name="sso-disabled-complete-config",
             aws_sso_enabled=False,
             aws_auth_method="access_keys",
             aws_sso_start_url="https://start.awsapps.com/start",
@@ -588,8 +651,7 @@ class TestInitiateSSO:
         mock_auth.initiate_device_authorization.return_value = _SSO_DEVICE_AUTH_RESULT
         mock_aws.return_value = mock_auth
 
-        svc = CredentialTemplateService(db)
-        result = svc.initiate_sso(t.id)
+        result = CredentialTemplateService(db).initiate_sso(t.id)
         assert result["success"] is True
         assert result["data"]["user_code"] == "ABCD-EFGH"
         mock_auth.initiate_device_authorization.assert_called_once_with(
@@ -598,80 +660,71 @@ class TestInitiateSSO:
         )
 
     def test_sso_missing_config_raises(self, db):
-        """Templates without SSO config fields are rejected regardless of aws_sso_enabled."""
-        t = _create_template_in_db(db, name="incomplete-sso", aws_sso_enabled=False,
-                                    aws_sso_start_url=None, aws_sso_region=None)
-        svc = CredentialTemplateService(db)
+        t = _create_template_in_db(
+            db, name="incomplete-sso", aws_sso_enabled=False, aws_sso_start_url=None, aws_sso_region=None
+        )
         with pytest.raises(BadRequestError, match="incomplete"):
-            svc.initiate_sso(t.id)
+            CredentialTemplateService(db).initiate_sso(t.id)
 
     def test_sso_enabled_but_partial_config_raises(self, db):
-        """aws_sso_enabled=True with only start_url (missing account_id/role_name) is rejected."""
-        t = _create_template_in_db(db, name="partial-sso", aws_sso_enabled=True,
-                                    aws_sso_start_url="https://start.awsapps.com/start",
-                                    aws_sso_region="us-east-1",
-                                    aws_sso_account_id=None, aws_sso_role_name=None)
-        svc = CredentialTemplateService(db)
+        t = _create_template_in_db(
+            db,
+            name="partial-sso",
+            aws_sso_enabled=True,
+            aws_sso_start_url="https://start.awsapps.com/start",
+            aws_sso_region="us-east-1",
+            aws_sso_account_id=None,
+            aws_sso_role_name=None,
+        )
         with pytest.raises(BadRequestError, match="incomplete"):
-            sso = svc.initiate_sso(t.id)
+            CredentialTemplateService(db).initiate_sso(t.id)
 
-
-# ---------------------------------------------------------------------------
-# get_sso_status
-# ---------------------------------------------------------------------------
 
 class TestGetSSOStatus:
     """SSO authentication status checking."""
 
     def test_sso_disabled(self, db):
         t = _create_template_in_db(db, name="no-sso-status", aws_sso_enabled=False)
-        svc = CredentialTemplateService(db)
-        result = svc.get_sso_status(t.id)
-        assert result["sso_enabled"] is False
+        assert CredentialTemplateService(db).get_sso_status(t.id)["sso_enabled"] is False
 
     def test_sso_authenticated(self, db):
-        # SQLite stores naive datetimes; service compares with datetime.now(UTC)
-        # Use naive UTC times to avoid offset-naive/aware comparison errors
-        now = datetime.utcnow()
+        now = datetime.now(UTC).replace(tzinfo=None)
         t = _create_template_in_db(
-            db, name="sso-authed", aws_sso_enabled=True,
+            db,
+            name="sso-authed",
+            aws_sso_enabled=True,
             aws_sso_authenticated_at=now,
             aws_sso_token_expiry=now + timedelta(hours=8),
             aws_access_key_id="AKIATEST",
         )
-        svc = CredentialTemplateService(db)
-        # Patch datetime.now(UTC) to return naive datetime for comparison compatibility
         with patch("services.credential_template_service.datetime") as mock_dt:
             mock_dt.now.return_value = now
             mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
-            result = svc.get_sso_status(t.id)
+            result = CredentialTemplateService(db).get_sso_status(t.id)
         assert result["sso_enabled"] is True
         assert result["is_authenticated"] is True
         assert result["token_expired"] is False
         assert result["has_credentials"] is True
 
     def test_sso_expired(self, db):
-        past = datetime.utcnow() - timedelta(hours=24)
+        past = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=24)
         t = _create_template_in_db(
-            db, name="sso-expired", aws_sso_enabled=True,
+            db,
+            name="sso-expired",
+            aws_sso_enabled=True,
             aws_sso_authenticated_at=past,
             aws_sso_token_expiry=past + timedelta(hours=8),
             aws_credentials_expiry=past + timedelta(hours=1),
         )
-        svc = CredentialTemplateService(db)
-        now = datetime.utcnow()
+        now = datetime.now(UTC).replace(tzinfo=None)
         with patch("services.credential_template_service.datetime") as mock_dt:
             mock_dt.now.return_value = now
             mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
-            result = svc.get_sso_status(t.id)
+            result = CredentialTemplateService(db).get_sso_status(t.id)
         assert result["token_expired"] is True
         assert result["credentials_expired"] is True
         assert result["needs_reauth"] is True
 
-
-# ---------------------------------------------------------------------------
-# serialize_template (static method, pure function)
-# ---------------------------------------------------------------------------
 
 class TestSerializeTemplate:
     """Serialization output shape."""
@@ -688,12 +741,10 @@ class TestSerializeTemplate:
         assert "projects_count" in result
 
     def test_sensitive_fields_masked(self, db):
-        from core.encryption import encrypt_value
         t = _create_template_in_db(db, name="masked-test")
         t.aws_secret_access_key_encrypted = encrypt_value("my-secret")
         db.flush()
         result = CredentialTemplateService.serialize_template(t)
-        # Should show boolean, not actual secret
         assert result["has_aws_secret_access_key"] is True
         assert "my-secret" not in str(result)
 
@@ -705,52 +756,24 @@ class TestSerializeTemplate:
 
 
 # ---------------------------------------------------------------------------
-# Helper: create template with SSO tokens pre-set
+# poll_sso & refresh_sso — observation clearing
 # ---------------------------------------------------------------------------
 
-def _create_sso_template(db, name, **overrides):
-    """Create a CloudCredentialTemplate with encrypted SSO token fields ready for poll/refresh tests."""
-    from core.encryption import encrypt_value
-    t = _create_template_in_db(
-        db, name=name,
-        aws_sso_enabled=True,
-        aws_sso_start_url="https://start.awsapps.com/start",
-        aws_sso_region="us-east-1",
-        aws_sso_account_id="123456789012",
-        aws_sso_role_name="AdministratorAccess",
-        **overrides,
-    )
-    t.aws_sso_client_id = "client-id-abc"
-    t.aws_sso_client_secret_encrypted = encrypt_value("client-secret-xyz")
-    t.aws_sso_refresh_token_encrypted = encrypt_value("refresh-token-abc")
-    db.flush()
-    db.refresh(t)
-    return t
-
-
-# ---------------------------------------------------------------------------
-# poll_sso — observation clearing
-# ---------------------------------------------------------------------------
 
 class TestPollSSO:
     """poll_sso clears stale failed-observation on SSO token success."""
 
     @patch("services.credential_template_service.AWSAuthService")
     def test_poll_sso_clears_stale_error_on_success(self, mock_aws_cls, db):
-        """A template with a pre-existing failed observation is cleared after a successful SSO poll."""
-        stale_time = datetime.now(UTC) - timedelta(hours=2)
         t = _create_sso_template(db, name="poll-clear-error")
-        t.last_error_at = stale_time
+        t.last_error_at = datetime.now(UTC) - timedelta(hours=2)
         t.last_error_code = "ExpiredToken"
         t.last_error_message = "Credentials have expired"
         t.last_successful_call_at = None
         db.flush()
 
         mock_auth = MagicMock()
-        mock_auth.poll_for_token.return_value = {
-            "access_token": "access-tok",
-            "expires_in": 28800,
-        }
+        mock_auth.poll_for_token.return_value = {"access_token": "access-tok", "expires_in": 28800}
         mock_auth.get_account_credentials.return_value = {
             "access_key_id": "AKIATEST",
             "secret_access_key": "secret",
@@ -759,10 +782,7 @@ class TestPollSSO:
         }
         mock_aws_cls.return_value = mock_auth
 
-        svc = CredentialTemplateService(db)
-        result = svc.poll_sso(t.id, "device-code-xyz")
-
-        assert result["success"] is True
+        assert CredentialTemplateService(db).poll_sso(t.id, "device-code-xyz")["success"] is True
         db.refresh(t)
         assert t.last_error_at is None
         assert t.last_error_code is None
@@ -771,7 +791,6 @@ class TestPollSSO:
 
     @patch("services.credential_template_service.AWSAuthService")
     def test_poll_sso_sets_last_successful_call_at(self, mock_aws_cls, db):
-        """last_successful_call_at is set to approximately now after a successful SSO poll."""
         before = datetime.now(UTC)
         t = _create_sso_template(db, name="poll-sets-success-ts")
 
@@ -785,24 +804,20 @@ class TestPollSSO:
         }
         mock_aws_cls.return_value = mock_auth
 
-        svc = CredentialTemplateService(db)
-        svc.poll_sso(t.id, "device-code-xyz")
-
+        CredentialTemplateService(db).poll_sso(t.id, "device-code-xyz")
         db.refresh(t)
         assert t.last_successful_call_at is not None
-        # Strip tzinfo for naive-SQLite comparison tolerance
-        ts = t.last_successful_call_at
-        if ts.tzinfo is None:
-            from datetime import timezone
-            ts = ts.replace(tzinfo=UTC)
+        ts = (
+            t.last_successful_call_at
+            if t.last_successful_call_at.tzinfo
+            else t.last_successful_call_at.replace(tzinfo=UTC)
+        )
         assert ts >= before
 
     @patch("services.credential_template_service.AWSAuthService")
     def test_poll_sso_pending_does_not_clear_error(self, mock_aws_cls, db):
-        """A pending (202) poll response leaves the stale error intact."""
-        stale_time = datetime.now(UTC) - timedelta(hours=1)
         t = _create_sso_template(db, name="poll-pending-keeps-error")
-        t.last_error_at = stale_time
+        t.last_error_at = datetime.now(UTC) - timedelta(hours=1)
         t.last_error_code = "ExpiredToken"
         db.flush()
 
@@ -810,38 +825,25 @@ class TestPollSSO:
         mock_auth.poll_for_token.side_effect = Exception("Authorization pending")
         mock_aws_cls.return_value = mock_auth
 
-        svc = CredentialTemplateService(db)
-        result = svc.poll_sso(t.id, "device-code-xyz")
-
-        assert result.get("pending") is True
+        assert CredentialTemplateService(db).poll_sso(t.id, "device-code-xyz").get("pending") is True
         db.refresh(t)
-        # Observation NOT touched — still stale
         assert t.last_error_code == "ExpiredToken"
 
-
-# ---------------------------------------------------------------------------
-# refresh_sso — observation clearing
-# ---------------------------------------------------------------------------
 
 class TestRefreshSSO:
     """refresh_sso clears stale failed-observation on successful credential refresh."""
 
     @patch("services.credential_template_service.AWSAuthService")
     def test_refresh_sso_clears_stale_error_on_success(self, mock_aws_cls, db):
-        """A template with a pre-existing failed observation is cleared after a successful refresh."""
-        stale_time = datetime.now(UTC) - timedelta(hours=3)
         t = _create_sso_template(db, name="refresh-clear-error")
-        t.last_error_at = stale_time
+        t.last_error_at = datetime.now(UTC) - timedelta(hours=3)
         t.last_error_code = "ExpiredToken"
         t.last_error_message = "Credentials have expired"
         t.last_successful_call_at = None
         db.flush()
 
         mock_auth = MagicMock()
-        mock_auth.refresh_credentials.return_value = {
-            "access_token": "new-access-tok",
-            "expires_in": 28800,
-        }
+        mock_auth.refresh_credentials.return_value = {"access_token": "new-access-tok", "expires_in": 28800}
         mock_auth.get_account_credentials.return_value = {
             "access_key_id": "AKIATEST",
             "secret_access_key": "secret",
@@ -850,10 +852,7 @@ class TestRefreshSSO:
         }
         mock_aws_cls.return_value = mock_auth
 
-        svc = CredentialTemplateService(db)
-        result = svc.refresh_sso(t.id)
-
-        assert result["success"] is True
+        assert CredentialTemplateService(db).refresh_sso(t.id)["success"] is True
         db.refresh(t)
         assert t.last_error_at is None
         assert t.last_error_code is None
@@ -862,7 +861,6 @@ class TestRefreshSSO:
 
     @patch("services.credential_template_service.AWSAuthService")
     def test_refresh_sso_sets_last_successful_call_at(self, mock_aws_cls, db):
-        """last_successful_call_at is set to approximately now after a successful refresh."""
         before = datetime.now(UTC)
         t = _create_sso_template(db, name="refresh-sets-success-ts")
 
@@ -876,23 +874,20 @@ class TestRefreshSSO:
         }
         mock_aws_cls.return_value = mock_auth
 
-        svc = CredentialTemplateService(db)
-        svc.refresh_sso(t.id)
-
+        CredentialTemplateService(db).refresh_sso(t.id)
         db.refresh(t)
         assert t.last_successful_call_at is not None
-        ts = t.last_successful_call_at
-        if ts.tzinfo is None:
-            from datetime import timezone
-            ts = ts.replace(tzinfo=UTC)
+        ts = (
+            t.last_successful_call_at
+            if t.last_successful_call_at.tzinfo
+            else t.last_successful_call_at.replace(tzinfo=UTC)
+        )
         assert ts >= before
 
     @patch("services.credential_template_service.AWSAuthService")
     def test_refresh_sso_failure_does_not_clear_error(self, mock_aws_cls, db):
-        """A failed refresh leaves the stale observation untouched."""
-        stale_time = datetime.now(UTC) - timedelta(hours=1)
         t = _create_sso_template(db, name="refresh-fail-keeps-error")
-        t.last_error_at = stale_time
+        t.last_error_at = datetime.now(UTC) - timedelta(hours=1)
         t.last_error_code = "ExpiredToken"
         db.flush()
 
@@ -900,10 +895,353 @@ class TestRefreshSSO:
         mock_auth.refresh_credentials.side_effect = Exception("token expired")
         mock_aws_cls.return_value = mock_auth
 
-        from core.errors import InternalError as AppInternalError
-        svc = CredentialTemplateService(db)
-        with pytest.raises(AppInternalError):
-            svc.refresh_sso(t.id)
+        with pytest.raises(InternalError):
+            CredentialTemplateService(db).refresh_sso(t.id)
 
         db.refresh(t)
         assert t.last_error_code == "ExpiredToken"
+
+
+# ---------------------------------------------------------------------------
+# Azure Templates & SSO
+# ---------------------------------------------------------------------------
+
+
+class TestAzureTemplateService:
+    def test_create_azure_service_principal_template(self, db):
+        data = _make_template_data(
+            name="azure-sp",
+            provider="azure",
+            azure_auth_method="service_principal",
+            azure_tenant_id="tenant-111",
+            azure_client_id="client-222",
+            azure_client_secret="secret-333",
+            azure_subscription_id="sub-444",
+            region="eastus",
+        )
+        res = CredentialTemplateService(db).create_template(data)
+        assert res["provider"] == "azure"
+        assert res["azure_auth_method"] == "service_principal"
+        assert res["azure_tenant_id"] == "tenant-111"
+        assert res["azure_client_id"] == "client-222"
+        assert res["azure_subscription_id"] == "sub-444"
+        assert res["has_azure_client_secret"] is True
+
+    @patch("services.credential_template_service.AzureAuthService")
+    def test_azure_test_connection_service_principal_success(self, mock_azure_cls, db):
+        mock_azure = MagicMock()
+        mock_azure.acquire_service_principal_token.return_value = {"access_token": "token-123"}
+        mock_azure.validate_subscription_access.return_value = {
+            "subscription_id": "sub-444",
+            "display_name": "Prod Subscription",
+            "state": "Enabled",
+        }
+        mock_azure_cls.return_value = mock_azure
+
+        created = CredentialTemplateService(db).create_template(
+            _make_template_data(
+                name="azure-test",
+                provider="azure",
+                azure_auth_method="service_principal",
+                azure_tenant_id="tenant-111",
+                azure_client_id="client-222",
+                azure_client_secret="secret-333",
+                azure_subscription_id="sub-444",
+            )
+        )
+        test_res = CredentialTemplateService(db).test_template(created["id"])
+        assert test_res["success"] is True
+        assert "Prod Subscription" in test_res["message"]
+
+    @patch("services.credential_template_service.AzureAuthService")
+    def test_azure_sso_initiate_and_poll(self, mock_azure_cls, db):
+        mock_azure = MagicMock()
+        mock_azure.initiate_device_authorization.return_value = {
+            "device_code": "azure-dev-code",
+            "user_code": "AZ123",
+            "verification_uri": "https://microsoft.com/devicelogin",
+            "verification_uri_complete": "https://microsoft.com/devicelogin",
+            "expires_in": 900,
+            "interval": 5,
+            "client_id": "client-222",
+        }
+        mock_azure.poll_for_token.return_value = {
+            "pending": False,
+            "access_token": "azure-access-tok",
+            "refresh_token": "azure-refresh-tok",
+            "expires_in": 3600,
+            "expires_at": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+        }
+        mock_azure_cls.return_value = mock_azure
+
+        svc = CredentialTemplateService(db)
+        created = svc.create_template(
+            _make_template_data(
+                name="azure-sso-tmpl",
+                provider="azure",
+                azure_auth_method="sso",
+                azure_tenant_id="tenant-111",
+                azure_client_id="client-222",
+            )
+        )
+        assert svc.initiate_sso(created["id"])["data"]["user_code"] == "AZ123"
+        assert svc.poll_sso(created["id"], "azure-dev-code")["success"] is True
+
+        status_res = svc.get_sso_status(created["id"])
+        assert status_res["is_authenticated"] is True
+        assert status_res["can_refresh"] is True
+
+    @patch("services.credential_template_service.AzureAuthService")
+    def test_azure_sso_test_with_naive_past_expiry_returns_clean_expired(self, mock_azure_cls, db):
+        mock_azure_cls.return_value = MagicMock()
+        svc = CredentialTemplateService(db)
+        created = svc.create_template(
+            _make_template_data(
+                name="azure-sso-naive-expiry",
+                provider="azure",
+                azure_auth_method="sso",
+                azure_tenant_id="tenant-111",
+                azure_client_id="client-222",
+            )
+        )
+        template = db.query(CloudCredentialTemplate).filter(CloudCredentialTemplate.id == created["id"]).first()
+        template.azure_sso_access_token_encrypted = encrypt_value("stale-access-token")
+        template.azure_sso_refresh_token_encrypted = None
+        template.azure_sso_token_expiry = (datetime.now(UTC) - timedelta(hours=1)).replace(tzinfo=None)
+        db.commit()
+
+        res = svc.test_template(created["id"])
+        assert res["success"] is False
+        assert res["error"] == "Token expired"
+
+    @patch("services.credential_template_service.AzureAuthService")
+    def test_azure_sso_test_refreshes_and_persists_token(self, mock_azure_cls, db):
+        mock_azure = MagicMock()
+        mock_azure.refresh_credentials.return_value = {
+            "access_token": "new-access-token",
+            "refresh_token": "new-refresh-token",
+            "expires_in": 7200,
+        }
+        mock_azure.validate_subscription_access.return_value = {
+            "subscription_id": "sub-123",
+            "display_name": "Test Sub",
+        }
+        mock_azure_cls.return_value = mock_azure
+
+        svc = CredentialTemplateService(db)
+        created = svc.create_template(
+            _make_template_data(
+                name="azure-sso-refresh-persist",
+                provider="azure",
+                azure_auth_method="sso",
+                azure_tenant_id="tenant-111",
+                azure_client_id="client-222",
+                azure_subscription_id="sub-123",
+            )
+        )
+        template = db.query(CloudCredentialTemplate).filter(CloudCredentialTemplate.id == created["id"]).first()
+        template.azure_sso_access_token_encrypted = encrypt_value("old-access-token")
+        template.azure_sso_refresh_token_encrypted = encrypt_value("old-refresh-token")
+        template.azure_sso_token_expiry = datetime.now(UTC) - timedelta(hours=1)
+        db.commit()
+
+        res = svc.test_template(created["id"])
+        assert res["success"] is True
+        mock_azure.refresh_credentials.assert_called_once()
+
+        db.expire_all()
+        refreshed_tmpl = db.query(CloudCredentialTemplate).filter(CloudCredentialTemplate.id == created["id"]).first()
+        assert decrypt_value(refreshed_tmpl.azure_sso_access_token_encrypted) == "new-access-token"
+        assert decrypt_value(refreshed_tmpl.azure_sso_refresh_token_encrypted) == "new-refresh-token"
+        expiry = refreshed_tmpl.azure_sso_token_expiry
+        if expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=UTC)
+        assert expiry > datetime.now(UTC)
+
+    def test_has_complete_sso_config_azure_auth_methods(self, db):
+        sp_tmpl = CloudCredentialTemplate(
+            name="azure-sp",
+            provider="azure",
+            azure_auth_method="service_principal",
+            azure_tenant_id="tenant-1",
+            azure_client_id="client-1",
+        )
+        assert CredentialTemplateService._has_complete_sso_config(sp_tmpl) is False
+
+        sso_tmpl = CloudCredentialTemplate(
+            name="azure-sso",
+            provider="azure",
+            azure_auth_method="sso",
+            azure_tenant_id="tenant-1",
+            azure_client_id="client-1",
+        )
+        assert CredentialTemplateService._has_complete_sso_config(sso_tmpl) is True
+
+
+class TestAzureAuthMethodGuards:
+    def _sso_template(self, db, **overrides):
+        fields = {
+            "name": "azure-sso-guard",
+            "provider": "azure",
+            "azure_auth_method": "sso",
+            "azure_tenant_id": "tenant-1",
+            "azure_sso_access_token_encrypted": encrypt_value("access"),
+            "azure_sso_refresh_token_encrypted": encrypt_value("refresh"),
+            "azure_sso_token_expiry": datetime.now(UTC) + timedelta(hours=1),
+            "azure_sso_authenticated_at": datetime.now(UTC),
+        }
+        fields.update(overrides)
+        t = CloudCredentialTemplate(**fields)
+        db.add(t)
+        db.commit()
+        return t
+
+    @patch("services.credential_template_service.AzureAuthService")
+    def test_initiate_sso_rejects_service_principal_template(self, mock_azure_cls, db):
+        t = _create_template_in_db(
+            db, name="azure-sp", provider="azure", azure_auth_method="service_principal", aws_access_key_id=None
+        )
+        svc = CredentialTemplateService(db)
+        with pytest.raises(BadRequestError, match="Azure SSO is not enabled"):
+            svc.initiate_sso(t.id)
+        with pytest.raises(BadRequestError, match="Azure SSO is not enabled"):
+            svc.poll_sso(t.id, "device-code")
+        mock_azure_cls.return_value.initiate_device_authorization.assert_not_called()
+
+    @patch("services.credential_template_service.AzureAuthService")
+    def test_initiate_sso_keeps_blank_client_id(self, mock_azure_cls, db):
+        mock_azure_cls.return_value.initiate_device_authorization.return_value = {
+            "device_code": "d",
+            "user_code": "U",
+            "verification_uri": "v",
+            "verification_uri_complete": "v",
+            "expires_in": 900,
+            "interval": 5,
+            "client_id": "04b07795-8ddb-461a-bbee-02f9e1bf7b46",
+        }
+        t = self._sso_template(db, azure_client_id=None)
+        CredentialTemplateService(db).initiate_sso(t.id)
+        db.refresh(t)
+        assert t.azure_client_id is None
+
+    @patch("services.credential_template_service.AzureAuthService")
+    def test_poll_sso_declined_is_client_error(self, mock_azure_cls, db):
+        mock_azure_cls.return_value.poll_for_token.side_effect = AzureAuthError("Azure login was declined by the user.")
+        t = self._sso_template(db)
+        with pytest.raises(AzureAuthError) as exc:
+            CredentialTemplateService(db).poll_sso(t.id, "device-code")
+        assert exc.value.status_code == 400
+
+    @patch("services.credential_template_service.AzureAuthService")
+    def test_refresh_sso_failure_is_audited(self, mock_azure_cls, db):
+        mock_azure_cls.return_value.refresh_credentials.side_effect = AzureAuthError("invalid_grant")
+        t = self._sso_template(db)
+        svc = CredentialTemplateService(db)
+        with patch.object(svc, "_create_audit_log") as audit, pytest.raises(AzureAuthError):
+            svc.refresh_sso(t.id)
+        assert audit.call_args[0][0] == "azure_sso_refresh_failed"
+
+    def test_switch_to_sso_clears_client_secret(self, db):
+        t = _create_template_in_db(
+            db,
+            name="azure-sp-switch",
+            provider="azure",
+            aws_access_key_id=None,
+            azure_auth_method="service_principal",
+            azure_tenant_id="tenant-1",
+            azure_client_id="client-1",
+            azure_client_secret_encrypted=encrypt_value("secret"),
+        )
+        CredentialTemplateService(db).update_template(t.id, _make_update_data(azure_auth_method="sso"))
+        assert t.azure_client_secret_encrypted is None
+
+    def test_switch_to_sso_rejected_when_projects_bound(self, db):
+        t = _create_template_in_db(
+            db, name="azure-sp-bound", provider="azure", aws_access_key_id=None, azure_auth_method="service_principal"
+        )
+        db.add(Project(name="azure-bound-project", credential_template_id=t.id))
+        db.commit()
+        with pytest.raises(BadRequestError, match="provisioning requires a service principal"):
+            CredentialTemplateService(db).update_template(t.id, _make_update_data(azure_auth_method="sso"))
+
+    def test_switch_to_service_principal_clears_sso_session(self, db):
+        t = self._sso_template(db)
+        CredentialTemplateService(db).update_template(t.id, _make_update_data(azure_auth_method="service_principal"))
+        assert t.azure_sso_access_token_encrypted is None
+        assert t.azure_sso_refresh_token_encrypted is None
+
+    def test_tenant_change_clears_sso_session(self, db):
+        t = self._sso_template(db)
+        CredentialTemplateService(db).update_template(t.id, _make_update_data(azure_tenant_id="tenant-2"))
+        assert t.azure_sso_refresh_token_encrypted is None
+        assert t.azure_sso_authenticated_at is None
+
+    def test_unrelated_update_keeps_sso_session(self, db):
+        t = self._sso_template(db, azure_client_id=None)
+        CredentialTemplateService(db).update_template(
+            t.id, _make_update_data(name="azure-sso-renamed", azure_client_id="")
+        )
+        assert t.azure_sso_refresh_token_encrypted is not None
+
+    def test_create_sso_template_ignores_client_secret(self, db):
+        res = CredentialTemplateService(db).create_template(
+            _make_template_data(
+                name="azure-sso-create",
+                provider="azure",
+                azure_auth_method="sso",
+                azure_tenant_id="tenant-1",
+                azure_client_secret="typed-before-switch",
+            )
+        )
+        assert res["has_azure_client_secret"] is False
+
+    def test_sso_template_cannot_be_created_as_default(self, db):
+        data = _make_template_data(name="azure-sso-default", provider="azure", azure_auth_method="sso", is_default=True)
+        with pytest.raises(BadRequestError, match="cannot be the Azure default"):
+            CredentialTemplateService(db).create_template(data)
+
+    def test_default_template_cannot_switch_to_sso(self, db):
+        t = _create_template_in_db(
+            db,
+            name="azure-sp-default",
+            provider="azure",
+            aws_access_key_id=None,
+            azure_auth_method="service_principal",
+            is_default=True,
+        )
+        with pytest.raises(BadRequestError, match="cannot be the Azure default"):
+            CredentialTemplateService(db).update_template(t.id, _make_update_data(azure_auth_method="sso"))
+
+    def test_switch_to_sso_clears_legacy_credentials_blob(self, db):
+        t = _create_template_in_db(
+            db,
+            name="azure-sp-blob",
+            provider="azure",
+            aws_access_key_id=None,
+            azure_auth_method="service_principal",
+            azure_credentials_encrypted=encrypt_value('{"client_id": "c", "client_secret": "s"}'),
+        )
+        CredentialTemplateService(db).update_template(t.id, _make_update_data(azure_auth_method="sso"))
+        assert t.azure_credentials_encrypted is None
+
+    @patch("services.credential_template_service.AzureAuthService")
+    def test_successful_poll_resolves_refresh_failure_notification(self, mock_azure_cls, db):
+        mock_azure_cls.return_value.poll_for_token.return_value = {
+            "access_token": "a",
+            "refresh_token": "r",
+            "expires_in": 3600,
+        }
+        t = self._sso_template(db)
+        n = Notification(
+            user="admin",
+            type="warning",
+            title="Azure SSO Credential Refresh Failed",
+            message="m",
+            dedupe_key=azure_refresh_failure_key(t.id),
+            is_read=False,
+        )
+        db.add(n)
+        db.commit()
+        CredentialTemplateService(db).poll_sso(t.id, "device-code")
+        db.refresh(n)
+        assert n.is_read is True

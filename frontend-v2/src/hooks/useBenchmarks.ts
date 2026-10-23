@@ -1,14 +1,19 @@
 /**
  * React Query hooks for benchmarks (Phase 2 + Phase 4b: LLM Inference Load Testing Dashboard)
  */
-import { useEffect, useRef, useCallback, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
-import { queryKeys } from '@/lib/queryKeys';
-import { notify, notifyError } from '@/lib/notify';
-import { POLL_INTERVALS } from '@/lib/constants';
+import { useEffect, useRef, useCallback, useState } from "react";
+import {
+  keepPreviousData,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { queryKeys } from "@/lib/queryKeys";
+import { notify, notifyError } from "@/lib/notify";
+import { POLL_INTERVALS } from "@/lib/constants";
 import type {
   AgentHostScanRequest,
+  BenchmarkAgent,
   BenchmarkAgentHostCreate,
   BenchmarkConfigCreate,
   BenchmarkConfigUpdate,
@@ -22,8 +27,8 @@ import type {
   ProxyDeploymentUpdate,
   ScenarioRunRequest,
   TriggerRunRequest,
-} from '@/types';
-import { useAppMutation } from '@/hooks/lib/useAppMutation';
+} from "@/types";
+import { useAppMutation } from "@/hooks/lib/useAppMutation";
 
 // ============================================================================
 // Config Queries / Mutations
@@ -47,7 +52,9 @@ export const useCreateBenchmarkConfig = () => {
   return useAppMutation({
     mutationFn: (data: BenchmarkConfigCreate) => api.createConfig(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.configs.all });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.configs.all,
+      });
     },
     onError: (error) => notifyError(error),
   });
@@ -56,11 +63,20 @@ export const useCreateBenchmarkConfig = () => {
 export const useUpdateBenchmarkConfig = () => {
   const queryClient = useQueryClient();
   return useAppMutation({
-    mutationFn: ({ configId, data }: { configId: number; data: BenchmarkConfigUpdate }) =>
-      api.updateConfig(configId, data),
+    mutationFn: ({
+      configId,
+      data,
+    }: {
+      configId: number;
+      data: BenchmarkConfigUpdate;
+    }) => api.updateConfig(configId, data),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.configs.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.configs.detail(variables.configId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.configs.all,
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.configs.detail(variables.configId),
+      });
     },
     onError: (error) => notifyError(error),
   });
@@ -71,7 +87,9 @@ export const useDeleteBenchmarkConfig = () => {
   return useAppMutation({
     mutationFn: (configId: number) => api.deleteConfig(configId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.configs.all });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.configs.all,
+      });
     },
     onError: (error) => notifyError(error),
   });
@@ -86,6 +104,10 @@ export const useBenchmarkRuns = (params?: {
   tool?: string;
   model?: string;
   status?: string;
+  cluster_id?: number;
+  q?: string;
+  sort?: string;
+  order?: "asc" | "desc";
   limit?: number;
   offset?: number;
   pollingEnabled?: boolean;
@@ -95,10 +117,15 @@ export const useBenchmarkRuns = (params?: {
     queryKey: queryKeys.benchmarks.runs.list(queryParams),
     queryFn: () => api.listRuns(queryParams),
     refetchInterval: pollingEnabled ? POLL_INTERVALS.STANDARD : false,
+    // Keep the current page on screen while the next page / sort loads.
+    placeholderData: keepPreviousData,
   });
 };
 
-export const useBenchmarkRun = (runId: number | undefined, pollingEnabled = false) =>
+export const useBenchmarkRun = (
+  runId: number | undefined,
+  pollingEnabled = false,
+) =>
   useQuery({
     queryKey: queryKeys.benchmarks.runs.detail(runId!),
     queryFn: () => api.getRun(runId!),
@@ -111,9 +138,15 @@ export const useCreateBenchmarkRun = () => {
   return useAppMutation({
     mutationFn: (data: BenchmarkRunCreate) => api.createRun(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.runs.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.summary() });
-      notify.success('Benchmark run created', undefined, { category: 'general' });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.runs.all,
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.summary(),
+      });
+      notify.success("Benchmark run created", undefined, {
+        category: "general",
+      });
     },
     onError: (error) => notifyError(error),
   });
@@ -124,10 +157,18 @@ export const useCancelBenchmarkRun = () => {
   return useAppMutation({
     mutationFn: (runId: number) => api.cancelRun(runId),
     onSuccess: (_, runId) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.runs.detail(runId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.runs.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.summary() });
-      notify.success('Benchmark run cancelled', undefined, { category: 'general' });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.runs.detail(runId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.runs.all,
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.summary(),
+      });
+      notify.success("Benchmark run cancelled", undefined, {
+        category: "general",
+      });
     },
     onError: (error) => notifyError(error),
   });
@@ -138,9 +179,15 @@ export const useDeleteBenchmarkRun = () => {
   return useAppMutation({
     mutationFn: (runId: number) => api.deleteRun(runId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.runs.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.summary() });
-      notify.success('Benchmark run deleted', undefined, { category: 'general' });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.runs.all,
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.summary(),
+      });
+      notify.success("Benchmark run deleted", undefined, {
+        category: "general",
+      });
     },
     onError: (error) => notifyError(error),
   });
@@ -155,10 +202,16 @@ export const useSetBenchmarkRunBaseline = () => {
   return useAppMutation({
     mutationFn: (runId: number) => api.setRunBaseline(runId),
     onSuccess: (_, runId) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.runs.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.runs.detail(runId) });
-      queryClient.invalidateQueries({ queryKey: ['benchmarks', 'trends'] });
-      notify.success('Run marked as baseline', undefined, { category: 'general' });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.runs.all,
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.runs.detail(runId),
+      });
+      queryClient.invalidateQueries({ queryKey: ["benchmarks", "trends"] });
+      notify.success("Run marked as baseline", undefined, {
+        category: "general",
+      });
     },
     onError: (error) => notifyError(error),
   });
@@ -169,16 +222,23 @@ export const useUnsetBenchmarkRunBaseline = () => {
   return useAppMutation({
     mutationFn: (runId: number) => api.unsetRunBaseline(runId),
     onSuccess: (_, runId) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.runs.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.runs.detail(runId) });
-      queryClient.invalidateQueries({ queryKey: ['benchmarks', 'trends'] });
-      notify.success('Baseline cleared', undefined, { category: 'general' });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.runs.all,
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.runs.detail(runId),
+      });
+      queryClient.invalidateQueries({ queryKey: ["benchmarks", "trends"] });
+      notify.success("Baseline cleared", undefined, { category: "general" });
     },
     onError: (error) => notifyError(error),
   });
 };
 
-export const useBenchmarkTrends = (params: BenchmarkTrendsParams | undefined, enabled = true) =>
+export const useBenchmarkTrends = (
+  params: BenchmarkTrendsParams | undefined,
+  enabled = true,
+) =>
   useQuery({
     queryKey: queryKeys.benchmarks.trends(params),
     queryFn: () => api.getTrends(params),
@@ -191,19 +251,90 @@ export const useBenchmarkTrends = (params: BenchmarkTrendsParams | undefined, en
 
 export const useBenchmarkAgents = () =>
   useQuery({
-    queryKey: ['benchmarks', 'agents', 'list'] as const,
+    queryKey: ["benchmarks", "agents", "list"] as const,
     queryFn: () => api.listAgents(),
     refetchInterval: POLL_INTERVALS.STANDARD,
   });
+
+export const useUpdateBenchmarkAgent = () => {
+  const queryClient = useQueryClient();
+  return useAppMutation({
+    mutationFn: ({
+      agentId,
+      data,
+    }: {
+      agentId: number;
+      data: Partial<BenchmarkAgent> & { connected_projects?: string[] };
+    }) => api.updateAgent(agentId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["benchmarks", "agents", "list"],
+      });
+      notify.success("Agent updated successfully", undefined, {
+        category: "general",
+      });
+    },
+    onError: (error) => notifyError(error),
+  });
+};
 
 export const useDeleteBenchmarkAgent = () => {
   const queryClient = useQueryClient();
   return useAppMutation({
     mutationFn: (agentId: number) => api.deleteAgent(agentId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['benchmarks', 'agents', 'list'] });
-      notify.success('Agent deregistered', undefined, { category: 'general' });
+      queryClient.invalidateQueries({
+        queryKey: ["benchmarks", "agents", "list"],
+      });
+      notify.success("Agent deregistered", undefined, { category: "general" });
     },
+    onError: (error) => notifyError(error),
+  });
+};
+
+export const useCheckBenchmarkAgentConnection = () => {
+  const queryClient = useQueryClient();
+  return useAppMutation({
+    mutationFn: (agentId: number) => api.checkAgentConnection(agentId),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({
+        queryKey: ["benchmarks", "agents", "list"],
+      });
+      if (result.ws_connected) {
+        notify.success(`Agent ${result.name} is connected`, undefined, {
+          category: "general",
+        });
+      } else {
+        notify.info(`Agent ${result.name} is disconnected`, undefined, {
+          category: "general",
+        });
+      }
+    },
+    onError: (error) => notifyError(error),
+  });
+};
+
+export const useConnectBenchmarkAgent = () => {
+  const queryClient = useQueryClient();
+  return useAppMutation({
+    mutationFn: (agentId: number) => api.connectAgent(agentId),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({
+        queryKey: ["benchmarks", "agents", "list"],
+      });
+      if (result.success) {
+        notify.success(result.message, undefined, { category: "general" });
+      } else {
+        notify.warning(result.message, undefined, { category: "general" });
+      }
+    },
+    onError: (error) => notifyError(error),
+  });
+};
+
+export const useMintBenchmarkAgentToken = () => {
+  return useAppMutation({
+    mutationFn: (agentId: number) => api.mintAgentToken(agentId),
     onError: (error) => notifyError(error),
   });
 };
@@ -215,11 +346,20 @@ export const useDeleteBenchmarkAgent = () => {
 export const useBenchmarkAgentHosts = (projectId?: number) =>
   useQuery({
     queryKey: queryKeys.benchmarks.agentHosts.list(projectId),
-    queryFn: () => api.listAgentHosts(projectId !== undefined ? { project_id: projectId } : undefined),
+    queryFn: () =>
+      api.listAgentHosts(
+        projectId !== undefined ? { project_id: projectId } : undefined,
+      ),
     // Poll while any host is scanning or provisioning
     refetchInterval: (query) => {
       const hosts = query.state.data;
-      if (hosts?.some((h) => h.provision_status === 'scanning' || h.provision_status === 'provisioning')) {
+      if (
+        hosts?.some(
+          (h) =>
+            h.provision_status === "scanning" ||
+            h.provision_status === "provisioning",
+        )
+      ) {
         return POLL_INTERVALS.FAST;
       }
       return false;
@@ -234,7 +374,8 @@ export const useBenchmarkAgentHost = (hostId: number | undefined) =>
     // Poll while scanning or provisioning in progress
     refetchInterval: (query) => {
       const host = query.state.data;
-      return host?.provision_status === 'scanning' || host?.provision_status === 'provisioning'
+      return host?.provision_status === "scanning" ||
+        host?.provision_status === "provisioning"
         ? POLL_INTERVALS.FAST
         : false;
     },
@@ -245,8 +386,12 @@ export const useCreateBenchmarkAgentHost = () => {
   return useAppMutation({
     mutationFn: (data: BenchmarkAgentHostCreate) => api.createAgentHost(data),
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.agentHosts.all });
-      notify.success(`Registered remote host "${result.name}"`, undefined, { category: 'general' });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.agentHosts.all,
+      });
+      notify.success(`Registered remote host "${result.name}"`, undefined, {
+        category: "general",
+      });
     },
     onError: (error) => notifyError(error),
   });
@@ -257,8 +402,10 @@ export const useDeleteBenchmarkAgentHost = () => {
   return useAppMutation({
     mutationFn: (hostId: number) => api.deleteAgentHost(hostId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.agentHosts.all });
-      notify.success('Remote host removed', undefined, { category: 'general' });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.agentHosts.all,
+      });
+      notify.success("Remote host removed", undefined, { category: "general" });
     },
     onError: (error) => notifyError(error),
   });
@@ -267,8 +414,13 @@ export const useDeleteBenchmarkAgentHost = () => {
 export const useScanBenchmarkAgentHost = () => {
   const queryClient = useQueryClient();
   return useAppMutation({
-    mutationFn: ({ hostId, data }: { hostId: number; data?: AgentHostScanRequest }) =>
-      api.scanAgentHost(hostId, data),
+    mutationFn: ({
+      hostId,
+      data,
+    }: {
+      hostId: number;
+      data?: AgentHostScanRequest;
+    }) => api.scanAgentHost(hostId, data),
     onSuccess: async (_result, variables) => {
       // Use refetchQueries (not invalidateQueries) so the "scanning" provision_status
       // is in cache before the polling refetchInterval evaluator next runs.
@@ -278,7 +430,9 @@ export const useScanBenchmarkAgentHost = () => {
       await queryClient.refetchQueries({
         queryKey: queryKeys.benchmarks.agentHosts.list(),
       });
-      notify.info('SSH scan dispatched — polling for results…', undefined, { category: 'general' });
+      notify.info("SSH scan dispatched — polling for results…", undefined, {
+        category: "general",
+      });
     },
     onError: (error) => notifyError(error),
   });
@@ -298,9 +452,9 @@ export const useProvisionBenchmarkAgentHost = () => {
         queryKey: queryKeys.benchmarks.agentHosts.list(),
       });
       notify.info(
-        'SSH provisioning dispatched — polling for progress…',
+        "SSH provisioning dispatched — polling for progress…",
         undefined,
-        { category: 'general' },
+        { category: "general" },
       );
     },
     onError: (error) => notifyError(error),
@@ -321,14 +475,23 @@ export const useAgentHostCandidates = (projectId: number | undefined) =>
 export const useImportAwsJumphost = () => {
   const queryClient = useQueryClient();
   return useAppMutation({
-    mutationFn: ({ projectId, moduleId }: { projectId: number; moduleId: number }) =>
-      api.importAwsJumphost({ project_id: projectId, module_id: moduleId }),
+    mutationFn: ({
+      projectId,
+      moduleId,
+    }: {
+      projectId: number;
+      moduleId: number;
+    }) => api.importAwsJumphost({ project_id: projectId, module_id: moduleId }),
     onSuccess: (_result, variables) => {
       // Invalidate candidates so the picker refreshes with the new credential id
       queryClient.invalidateQueries({
-        queryKey: queryKeys.benchmarks.agentHostCandidates.list(variables.projectId),
+        queryKey: queryKeys.benchmarks.agentHostCandidates.list(
+          variables.projectId,
+        ),
       });
-      notify.success('AWS jumphost credential imported', undefined, { category: 'general' });
+      notify.success("AWS jumphost credential imported", undefined, {
+        category: "general",
+      });
     },
     onError: (error) => notifyError(error),
   });
@@ -345,21 +508,29 @@ export const useBenchmarkCompare = (runIds: number[]) =>
     enabled: runIds.length >= 2,
   });
 
-export const useBenchmarkSummary = () =>
+export const useBenchmarkSummary = (clusterId?: number) =>
   useQuery({
-    queryKey: queryKeys.benchmarks.summary(),
-    queryFn: () => api.getSummary(),
+    queryKey: queryKeys.benchmarks.summary(clusterId),
+    queryFn: () => api.getSummary(clusterId),
     refetchInterval: POLL_INTERVALS.BACKGROUND,
   });
 
 /** Transitional proxy statuses that trigger auto-polling (Phase 4c). */
-const PROXY_TRANSITIONAL_STATES = new Set(['pending', 'deploying', 'uninstalling']);
+const PROXY_TRANSITIONAL_STATES = new Set([
+  "pending",
+  "deploying",
+  "uninstalling",
+]);
 
 // ============================================================================
 // Target Queries / Mutations (Phase 4b)
 // ============================================================================
 
-export const useBenchmarkTargets = (params?: { status?: string; cluster_id?: number }) =>
+export const useBenchmarkTargets = (params?: {
+  status?: string;
+  cluster_id?: number;
+  name?: string;
+}) =>
   useQuery({
     queryKey: queryKeys.benchmarks.targets.list(params),
     queryFn: () => api.listTargets(params),
@@ -372,8 +543,14 @@ export const useBenchmarkTarget = (targetId: number | undefined) =>
     enabled: !!targetId,
     // Phase 4c: Auto-poll when any proxy on the target is in a transitional state
     refetchInterval: (query) => {
-      const detail = query.state.data as { proxy_deployments?: Array<{ status: string }> } | undefined;
-      if (detail?.proxy_deployments?.some(p => PROXY_TRANSITIONAL_STATES.has(p.status))) {
+      const detail = query.state.data as
+        | { proxy_deployments?: Array<{ status: string }> }
+        | undefined;
+      if (
+        detail?.proxy_deployments?.some((p) =>
+          PROXY_TRANSITIONAL_STATES.has(p.status),
+        )
+      ) {
         return POLL_INTERVALS.FAST;
       }
       return false;
@@ -385,7 +562,9 @@ export const useCreateBenchmarkTarget = () => {
   return useAppMutation({
     mutationFn: (data: BenchmarkTargetCreate) => api.createTarget(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.targets.all });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.targets.all,
+      });
     },
     onError: (error) => notifyError(error),
   });
@@ -394,11 +573,20 @@ export const useCreateBenchmarkTarget = () => {
 export const useUpdateBenchmarkTarget = () => {
   const queryClient = useQueryClient();
   return useAppMutation({
-    mutationFn: ({ targetId, data }: { targetId: number; data: BenchmarkTargetUpdate }) =>
-      api.updateTarget(targetId, data),
+    mutationFn: ({
+      targetId,
+      data,
+    }: {
+      targetId: number;
+      data: BenchmarkTargetUpdate;
+    }) => api.updateTarget(targetId, data),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.targets.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.targets.detail(variables.targetId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.targets.all,
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.targets.detail(variables.targetId),
+      });
     },
     onError: (error) => notifyError(error),
   });
@@ -409,7 +597,9 @@ export const useDeleteBenchmarkTarget = () => {
   return useAppMutation({
     mutationFn: (targetId: number) => api.deleteTarget(targetId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.targets.all });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.targets.all,
+      });
     },
     onError: (error) => notifyError(error),
   });
@@ -420,9 +610,15 @@ export const useValidateBenchmarkTarget = () => {
   return useAppMutation({
     mutationFn: (targetId: number) => api.validateTarget(targetId),
     onSuccess: (_, targetId) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.targets.detail(targetId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.targets.all });
-      notify.success('Target validation complete', undefined, { category: 'general' });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.targets.detail(targetId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.targets.all,
+      });
+      notify.success("Target validation complete", undefined, {
+        category: "general",
+      });
     },
     onError: (error) => notifyError(error),
   });
@@ -440,7 +636,7 @@ export const useProxyDeployments = (targetId: number | undefined) =>
     // Phase 4c: Auto-poll when any proxy is in a transitional state
     refetchInterval: (query) => {
       const proxies = query.state.data;
-      if (proxies?.some(p => PROXY_TRANSITIONAL_STATES.has(p.status))) {
+      if (proxies?.some((p) => PROXY_TRANSITIONAL_STATES.has(p.status))) {
         return POLL_INTERVALS.FAST;
       }
       return false;
@@ -450,16 +646,29 @@ export const useProxyDeployments = (targetId: number | undefined) =>
 export const useDeployProxy = () => {
   const queryClient = useQueryClient();
   return useAppMutation({
-    mutationFn: ({ targetId, data }: { targetId: number; data: ProxyDeployRequest }) =>
-      api.deployProxy(targetId, data),
+    mutationFn: ({
+      targetId,
+      data,
+    }: {
+      targetId: number;
+      data: ProxyDeployRequest;
+    }) => api.deployProxy(targetId, data),
     onSuccess: async (_result, variables) => {
       // Use refetchQueries so the fresh "deploying" status is in cache
       // before the polling refetchInterval evaluators run.
       await Promise.all([
-        queryClient.refetchQueries({ queryKey: queryKeys.benchmarks.targets.proxies(variables.targetId) }),
-        queryClient.refetchQueries({ queryKey: queryKeys.benchmarks.targets.detail(variables.targetId) }),
+        queryClient.refetchQueries({
+          queryKey: queryKeys.benchmarks.targets.proxies(variables.targetId),
+        }),
+        queryClient.refetchQueries({
+          queryKey: queryKeys.benchmarks.targets.detail(variables.targetId),
+        }),
       ]);
-      notify.success(`Deploying ${variables.data.proxy_type} proxy — Helm install in progress`, undefined, { category: 'deployment' });
+      notify.success(
+        `Deploying ${variables.data.proxy_type} proxy — Helm install in progress`,
+        undefined,
+        { category: "deployment" },
+      );
     },
     onError: (error) => notifyError(error),
   });
@@ -468,11 +677,22 @@ export const useDeployProxy = () => {
 export const useUpdateProxyDeployment = () => {
   const queryClient = useQueryClient();
   return useAppMutation({
-    mutationFn: ({ targetId, proxyId, data }: { targetId: number; proxyId: number; data: ProxyDeploymentUpdate }) =>
-      api.updateProxyDeployment(targetId, proxyId, data),
+    mutationFn: ({
+      targetId,
+      proxyId,
+      data,
+    }: {
+      targetId: number;
+      proxyId: number;
+      data: ProxyDeploymentUpdate;
+    }) => api.updateProxyDeployment(targetId, proxyId, data),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.targets.proxies(variables.targetId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.targets.detail(variables.targetId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.targets.proxies(variables.targetId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.targets.detail(variables.targetId),
+      });
     },
     onError: (error) => notifyError(error),
   });
@@ -481,14 +701,25 @@ export const useUpdateProxyDeployment = () => {
 export const useDeleteProxyDeployment = () => {
   const queryClient = useQueryClient();
   return useAppMutation({
-    mutationFn: ({ targetId, proxyId }: { targetId: number; proxyId: number }) =>
-      api.deleteProxyDeployment(targetId, proxyId),
+    mutationFn: ({
+      targetId,
+      proxyId,
+    }: {
+      targetId: number;
+      proxyId: number;
+    }) => api.deleteProxyDeployment(targetId, proxyId),
     onSuccess: async (_, variables) => {
       await Promise.all([
-        queryClient.refetchQueries({ queryKey: queryKeys.benchmarks.targets.proxies(variables.targetId) }),
-        queryClient.refetchQueries({ queryKey: queryKeys.benchmarks.targets.detail(variables.targetId) }),
+        queryClient.refetchQueries({
+          queryKey: queryKeys.benchmarks.targets.proxies(variables.targetId),
+        }),
+        queryClient.refetchQueries({
+          queryKey: queryKeys.benchmarks.targets.detail(variables.targetId),
+        }),
       ]);
-      notify.success('Proxy removal initiated', undefined, { category: 'deployment' });
+      notify.success("Proxy removal initiated", undefined, {
+        category: "deployment",
+      });
     },
     onError: (error) => notifyError(error),
   });
@@ -497,14 +728,25 @@ export const useDeleteProxyDeployment = () => {
 export const useRedeployProxy = () => {
   const queryClient = useQueryClient();
   return useAppMutation({
-    mutationFn: ({ targetId, proxyId }: { targetId: number; proxyId: number }) =>
-      api.redeployProxy(targetId, proxyId),
+    mutationFn: ({
+      targetId,
+      proxyId,
+    }: {
+      targetId: number;
+      proxyId: number;
+    }) => api.redeployProxy(targetId, proxyId),
     onSuccess: async (_, variables) => {
       await Promise.all([
-        queryClient.refetchQueries({ queryKey: queryKeys.benchmarks.targets.proxies(variables.targetId) }),
-        queryClient.refetchQueries({ queryKey: queryKeys.benchmarks.targets.detail(variables.targetId) }),
+        queryClient.refetchQueries({
+          queryKey: queryKeys.benchmarks.targets.proxies(variables.targetId),
+        }),
+        queryClient.refetchQueries({
+          queryKey: queryKeys.benchmarks.targets.detail(variables.targetId),
+        }),
       ]);
-      notify.success('Proxy redeployment triggered', undefined, { category: 'deployment' });
+      notify.success("Proxy redeployment triggered", undefined, {
+        category: "deployment",
+      });
     },
     onError: (error) => notifyError(error),
   });
@@ -519,11 +761,19 @@ export const useDiscoverProxies = () => {
   return useAppMutation({
     mutationFn: (targetId: number) => api.discoverProxies(targetId),
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.targets.proxies(result.target_id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.targets.detail(result.target_id) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.targets.proxies(result.target_id),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.targets.detail(result.target_id),
+      });
       const found = result.discovered_count;
       const total = result.total_scanned;
-      notify.success(`Discovered ${found} of ${total} proxy types on cluster`, undefined, { category: 'general' });
+      notify.success(
+        `Discovered ${found} of ${total} proxy types on cluster`,
+        undefined,
+        { category: "general" },
+      );
     },
     onError: (error) => notifyError(error),
   });
@@ -538,21 +788,35 @@ export const useDiscoverTargets = () => {
   return useAppMutation({
     mutationFn: (data: DiscoverTargetsRequest) => api.discoverTargets(data),
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.targets.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.configs.all });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.targets.all,
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.configs.all,
+      });
       const svcs = result.discovered_count;
       const created = result.created_targets.length;
-      const proxyTotal = result.proxy_results.reduce((sum, r) => sum + (r.discovered_proxies || 0), 0);
+      const proxyTotal = result.proxy_results.reduce(
+        (sum, r) => sum + (r.discovered_proxies || 0),
+        0,
+      );
       const configs = result.created_configs?.length ?? 0;
       if (created > 0) {
-        const parts = [`Created ${created} target(s)`, `${proxyTotal} proxy type(s)`];
+        const parts = [
+          `Created ${created} target(s)`,
+          `${proxyTotal} proxy type(s)`,
+        ];
         if (configs > 0) parts.push(`${configs} config(s)`);
-        notify.success(parts.join(', '), undefined, { category: 'general' });
+        notify.success(parts.join(", "), undefined, { category: "general" });
       } else if (svcs > 0 && !result.created_targets.length) {
         // Scan-only mode (no auto_create) — just show count
-        notify.success(`Found ${svcs} LLM service(s) on cluster`, undefined, { category: 'general' });
+        notify.success(`Found ${svcs} LLM service(s) on cluster`, undefined, {
+          category: "general",
+        });
       } else if (svcs === 0) {
-        notify.info('No LLM services found on cluster', undefined, { category: 'general' });
+        notify.info("No LLM services found on cluster", undefined, {
+          category: "general",
+        });
       }
     },
     onError: (error) => notifyError(error),
@@ -566,11 +830,20 @@ export const useDiscoverTargets = () => {
 export const useTriggerRun = () => {
   const queryClient = useQueryClient();
   return useAppMutation({
-    mutationFn: ({ targetId, proxyId, data }: { targetId: number; proxyId: number; data: TriggerRunRequest }) =>
-      api.triggerRun(targetId, proxyId, data),
+    mutationFn: ({
+      targetId,
+      proxyId,
+      data,
+    }: {
+      targetId: number;
+      proxyId: number;
+      data: TriggerRunRequest;
+    }) => api.triggerRun(targetId, proxyId, data),
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.runs.all });
-      notify.success(result.message, undefined, { category: 'general' });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.runs.all,
+      });
+      notify.success(result.message, undefined, { category: "general" });
     },
     onError: (error) => notifyError(error),
   });
@@ -581,7 +854,7 @@ export const useTriggerRun = () => {
 // ============================================================================
 
 /** Terminal run-group statuses — polling stops once the group reaches one of these. */
-const RUN_GROUP_TERMINAL_STATES = new Set(['completed', 'failed', 'cancelled']);
+const RUN_GROUP_TERMINAL_STATES = new Set(["completed", "failed", "cancelled"]);
 
 export const useScenarios = () =>
   useQuery({
@@ -592,17 +865,46 @@ export const useScenarios = () =>
 export const useRunScenario = () => {
   const queryClient = useQueryClient();
   return useAppMutation({
-    mutationFn: ({ targetId, proxyId, data }: { targetId: number; proxyId: number; data: ScenarioRunRequest }) =>
-      api.runScenario(targetId, proxyId, data),
+    mutationFn: ({
+      targetId,
+      proxyId,
+      data,
+    }: {
+      targetId: number;
+      proxyId: number;
+      data: ScenarioRunRequest;
+    }) => api.runScenario(targetId, proxyId, data),
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.runs.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.runGroups.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.runGroups.detail(result.run_group_id) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.runs.all,
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.runGroups.all,
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.benchmarks.runGroups.detail(result.run_group_id),
+      });
       notify.success(result.message);
     },
     onError: (error) => notifyError(error),
   });
 };
+
+export const useRunGroups = (params?: {
+  scenario_key?: string;
+  limit?: number;
+}) =>
+  useQuery({
+    queryKey: queryKeys.benchmarks.runGroups.list(params),
+    queryFn: () => api.listRunGroups(params),
+  });
+
+export const useRunGroupCurves = (groupIds: number[]) =>
+  useQuery({
+    queryKey: queryKeys.benchmarks.runGroups.curves(groupIds),
+    queryFn: () => api.runGroupCurves(groupIds),
+    enabled: groupIds.length > 0,
+  });
 
 export const useRunGroup = (groupId: number | undefined) =>
   useQuery({
@@ -625,16 +927,23 @@ export const useRunGroup = (groupId: number | undefined) =>
 
 export const useBenchmarkWebSocket = (runId: number | undefined) => {
   const wsRef = useRef<WebSocket | null>(null);
-  const [lastMessage, setLastMessage] = useState<BenchmarkWSMessage | null>(null);
+  const [lastMessage, setLastMessage] = useState<BenchmarkWSMessage | null>(
+    null,
+  );
   const [isConnected, setIsConnected] = useState(false);
   const queryClient = useQueryClient();
 
   const connect = useCallback(() => {
     if (!runId) return;
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.host;
-    const url = `${protocol}//${host}/ws/benchmarks/runs/${runId}`;
+    // The WS path is outside the HTTP auth middleware; the backend checks ?token=.
+    const authToken = localStorage.getItem("auth_token");
+    let url = `${protocol}//${host}/ws/benchmarks/runs/${runId}`;
+    if (authToken) {
+      url += `?token=${encodeURIComponent(authToken)}`;
+    }
 
     const ws = new WebSocket(url);
     wsRef.current = ws;
@@ -646,14 +955,22 @@ export const useBenchmarkWebSocket = (runId: number | undefined) => {
         const message: BenchmarkWSMessage = JSON.parse(event.data);
         setLastMessage(message);
 
-        if (message.type === 'run_completed' || message.type === 'run_failed') {
-          queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.runs.detail(runId) });
-          queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.runs.all });
-          queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.summary() });
+        if (message.type === "run_completed" || message.type === "run_failed") {
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.benchmarks.runs.detail(runId),
+          });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.benchmarks.runs.all,
+          });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.benchmarks.summary(),
+          });
           // This run may be a child of a scenario run-group; refresh group aggregates.
           // The handler doesn't know the parent group id, so invalidate the whole
           // run-groups subtree (prefix-matches runGroups.detail(id)).
-          queryClient.invalidateQueries({ queryKey: queryKeys.benchmarks.runGroups.all });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.benchmarks.runGroups.all,
+          });
         }
       } catch {
         // Ignore non-JSON messages (e.g., "pong")
@@ -663,7 +980,7 @@ export const useBenchmarkWebSocket = (runId: number | undefined) => {
     ws.onclose = () => setIsConnected(false);
 
     const pingInterval = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) ws.send('ping');
+      if (ws.readyState === WebSocket.OPEN) ws.send("ping");
     }, 25000);
 
     return () => {

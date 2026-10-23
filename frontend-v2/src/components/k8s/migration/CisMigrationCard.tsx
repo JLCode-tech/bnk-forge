@@ -60,7 +60,7 @@ export function CisMigrationCard({
           />
         )}
         {cis.eol_note && (
-          <div className="mt-1 text-[11px] text-warning">
+          <div className="mt-1 text-2xs text-warning">
             {cis.eol_note}
           </div>
         )}

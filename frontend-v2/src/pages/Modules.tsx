@@ -6,23 +6,32 @@
  * a SectionCard. Source/category in-page sidebar dropped; grid view dropped.
  */
 
-import { useState, useMemo, memo, useCallback } from 'react';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { SectionCard } from '@/components/ui/section-card';
-import { ModuleDetailSheet } from '@/components/modules/ModuleDetailSheet';
-import { AddModuleToProjectDialog } from '@/components/modules/AddModuleToProjectDialog';
-import { ModuleSourcesDialog } from '@/components/modules/ModuleSourcesDialog';
-import { RegistryBrowseDialog } from '@/components/modules/RegistryBrowseDialog';
-import { EmptyState } from '@/components/ui/empty-state';
-import { ErrorState } from '@/components/ui/error-state';
-import { useModuleLibrary, useSyncModuleLibrary } from '@/hooks/useModules';
-import { PageHeader } from '@/components/layout/PageHeader';
-import { usePageRefresh } from '@/hooks/usePageRefresh';
-import { useModuleSources } from '@/hooks/useModuleSources';
-import { cn } from '@/lib/utils';
+import { useState, useMemo, memo, useCallback } from "react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { SectionCard } from "@/components/ui/section-card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { ModuleDetailSheet } from "@/components/modules/ModuleDetailSheet";
+import { AddModuleToProjectDialog } from "@/components/modules/AddModuleToProjectDialog";
+import { ModuleSourcesDialog } from "@/components/modules/ModuleSourcesDialog";
+import { RegistryBrowseDialog } from "@/components/modules/RegistryBrowseDialog";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
+import { useModuleLibrary, useSyncModuleLibrary } from "@/hooks/useModules";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { PageShell } from "@/components/layout/PageShell";
+import { usePageRefresh } from "@/hooks/usePageRefresh";
+import { useModuleSources } from "@/hooks/useModuleSources";
+import { cn } from "@/lib/utils";
 import {
   Search,
   Package,
@@ -44,56 +53,60 @@ import {
   Clock,
   Loader2,
   Zap,
-} from 'lucide-react';
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import type { ModuleLibrary, ModuleSource } from '@/types';
-import { compareBlueprintVersions } from '@/components/catalog/blueprintVersionUtils';
-import { getEnginePresentation, resolveModuleEngineType } from '@/lib/module-engine';
+} from "@/components/ui/select";
+import type { ModuleLibrary, ModuleSource } from "@/types";
+import { compareBlueprintVersions } from "@/components/catalog/blueprintVersionUtils";
+import {
+  getEnginePresentation,
+  resolveModuleEngineType,
+} from "@/lib/module-engine";
 
 // Show 25 modules at a time, click "Show more" to load more.
 const INITIAL_MODULES_LIMIT = 25;
 
-const CATEGORY_LABELS: Record<string, { label: string; icon: typeof Package }> = {
-  infrastructure: { label: 'Infrastructure', icon: Server },
-  infra: { label: 'Infrastructure', icon: Server },
-  bnk: { label: 'BNK / F5', icon: Shield },
-  security: { label: 'Security', icon: Shield },
-  networking: { label: 'Networking', icon: Network },
-  storage: { label: 'Storage', icon: Database },
-  compute: { label: 'Compute', icon: Server },
-  kubernetes: { label: 'Kubernetes', icon: Cloud },
-  other: { label: 'Other', icon: Package },
-};
+const CATEGORY_LABELS: Record<string, { label: string; icon: typeof Package }> =
+  {
+    infrastructure: { label: "Infrastructure", icon: Server },
+    infra: { label: "Infrastructure", icon: Server },
+    bnk: { label: "BNK / F5", icon: Shield },
+    security: { label: "Security", icon: Shield },
+    networking: { label: "Networking", icon: Network },
+    storage: { label: "Storage", icon: Database },
+    compute: { label: "Compute", icon: Server },
+    kubernetes: { label: "Kubernetes", icon: Cloud },
+    other: { label: "Other", icon: Package },
+  };
 
 const PLATFORM_FILTER_OPTIONS: { value: string; label: string }[] = [
-  { value: 'eks', label: 'EKS' },
-  { value: 'aks', label: 'AKS' },
-  { value: 'gke', label: 'GKE' },
-  { value: 'roks', label: 'ROKS' },
-  { value: 'ocp', label: 'OCP' },
-  { value: 'generic_onprem', label: 'On-Prem' },
+  { value: "eks", label: "EKS" },
+  { value: "aks", label: "AKS" },
+  { value: "gke", label: "GKE" },
+  { value: "roks", label: "ROKS" },
+  { value: "ocp", label: "OCP" },
+  { value: "generic_onprem", label: "On-Prem" },
 ];
 
 // Sync status helper — small icon, token color.
 function getSyncStatusIcon(status: string) {
   switch (status) {
-    case 'success':
+    case "success":
       return <CheckCircle2 className="h-3.5 w-3.5 text-success" />;
-    case 'failed':
+    case "failed":
       return <XCircle className="h-3.5 w-3.5 text-destructive" />;
-    case 'syncing':
+    case "syncing":
       return <Loader2 className="h-3.5 w-3.5 text-info animate-spin" />;
     default:
       return <Clock className="h-3.5 w-3.5 text-muted-foreground" />;
@@ -113,7 +126,7 @@ const ModuleRow = memo(function ModuleRow({
   onViewDetails,
   onAddToProject,
 }: ModuleRowProps) {
-  const categoryKey = (module.category || 'other').toLowerCase();
+  const categoryKey = (module.category || "other").toLowerCase();
   const cat = CATEGORY_LABELS[categoryKey] || CATEGORY_LABELS.other;
   const engine = getEnginePresentation(
     resolveModuleEngineType(module),
@@ -124,15 +137,17 @@ const ModuleRow = memo(function ModuleRow({
   const tags = module.tags || [];
 
   return (
-    <tr
-      className="border-t border-border cursor-pointer hover:bg-muted/40 transition-colors"
+    <TableRow
+      className="cursor-pointer hover:bg-muted/40 transition-colors"
       onClick={() => onViewDetails(module)}
     >
-      <td className="px-4 py-3">
+      <TableCell className="px-4 py-3">
         <div className="flex items-center gap-3">
           <CategoryIcon className="h-4 w-4 text-muted-foreground shrink-0" />
           <div>
-            <div className="font-medium text-foreground text-sm">{module.name}</div>
+            <div className="font-medium text-foreground text-sm">
+              {module.name}
+            </div>
             {(module.description || module.category) && (
               <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
                 {module.description || `${module.category}/${module.name}`}
@@ -140,13 +155,13 @@ const ModuleRow = memo(function ModuleRow({
             )}
           </div>
         </div>
-      </td>
-      <td className="px-4 py-3">
+      </TableCell>
+      <TableCell className="px-4 py-3">
         <Badge variant="outline" className="text-xs">
           {cat.label}
         </Badge>
-      </td>
-      <td className="px-4 py-3">
+      </TableCell>
+      <TableCell className="px-4 py-3">
         {source ? (
           <div className="flex items-center gap-1.5 min-w-0">
             <GitBranch className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -158,17 +173,17 @@ const ModuleRow = memo(function ModuleRow({
         ) : (
           <span className="text-xs text-muted-foreground">—</span>
         )}
-      </td>
-      <td className="px-4 py-3">
+      </TableCell>
+      <TableCell className="px-4 py-3">
         <Badge variant="muted" className="text-xs gap-1">
           <Zap className="h-3 w-3" />
           {engine.label}
         </Badge>
-      </td>
-      <td className="px-4 py-3">
+      </TableCell>
+      <TableCell className="px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="text-sm font-mono text-foreground/80">
-            v{module.version || '1.0.0'}
+            v{module.version || "1.0.0"}
           </span>
           {module.is_latest === false && (
             <Badge variant="outline" className="text-xs">
@@ -182,8 +197,8 @@ const ModuleRow = memo(function ModuleRow({
             </Badge>
           )}
         </div>
-      </td>
-      <td className="px-4 py-3">
+      </TableCell>
+      <TableCell className="px-4 py-3">
         {tags.length > 0 ? (
           <div className="flex flex-wrap gap-1 max-w-[180px]">
             {tags.slice(0, 3).map((tag) => (
@@ -192,23 +207,25 @@ const ModuleRow = memo(function ModuleRow({
               </Badge>
             ))}
             {tags.length > 3 && (
-              <span className="text-xs text-muted-foreground">+{tags.length - 3}</span>
+              <span className="text-xs text-muted-foreground">
+                +{tags.length - 3}
+              </span>
             )}
           </div>
         ) : (
           <span className="text-xs text-muted-foreground">—</span>
         )}
-      </td>
-      <td className="px-4 py-3">
+      </TableCell>
+      <TableCell className="px-4 py-3">
         {deps.length > 0 ? (
           <span className="text-xs text-muted-foreground tabular-nums">
-            {deps.length} dep{deps.length === 1 ? '' : 's'}
+            {deps.length} dep{deps.length === 1 ? "" : "s"}
           </span>
         ) : (
           <span className="text-xs text-muted-foreground">—</span>
         )}
-      </td>
-      <td className="px-4 py-3 text-right">
+      </TableCell>
+      <TableCell className="px-4 py-3 text-right">
         <DropdownMenu>
           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
             <Button
@@ -241,27 +258,34 @@ const ModuleRow = memo(function ModuleRow({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 });
 
-export default function Modules() {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | undefined>(undefined);
+export default function Modules({ embedded }: { embedded?: boolean } = {}) {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string | undefined>(
+    undefined,
+  );
   const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null);
-  const [selectedPlatform, setSelectedPlatform] = useState<string | undefined>(undefined);
+  const [selectedPlatform, setSelectedPlatform] = useState<string | undefined>(
+    undefined,
+  );
   const [showAllModules, setShowAllModules] = useState(false);
   // D-033: the catalog holds one row per module version; default to the
   // latest version of each path with an opt-in to see full version history.
   const [showAllVersions, setShowAllVersions] = useState(false);
 
   // Detail / dialog state
-  const [selectedModule, setSelectedModule] = useState<ModuleLibrary | null>(null);
+  const [selectedModule, setSelectedModule] = useState<ModuleLibrary | null>(
+    null,
+  );
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [sourcesDialogOpen, setSourcesDialogOpen] = useState(false);
-  const [registryBrowseDialogOpen, setRegistryBrowseDialogOpen] = useState(false);
+  const [registryBrowseDialogOpen, setRegistryBrowseDialogOpen] =
+    useState(false);
 
   const {
     data: modules,
@@ -307,7 +331,9 @@ export default function Modules() {
       filtered = filtered.filter((m) => m.is_latest !== false);
     }
     if (selectedSourceId !== null) {
-      filtered = filtered.filter((m) => m.module_source_id === selectedSourceId);
+      filtered = filtered.filter(
+        (m) => m.module_source_id === selectedSourceId,
+      );
     }
     if (selectedPlatform) {
       filtered = filtered.filter((m) => {
@@ -318,13 +344,13 @@ export default function Modules() {
     }
     return filtered.slice().sort((a, b) => {
       // Group by category, then alpha by name.
-      const ca = (a.category || 'other').toLowerCase();
-      const cb = (b.category || 'other').toLowerCase();
+      const ca = (a.category || "other").toLowerCase();
+      const cb = (b.category || "other").toLowerCase();
       if (ca !== cb) return ca.localeCompare(cb);
       if (a.name !== b.name) return a.name.localeCompare(b.name);
       // Same module across versions: newest version first (shared semver-tolerant
       // comparator — is_latest alone leaves older versions in arbitrary order).
-      return compareBlueprintVersions(b.version || '', a.version || '');
+      return compareBlueprintVersions(b.version || "", a.version || "");
     });
   }, [modules, selectedSourceId, selectedPlatform, showAllVersions]);
 
@@ -338,13 +364,13 @@ export default function Modules() {
     const counts = { ok: 0, syncing: 0, failed: 0, unknown: 0 };
     (sources || []).forEach((s) => {
       switch (s.sync_status) {
-        case 'success':
+        case "success":
           counts.ok++;
           break;
-        case 'syncing':
+        case "syncing":
           counts.syncing++;
           break;
-        case 'failed':
+        case "failed":
           counts.failed++;
           break;
         default:
@@ -369,62 +395,130 @@ export default function Modules() {
   const isLoading = isLoadingModules || isLoadingSources;
 
   const subtitle = isLoading
-    ? 'Loading modules…'
-    : `${modules?.length || 0} modules across ${sources?.length || 0} source${sources?.length === 1 ? '' : 's'}`;
+    ? "Loading modules…"
+    : `${modules?.length || 0} modules across ${sources?.length || 0} source${sources?.length === 1 ? "" : "s"}`;
+
+  const Wrapper = embedded ? "div" : PageShell;
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <Wrapper className={embedded ? "space-y-6" : undefined}>
       {/* Header */}
-      <PageHeader
-        title="Module Catalog"
-        subtitle={subtitle}
-        onRefresh={refresh}
-        isRefreshing={isRefreshing}
-        actions={
-          <>
-            <Button onClick={() => setSourcesDialogOpen(true)} variant="outline" size="sm">
+      {!embedded ? (
+        <PageHeader
+          title="Module Catalog"
+          subtitle={subtitle}
+          onRefresh={refresh}
+          isRefreshing={isRefreshing}
+          actions={
+            <>
+              <Button
+                onClick={() => setSourcesDialogOpen(true)}
+                variant="outline"
+                size="sm"
+              >
+                <Settings className="h-4 w-4 mr-1.5" />
+                Sources
+              </Button>
+              <Button
+                onClick={() => setRegistryBrowseDialogOpen(true)}
+                variant="outline"
+                size="sm"
+              >
+                <Globe className="h-4 w-4 mr-1.5" />
+                Browse registry
+              </Button>
+              <Button
+                onClick={() => syncLibraryMutation.mutate(false)}
+                disabled={syncLibraryMutation.isPending}
+                variant="default"
+                size="sm"
+              >
+                <RefreshCw
+                  className={cn(
+                    "h-4 w-4 mr-1.5",
+                    syncLibraryMutation.isPending && "animate-spin",
+                  )}
+                />
+                Sync all
+              </Button>
+            </>
+          }
+        />
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">{subtitle}</p>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => setSourcesDialogOpen(true)}
+              variant="outline"
+              size="sm"
+            >
               <Settings className="h-4 w-4 mr-1.5" />
               Sources
             </Button>
-            <Button onClick={() => setRegistryBrowseDialogOpen(true)} variant="outline" size="sm">
+            <Button
+              onClick={() => setRegistryBrowseDialogOpen(true)}
+              variant="outline"
+              size="sm"
+            >
               <Globe className="h-4 w-4 mr-1.5" />
               Browse registry
             </Button>
             <Button
               onClick={() => syncLibraryMutation.mutate(false)}
               disabled={syncLibraryMutation.isPending}
-              variant="outline"
+              variant="default"
               size="sm"
             >
               <RefreshCw
-                className={cn('h-4 w-4 mr-1.5', syncLibraryMutation.isPending && 'animate-spin')}
+                className={cn(
+                  "h-4 w-4 mr-1.5",
+                  syncLibraryMutation.isPending && "animate-spin",
+                )}
               />
               Sync all
             </Button>
-          </>
-        }
-      />
+          </div>
+        </div>
+      )}
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: 'Modules', value: modules?.length || 0, tone: 'foreground' as const },
-          { label: 'Sources OK', value: syncStats.ok, tone: 'success' as const },
-          { label: 'Syncing', value: syncStats.syncing, tone: 'info' as const },
-          { label: 'Sync failed', value: syncStats.failed, tone: 'destructive' as const },
+          {
+            label: "Modules",
+            value: modules?.length || 0,
+            tone: "foreground" as const,
+          },
+          {
+            label: "Sources OK",
+            value: syncStats.ok,
+            tone: "success" as const,
+          },
+          { label: "Syncing", value: syncStats.syncing, tone: "info" as const },
+          {
+            label: "Sync failed",
+            value: syncStats.failed,
+            tone: "destructive" as const,
+          },
         ].map((tile) => {
           const toneText =
-            tile.tone === 'success'
-              ? 'text-success'
-              : tile.tone === 'info'
-              ? 'text-info'
-              : tile.tone === 'destructive'
-              ? 'text-destructive'
-              : 'text-foreground';
+            tile.tone === "success"
+              ? "text-success"
+              : tile.tone === "info"
+                ? "text-info"
+                : tile.tone === "destructive"
+                  ? "text-destructive"
+                  : "text-foreground";
           return (
-            <div key={tile.label} className="rounded-lg border border-border bg-card px-4 py-3">
+            <div
+              key={tile.label}
+              className="rounded-lg border border-border bg-card px-4 py-3"
+            >
               <div className="text-xs text-muted-foreground">{tile.label}</div>
-              <div className={cn('text-2xl font-bold mt-1 tabular-nums', toneText)}>
+              <div
+                className={cn("text-2xl font-bold mt-1 tabular-nums", toneText)}
+              >
                 {tile.value}
               </div>
             </div>
@@ -447,9 +541,9 @@ export default function Modules() {
 
         {(sources?.length || 0) > 0 && (
           <Select
-            value={selectedSourceId !== null ? String(selectedSourceId) : 'all'}
+            value={selectedSourceId !== null ? String(selectedSourceId) : "all"}
             onValueChange={(val) =>
-              setSelectedSourceId(val === 'all' ? null : Number(val))
+              setSelectedSourceId(val === "all" ? null : Number(val))
             }
           >
             <SelectTrigger className="h-9 w-[180px]">
@@ -468,9 +562,9 @@ export default function Modules() {
 
         {categories.length > 0 && (
           <Select
-            value={selectedCategory || 'all'}
+            value={selectedCategory || "all"}
             onValueChange={(val) =>
-              setSelectedCategory(val === 'all' ? undefined : val)
+              setSelectedCategory(val === "all" ? undefined : val)
             }
           >
             <SelectTrigger className="h-9 w-[180px]">
@@ -488,8 +582,10 @@ export default function Modules() {
         )}
 
         <Select
-          value={selectedPlatform || 'all'}
-          onValueChange={(val) => setSelectedPlatform(val === 'all' ? undefined : val)}
+          value={selectedPlatform || "all"}
+          onValueChange={(val) =>
+            setSelectedPlatform(val === "all" ? undefined : val)
+          }
         >
           <SelectTrigger className="h-9 w-[160px]">
             <SelectValue placeholder="All platforms" />
@@ -535,57 +631,85 @@ export default function Modules() {
           description={
             searchTerm
               ? `No modules match "${searchTerm}"`
-              : 'Add a module source or browse the registry to populate the catalog.'
+              : "Add a module source or browse the registry to populate the catalog."
           }
           action={{
-            label: 'Browse registry',
+            label: "Browse registry",
             onClick: () => setRegistryBrowseDialogOpen(true),
             icon: <Globe className="h-4 w-4 mr-1.5" />,
           }}
         />
       ) : (
         <SectionCard
-          title={`${displayModules.length} ${displayModules.length === 1 ? 'module' : 'modules'}`}
+          title={`${displayModules.length} ${displayModules.length === 1 ? "module" : "modules"}`}
           compact
         >
           <div className="overflow-x-auto -mx-4">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-xs uppercase tracking-wider text-muted-foreground">
-                  <th scope="col" className="text-left font-medium px-4 py-2">Module</th>
-                  <th scope="col" className="text-left font-medium px-4 py-2">Category</th>
-                  <th scope="col" className="text-left font-medium px-4 py-2">Source</th>
-                  <th scope="col" className="text-left font-medium px-4 py-2">Engine</th>
-                  <th scope="col" className="text-left font-medium px-4 py-2">Version</th>
-                  <th scope="col" className="text-left font-medium px-4 py-2">Tags</th>
-                  <th scope="col" className="text-left font-medium px-4 py-2">Deps</th>
-                  <th scope="col" className="text-right font-medium px-4 py-2 w-16">{/* actions */}</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table className="text-sm">
+              <TableHeader>
+                <TableRow className="text-xs uppercase tracking-wider text-muted-foreground">
+                  <TableHead className="text-left font-medium px-4 py-2">
+                    Module
+                  </TableHead>
+                  <TableHead className="text-left font-medium px-4 py-2">
+                    Category
+                  </TableHead>
+                  <TableHead className="text-left font-medium px-4 py-2">
+                    Source
+                  </TableHead>
+                  <TableHead className="text-left font-medium px-4 py-2">
+                    Engine
+                  </TableHead>
+                  <TableHead className="text-left font-medium px-4 py-2">
+                    Version
+                  </TableHead>
+                  <TableHead className="text-left font-medium px-4 py-2">
+                    Tags
+                  </TableHead>
+                  <TableHead className="text-left font-medium px-4 py-2">
+                    Deps
+                  </TableHead>
+                  <TableHead className="text-right font-medium px-4 py-2 w-16">
+                    {/* actions */}
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {limited.map((module) => (
                   <ModuleRow
-                    key={`${module.module_source_id ?? 0}-${module.name}-${module.version ?? ''}`}
+                    key={`${module.module_source_id ?? 0}-${module.name}-${module.version ?? ""}`}
                     module={module}
-                    source={module.module_source_id ? sourcesMap[module.module_source_id] || null : null}
+                    source={
+                      module.module_source_id
+                        ? sourcesMap[module.module_source_id] || null
+                        : null
+                    }
                     onViewDetails={handleViewDetails}
                     onAddToProject={handleAddToProject}
                   />
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
 
           {!showAllModules && hasMore && (
             <div className="mt-4 flex justify-center">
-              <Button variant="outline" size="sm" onClick={() => setShowAllModules(true)}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowAllModules(true)}
+              >
                 Show {displayModules.length - INITIAL_MODULES_LIMIT} more
               </Button>
             </div>
           )}
           {showAllModules && hasMore && (
             <div className="mt-4 flex justify-center">
-              <Button variant="ghost" size="sm" onClick={() => setShowAllModules(false)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowAllModules(false)}
+              >
                 Show less
               </Button>
             </div>
@@ -620,6 +744,6 @@ export default function Modules() {
         open={registryBrowseDialogOpen}
         onOpenChange={setRegistryBrowseDialogOpen}
       />
-    </div>
+    </Wrapper>
   );
 }

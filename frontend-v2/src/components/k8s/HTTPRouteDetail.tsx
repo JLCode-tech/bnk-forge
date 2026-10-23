@@ -9,7 +9,8 @@
 
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Route, Server, CheckCircle2, XCircle, AlertCircle, Clock, Globe } from 'lucide-react';
+import { Route, Server, Globe, AlertCircle } from 'lucide-react';
+import { ConditionsList } from '@/components/k8s/ConditionsList';
 import type { K8sResource, K8sCondition, K8sGatewayRef, K8sHTTPRouteRule, K8sHTTPRouteMatch, K8sBackendRef } from '@/types';
 
 interface HTTPRouteDetailProps {
@@ -39,32 +40,6 @@ export function HTTPRouteDetail({ resource }: HTTPRouteDetailProps) {
     }
   };
 
-  const getConditionIcon = (status: string) => {
-    switch (status?.toLowerCase()) {
-      case 'true':
-        return <CheckCircle2 className="h-4 w-4 text-success" />;
-      case 'false':
-        return <XCircle className="h-4 w-4 text-destructive" />;
-      case 'unknown':
-        return <AlertCircle className="h-4 w-4 text-warning" />;
-      default:
-        return <Clock className="h-4 w-4 text-muted-foreground" />;
-    }
-  };
-
-  const getConditionColor = (status: string) => {
-    switch (status?.toLowerCase()) {
-      case 'true':
-        return 'text-success';
-      case 'false':
-        return 'text-destructive';
-      case 'unknown':
-        return 'text-warning';
-      default:
-        return 'text-muted-foreground';
-    }
-  };
-
   return (
     <div className="space-y-4">
       <Tabs defaultValue="summary" className="w-full">
@@ -88,7 +63,7 @@ export function HTTPRouteDetail({ resource }: HTTPRouteDetailProps) {
                       {ref.name}
                     </code>
                     {ref.namespace && ref.namespace !== resource.metadata?.namespace && (
-                      <Badge variant="outline" className="text-[10px]">
+                      <Badge variant="outline" className="text-2xs">
                         {ref.namespace}
                       </Badge>
                     )}
@@ -162,7 +137,7 @@ export function HTTPRouteDetail({ resource }: HTTPRouteDetailProps) {
                         <div key={matchIdx}>
                           {match.path && (
                             <div className="flex items-center gap-2">
-                              <Badge variant={getPathTypeVariant(match.path.type)} className="text-[10px]">
+                              <Badge variant={getPathTypeVariant(match.path.type)} className="text-2xs">
                                 {match.path.type}
                               </Badge>
                               <code className="text-xs font-mono text-foreground/80">
@@ -196,12 +171,12 @@ export function HTTPRouteDetail({ resource }: HTTPRouteDetailProps) {
                                   {backend.name}
                                 </code>
                                 {isCrossNs && (
-                                  <Badge variant="warning" className="text-[10px]">
+                                  <Badge variant="warning" className="text-2xs">
                                     ns:{backend.namespace}
                                   </Badge>
                                 )}
                                 {isCustomKind && (
-                                  <Badge variant="outline" className="text-[10px]">
+                                  <Badge variant="outline" className="text-2xs">
                                     {backend.kind}
                                   </Badge>
                                 )}
@@ -248,40 +223,7 @@ export function HTTPRouteDetail({ resource }: HTTPRouteDetailProps) {
               <p className="text-xs text-muted-foreground">No status conditions available</p>
             </div>
           ) : (
-            conditions.map((condition: K8sCondition, idx: number) => (
-              <div
-                key={idx}
-                className="p-3 rounded-lg border bg-muted/50 border-border"
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  {getConditionIcon(condition.status)}
-                  <span className={`font-medium text-sm ${getConditionColor(condition.status)}`}>
-                    {condition.type}
-                  </span>
-                </div>
-                <div className="space-y-1 text-xs">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Status:</span>
-                    <span className={`font-medium ${getConditionColor(condition.status)}`}>
-                      {condition.status}
-                    </span>
-                  </div>
-                  {condition.reason && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Reason:</span>
-                      <span className="text-foreground/80">{condition.reason}</span>
-                    </div>
-                  )}
-                  {condition.message && (
-                    <div className="mt-2">
-                      <p className="text-xs text-muted-foreground">
-                        {condition.message}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))
+            <ConditionsList conditions={conditions} />
           )}
         </TabsContent>
       </Tabs>

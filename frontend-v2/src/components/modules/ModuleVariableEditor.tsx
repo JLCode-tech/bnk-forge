@@ -521,7 +521,7 @@ export function ModuleVariableEditor({
                 <div className="font-mono text-info">
                   {variable.from_module ? getModuleName(variable.from_module) : variable.from_module}.outputs.{variable.from_output || variable.name}
                 </div>
-                <div className="text-[10px] text-muted-foreground mt-1">
+                <div className="text-2xs text-muted-foreground mt-1">
                   Module path: {variable.from_module}
                 </div>
               </div>

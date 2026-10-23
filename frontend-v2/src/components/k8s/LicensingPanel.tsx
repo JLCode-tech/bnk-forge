@@ -10,8 +10,8 @@
  *
  * Used in F5BNK.tsx > DiagnosticsView > Licensing tab.
  */
-import { useState, useCallback } from 'react';
-import { cn } from '@/lib/utils';
+import { useState, useCallback } from "react";
+import { cn } from "@/lib/utils";
 import {
   useLicenseStatus,
   useCWCStatus,
@@ -20,19 +20,19 @@ import {
   useRenewLicense,
   useValidateJwks,
   usePostLicenseReceipt,
-} from '@/hooks/useLicensing';
-import { useCWCAPISetup, useCWCAPISetupStatus } from '@/hooks/useQKView';
-import { Badge, type BadgeProps } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+} from "@/hooks/useLicensing";
+import { useCWCAPISetup, useCWCAPISetupStatus } from "@/hooks/useQKView";
+import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
-import { notify } from '@/lib/notify';
+} from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import { notify } from "@/lib/notify";
 import {
   Shield,
   ShieldCheck,
@@ -55,8 +55,8 @@ import {
   RotateCw,
   Zap,
   Wrench,
-} from 'lucide-react';
-import type { LicenseInfo } from '@/types';
+} from "lucide-react";
+import type { LicenseInfo } from "@/types";
 
 interface LicensingPanelProps {
   clusterId: number;
@@ -64,51 +64,56 @@ interface LicensingPanelProps {
 
 // D-020: token-pure status mapping. Status surfaces as a small badge + icon,
 // not a whole-card tint. `iconColor` is a single token class for the icon.
-const stateConfig: Record<LicenseInfo['state'], {
-  icon: typeof Shield;
-  iconColor: string;
-  label: string;
-  badgeVariant: NonNullable<BadgeProps['variant']>;
-}> = {
+const stateConfig: Record<
+  LicenseInfo["state"],
+  {
+    icon: typeof Shield;
+    iconColor: string;
+    label: string;
+    badgeVariant: NonNullable<BadgeProps["variant"]>;
+  }
+> = {
   active: {
     icon: ShieldCheck,
-    iconColor: 'text-success',
-    label: 'Active',
-    badgeVariant: 'success',
+    iconColor: "text-success",
+    label: "Active",
+    badgeVariant: "success",
   },
   evaluation: {
     icon: ShieldAlert,
-    iconColor: 'text-warning',
-    label: 'Evaluation',
-    badgeVariant: 'warning',
+    iconColor: "text-warning",
+    label: "Evaluation",
+    badgeVariant: "warning",
   },
   expired: {
     icon: ShieldX,
-    iconColor: 'text-destructive',
-    label: 'Expired',
-    badgeVariant: 'destructive',
+    iconColor: "text-destructive",
+    label: "Expired",
+    badgeVariant: "destructive",
   },
   unknown: {
     icon: ShieldQuestion,
-    iconColor: 'text-muted-foreground',
-    label: 'Unknown',
-    badgeVariant: 'outline',
+    iconColor: "text-muted-foreground",
+    label: "Unknown",
+    badgeVariant: "outline",
   },
   unavailable: {
     icon: ShieldQuestion,
-    iconColor: 'text-muted-foreground',
-    label: 'Unavailable',
-    badgeVariant: 'outline',
+    iconColor: "text-muted-foreground",
+    label: "Unavailable",
+    badgeVariant: "outline",
   },
 };
 
 function StatusDot({ ok, label }: { ok: boolean; label: string }) {
   return (
     <div className="flex items-center gap-2">
-      <span className={cn(
-        'h-2 w-2 rounded-full',
-        ok ? 'bg-success' : 'bg-muted-foreground',
-      )} />
+      <span
+        className={cn(
+          "h-2 w-2 rounded-full",
+          ok ? "bg-success" : "bg-muted-foreground",
+        )}
+      />
       <span className="text-sm">{label}</span>
       {ok ? (
         <CheckCircle2 className="h-3.5 w-3.5 text-success" />
@@ -130,7 +135,10 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
   } = useLicenseStatus(clusterId);
 
   const { data: cwcStatus, isLoading: cwcLoading } = useCWCStatus(clusterId);
-  const { data: cwcApiSetupStatus } = useCWCAPISetupStatus(clusterId, clusterId > 0);
+  const { data: cwcApiSetupStatus } = useCWCAPISetupStatus(
+    clusterId,
+    clusterId > 0,
+  );
 
   // Mutation hooks
   const activateMutation = useActivateLicense();
@@ -147,9 +155,9 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
   } = useLicenseReport(clusterId, false); // disabled by default, trigger manually
 
   // Local state for forms
-  const [jwtInput, setJwtInput] = useState('');
-  const [renewJwtInput, setRenewJwtInput] = useState('');
-  const [manifestInput, setManifestInput] = useState('');
+  const [jwtInput, setJwtInput] = useState("");
+  const [renewJwtInput, setRenewJwtInput] = useState("");
+  const [manifestInput, setManifestInput] = useState("");
   const [showActivateForm, setShowActivateForm] = useState(false);
   const [showRenewForm, setShowRenewForm] = useState(false);
   const [showReceiptForm, setShowReceiptForm] = useState(false);
@@ -157,7 +165,9 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
 
   const handleActivate = useCallback(() => {
     if (!jwtInput.trim()) {
-      notify.warning('Please paste the JWT license token', undefined, { category: 'security' });
+      notify.warning("Please paste the JWT license token", undefined, {
+        category: "security",
+      });
       return;
     }
     activateMutation.mutate(
@@ -165,14 +175,23 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
       {
         onSuccess: (data) => {
           if (data?.success === false) {
-            notify.error(data.error_message ?? 'License activation failed', undefined, { category: 'security' });
+            notify.error(
+              data.error_message ?? "License activation failed",
+              undefined,
+              { category: "security" },
+            );
             return;
           }
-          const stateMsg = data?.license_state_pre && data?.license_state_post
-            ? ` (${data.license_state_pre} → ${data.license_state_post})`
-            : '';
-          notify.success(`License activated successfully${stateMsg}`, undefined, { category: 'security' });
-          setJwtInput('');
+          const stateMsg =
+            data?.license_state_pre && data?.license_state_post
+              ? ` (${data.license_state_pre} → ${data.license_state_post})`
+              : "";
+          notify.success(
+            `License activated successfully${stateMsg}`,
+            undefined,
+            { category: "security" },
+          );
+          setJwtInput("");
           setShowActivateForm(false);
         },
       },
@@ -181,7 +200,9 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
 
   const handleRenew = useCallback(() => {
     if (!renewJwtInput.trim()) {
-      notify.warning('Please paste the JWT license token', undefined, { category: 'security' });
+      notify.warning("Please paste the JWT license token", undefined, {
+        category: "security",
+      });
       return;
     }
     renewMutation.mutate(
@@ -189,17 +210,24 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
       {
         onSuccess: (data) => {
           if (data?.success === false) {
-            notify.error(data.error_message ?? 'License renewal failed', undefined, { category: 'security' });
+            notify.error(
+              data.error_message ?? "License renewal failed",
+              undefined,
+              { category: "security" },
+            );
             return;
           }
-          const stateMsg = data?.license_state_pre && data?.license_state_post
-            ? ` (${data.license_state_pre} → ${data.license_state_post})`
-            : '';
+          const stateMsg =
+            data?.license_state_pre && data?.license_state_post
+              ? ` (${data.license_state_pre} → ${data.license_state_post})`
+              : "";
           const base = forceRenew
-            ? 'License renewed (force). CWC was restarted with the new license.'
-            : 'License switched successfully. No CWC restart needed.';
-          notify.success(`${base}${stateMsg}`, undefined, { category: 'security' });
-          setRenewJwtInput('');
+            ? "License renewed (force). CWC was restarted with the new license."
+            : "License switched successfully. No CWC restart needed.";
+          notify.success(`${base}${stateMsg}`, undefined, {
+            category: "security",
+          });
+          setRenewJwtInput("");
           setShowRenewForm(false);
           setForceRenew(false);
         },
@@ -212,12 +240,24 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
       { clusterId },
       {
         onSuccess: (data) => {
-          if (data.status === 'patched') {
-            notify.success('JWKS fixed — replaced placeholder keys with real F5 public keys.', undefined, { category: 'security' });
-          } else if (data.status === 'valid') {
-            notify.success('JWKS is already valid — no changes needed.', undefined, { category: 'security' });
+          if (data.status === "patched") {
+            notify.success(
+              "JWKS fixed — replaced placeholder keys with real F5 public keys.",
+              undefined,
+              { category: "security" },
+            );
+          } else if (data.status === "valid") {
+            notify.success(
+              "JWKS is already valid — no changes needed.",
+              undefined,
+              { category: "security" },
+            );
           } else {
-            notify.warning(data.message || 'JWKS ConfigMap not found on this cluster.', undefined, { category: 'security' });
+            notify.warning(
+              data.message || "JWKS ConfigMap not found on this cluster.",
+              undefined,
+              { category: "security" },
+            );
           }
         },
       },
@@ -228,9 +268,9 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
     cwcApiSetupMutation.mutate(clusterId, {
       onSuccess: (result) => {
         notify.success(
-          result.message || 'CWC mTLS setup completed successfully.',
+          result.message || "CWC mTLS setup completed successfully.",
           undefined,
-          { category: 'security' },
+          { category: "security" },
         );
       },
     });
@@ -238,7 +278,9 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
 
   const handleReceipt = useCallback(() => {
     if (!manifestInput.trim()) {
-      notify.warning('Please paste the signed manifest', undefined, { category: 'security' });
+      notify.warning("Please paste the signed manifest", undefined, {
+        category: "security",
+      });
       return;
     }
     receiptMutation.mutate(
@@ -246,11 +288,17 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
       {
         onSuccess: (data) => {
           if (data?.success === false) {
-            notify.error(data.error_message ?? 'License receipt submission failed', undefined, { category: 'security' });
+            notify.error(
+              data.error_message ?? "License receipt submission failed",
+              undefined,
+              { category: "security" },
+            );
             return;
           }
-          notify.success('License receipt submitted successfully', undefined, { category: 'security' });
-          setManifestInput('');
+          notify.success("License receipt submitted successfully", undefined, {
+            category: "security",
+          });
+          setManifestInput("");
           setShowReceiptForm(false);
         },
       },
@@ -266,9 +314,9 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
         await navigator.clipboard.writeText(raw);
       } catch {
         // Fallback: download as file
-        const blob = new Blob([raw], { type: 'text/plain' });
+        const blob = new Blob([raw], { type: "text/plain" });
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
+        const a = document.createElement("a");
         a.href = url;
         a.download = `telemetry-report-cluster-${clusterId}.txt`;
         document.body.appendChild(a);
@@ -279,11 +327,17 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
     }
   }, [fetchReport, clusterId]);
 
-  if (statusLoading || cwcLoading) {
+  if (
+    (statusLoading || cwcLoading) &&
+    !cwcStatus &&
+    licenseInfo.state === "unknown"
+  ) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <span className="ml-3 text-sm text-muted-foreground">Loading licensing information...</span>
+        <span className="ml-3 text-sm text-muted-foreground">
+          Loading licensing information...
+        </span>
       </div>
     );
   }
@@ -291,7 +345,7 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
   // When license status fails or is unavailable, show contextual help.
   // With the legacy fallback path, this now means CWC itself isn't reachable
   // (no certs, no CWC service, etc.) — not just "no operator connected".
-  if (statusError || licenseInfo.state === 'unavailable') {
+  if (statusError || licenseInfo.state === "unavailable") {
     const cwcNotFound = cwcStatus && !cwcStatus.cwc_service_found;
     const certsNotMounted = cwcStatus && !cwcStatus.certs_mounted;
 
@@ -309,15 +363,24 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
               </p>
               <p className="text-sm text-muted-foreground">
                 {certsNotMounted
-                  ? 'CWC certificates are not configured. Use the Recovery tab to re-sync certificates, or complete initial QKView mTLS setup from the QKView tab.'
-                  : 'Unable to reach the CWC REST API. Ensure the cluster has a CWC service with valid mTLS certificates.'}
+                  ? "CWC certificates are not configured. Use the Recovery tab to re-sync certificates, or complete initial QKView mTLS setup from the QKView tab."
+                  : "Unable to reach the CWC REST API. Ensure the cluster has a CWC service with valid mTLS certificates."}
               </p>
               {cwcStatus && (
                 <div className="flex flex-wrap gap-4 pt-2">
-                  <StatusDot ok={cwcStatus.cwc_service_found} label="CWC Service" />
+                  <StatusDot
+                    ok={cwcStatus.cwc_service_found}
+                    label="CWC Service"
+                  />
                   <StatusDot ok={cwcStatus.certs_mounted} label="mTLS Certs" />
-                  <StatusDot ok={cwcStatus.cwc_reachable} label="API Reachable" />
-                  <StatusDot ok={cwcStatus.setup_complete} label="Setup Complete" />
+                  <StatusDot
+                    ok={cwcStatus.cwc_reachable}
+                    label="API Reachable"
+                  />
+                  <StatusDot
+                    ok={cwcStatus.setup_complete}
+                    label="Setup Complete"
+                  />
                 </div>
               )}
             </div>
@@ -336,7 +399,7 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
       {cwcStatus && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2">
               <Radio className="h-4 w-4" />
               CWC Connectivity
             </CardTitle>
@@ -350,15 +413,19 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
               <StatusDot ok={cwcStatus.certs_mounted} label="mTLS Certs" />
               <StatusDot ok={cwcStatus.cwc_reachable} label="API Reachable" />
               <StatusDot ok={cwcStatus.setup_complete} label="Setup Complete" />
-              <StatusDot ok={cwcStatus.cert_manager_available} label="cert-manager" />
+              <StatusDot
+                ok={cwcStatus.cert_manager_available}
+                label="cert-manager"
+              />
             </div>
             {!cwcStatus.certs_mounted && (
               <div className="mt-4 flex items-start gap-2 rounded-md p-3 text-sm bg-warning/10 text-warning">
                 <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                 <span>
-                  CWC certificates are not mounted on the operator pod.
-                  Complete the initial QKView mTLS setup from the QKView tab, then update the operator
-                  deployment with <code className="font-mono text-xs">cwc.enabled: true</code>.
+                  CWC certificates are not mounted on the operator pod. Complete
+                  the initial QKView mTLS setup from the QKView tab, then update
+                  the operator deployment with{" "}
+                  <code className="font-mono text-xs">cwc.enabled: true</code>.
                 </span>
               </div>
             )}
@@ -371,21 +438,37 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
                       CWC mTLS Setup Required
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      Licensing and QKView both require CWC REST API certificates. This one-time
-                      setup creates the cert-manager-backed server and client certs, updates
+                      Licensing and QKView both require CWC REST API
+                      certificates. This one-time setup creates the
+                      cert-manager-backed server and client certs, updates
                       `cwc-license-certs`, and restarts the CWC pod.
                     </p>
                     <div className="flex flex-wrap gap-4 pt-1">
-                      <StatusDot ok={cwcApiSetupStatus.cert_manager_available} label="cert-manager" />
-                      <StatusDot ok={cwcApiSetupStatus.server_cert_exists} label="Server Cert" />
-                      <StatusDot ok={cwcApiSetupStatus.client_cert_exists} label="Client Cert" />
-                      <StatusDot ok={cwcApiSetupStatus.setup_complete} label="Setup Complete" />
+                      <StatusDot
+                        ok={cwcApiSetupStatus.cert_manager_available}
+                        label="cert-manager"
+                      />
+                      <StatusDot
+                        ok={cwcApiSetupStatus.server_cert_exists}
+                        label="Server Cert"
+                      />
+                      <StatusDot
+                        ok={cwcApiSetupStatus.client_cert_exists}
+                        label="Client Cert"
+                      />
+                      <StatusDot
+                        ok={cwcApiSetupStatus.setup_complete}
+                        label="Setup Complete"
+                      />
                     </div>
                   </div>
                   <Button
                     size="sm"
                     onClick={handleSetupCwcCerts}
-                    disabled={cwcApiSetupMutation.isPending || !cwcApiSetupStatus.cert_manager_available}
+                    disabled={
+                      cwcApiSetupMutation.isPending ||
+                      !cwcApiSetupStatus.cert_manager_available
+                    }
                   >
                     {cwcApiSetupMutation.isPending ? (
                       <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
@@ -405,8 +488,8 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2">
-              <StateIcon className={cn('h-5 w-5', config.iconColor)} />
+            <CardTitle className="flex items-center gap-2">
+              <StateIcon className={cn("h-5 w-5", config.iconColor)} />
               License Status
               <Badge variant={config.badgeVariant} className="text-xs">
                 {config.label}
@@ -418,7 +501,9 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
               onClick={() => refetchStatus()}
               disabled={statusFetching}
             >
-              <RefreshCw className={cn('h-3.5 w-3.5', statusFetching && 'animate-spin')} />
+              <RefreshCw
+                className={cn("h-3.5 w-3.5", statusFetching && "animate-spin")}
+              />
             </Button>
           </div>
           {statusError && (
@@ -431,34 +516,64 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {licenseInfo.entitlementType && (
-                <DetailItem icon={Shield} label="Entitlement" value={licenseInfo.entitlementType} />
+                <DetailItem
+                  icon={Shield}
+                  label="Entitlement"
+                  value={licenseInfo.entitlementType}
+                />
               )}
               {licenseInfo.digitalAssetId && (
-                <DetailItem icon={Key} label="Digital Asset ID" value={licenseInfo.digitalAssetId} />
+                <DetailItem
+                  icon={Key}
+                  label="Digital Asset ID"
+                  value={licenseInfo.digitalAssetId}
+                />
               )}
               {licenseInfo.expiryDate && (
-                <DetailItem icon={Clock} label="Expiry Date" value={licenseInfo.expiryDate} />
+                <DetailItem
+                  icon={Clock}
+                  label="Expiry Date"
+                  value={licenseInfo.expiryDate}
+                />
               )}
               {licenseInfo.expiryDays !== undefined && (
                 <DetailItem
                   icon={Clock}
                   label="Days Remaining"
-                  value={licenseInfo.expiryDays > 0 ? `${licenseInfo.expiryDays} days` : 'Expired'}
+                  value={
+                    licenseInfo.expiryDays > 0
+                      ? `${licenseInfo.expiryDays} days`
+                      : "Expired"
+                  }
                   warn={licenseInfo.expiryDays <= 30}
                 />
               )}
               {licenseInfo.telemetryState && (
-                <DetailItem icon={Radio} label="Telemetry" value={licenseInfo.telemetryState} />
+                <DetailItem
+                  icon={Radio}
+                  label="Telemetry"
+                  value={licenseInfo.telemetryState}
+                />
               )}
               {licenseInfo.telemetryMessage && (
-                <DetailItem icon={FileText} label="Telemetry Status" value={licenseInfo.telemetryMessage} />
+                <DetailItem
+                  icon={FileText}
+                  label="Telemetry Status"
+                  value={licenseInfo.telemetryMessage}
+                />
               )}
             </div>
 
             {/* Raw CWC state (when not cleanly mapped) */}
-            {licenseInfo.rawState && licenseInfo.rawState !== 'Active' && licenseInfo.rawState !== 'Licensed' && (
-              <DetailItem icon={Shield} label="CWC State" value={licenseInfo.rawState} />
-            )}
+            {licenseInfo.rawState &&
+              licenseInfo.rawState !== "Active" &&
+              licenseInfo.rawState !== "Licensed" && (
+                <DetailItem
+                  icon={Shield}
+                  label="CWC State"
+                  value={licenseInfo.rawState}
+                />
+              )}
 
             {/* Error / suggested action from CWC */}
             {licenseInfo.error && (
@@ -468,27 +583,30 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
                   <p className="font-medium">License Error</p>
                   <p className="text-xs opacity-80">{licenseInfo.error}</p>
                   {licenseInfo.suggestedAction && (
-                    <p className="text-xs opacity-60">{licenseInfo.suggestedAction}</p>
+                    <p className="text-xs opacity-60">
+                      {licenseInfo.suggestedAction}
+                    </p>
                   )}
                 </div>
               </div>
             )}
 
             {/* Warnings */}
-            {licenseInfo.state === 'evaluation' && (
+            {licenseInfo.state === "evaluation" && (
               <div className="flex items-start gap-2 rounded-md p-3 text-sm bg-warning/10 text-warning">
                 <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                 <span>
-                  This cluster is running an evaluation license.
-                  Activate a production license before the evaluation period expires.
+                  This cluster is running an evaluation license. Activate a
+                  production license before the evaluation period expires.
                 </span>
               </div>
             )}
-            {licenseInfo.state === 'expired' && (
+            {licenseInfo.state === "expired" && (
               <div className="flex items-start gap-2 rounded-md p-3 text-sm bg-destructive/10 text-destructive">
                 <ShieldX className="h-4 w-4 shrink-0 mt-0.5" />
                 <span>
-                  This license has expired. Activate a new license to restore full functionality.
+                  This license has expired. Activate a new license to restore
+                  full functionality.
                 </span>
               </div>
             )}
@@ -499,7 +617,7 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
       {/* Licensing Actions */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Licensing Actions</CardTitle>
+          <CardTitle>Licensing Actions</CardTitle>
           <CardDescription>
             Manage license activation, telemetry reports, and receipt submission
           </CardDescription>
@@ -510,8 +628,12 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => { setShowActivateForm(!showActivateForm); setShowRenewForm(false); setShowReceiptForm(false); }}
-              className={cn(showActivateForm && 'ring-2 ring-primary')}
+              onClick={() => {
+                setShowActivateForm(!showActivateForm);
+                setShowRenewForm(false);
+                setShowReceiptForm(false);
+              }}
+              className={cn(showActivateForm && "ring-2 ring-primary")}
             >
               <Key className="h-3.5 w-3.5 mr-1.5" />
               Activate License
@@ -519,8 +641,12 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => { setShowRenewForm(!showRenewForm); setShowActivateForm(false); setShowReceiptForm(false); }}
-              className={cn(showRenewForm && 'ring-2 ring-primary')}
+              onClick={() => {
+                setShowRenewForm(!showRenewForm);
+                setShowActivateForm(false);
+                setShowReceiptForm(false);
+              }}
+              className={cn(showRenewForm && "ring-2 ring-primary")}
             >
               <RotateCw className="h-3.5 w-3.5 mr-1.5" />
               Renew License
@@ -529,10 +655,15 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
               variant="outline"
               size="sm"
               onClick={handleDownloadReport}
-              disabled={reportFetching || licenseInfo.telemetryState !== 'Config Report Ready to Download'}
-              title={licenseInfo.telemetryState !== 'Config Report Ready to Download'
-                ? `Telemetry report is only available when state shows 'Config Report Ready to Download'. Current state: ${licenseInfo.telemetryState ?? 'unknown'}`
-                : undefined}
+              disabled={
+                reportFetching ||
+                licenseInfo.telemetryState !== "Config Report Ready to Download"
+              }
+              title={
+                licenseInfo.telemetryState !== "Config Report Ready to Download"
+                  ? `Telemetry report is only available when state shows 'Config Report Ready to Download'. Current state: ${licenseInfo.telemetryState ?? "unknown"}`
+                  : undefined
+              }
             >
               {reportFetching ? (
                 <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
@@ -544,8 +675,12 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => { setShowReceiptForm(!showReceiptForm); setShowActivateForm(false); setShowRenewForm(false); }}
-              className={cn(showReceiptForm && 'ring-2 ring-primary')}
+              onClick={() => {
+                setShowReceiptForm(!showReceiptForm);
+                setShowActivateForm(false);
+                setShowRenewForm(false);
+              }}
+              className={cn(showReceiptForm && "ring-2 ring-primary")}
             >
               <Upload className="h-3.5 w-3.5 mr-1.5" />
               Submit Receipt
@@ -569,10 +704,13 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
           {showActivateForm && (
             <div className="rounded-lg border border-border bg-muted/50 p-4 space-y-3">
               <div>
-                <h4 className="text-sm font-medium mb-1">Activate / Reactivate License</h4>
+                <h4 className="text-sm font-medium mb-1">
+                  Activate / Reactivate License
+                </h4>
                 <p className="text-xs text-muted-foreground">
-                  Paste the raw JWT object from F5. This is used to activate an evaluation license,
-                  switch from evaluation to production, or update an existing license.
+                  Paste the raw JWT object from F5. This is used to activate an
+                  evaluation license, switch from evaluation to production, or
+                  update an existing license.
                 </p>
               </div>
               <Textarea
@@ -598,7 +736,10 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => { setShowActivateForm(false); setJwtInput(''); }}
+                  onClick={() => {
+                    setShowActivateForm(false);
+                    setJwtInput("");
+                  }}
                 >
                   Cancel
                 </Button>
@@ -608,33 +749,41 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
 
           {/* Renew / Switch License Form */}
           {showRenewForm && (
-            <div className={cn(
-              'rounded-lg border p-4 space-y-3',
-              forceRenew
-                ? 'border-l-2 border-l-warning border-border bg-muted/50'
-                : 'border-border bg-muted/50',
-            )}>
+            <div
+              className={cn(
+                "rounded-lg border p-4 space-y-3",
+                forceRenew
+                  ? "border-l-2 border-l-warning border-border bg-muted/50"
+                  : "border-border bg-muted/50",
+              )}
+            >
               <div>
                 <h4 className="text-sm font-medium mb-1">
-                  {forceRenew ? 'Force Renew License' : 'Renew / Switch License'}
+                  {forceRenew
+                    ? "Force Renew License"
+                    : "Renew / Switch License"}
                 </h4>
                 {forceRenew ? (
                   <div className="space-y-1.5">
                     <p className="text-xs text-muted-foreground">
-                      Nuclear renewal for when CWC is unresponsive or in a broken state. This will:
+                      Nuclear renewal for when CWC is unresponsive or in a
+                      broken state. This will:
                     </p>
                     <ol className="text-xs list-decimal list-inside space-y-0.5 text-muted-foreground">
                       <li>Validate and fix JWKS ConfigMap if needed</li>
                       <li>Patch JWT into cpcl-config-cm for persistence</li>
-                      <li>Delete all CPCL state secrets (resets licensing state)</li>
+                      <li>
+                        Delete all CPCL state secrets (resets licensing state)
+                      </li>
                       <li>Restart the CWC pod (~2 min downtime)</li>
                       <li>Activate the new license with your JWT</li>
                     </ol>
                   </div>
                 ) : (
                   <p className="text-xs text-muted-foreground">
-                    Clean license switch via the CWC API. No CWC restart, no downtime, telemetry
-                    history preserved. Validates JWKS and patches ConfigMaps automatically.
+                    Clean license switch via the CWC API. No CWC restart, no
+                    downtime, telemetry history preserved. Validates JWKS and
+                    patches ConfigMaps automatically.
                   </p>
                 )}
               </div>
@@ -644,8 +793,9 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
                 <div className="flex items-start gap-2 rounded-md p-2.5 text-xs bg-warning/10 text-warning">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                   <span>
-                    CWC will be restarted and telemetry history will be lost. Traffic processing is
-                    unaffected but licensing will be unavailable for ~2 minutes.
+                    CWC will be restarted and telemetry history will be lost.
+                    Traffic processing is unaffected but licensing will be
+                    unavailable for ~2 minutes.
                   </span>
                 </div>
               )}
@@ -660,7 +810,7 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
               <div className="flex items-center gap-3">
                 <Button
                   size="sm"
-                  variant={forceRenew ? 'destructive' : 'default'}
+                  variant={forceRenew ? "destructive" : "default"}
                   onClick={handleRenew}
                   disabled={renewMutation.isPending || !renewJwtInput.trim()}
                 >
@@ -672,13 +822,19 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
                     <RotateCw className="h-3.5 w-3.5 mr-1.5" />
                   )}
                   {renewMutation.isPending
-                    ? 'Processing...'
-                    : forceRenew ? 'Force Renew' : 'Switch License'}
+                    ? "Processing..."
+                    : forceRenew
+                      ? "Force Renew"
+                      : "Switch License"}
                 </Button>
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => { setShowRenewForm(false); setRenewJwtInput(''); setForceRenew(false); }}
+                  onClick={() => {
+                    setShowRenewForm(false);
+                    setRenewJwtInput("");
+                    setForceRenew(false);
+                  }}
                 >
                   Cancel
                 </Button>
@@ -691,7 +847,9 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
                     onChange={(e) => setForceRenew(e.target.checked)}
                     className="rounded border-border"
                   />
-                  <span className={cn(forceRenew && 'text-warning font-medium')}>
+                  <span
+                    className={cn(forceRenew && "text-warning font-medium")}
+                  >
                     Force (restart CWC)
                   </span>
                 </label>
@@ -703,10 +861,13 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
           {showReceiptForm && (
             <div className="rounded-lg border border-border bg-muted/50 p-4 space-y-3">
               <div>
-                <h4 className="text-sm font-medium mb-1">Submit Signed Manifest</h4>
+                <h4 className="text-sm font-medium mb-1">
+                  Submit Signed Manifest
+                </h4>
                 <p className="text-xs text-muted-foreground">
-                  After downloading the telemetry report and submitting it to the F5 licensing server,
-                  paste the signed manifest you receive back here.
+                  After downloading the telemetry report and submitting it to
+                  the F5 licensing server, paste the signed manifest you receive
+                  back here.
                 </p>
               </div>
               <Textarea
@@ -732,7 +893,10 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => { setShowReceiptForm(false); setManifestInput(''); }}
+                  onClick={() => {
+                    setShowReceiptForm(false);
+                    setManifestInput("");
+                  }}
                 >
                   Cancel
                 </Button>
@@ -750,9 +914,11 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
                   size="sm"
                   onClick={async () => {
                     try {
-                      await navigator.clipboard.writeText(reportData.raw || '');
+                      await navigator.clipboard.writeText(reportData.raw || "");
                     } catch {
-                      notify.error('Failed to copy to clipboard', undefined, { category: 'security' });
+                      notify.error("Failed to copy to clipboard", undefined, {
+                        category: "security",
+                      });
                     }
                   }}
                 >
@@ -772,11 +938,26 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
           <div className="text-xs space-y-1 pt-2 text-muted-foreground">
             <p className="font-medium">F5 BNK Licensing:</p>
             <ul className="space-y-1 ml-1">
-              <li><strong>Activate License</strong> — First-time activation using a JWT from MyF5</li>
-              <li><strong>Renew License</strong> — Switch or renew a license via the CWC API (no downtime)</li>
-              <li><strong>Force Renew</strong> — Nuclear option: resets CPCL state, restarts CWC. Use when CWC is stuck.</li>
-              <li><strong>Validate JWKS</strong> — Check and fix the JWKS ConfigMap (cpcl-key-cm) if it has placeholder keys</li>
-              <li><strong>Telemetry</strong> — In connected mode, CWC handles reporting automatically via the internet</li>
+              <li>
+                <strong>Activate License</strong> — First-time activation using
+                a JWT from MyF5
+              </li>
+              <li>
+                <strong>Renew License</strong> — Switch or renew a license via
+                the CWC API (no downtime)
+              </li>
+              <li>
+                <strong>Force Renew</strong> — Nuclear option: resets CPCL
+                state, restarts CWC. Use when CWC is stuck.
+              </li>
+              <li>
+                <strong>Validate JWKS</strong> — Check and fix the JWKS
+                ConfigMap (cpcl-key-cm) if it has placeholder keys
+              </li>
+              <li>
+                <strong>Telemetry</strong> — In connected mode, CWC handles
+                reporting automatically via the internet
+              </li>
             </ul>
           </div>
         </CardContent>
@@ -798,16 +979,20 @@ function DetailItem({
 }) {
   return (
     <div className="flex items-start gap-2.5">
-      <Icon className={cn(
-        'h-4 w-4 shrink-0 mt-0.5',
-        warn ? 'text-warning' : 'text-muted-foreground',
-      )} />
+      <Icon
+        className={cn(
+          "h-4 w-4 shrink-0 mt-0.5",
+          warn ? "text-warning" : "text-muted-foreground",
+        )}
+      />
       <div>
         <p className="text-xs text-muted-foreground">{label}</p>
-        <p className={cn(
-          'text-sm font-medium',
-          warn ? 'text-warning' : 'text-foreground',
-        )}>
+        <p
+          className={cn(
+            "text-sm font-medium",
+            warn ? "text-warning" : "text-foreground",
+          )}
+        >
           {value}
         </p>
       </div>

@@ -4,10 +4,10 @@
  * Provides fleet health polling (30s) and config comparison mutation.
  */
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { fleetApi } from '@/lib/api/fleet';
-import { QUERY_STALE_TIME } from '@/lib/constants';
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { fleetApi } from "@/lib/api/fleet";
+import { QUERY_STALE_TIME } from "@/lib/constants";
 
 import type {
   CreateBulkRunRequest,
@@ -33,9 +33,15 @@ import type {
   UpdatePolicyRequest,
   UpdateStrategyRequest,
   UpdateTargetRequest,
-} from '@/types/fleet';
-import { queryKeys } from '@/lib/queryKeys';
-import { useAppMutation } from '@/hooks/lib/useAppMutation';
+  FleetDeployableConfig,
+  CreateFleetConfigRequest,
+  UpdateFleetConfigRequest,
+  DeployFleetConfigRequest,
+  DeployFleetConfigResponse,
+} from "@/types/fleet";
+import { queryKeys } from "@/lib/queryKeys";
+import { useAppMutation } from "@/hooks/lib/useAppMutation";
+import { notify } from "@/lib/notify";
 
 // ---------------------------------------------------------------------------
 // Query Keys — re-export alias for backward compatibility (used by tests)
@@ -48,7 +54,7 @@ export const fleetKeys = queryKeys.fleet;
 // background tabs don't hammer /fleet-health.
 function useDocumentVisibility(): boolean {
   const [isVisible, setIsVisible] = useState(() =>
-    typeof document !== 'undefined' ? !document.hidden : true
+    typeof document !== "undefined" ? !document.hidden : true,
   );
 
   useEffect(() => {
@@ -56,8 +62,9 @@ function useDocumentVisibility(): boolean {
       setIsVisible(!document.hidden);
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
 
   return isVisible;
@@ -134,8 +141,13 @@ export function useCreateFleetTarget() {
 
 /** Update a fleet target mutation. */
 export function useUpdateFleetTarget() {
-  return useAppMutation<FleetTarget, Error, { targetId: number; body: UpdateTargetRequest }>({
-    mutationFn: ({ targetId, body }) => fleetApi.updateFleetTarget(targetId, body),
+  return useAppMutation<
+    FleetTarget,
+    Error,
+    { targetId: number; body: UpdateTargetRequest }
+  >({
+    mutationFn: ({ targetId, body }) =>
+      fleetApi.updateFleetTarget(targetId, body),
   });
 }
 
@@ -149,11 +161,18 @@ export function useDeleteFleetTarget() {
 /** Update assigned labels for a single fleet member. */
 export function useUpdateFleetMemberLabels() {
   const queryClient = useQueryClient();
-  return useAppMutation<void, Error, { memberId: number; labels: Record<string, string> }>({
-    mutationFn: ({ memberId, labels }) => fleetApi.updateMemberLabels(memberId, labels),
+  return useAppMutation<
+    void,
+    Error,
+    { memberId: number; labels: Record<string, string> }
+  >({
+    mutationFn: ({ memberId, labels }) =>
+      fleetApi.updateMemberLabels(memberId, labels),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['fleet', 'members'] });
-      void queryClient.invalidateQueries({ queryKey: ['fleet', 'fleet-members'] });
+      void queryClient.invalidateQueries({ queryKey: ["fleet", "members"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["fleet", "fleet-members"],
+      });
     },
   });
 }
@@ -202,7 +221,7 @@ export function useFleetBulkRun(runId: number | null) {
     refetchInterval: (query) => {
       const run = query.state.data;
       if (!run) return false;
-      const active = ['pending', 'running'].includes(run.status);
+      const active = ["pending", "running"].includes(run.status);
       return active ? 3_000 : false;
     },
   });
@@ -217,7 +236,10 @@ export function useResumeBulkRun() {
 }
 
 /** List bulk runs (newest-first), with optional fleet_id / status filters. */
-export function useFleetBulkRuns(params?: { fleet_id?: number; status?: string }) {
+export function useFleetBulkRuns(params?: {
+  fleet_id?: number;
+  status?: string;
+}) {
   return useQuery<FleetBulkRun[]>({
     queryKey: queryKeys.fleet.bulkRuns(params),
     queryFn: () => fleetApi.listBulkRuns(params),
@@ -233,7 +255,9 @@ export function useCancelBulkRun() {
     mutationFn: (runId) => fleetApi.cancelBulkRun(runId),
     onSuccess: (run) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.fleet.bulkRuns() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.bulkRun(run.id) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.fleet.bulkRun(run.id),
+      });
     },
   });
 }
@@ -305,10 +329,17 @@ export function usePolicyEvaluations(policyId: number | null) {
 /** Update a fleet policy (PUT). Invalidates policy list + compliance. */
 export function useUpdateFleetPolicy() {
   const queryClient = useQueryClient();
-  return useAppMutation<FleetPolicy, Error, { policyId: number; body: UpdatePolicyRequest }>({
-    mutationFn: ({ policyId, body }) => fleetApi.updateFleetPolicy(policyId, body),
+  return useAppMutation<
+    FleetPolicy,
+    Error,
+    { policyId: number; body: UpdatePolicyRequest }
+  >({
+    mutationFn: ({ policyId, body }) =>
+      fleetApi.updateFleetPolicy(policyId, body),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.fleet.policies() });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.fleet.policies(),
+      });
     },
   });
 }
@@ -319,7 +350,9 @@ export function useDeleteFleetPolicy() {
   return useAppMutation<void, Error, number>({
     mutationFn: (policyId) => fleetApi.deleteFleetPolicy(policyId),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.fleet.policies() });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.fleet.policies(),
+      });
     },
   });
 }
@@ -357,10 +390,16 @@ export function useFleetRollups(ids: number[]) {
 /** Start a bulk run over a caller-specified member subset. Invalidates bulk-run list on success. */
 export function useRunSelection() {
   const queryClient = useQueryClient();
-  return useAppMutation<FleetBulkRun, Error, { fleetId: number; body: RunSelectionRequest }>({
+  return useAppMutation<
+    FleetBulkRun,
+    Error,
+    { fleetId: number; body: RunSelectionRequest }
+  >({
     mutationFn: ({ fleetId, body }) => fleetApi.runSelection(fleetId, body),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.fleet.bulkRuns() });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.fleet.bulkRuns(),
+      });
     },
   });
 }
@@ -384,7 +423,7 @@ export function useCreateStrategy() {
   return useAppMutation<FleetOperationStrategy, Error, CreateStrategyRequest>({
     mutationFn: fleetApi.createStrategy,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['fleet', 'strategies'] });
+      void queryClient.invalidateQueries({ queryKey: ["fleet", "strategies"] });
     },
   });
 }
@@ -392,10 +431,15 @@ export function useCreateStrategy() {
 /** Update a strategy mutation. Invalidates strategy list on success. */
 export function useUpdateStrategy() {
   const queryClient = useQueryClient();
-  return useAppMutation<FleetOperationStrategy, Error, { strategyId: number; body: UpdateStrategyRequest }>({
-    mutationFn: ({ strategyId, body }) => fleetApi.updateStrategy(strategyId, body),
+  return useAppMutation<
+    FleetOperationStrategy,
+    Error,
+    { strategyId: number; body: UpdateStrategyRequest }
+  >({
+    mutationFn: ({ strategyId, body }) =>
+      fleetApi.updateStrategy(strategyId, body),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['fleet', 'strategies'] });
+      void queryClient.invalidateQueries({ queryKey: ["fleet", "strategies"] });
     },
   });
 }
@@ -406,7 +450,7 @@ export function useDeleteStrategy() {
   return useAppMutation<void, Error, number>({
     mutationFn: (strategyId) => fleetApi.deleteStrategy(strategyId),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['fleet', 'strategies'] });
+      void queryClient.invalidateQueries({ queryKey: ["fleet", "strategies"] });
     },
   });
 }
@@ -417,7 +461,9 @@ export function useRerunBulkRun() {
   return useAppMutation<FleetBulkRun, Error, number>({
     mutationFn: (runId) => fleetApi.rerunBulkRun(runId),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.fleet.bulkRuns() });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.fleet.bulkRuns(),
+      });
     },
   });
 }
@@ -451,46 +497,142 @@ export function usePreviewSelector(request: PreviewSelectorRequest | null) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const trigger = useCallback(
-    (req: PreviewSelectorRequest) => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(async () => {
-        // Abort any inflight request before starting a new one.
-        if (abortRef.current) abortRef.current.abort();
-        abortRef.current = new AbortController();
-        setIsLoading(true);
-        setError(null);
-        try {
-          const result = await fleetApi.previewSelector(req);
-          setData(result);
-        } catch (e) {
-          if (e instanceof Error && e.name !== 'AbortError') {
-            setError(e);
-          }
-        } finally {
-          setIsLoading(false);
+  const trigger = useCallback((req: PreviewSelectorRequest) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(async () => {
+      // Abort any inflight request before starting a new one.
+      if (abortRef.current) abortRef.current.abort();
+      abortRef.current = new AbortController();
+      setIsLoading(true);
+      setError(null);
+      try {
+        const result = await fleetApi.previewSelector(req);
+        setData(result);
+      } catch (e) {
+        if (e instanceof Error && e.name !== "AbortError") {
+          setError(e);
         }
-      }, 400);
-    },
-    []
-  );
+      } finally {
+        setIsLoading(false);
+      }
+    }, 400);
+  }, []);
+
+  const requestRef = useRef(request);
+  requestRef.current = request;
+  const requestKey = JSON.stringify(request);
 
   useEffect(() => {
-    if (!request) {
+    if (!requestRef.current) {
       setData(null);
       setIsLoading(false);
       return;
     }
-    trigger(request);
+    trigger(requestRef.current);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [
-    // Depend on the serialised selector so changes in label filters re-trigger.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    JSON.stringify(request),
-    trigger,
-  ]);
+  }, [requestKey, trigger]);
 
   return { data, isLoading, error };
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Fleet Deployable Configs hooks
+// ──────────────────────────────────────────────────────────────────────────────
+
+export function useFleetConfigs(fleetId?: number, category?: string) {
+  return useQuery<FleetDeployableConfig[]>({
+    queryKey: [...queryKeys.fleet.configs(), { fleetId, category }],
+    queryFn: () => fleetApi.listFleetConfigs({ fleet_id: fleetId, category }),
+    staleTime: QUERY_STALE_TIME.DEFAULT,
+  });
+}
+
+export function useFleetConfig(configId: number) {
+  return useQuery<FleetDeployableConfig>({
+    queryKey: queryKeys.fleet.config(configId),
+    queryFn: () => fleetApi.getFleetConfig(configId),
+    enabled: Boolean(configId),
+    staleTime: QUERY_STALE_TIME.DEFAULT,
+  });
+}
+
+export function useCreateFleetConfig() {
+  const queryClient = useQueryClient();
+  return useAppMutation<FleetDeployableConfig, Error, CreateFleetConfigRequest>(
+    {
+      mutationFn: (body: CreateFleetConfigRequest) =>
+        fleetApi.createFleetConfig(body),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.fleet.configs() });
+        notify.success("Fleet config saved");
+      },
+    },
+  );
+}
+
+export function useUpdateFleetConfig() {
+  const queryClient = useQueryClient();
+  return useAppMutation<
+    FleetDeployableConfig,
+    Error,
+    { configId: number; body: UpdateFleetConfigRequest }
+  >({
+    mutationFn: ({
+      configId,
+      body,
+    }: {
+      configId: number;
+      body: UpdateFleetConfigRequest;
+    }) => fleetApi.updateFleetConfig(configId, body),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.configs() });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.fleet.config(vars.configId),
+      });
+      notify.success("Fleet config updated");
+    },
+  });
+}
+
+export function useDeleteFleetConfig() {
+  const queryClient = useQueryClient();
+  return useAppMutation<void, Error, number>({
+    mutationFn: (configId: number) => fleetApi.deleteFleetConfig(configId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.configs() });
+      notify.success("Fleet config deleted");
+    },
+  });
+}
+
+export function useDeployFleetConfig() {
+  return useAppMutation<
+    DeployFleetConfigResponse,
+    Error,
+    DeployFleetConfigRequest
+  >({
+    mutationFn: (body: DeployFleetConfigRequest) =>
+      fleetApi.deployFleetConfig(body),
+    onSuccess: (data) => {
+      if (data.dry_run) {
+        if (data.failed_clusters === 0) {
+          notify.success(
+            `Validation passed for all ${data.successful_clusters} clusters`,
+          );
+        } else {
+          notify({
+            title: "Validation completed with errors",
+            message: `${data.successful_clusters} passed, ${data.failed_clusters} failed`,
+            severity: "warning",
+          });
+        }
+      } else {
+        notify.success(
+          `Deployment completed across ${data.successful_clusters}/${data.total_clusters} clusters`,
+        );
+      }
+    },
+  });
 }

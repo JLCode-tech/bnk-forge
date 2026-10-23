@@ -78,12 +78,12 @@ export function ChartDetailPanel({
         </div>
 
         <div className="flex items-center gap-2 mt-2">
-          <Badge variant="outline" className="text-[10px]">
+          <Badge variant="outline" className="text-2xs">
             <Tag className="h-3 w-3 mr-1" />
             v{chart.version}
           </Badge>
           {chart.app_version && (
-            <Badge variant="outline" className="text-[10px]">
+            <Badge variant="outline" className="text-2xs">
               App v{chart.app_version}
             </Badge>
           )}
@@ -120,7 +120,7 @@ export function ChartDetailPanel({
                 <Badge
                   key={index}
                   variant="outline"
-                  className="text-[10px]"
+                  className="text-2xs"
                 >
                   {keyword}
                 </Badge>

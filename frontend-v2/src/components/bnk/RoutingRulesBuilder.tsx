@@ -250,7 +250,7 @@ export function RoutingRulesBuilder({
                       </div>
                     </div>
                   ))}
-                  <Badge variant={pathTypeBadgeVariant(rule.matches[0]?.path.type || 'PathPrefix')} className="text-[10px]">
+                  <Badge variant={pathTypeBadgeVariant(rule.matches[0]?.path.type || 'PathPrefix')} className="text-2xs">
                     {rule.matches[0]?.path.type}: {rule.matches[0]?.path.value}
                   </Badge>
                 </div>

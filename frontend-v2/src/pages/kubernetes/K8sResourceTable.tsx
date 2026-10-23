@@ -6,17 +6,24 @@
  * status badges, and per-row context menus.
  */
 
-import { memo } from 'react';
-import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { memo } from "react";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from "@/components/ui/dropdown-menu";
 import {
   MoreVertical,
   Eye,
@@ -28,17 +35,27 @@ import {
   Maximize,
   Terminal,
   Server,
-} from 'lucide-react';
-import { getStatusColor, getRestartCount, calculateAge } from './k8s-constants';
-import { getResourceStatus } from './k8s-status';
-import type { K8sResource } from '@/types';
+} from "lucide-react";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { getRestartCount, calculateAge } from "./k8s-constants";
+import { getResourceStatus } from "./k8s-status";
+import type { K8sResource } from "@/types";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export interface ResourceAction {
-  type: 'rollout' | 'nodeOps' | 'describe' | 'edit' | 'terminal' | 'logs' | 'restart' | 'scale' | 'delete';
+  type:
+    | "rollout"
+    | "nodeOps"
+    | "describe"
+    | "edit"
+    | "terminal"
+    | "logs"
+    | "restart"
+    | "scale"
+    | "delete";
   resource: K8sResource;
 }
 
@@ -87,82 +104,78 @@ const K8sResourceRow = memo(function K8sResourceRow({
   const creationTime =
     resource.metadata?.creationTimestamp ||
     resource.metadata?.creation_timestamp;
-  const age = creationTime ? calculateAge(creationTime) : 'Unknown';
+  const age = creationTime ? calculateAge(creationTime) : "Unknown";
 
   return (
-    <tr
+    <TableRow
       className={cn(
-        'cursor-pointer transition-colors border-b',
+        "cursor-pointer transition-colors border-b",
         borderDefault,
-        isSelected ? 'bg-primary/10' : 'hover:bg-muted/50'
+        isSelected ? "bg-primary/10" : "hover:bg-muted/50",
       )}
       onClick={() => onSelectResource(resource)}
     >
-      <td className="py-2.5 px-4">
-        <code className="text-xs font-mono">
-          {resource.metadata?.name}
-        </code>
-      </td>
-      <td className="py-2.5 px-4">
-        <Badge className={cn('text-[10px]', getStatusColor(status))}>
-          {status}
-        </Badge>
-      </td>
+      <TableCell className="py-2.5 px-4">
+        <code className="text-xs font-mono">{resource.metadata?.name}</code>
+      </TableCell>
+      <TableCell className="py-2.5 px-4">
+        <StatusBadge status={status} />
+      </TableCell>
       {detailedView && (
         <>
-          <td className="py-2.5 px-4">
+          <TableCell className="py-2.5 px-4">
             <code className="text-xs font-mono text-muted-foreground">
-              {selectedResourceType === 'node'
-                ? resource.metadata?.labels?.['kubernetes.io/hostname'] ||
+              {selectedResourceType === "node"
+                ? resource.metadata?.labels?.["kubernetes.io/hostname"] ||
                   resource.metadata?.name ||
-                  '-'
-                : resource.spec?.nodeName ||
-                  resource.spec?.node_name ||
-                  '-'}
+                  "-"
+                : resource.spec?.nodeName || resource.spec?.node_name || "-"}
             </code>
-          </td>
-          <td className="py-2.5 px-4">
+          </TableCell>
+          <TableCell className="py-2.5 px-4">
             <code className="text-xs font-mono text-muted-foreground">
-              {selectedResourceType === 'node'
+              {selectedResourceType === "node"
                 ? resource.status?.addresses?.find(
                     (a: { type: string; address: string }) =>
-                      a.type === 'InternalIP'
-                  )?.address || '-'
+                      a.type === "InternalIP",
+                  )?.address || "-"
                 : resource.status?.podIP ||
                   resource.status?.pod_ip ||
                   resource.spec?.clusterIP ||
                   resource.spec?.cluster_ip ||
-                  '-'}
+                  "-"}
             </code>
-          </td>
-          <td className="py-2.5 px-4">
-            {selectedResourceType === 'node' ? (
+          </TableCell>
+          <TableCell className="py-2.5 px-4">
+            {selectedResourceType === "node" ? (
               <code className="text-xs font-mono text-muted-foreground">
-                {resource.metadata?.labels?.['node.kubernetes.io/instance-type'] ||
-                  resource.metadata?.labels?.['beta.kubernetes.io/instance-type'] ||
-                  '-'}
+                {resource.metadata?.labels?.[
+                  "node.kubernetes.io/instance-type"
+                ] ||
+                  resource.metadata?.labels?.[
+                    "beta.kubernetes.io/instance-type"
+                  ] ||
+                  "-"}
               </code>
             ) : (
               <span
                 className={cn(
-                  'text-sm',
+                  "text-sm",
                   getRestartCount(resource) > 0
-                    ? 'text-warning'
-                    : 'text-muted-foreground'
+                    ? "text-warning"
+                    : "text-muted-foreground",
                 )}
               >
                 {getRestartCount(resource)}
               </span>
             )}
-          </td>
+          </TableCell>
         </>
       )}
-      <td className="py-2.5 px-4">
-        <span className="text-sm text-muted-foreground">
-          {age}
-        </span>
-      </td>
-      <td className="py-2.5 px-4 text-right">
+      <TableCell className="py-2.5 px-4">
+        <span className="text-sm text-muted-foreground">{age}</span>
+      </TableCell>
+      <TableCell className="py-2.5 px-4 text-right">
         <DropdownMenu>
           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
             <Button
@@ -175,10 +188,13 @@ const K8sResourceRow = memo(function K8sResourceRow({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {selectedResourceType === 'deployment' && (
+            {selectedResourceType === "deployment" && (
               <>
                 <DropdownMenuItem
-                  onClick={(e) => { e.stopPropagation(); onAction({ type: 'rollout', resource }); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAction({ type: "rollout", resource });
+                  }}
                 >
                   <Activity className="h-4 w-4 mr-2" />
                   Rollout Management
@@ -186,7 +202,7 @@ const K8sResourceRow = memo(function K8sResourceRow({
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation();
-                    onAction({ type: 'scale', resource });
+                    onAction({ type: "scale", resource });
                   }}
                 >
                   <Maximize className="h-4 w-4 mr-2" />
@@ -194,29 +210,35 @@ const K8sResourceRow = memo(function K8sResourceRow({
                 </DropdownMenuItem>
               </>
             )}
-            {selectedResourceType === 'node' && (
+            {selectedResourceType === "node" && (
               <DropdownMenuItem
                 disabled={!!nodeOperationsDisabledReason}
                 onClick={(e) => {
                   e.stopPropagation();
                   if (!nodeOperationsDisabledReason) {
-                    onAction({ type: 'nodeOps', resource });
+                    onAction({ type: "nodeOps", resource });
                   }
                 }}
               >
                 <Server className="h-4 w-4 mr-2" />
-                {nodeOperationsDisabledReason ? 'Node Operations (OpenShift-managed)' : 'Node Operations'}
+                {nodeOperationsDisabledReason
+                  ? "Node Operations (OpenShift-managed)"
+                  : "Node Operations"}
               </DropdownMenuItem>
             )}
-            {selectedResourceType === 'node' && nodeOperationsDisabledReason && (
-              <DropdownMenuItem disabled className="text-xs whitespace-normal leading-snug">
-                {nodeOperationsDisabledReason}
-              </DropdownMenuItem>
-            )}
+            {selectedResourceType === "node" &&
+              nodeOperationsDisabledReason && (
+                <DropdownMenuItem
+                  disabled
+                  className="text-xs whitespace-normal leading-snug"
+                >
+                  {nodeOperationsDisabledReason}
+                </DropdownMenuItem>
+              )}
             <DropdownMenuItem
               onClick={(e) => {
                 e.stopPropagation();
-                onAction({ type: 'describe', resource });
+                onAction({ type: "describe", resource });
               }}
             >
               <Eye className="h-4 w-4 mr-2" />
@@ -225,23 +247,26 @@ const K8sResourceRow = memo(function K8sResourceRow({
             <DropdownMenuItem
               onClick={(e) => {
                 e.stopPropagation();
-                onAction({ type: 'edit', resource });
+                onAction({ type: "edit", resource });
               }}
             >
               <Edit className="h-4 w-4 mr-2" />
               Edit YAML
             </DropdownMenuItem>
             {networkMutationBoundaryNotice && (
-              <DropdownMenuItem disabled className="text-xs whitespace-normal leading-snug">
+              <DropdownMenuItem
+                disabled
+                className="text-xs whitespace-normal leading-snug"
+              >
                 {networkMutationBoundaryNotice}
               </DropdownMenuItem>
             )}
-            {selectedResourceType === 'pod' && (
+            {selectedResourceType === "pod" && (
               <>
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation();
-                    onAction({ type: 'terminal', resource });
+                    onAction({ type: "terminal", resource });
                   }}
                 >
                   <Terminal className="h-4 w-4 mr-2" />
@@ -250,7 +275,7 @@ const K8sResourceRow = memo(function K8sResourceRow({
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation();
-                    onAction({ type: 'logs', resource });
+                    onAction({ type: "logs", resource });
                   }}
                 >
                   <FileText className="h-4 w-4 mr-2" />
@@ -259,7 +284,7 @@ const K8sResourceRow = memo(function K8sResourceRow({
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation();
-                    onAction({ type: 'restart', resource });
+                    onAction({ type: "restart", resource });
                   }}
                 >
                   <RotateCw className="h-4 w-4 mr-2" />
@@ -272,7 +297,7 @@ const K8sResourceRow = memo(function K8sResourceRow({
               className="text-destructive"
               onClick={(e) => {
                 e.stopPropagation();
-                onAction({ type: 'delete', resource });
+                onAction({ type: "delete", resource });
               }}
             >
               <Trash2 className="h-4 w-4 mr-2" />
@@ -280,8 +305,8 @@ const K8sResourceRow = memo(function K8sResourceRow({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 });
 
@@ -302,43 +327,45 @@ export function K8sResourceTable({
 }: K8sResourceTableProps) {
   return (
     <div className="flex-1 overflow-auto">
-      <table className="w-full">
-        <thead className="sticky top-0 bg-card">
-          <tr className="text-xs text-muted-foreground">
-            <th scope="col" className="text-left py-2 px-4 font-medium">
+      <Table className="w-full">
+        <TableHeader className="sticky top-0 bg-card">
+          <TableRow className="text-xs text-muted-foreground">
+            <TableHead className="py-2 px-4 font-medium text-muted-foreground">
               Name
-            </th>
-            <th scope="col" className="text-left py-2 px-4 font-medium">
+            </TableHead>
+            <TableHead className="py-2 px-4 font-medium text-muted-foreground">
               Status
-            </th>
+            </TableHead>
             {detailedView && (
               <>
-                <th scope="col" className="text-left py-2 px-4 font-medium">
-                  {selectedResourceType === 'node' ? 'Hostname' : 'Node'}
-                </th>
-                <th scope="col" className="text-left py-2 px-4 font-medium">
+                <TableHead className="py-2 px-4 font-medium text-muted-foreground">
+                  {selectedResourceType === "node" ? "Hostname" : "Node"}
+                </TableHead>
+                <TableHead className="py-2 px-4 font-medium text-muted-foreground">
                   IP
-                </th>
-                <th scope="col" className="text-left py-2 px-4 font-medium">
-                  {selectedResourceType === 'node' ? 'Type' : 'Restarts'}
-                </th>
+                </TableHead>
+                <TableHead className="py-2 px-4 font-medium text-muted-foreground">
+                  {selectedResourceType === "node" ? "Type" : "Restarts"}
+                </TableHead>
               </>
             )}
-            <th scope="col" className="text-left py-2 px-4 font-medium">
+            <TableHead className="py-2 px-4 font-medium text-muted-foreground">
               Age
-            </th>
-            <th scope="col" className="text-right py-2 px-4 font-medium">
+            </TableHead>
+            <TableHead className="text-right py-2 px-4 font-medium text-muted-foreground">
               Actions
-            </th>
-          </tr>
-        </thead>
-        <tbody>
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {resources.map((resource: K8sResource) => (
             <K8sResourceRow
               key={resource.metadata?.uid}
               resource={resource}
               selectedResourceType={selectedResourceType}
-              isSelected={selectedResource?.metadata?.uid === resource.metadata?.uid}
+              isSelected={
+                selectedResource?.metadata?.uid === resource.metadata?.uid
+              }
               detailedView={detailedView}
               nodeOperationsDisabledReason={nodeOperationsDisabledReason}
               networkMutationBoundaryNotice={networkMutationBoundaryNotice}
@@ -347,8 +374,8 @@ export function K8sResourceTable({
               borderDefault={borderDefault}
             />
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }

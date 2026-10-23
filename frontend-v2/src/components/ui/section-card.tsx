@@ -15,18 +15,33 @@
  *   children — section body
  *   className — merged onto the outer div
  */
-import * as React from "react"
-import { cn } from "@/lib/utils"
+import * as React from "react";
+import { cn } from "@/lib/utils";
 
 export interface SectionCardProps extends React.HTMLAttributes<HTMLDivElement> {
   /** Eyebrow label — rendered as uppercase tracked sm text above children */
-  title?: string
+  title?: string;
+  /** Optional subtitle or description text below title */
+  description?: React.ReactNode;
+  /** Optional header action element placed opposite the title */
+  action?: React.ReactNode;
   /** Use compact (`px-4 py-4`) instead of the default `p-6` padding */
-  compact?: boolean
+  compact?: boolean;
 }
 
 const SectionCard = React.forwardRef<HTMLDivElement, SectionCardProps>(
-  ({ title, compact = false, className, children, ...props }, ref) => (
+  (
+    {
+      title,
+      description,
+      action,
+      compact = false,
+      className,
+      children,
+      ...props
+    },
+    ref,
+  ) => (
     <div
       ref={ref}
       className={cn(
@@ -36,20 +51,34 @@ const SectionCard = React.forwardRef<HTMLDivElement, SectionCardProps>(
       )}
       {...props}
     >
-      {title && (
-        <h3
+      {(title || description || action) && (
+        <div
           className={cn(
-            "text-sm font-semibold uppercase tracking-wide text-muted-foreground/70",
+            "flex items-center justify-between gap-3",
             compact ? "mb-2" : "mb-5",
           )}
         >
-          {title}
-        </h3>
+          {(title || description) && (
+            <div>
+              {title && (
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground/70">
+                  {title}
+                </h3>
+              )}
+              {description && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {description}
+                </p>
+              )}
+            </div>
+          )}
+          {action && <div className="ml-auto">{action}</div>}
+        </div>
       )}
       {children}
     </div>
-  )
-)
-SectionCard.displayName = "SectionCard"
+  ),
+);
+SectionCard.displayName = "SectionCard";
 
-export { SectionCard }
+export { SectionCard };

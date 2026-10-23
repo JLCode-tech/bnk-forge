@@ -99,7 +99,7 @@ function SectionHeader({
       <h3 className="text-sm font-semibold text-foreground">
         {title}
       </h3>
-      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+      <Badge variant="outline" className="text-2xs px-1.5 py-0">
         {count}
       </Badge>
     </div>
@@ -120,7 +120,7 @@ function DetailField({
   if (!value) return null;
   return (
     <div>
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+      <span className="text-2xs uppercase tracking-wider text-muted-foreground">
         {label}
       </span>
       <p className={cn('mt-0.5 text-foreground/80', mono && 'font-mono text-xs')}>
@@ -173,7 +173,7 @@ function SwitchDiagram({ switches }: { switches: DpfOvsSwitch[] }) {
   if (switches.length === 0) return null;
   return (
     <div className="space-y-2">
-      <h5 className="text-[10px] uppercase tracking-wider text-muted-foreground">
+      <h5 className="text-2xs uppercase tracking-wider text-muted-foreground">
         OVS Switches
       </h5>
       <div className="flex flex-wrap gap-3">
@@ -197,7 +197,7 @@ function SwitchDiagram({ switches }: { switches: DpfOvsSwitch[] }) {
                       className="flex items-center gap-1.5 rounded px-2 py-0.5 bg-card"
                     >
                       <Plug className="h-2.5 w-2.5 shrink-0 text-muted-foreground" />
-                      <span className="font-mono text-[10px] truncate text-muted-foreground">
+                      <span className="font-mono text-2xs truncate text-muted-foreground">
                         {labelStr || `port-${pi}`}
                       </span>
                     </div>
@@ -205,7 +205,7 @@ function SwitchDiagram({ switches }: { switches: DpfOvsSwitch[] }) {
                 })}
               </div>
             ) : (
-              <span className="text-[10px] text-muted-foreground">no ports</span>
+              <span className="text-2xs text-muted-foreground">no ports</span>
             )}
           </div>
         ))}
@@ -245,14 +245,14 @@ function DPUServiceCard({ service }: { service: DpfDpuService }) {
         )}
 
         {source?.version && (
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+          <Badge variant="outline" className="text-2xs px-1.5 py-0">
             v{source.version}
           </Badge>
         )}
 
         <div className="flex-1" />
 
-        <Badge variant={variant} className="text-[10px] px-2 py-0">
+        <Badge variant={variant} className="text-2xs px-2 py-0">
           {ready ? 'Ready' : 'Not Ready'}
         </Badge>
       </button>
@@ -272,10 +272,10 @@ function DPUServiceCard({ service }: { service: DpfDpuService }) {
 
           {spec?.helmChart?.values && Object.keys(spec.helmChart.values).length > 0 && (
             <div className="pt-1">
-              <h5 className="text-[10px] uppercase tracking-wider mb-1 text-muted-foreground">
+              <h5 className="text-2xs uppercase tracking-wider mb-1 text-muted-foreground">
                 Helm Values
               </h5>
-              <pre className="rounded px-3 py-2 text-[11px] font-mono whitespace-pre-wrap max-h-40 overflow-auto bg-card text-muted-foreground">
+              <pre className="rounded px-3 py-2 text-2xs font-mono whitespace-pre-wrap max-h-40 overflow-auto bg-card text-muted-foreground">
                 {JSON.stringify(spec.helmChart.values, null, 2)}
               </pre>
             </div>
@@ -323,12 +323,12 @@ function DPUDeploymentCard({ deployment }: { deployment: DpfDpuDeployment }) {
 
         <div className="flex items-center gap-1.5">
           {serviceNames.length > 0 && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+            <Badge variant="outline" className="text-2xs px-1.5 py-0">
               {serviceNames.length} svc{serviceNames.length !== 1 ? 's' : ''}
             </Badge>
           )}
           {dpuSetNames.length > 0 && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+            <Badge variant="outline" className="text-2xs px-1.5 py-0">
               {dpuSetNames.length} set{dpuSetNames.length !== 1 ? 's' : ''}
             </Badge>
           )}
@@ -336,7 +336,7 @@ function DPUDeploymentCard({ deployment }: { deployment: DpfDpuDeployment }) {
 
         <div className="flex-1" />
 
-        <Badge variant={variant} className="text-[10px] px-2 py-0">
+        <Badge variant={variant} className="text-2xs px-2 py-0">
           {ready ? 'Ready' : 'Not Ready'}
         </Badge>
       </button>
@@ -346,7 +346,7 @@ function DPUDeploymentCard({ deployment }: { deployment: DpfDpuDeployment }) {
           {/* Services within deployment */}
           {serviceNames.length > 0 && (
             <div className="pt-3">
-              <h5 className="text-[10px] uppercase tracking-wider mb-1.5 text-muted-foreground">
+              <h5 className="text-2xs uppercase tracking-wider mb-1.5 text-muted-foreground">
                 Services
               </h5>
               <div className="space-y-1">
@@ -367,7 +367,7 @@ function DPUDeploymentCard({ deployment }: { deployment: DpfDpuDeployment }) {
                         </span>
                       )}
                       {svc.helmChart?.source?.version && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                        <Badge variant="outline" className="text-2xs px-1.5 py-0">
                           v{svc.helmChart.source.version}
                         </Badge>
                       )}
@@ -381,7 +381,7 @@ function DPUDeploymentCard({ deployment }: { deployment: DpfDpuDeployment }) {
           {/* DPUSets within deployment */}
           {dpuSetNames.length > 0 && (
             <div>
-              <h5 className="text-[10px] uppercase tracking-wider mb-1.5 text-muted-foreground">
+              <h5 className="text-2xs uppercase tracking-wider mb-1.5 text-muted-foreground">
                 DPU Sets
               </h5>
               <div className="space-y-1">
@@ -416,7 +416,7 @@ function DPUDeploymentCard({ deployment }: { deployment: DpfDpuDeployment }) {
           {/* Service chains within deployment */}
           {chainNames.length > 0 && (
             <div>
-              <h5 className="text-[10px] uppercase tracking-wider mb-1.5 text-muted-foreground">
+              <h5 className="text-2xs uppercase tracking-wider mb-1.5 text-muted-foreground">
                 Service Chains
               </h5>
               <div className="space-y-2">
@@ -472,14 +472,14 @@ function ServiceChainCard({ chain }: { chain: DpfDpuServiceChain }) {
         )}
 
         {switches.length > 0 && (
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+          <Badge variant="outline" className="text-2xs px-1.5 py-0">
             {switches.length} switch{switches.length !== 1 ? 'es' : ''}
           </Badge>
         )}
 
         <div className="flex-1" />
 
-        <Badge variant={variant} className="text-[10px] px-2 py-0">
+        <Badge variant={variant} className="text-2xs px-2 py-0">
           {ready ? 'Ready' : 'Not Ready'}
         </Badge>
       </button>
@@ -519,7 +519,7 @@ function ServiceInterfaceCard({ iface }: { iface: DpfDpuServiceInterface }) {
           </span>
         )}
         <div className="flex-1" />
-        <Badge variant={variant} className="text-[10px] px-2 py-0">
+        <Badge variant={variant} className="text-2xs px-2 py-0">
           {ready ? 'Ready' : 'Not Ready'}
         </Badge>
       </div>
@@ -591,10 +591,10 @@ function RealizedChainsSummary({
               {node}
             </span>
             <div className="flex items-center gap-1.5">
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+              <Badge variant="outline" className="text-2xs px-1.5 py-0">
                 {data.chains.length} chain{data.chains.length !== 1 ? 's' : ''}
               </Badge>
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+              <Badge variant="outline" className="text-2xs px-1.5 py-0">
                 {data.interfaces.length} iface{data.interfaces.length !== 1 ? 's' : ''}
               </Badge>
             </div>
@@ -614,7 +614,7 @@ function RealizedChainsSummary({
 
               {data.interfaces.length > 0 && (
                 <div>
-                  <h5 className="text-[10px] uppercase tracking-wider mb-1.5 text-muted-foreground">
+                  <h5 className="text-2xs uppercase tracking-wider mb-1.5 text-muted-foreground">
                     Interfaces
                   </h5>
                   <div className="space-y-1">
@@ -628,7 +628,7 @@ function RealizedChainsSummary({
                           {iface.metadata.name}
                         </span>
                         {iface.spec?.interfaceType && (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                          <Badge variant="outline" className="text-2xs px-1.5 py-0">
                             {iface.spec.interfaceType}
                           </Badge>
                         )}

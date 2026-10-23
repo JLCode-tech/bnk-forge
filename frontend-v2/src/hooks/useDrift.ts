@@ -59,9 +59,11 @@ export const useGlobalDriftSummary = () => {
 
 // Query: Get recent drifted modules (global, for dashboard attention section)
 export const useRecentDrifted = (limit: number = 10) => {
+  const fetchLimit = Math.max(limit, 20);
   return useQuery({
-    queryKey: queryKeys.driftExtended.recentDrifted(limit),
-    queryFn: () => api.getRecentDrifted({ limit }),
+    queryKey: queryKeys.driftExtended.recentDrifted(fetchLimit),
+    queryFn: () => api.getRecentDrifted({ limit: fetchLimit }),
+    select: (items) => items.slice(0, limit),
     refetchInterval: POLL_INTERVALS.BACKGROUND,
   });
 };

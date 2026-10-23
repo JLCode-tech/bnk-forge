@@ -2,6 +2,7 @@
 Module Library API Routes
 Endpoints for module catalog and library management
 """
+
 import logging
 
 from fastapi import APIRouter, Depends
@@ -56,18 +57,20 @@ def _module_variables_from_metadata(module: ModuleLibrary) -> list[dict]:
         variables: list[dict] = []
         for required, group_name in ((True, "required"), (False, "optional")):
             for inp in module.inputs_metadata.get(group_name, []) or []:
-                variables.append({
-                    "name": inp.get("name"),
-                    "type": inp.get("type", "string"),
-                    "description": inp.get("description", ""),
-                    "required": required,
-                    "sensitive": inp.get("sensitive", False),
-                    "default": inp.get("default"),
-                    "example": inp.get("example"),
-                    "source": inp.get("source"),
-                    "from_module": inp.get("from_module"),
-                    "from_output": inp.get("from_output"),
-                })
+                variables.append(
+                    {
+                        "name": inp.get("name"),
+                        "type": inp.get("type", "string"),
+                        "description": inp.get("description", ""),
+                        "required": required,
+                        "sensitive": inp.get("sensitive", False),
+                        "default": inp.get("default"),
+                        "example": inp.get("example"),
+                        "source": inp.get("source"),
+                        "from_module": inp.get("from_module"),
+                        "from_output": inp.get("from_output"),
+                    }
+                )
         return variables
 
     if module.variables_schema and isinstance(module.variables_schema, list):
@@ -79,6 +82,7 @@ def _module_variables_from_metadata(module: ModuleLibrary) -> list[dict]:
 # Pydantic schemas
 class UserModuleCreate(BaseModel):
     """Schema for adding user modules"""
+
     name: str
     category: str  # 'infra', 'k8s', 'bnk'
     git_url: str  # Full git URL
@@ -91,12 +95,14 @@ class UserModuleCreate(BaseModel):
 
 class GitSourceValidation(BaseModel):
     """Schema for git source validation"""
+
     git_url: str
     git_ref: str = "main"
 
 
 class MetadataExtraction(BaseModel):
     """Schema for metadata extraction"""
+
     git_url: str
     git_ref: str = "main"
     module_path: str = ""
@@ -104,7 +110,54 @@ class MetadataExtraction(BaseModel):
 
 class VersionUpdate(BaseModel):
     """Schema for version update"""
+
     new_version: str
+
+
+def _serialize_module_item(m: ModuleLibrary, include_details: bool = False) -> dict:
+    item = {
+        "id": m.id,
+        "name": m.name,
+        "category": m.category,
+        "provider": m.provider,
+        "description": m.description,
+        "git_source": m.git_source,
+        "version": m.version,
+        # D-033: catalog path (multiple version rows may share it) and
+        # whether this row is the newest version of its (source, path).
+        "path": m.path,
+        "is_latest": bool(m.is_latest),
+        "is_official": m.is_official,
+        "is_tested": m.is_tested,
+        "test_status": m.test_status,
+        "workflow_compatibility": m.workflow_compatibility,
+        "dependencies": m.dependencies,
+        "tags": m.tags,
+        "documentation_url": m.git_source.replace("git::", "https://").split("?")[0]
+        if m.git_source and not m.git_source.startswith("builtin://")
+        else None,
+        # Additive compatibility normalization (PLATFORM-CONTEXT-005)
+        **_serialize_module_compatibility(m),
+        "dependencies_metadata": m.dependencies_metadata,
+        "deployment_order": m.deployment_order,
+        # Multi-source support (P2-1 / UX-002)
+        "module_source_id": m.module_source_id,
+        "source_path": m.source_path,
+        "latest_version": m.latest_version,
+        "update_available": m.update_available,
+        # Engine type + built-in status
+        **serialize_engine_metadata(
+            m,
+            include_module_classification=True,
+        ),
+    }
+    if include_details:
+        item["variables_schema"] = m.variables_schema
+        item["variables"] = _module_variables_from_metadata(m)
+        item["readme"] = m.readme
+        item["inputs_metadata"] = m.inputs_metadata
+        item["outputs_metadata"] = m.outputs_metadata
+    return item
 
 
 @router.get("", dependencies=[Depends(require_viewer)])
@@ -113,7 +166,8 @@ def list_modules(
     provider: str | None = None,
     official_only: bool = False,
     tested_only: bool = False,
-    db: Session = Depends(get_db)
+    include_details: bool = False,
+    db: Session = Depends(get_db),
 ):
     """
     List available modules from the catalog
@@ -123,9 +177,13 @@ def list_modules(
     - provider: Filter by 'aws', 'azure', 'gcp', 'on-prem'
     - official_only: Only show official BNK-Forge modules
     - tested_only: Only show tested modules
+    - include_details: Include heavy readme/variables_schema/inputs_metadata/outputs_metadata fields
     """
+
     # Build cache key from query parameters
-    cache_key = f"module_library:list:{category or 'all'}:{provider or 'all'}:{official_only}:{tested_only}"
+    cache_key = (
+        f"module_library:list:{category or 'all'}:{provider or 'all'}:{official_only}:{tested_only}:{include_details}"
+    )
 
     # Try to get from cache (15 minute TTL - module library rarely changes)
     cached_result = cache.get(cache_key)
@@ -134,59 +192,12 @@ def list_modules(
 
     # Cache miss - fetch from database
     modules = get_catalog_modules(
-        db,
-        category=category,
-        provider=provider,
-        official_only=official_only,
-        tested_only=tested_only
+        db, category=category, provider=provider, official_only=official_only, tested_only=tested_only
     )
 
-    # Helper to convert inputs_metadata to variables format
     result = {
-        "modules": [
-            {
-                "id": m.id,
-                "name": m.name,
-                "category": m.category,
-                "provider": m.provider,
-                "description": m.description,
-                "git_source": m.git_source,
-                "version": m.version,
-                # D-033: catalog path (multiple version rows may share it) and
-                # whether this row is the newest version of its (source, path).
-                "path": m.path,
-                "is_latest": bool(m.is_latest),
-                "is_official": m.is_official,
-                "is_tested": m.is_tested,
-                "test_status": m.test_status,
-                "workflow_compatibility": m.workflow_compatibility,
-                "dependencies": m.dependencies,
-                "variables_schema": m.variables_schema,
-                "variables": _module_variables_from_metadata(m),  # Add variables array for frontend
-                "tags": m.tags,
-                "readme": m.readme,
-                "documentation_url": m.git_source.replace("git::", "https://").split("?")[0] if m.git_source and not m.git_source.startswith("builtin://") else None,
-                # Additive compatibility normalization (PLATFORM-CONTEXT-005)
-                **_serialize_module_compatibility(m),
-                # New metadata fields from module.json
-                "dependencies_metadata": m.dependencies_metadata,
-                "inputs_metadata": m.inputs_metadata,
-                "outputs_metadata": m.outputs_metadata,
-                "deployment_order": m.deployment_order,
-                # Multi-source support (P2-1 / UX-002)
-                "module_source_id": m.module_source_id,
-                "source_path": m.source_path,
-                "latest_version": m.latest_version,
-                "update_available": m.update_available,
-                # Engine type + built-in status
-                **serialize_engine_metadata(
-                    m,
-                    include_module_classification=True,
-                ),
-            }
-            for m in modules
-        ],
-        "total": len(modules)
+        "modules": [_serialize_module_item(m, include_details=include_details) for m in modules],
+        "total": len(modules),
     }
 
     # Store in cache with 15 minute TTL
@@ -200,6 +211,7 @@ def get_categories(db: Session = Depends(get_db)):
     """
     Get available module categories with counts
     """
+
     cache_key = "module_library:categories"
 
     # Try cache first (15 minute TTL)
@@ -207,21 +219,14 @@ def get_categories(db: Session = Depends(get_db)):
     if cached_result is not None:
         return cached_result
 
-    categories = db.query(
-        ModuleLibrary.category,
-        func.count(ModuleLibrary.id).label('count')
-    ).group_by(
-        ModuleLibrary.category
-    ).order_by(
-        func.count(ModuleLibrary.id).desc()
-    ).all()
+    categories = (
+        db.query(ModuleLibrary.category, func.count(ModuleLibrary.id).label("count"))
+        .group_by(ModuleLibrary.category)
+        .order_by(func.count(ModuleLibrary.id).desc())
+        .all()
+    )
 
-    result = {
-        "categories": [
-            {"name": cat, "count": count}
-            for cat, count in categories
-        ]
-    }
+    result = {"categories": [{"name": cat, "count": count} for cat, count in categories]}
 
     cache.set(cache_key, result, ttl_seconds=900)
     return result
@@ -232,6 +237,7 @@ def get_providers(db: Session = Depends(get_db)):
     """
     Get available cloud providers with counts
     """
+
     cache_key = "module_library:providers"
 
     # Try cache first (15 minute TTL)
@@ -239,23 +245,15 @@ def get_providers(db: Session = Depends(get_db)):
     if cached_result is not None:
         return cached_result
 
-    providers = db.query(
-        ModuleLibrary.provider,
-        func.count(ModuleLibrary.id).label('count')
-    ).filter(
-        ModuleLibrary.provider.isnot(None)
-    ).group_by(
-        ModuleLibrary.provider
-    ).order_by(
-        func.count(ModuleLibrary.id).desc()
-    ).all()
+    providers = (
+        db.query(ModuleLibrary.provider, func.count(ModuleLibrary.id).label("count"))
+        .filter(ModuleLibrary.provider.isnot(None))
+        .group_by(ModuleLibrary.provider)
+        .order_by(func.count(ModuleLibrary.id).desc())
+        .all()
+    )
 
-    result = {
-        "providers": [
-            {"name": prov, "count": count}
-            for prov, count in providers
-        ]
-    }
+    result = {"providers": [{"name": prov, "count": count} for prov, count in providers]}
 
     cache.set(cache_key, result, ttl_seconds=900)
     return result
@@ -284,11 +282,7 @@ def sync_catalog(force: bool = False, db: Session = Depends(get_db)):
     # Invalidate all module library cache after sync
     invalidate_cache("module_library:*")
 
-    return {
-        "success": True,
-        "message": "Module catalog synced successfully",
-        "stats": stats
-    }
+    return {"success": True, "message": "Module catalog synced successfully", "stats": stats}
 
 
 @router.get("/version", dependencies=[Depends(require_viewer)])
@@ -308,41 +302,46 @@ def get_module_library_version(db: Session = Depends(get_db)):
     """
     import requests
 
+    cache_key = "module_library:version"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     result = {
         "synced_version": None,
         "latest_version": None,
         "update_available": False,
         "last_synced_at": None,
         "git_ref": None,
-        "error": None
+        "error": None,
     }
 
     try:
         # Get current synced version from ApplicationSettings
-        synced_version = db.query(ApplicationSetting).filter(
-            ApplicationSetting.key == "module_library.synced_version"
-        ).first()
+        synced_version = (
+            db.query(ApplicationSetting).filter(ApplicationSetting.key == "module_library.synced_version").first()
+        )
         if synced_version and synced_version.value:
             result["synced_version"] = synced_version.value
 
         # Get last synced timestamp
-        last_synced = db.query(ApplicationSetting).filter(
-            ApplicationSetting.key == "module_library.last_synced_at"
-        ).first()
+        last_synced = (
+            db.query(ApplicationSetting).filter(ApplicationSetting.key == "module_library.last_synced_at").first()
+        )
         if last_synced and last_synced.value:
             result["last_synced_at"] = last_synced.value
 
         # Get git ref (branch)
-        git_ref_setting = db.query(ApplicationSetting).filter(
-            ApplicationSetting.key == "module_library.git_ref"
-        ).first()
+        git_ref_setting = (
+            db.query(ApplicationSetting).filter(ApplicationSetting.key == "module_library.git_ref").first()
+        )
         git_ref = git_ref_setting.value if git_ref_setting and git_ref_setting.value else "main"
         result["git_ref"] = git_ref
 
         # Get git URL to construct raw URL
-        git_url_setting = db.query(ApplicationSetting).filter(
-            ApplicationSetting.key == "module_library.git_url"
-        ).first()
+        git_url_setting = (
+            db.query(ApplicationSetting).filter(ApplicationSetting.key == "module_library.git_url").first()
+        )
 
         if not git_url_setting or not git_url_setting.value:
             result["error"] = "Module library URL not configured"
@@ -351,7 +350,7 @@ def get_module_library_version(db: Session = Depends(get_db)):
         # Extract owner/repo from URL (e.g. https://github.com/JLCode-tech/bnk-forge-modules.git)
         git_url = git_url_setting.value
         # Parse: https://github.com/{owner}/{repo}.git
-        parts = git_url.rstrip('/').rstrip('.git').split('/')
+        parts = git_url.rstrip("/").rstrip(".git").split("/")
         if len(parts) >= 2:
             owner = parts[-2]
             repo = parts[-1]
@@ -390,10 +389,14 @@ def get_module_library_version(db: Session = Depends(get_db)):
         result["error"] = f"Version check failed [{error_kind}] {guidance}"
 
     except Exception as e:
-        sanitized = GitAuthService.sanitize_error_text(str(e), secrets=[auth_ctx.secret if 'auth_ctx' in locals() else None])
+        sanitized = GitAuthService.sanitize_error_text(
+            str(e), secrets=[auth_ctx.secret if "auth_ctx" in locals() else None]
+        )
         logger.error(f"Failed to check module library version: {sanitized}")
         result["error"] = sanitized
 
+    if result["error"] is None:
+        cache.set(cache_key, result, ttl_seconds=1800)
     return result
 
 
@@ -410,18 +413,14 @@ def validate_git_source(request: GitSourceValidation, db: Session = Depends(get_
     service = UserModuleService(db)
     result = service.validate_git_source(request.git_url, request.git_ref)
 
-    if not result['valid']:
-        return {
-            'success': False,
-            'error': result['error'],
-            'available_refs': result.get('available_refs', [])
-        }
+    if not result["valid"]:
+        return {"success": False, "error": result["error"], "available_refs": result.get("available_refs", [])}
 
     return {
-        'success': True,
-        'message': 'Git source is valid',
-        'terraform_files': result['terraform_files'],
-        'available_refs': result['available_refs']
+        "success": True,
+        "message": "Git source is valid",
+        "terraform_files": result["terraform_files"],
+        "available_refs": result["available_refs"],
     }
 
 
@@ -437,25 +436,21 @@ def extract_module_metadata(request: MetadataExtraction, db: Session = Depends(g
     - Description from README
     """
     service = UserModuleService(db)
-    result = service.extract_module_metadata(
-        request.git_url,
-        request.git_ref,
-        request.module_path
-    )
+    result = service.extract_module_metadata(request.git_url, request.git_ref, request.module_path)
 
-    if not result['success']:
-        raise BadRequestError(result['error'])
+    if not result["success"]:
+        raise BadRequestError(result["error"])
 
     return {
-        'success': True,
-        'metadata': {
-            'variables': result['variables_schema'],
-            'outputs': result['outputs_schema'],
-            'dependencies': result['dependencies'],
-            'provider': result['provider'],
-            'description': result['description'],
-            'terraform_version': result['terraform_version']
-        }
+        "success": True,
+        "metadata": {
+            "variables": result["variables_schema"],
+            "outputs": result["outputs_schema"],
+            "dependencies": result["dependencies"],
+            "provider": result["provider"],
+            "description": result["description"],
+            "terraform_version": result["terraform_version"],
+        },
     }
 
 
@@ -480,19 +475,15 @@ def create_user_module(module: UserModuleCreate, db: Session = Depends(get_db)):
         module_path=module.module_path,
         provider=module.provider,
         description=module.description,
-        auto_extract_metadata=module.auto_extract_metadata
+        auto_extract_metadata=module.auto_extract_metadata,
     )
 
-    if not result['success']:
-        raise BadRequestError(result['error'])
+    if not result["success"]:
+        raise BadRequestError(result["error"])
 
     db.commit()
 
-    return {
-        'success': True,
-        'message': f"User module '{module.name}' added successfully",
-        'module': result['module']
-    }
+    return {"success": True, "message": f"User module '{module.name}' added successfully", "module": result["module"]}
 
 
 @router.get("/user-modules/{module_id}/versions", dependencies=[Depends(require_viewer)])
@@ -500,10 +491,7 @@ def list_module_versions(module_id: int, db: Session = Depends(get_db)):
     """
     List available versions (branches and tags) for a user module
     """
-    module = db.query(ModuleLibrary).filter(
-        ModuleLibrary.id == module_id,
-        ModuleLibrary.is_official.is_(False)
-    ).first()
+    module = db.query(ModuleLibrary).filter(ModuleLibrary.id == module_id, ModuleLibrary.is_official.is_(False)).first()
 
     if not module:
         raise NotFoundError("module", module_id)
@@ -511,37 +499,32 @@ def list_module_versions(module_id: int, db: Session = Depends(get_db)):
     # Extract git URL from git_source
     # Format: git::https://github.com/user/repo.git//path?ref=version
     # Remove 'git::' prefix first
-    source_without_prefix = module.git_source.replace('git::', '', 1)
+    source_without_prefix = module.git_source.replace("git::", "", 1)
 
     # Now format is: https://github.com/user/repo.git//path?ref=version or https://github.com/user/repo.git?ref=version
     # Find the path separator '//' that's NOT part of the protocol
     # Look for '//' that comes after '://'
-    parts = source_without_prefix.split('://', 1)  # Split protocol
+    parts = source_without_prefix.split("://", 1)  # Split protocol
     if len(parts) == 2:
         protocol, rest = parts  # protocol='https', rest='github.com/user/repo.git//path?ref=version'
-        if '//' in rest:
+        if "//" in rest:
             # Has path separator
-            url_parts = rest.split('//', 1)
+            url_parts = rest.split("//", 1)
             git_url = f"{protocol}://{url_parts[0]}"  # https://github.com/user/repo.git
         else:
             # No path separator
             git_url = f"{protocol}://{rest.split('?')[0]}"  # https://github.com/user/repo.git
     else:
         # Fallback
-        git_url = source_without_prefix.split('?')[0]
+        git_url = source_without_prefix.split("?")[0]
 
     service = UserModuleService(db)
     result = service.list_module_versions(git_url)
 
-    if not result['success']:
-        raise BadRequestError(result['error'])
+    if not result["success"]:
+        raise BadRequestError(result["error"])
 
-    return {
-        'success': True,
-        'current_version': module.version,
-        'branches': result['branches'],
-        'tags': result['tags']
-    }
+    return {"success": True, "current_version": module.version, "branches": result["branches"], "tags": result["tags"]}
 
 
 @router.put("/user-modules/{module_id}/version", dependencies=[Depends(require_operator)])
@@ -555,15 +538,12 @@ def update_module_version(module_id: int, request: VersionUpdate, db: Session = 
     service = UserModuleService(db)
     result = service.update_module_version(module_id, request.new_version)
 
-    if not result['success']:
-        raise BadRequestError(result['error'])
+    if not result["success"]:
+        raise BadRequestError(result["error"])
 
     db.commit()
 
-    return {
-        'success': True,
-        'message': f"Module updated to version {request.new_version}"
-    }
+    return {"success": True, "message": f"Module updated to version {request.new_version}"}
 
 
 @router.delete("/user-modules/{module_id}", dependencies=[Depends(require_operator)])
@@ -574,9 +554,7 @@ def delete_user_module(module_id: int, db: Session = Depends(get_db)):
 
     Only user modules (non-official) can be deleted
     """
-    module = db.query(ModuleLibrary).filter(
-        ModuleLibrary.id == module_id
-    ).first()
+    module = db.query(ModuleLibrary).filter(ModuleLibrary.id == module_id).first()
 
     if not module:
         raise NotFoundError("module", module_id)
@@ -587,8 +565,8 @@ def delete_user_module(module_id: int, db: Session = Depends(get_db)):
     # Check if module is used in any projects
     if module.project_modules and len(module.project_modules) > 0:
         return {
-            'success': False,
-            'error': f'Module is used in {len(module.project_modules)} project(s). Remove from projects first.'
+            "success": False,
+            "error": f"Module is used in {len(module.project_modules)} project(s). Remove from projects first.",
         }
 
     deleted_name = module.name
@@ -603,53 +581,33 @@ def delete_user_module(module_id: int, db: Session = Depends(get_db)):
     db.commit()
     invalidate_cache("module_library:*")
 
-    return {
-        'success': True,
-        'message': f'Module "{deleted_name}" deleted successfully'
-    }
+    return {"success": True, "message": f'Module "{deleted_name}" deleted successfully'}
 
 
 @router.get("/{module_id}", dependencies=[Depends(require_viewer)])
 def get_module(module_id: int, db: Session = Depends(get_db)):
     """Get detailed information about a specific module"""
+
+    cache_key = f"module_library:detail:{module_id}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     module = db.query(ModuleLibrary).filter(ModuleLibrary.id == module_id).first()
 
     if not module:
         raise NotFoundError("module", module_id)
 
-    # Determine engine metadata from stored catalog values
-    engine_metadata = serialize_engine_metadata(
-        module,
-        include_module_classification=True,
-    )
-
-    return {
-        "id": module.id,
-        "name": module.name,
-        "category": module.category,
-        "provider": module.provider,
-        "description": module.description,
-        "readme": module.readme,
-        "git_source": module.git_source,
-        "version": module.version,
-        "is_official": module.is_official,
-        "is_tested": module.is_tested,
-        "test_status": module.test_status,
+    result = {
+        **_serialize_module_item(module, include_details=True),
         "test_last_run": module.test_last_run.isoformat() if module.test_last_run else None,
         "test_error": module.test_error,
-        "workflow_compatibility": module.workflow_compatibility,
-        "dependencies": module.dependencies,
-        "variables_schema": module.variables_schema,
-        "tags": module.tags,
-        "documentation_url": module.git_source.replace("git::", "https://").split("?")[0] if module.git_source and not module.git_source.startswith("builtin://") else None,
-        # Additive compatibility normalization (PLATFORM-CONTEXT-005)
-        **_serialize_module_compatibility(module),
         "last_synced": module.last_synced.isoformat() if module.last_synced else None,
         "created_at": module.created_at.isoformat(),
         "updated_at": module.updated_at.isoformat(),
-        # Engine type + built-in status
-        **engine_metadata,
     }
+    cache.set(cache_key, result, ttl_seconds=900)
+    return result
 
 
 @router.get("/{module_id}/variables", dependencies=[Depends(require_viewer)])
@@ -687,26 +645,15 @@ def get_module_variables(module_id: int, db: Session = Depends(get_db)):
         # Filter out platform-injected variables (project_name, environment, common_tags)
         # These are auto-injected by OpenTofuRuntime and shouldn't be editable by users
         # Platform-injected variables that are always auto-injected
-        platform_vars = {'project_name', 'environment', 'common_tags'}
+        platform_vars = {"project_name", "environment", "common_tags"}
         # region is only auto-injected for AWS projects — don't hide it globally
-        filtered_variables = [
-            v for v in metadata_variables
-            if v.get('name') not in platform_vars
-        ]
+        filtered_variables = [v for v in metadata_variables if v.get("name") not in platform_vars]
 
-        return {
-            "success": True,
-            "variables": filtered_variables,
-            "source": "database"
-        }
+        return {"success": True, "variables": filtered_variables, "source": "database"}
 
     # Parse from git source
     if not module.git_source:
-        return {
-            "success": False,
-            "error": "Module has no git source defined",
-            "variables": []
-        }
+        return {"success": False, "error": "Module has no git source defined", "variables": []}
 
     auth_ctx = GitAuthService.resolve_for_module_library_token_setting(db)
 
@@ -722,11 +669,7 @@ def get_module_variables(module_id: int, db: Session = Depends(get_db)):
     )
 
     if not success:
-        return {
-            "success": False,
-            "error": f"Failed to parse variables: {error}",
-            "variables": []
-        }
+        return {"success": False, "error": f"Failed to parse variables: {error}", "variables": []}
 
     # Cache the parsed variables
     try:
@@ -737,18 +680,11 @@ def get_module_variables(module_id: int, db: Session = Depends(get_db)):
         # Non-critical error
         logger.warning(f"Failed to cache variables schema: {e}")
 
-    return {
-        "success": True,
-        "variables": variables,
-        "source": "parsed"
-    }
+    return {"success": True, "variables": variables, "source": "parsed"}
+
 
 @router.get("/{module_id}/smart-defaults", dependencies=[Depends(require_viewer)])
-def get_smart_defaults(
-    module_id: int,
-    project_id: int,
-    db: Session = Depends(get_db)
-):
+def get_smart_defaults(module_id: int, project_id: int, db: Session = Depends(get_db)):
     """
     Generate smart default values for a module based on project context.
 
@@ -779,9 +715,11 @@ def get_smart_defaults(
     defaults = {}
     credential_template = None
     if project.credential_template_id:
-        credential_template = db.query(CloudCredentialTemplate).filter(
-            CloudCredentialTemplate.id == project.credential_template_id
-        ).first()
+        credential_template = (
+            db.query(CloudCredentialTemplate)
+            .filter(CloudCredentialTemplate.id == project.credential_template_id)
+            .first()
+        )
 
     # Project name normalized (lowercase, replace spaces/underscores with hyphens)
     project_slug = project.name.lower().replace(" ", "-").replace("_", "-")
@@ -791,10 +729,7 @@ def get_smart_defaults(
     resource_name = f"{project_slug}-{module_name}"
 
     if module.inputs_metadata:
-        all_inputs = (
-            module.inputs_metadata.get("required", []) +
-            module.inputs_metadata.get("optional", [])
-        )
+        all_inputs = module.inputs_metadata.get("required", []) + module.inputs_metadata.get("optional", [])
 
         for inp in all_inputs:
             var_name = inp.get("name")
@@ -810,10 +745,18 @@ def get_smart_defaults(
                 if var_name == "ibmcloud_cluster_region" and project.region:
                     defaults[var_name] = project.region
                     continue
-                if var_name == "ibmcloud_resource_group" and credential_template and credential_template.ibmcloud_resource_group:
+                if (
+                    var_name == "ibmcloud_resource_group"
+                    and credential_template
+                    and credential_template.ibmcloud_resource_group
+                ):
                     defaults[var_name] = credential_template.ibmcloud_resource_group
                     continue
-                if var_name == "ibmcloud_api_key" and credential_template and credential_template.ibmcloud_api_key_encrypted:
+                if (
+                    var_name == "ibmcloud_api_key"
+                    and credential_template
+                    and credential_template.ibmcloud_api_key_encrypted
+                ):
                     decrypted_api_key = decrypt_value_or_none(credential_template.ibmcloud_api_key_encrypted)
                     if decrypted_api_key:
                         defaults[var_name] = decrypted_api_key
@@ -850,7 +793,12 @@ def get_smart_defaults(
                     defaults[var_name] = inp.get("example", "10.0.0.0/24")
 
             # Name fields - check for actual name fields (not things that contain "id" like "cidr")
-            elif var_type == "string" and (var_lower.endswith("_name") or var_lower.endswith("_identifier") or var_lower == "name" or var_lower == "identifier"):
+            elif var_type == "string" and (
+                var_lower.endswith("_name")
+                or var_lower.endswith("_identifier")
+                or var_lower == "name"
+                or var_lower == "identifier"
+            ):
                 # Special case: cluster_name, vpc_name, etc.
                 if "cluster" in var_lower:
                     defaults[var_name] = f"{project_slug}-cluster"
@@ -888,9 +836,4 @@ def get_smart_defaults(
 
     logger.info(f"Generated {len(defaults)} smart defaults for module {module.name} in project {project.name}")
 
-    return {
-        "success": True,
-        "defaults": defaults,
-        "project_name": project.name,
-        "module_name": module.name
-    }
+    return {"success": True, "defaults": defaults, "project_name": project.name, "module_name": module.name}

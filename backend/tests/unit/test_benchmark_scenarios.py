@@ -27,13 +27,16 @@ def _expand(key, **kw):
 # Catalog
 # ---------------------------------------------------------------------------
 
+
 def test_catalog_lists_all_presets():
     catalog = list_scenarios()
     keys = {c["key"] for c in catalog}
     assert keys == set(SCENARIO_PRESETS.keys())
     for item in catalog:
         assert item["child_run_count"] >= 1
-        assert set(item.keys()) == {"key", "name", "description", "trace_driven", "child_run_count", "tags"}
+        assert {"key", "name", "description", "trace_driven", "child_run_count", "tags", "sweep_param"} <= set(
+            item.keys()
+        )
 
 
 def test_catalog_child_count_matches_expansion():
@@ -46,19 +49,23 @@ def test_catalog_child_count_matches_expansion():
 # Per-scenario child counts
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "key,expected",
     [
-        ("baseline", 4),                 # sweep of 4
+        ("baseline", 4),  # sweep of 4
         ("high-concurrency", 4),
-        ("mixed-workload", 1 + 4 + 4),   # warmup + short sweep + long sweep
-        ("multi-turn", 4 + 4 + 4 + 4),   # 4 turns x sweep
-        ("prefix-cache", 4),             # 4 (concurrency, ISL) pairs, 80% prefix
+        ("mixed-workload", 1 + 4 + 4),  # warmup + short sweep + long sweep
+        ("multi-turn", 4 + 4 + 4 + 4),  # 4 turns x sweep
+        ("prefix-cache", 4),  # 4 (concurrency, ISL) pairs, 80% prefix
         ("prefix-cache-completions", 4),
         ("bimodal", 4),
-        ("sustained-load", 5),           # sweep {50,100,150,200,250}
-        ("burst-recovery", 5 * 2),       # 5 rounds x (burst + probe)
-        ("mooncake", 1),                 # single open-loop trace
+        ("sustained-load", 5),  # sweep {50,100,150,200,250}
+        ("burst-recovery", 5 * 2),  # 5 rounds x (burst + probe)
+        ("poisson-rate", 5),  # rates {2,4,8,16,32}
+        ("poisson-rate-prefix", 5),  # rates {1,2,4,8,16}
+        ("mooncake", 1),  # single open-loop trace
+        ("inferencex-agentx-mvp", 4),  # session concurrency sweep {8,16,32,64}
     ],
 )
 def test_scenario_child_count(key, expected):
@@ -68,6 +75,7 @@ def test_scenario_child_count(key, expected):
 # ---------------------------------------------------------------------------
 # Sweep math + flag correctness
 # ---------------------------------------------------------------------------
+
 
 def test_baseline_request_count_formula():
     children = _expand("baseline")
@@ -108,7 +116,10 @@ def test_prefix_cache_heavy_pairs_with_80pct_prefix():
     # (concurrency, ISL) pairs with prefix = 80% of ISL, unique = 20% of ISL.
     seen = {(c["concurrency"], c["prefix_prompt_length"], c["synthetic_input_tokens_mean"]) for c in children}
     assert seen == {
-        (150, 4000, 1000), (200, 5600, 1400), (250, 7200, 1800), (300, 8000, 2000),
+        (150, 4000, 1000),
+        (200, 5600, 1400),
+        (250, 7200, 1800),
+        (300, 8000, 2000),
     }
     for c in children:
         assert c["num_prefix_prompts"] == 20
@@ -174,6 +185,7 @@ def test_burst_recovery_rounds_and_phases():
 # Mooncake — single open-loop trace variant
 # ---------------------------------------------------------------------------
 
+
 def test_mooncake_is_single_open_loop_trace():
     preset = get_scenario("mooncake")
     assert preset.trace_driven is True
@@ -196,6 +208,7 @@ def test_mooncake_is_single_open_loop_trace():
 # ---------------------------------------------------------------------------
 # Overrides + model injection + immutability
 # ---------------------------------------------------------------------------
+
 
 def test_model_override_applies_to_all_children():
     children = _expand("baseline", model="my-deployed-model")
@@ -222,6 +235,7 @@ def test_unknown_scenario_raises_keyerror():
 # ---------------------------------------------------------------------------
 # Description ↔ computed-variant consistency (L2 — catalog strings must not lie)
 # ---------------------------------------------------------------------------
+
 
 def test_prefix_cache_description_matches_computed_prefix_lengths():
     """The catalog description must reflect the real prefix-prompt-length range
@@ -251,6 +265,7 @@ def test_high_concurrency_description_matches_computed_isl():
 # Override-key SSRF guard (belt-and-suspenders layer in expand_scenario)
 # ---------------------------------------------------------------------------
 
+
 def test_expand_scenario_strips_trace_url_override():
     """expand_scenario must not let caller's trace_url override the preset value."""
     # Use mooncake — it has a real trace_url in its preset
@@ -267,7 +282,7 @@ def test_expand_scenario_strips_underscore_prefixed_overrides():
     """expand_scenario must strip _-prefixed keys from caller overrides (Forge metadata namespace)."""
     children = _expand("baseline", overrides={"_scenario_key": "injected", "request_timeout_seconds": 30})
     for c in children:
-        assert c["_scenario_key"] == "baseline"   # preset value wins
+        assert c["_scenario_key"] == "baseline"  # preset value wins
         assert c["request_timeout_seconds"] == 30  # benign override preserved
 
 
@@ -277,3 +292,87 @@ def test_expand_scenario_benign_override_applied():
     for c in children:
         assert c["model"] == "tinyllama"
         assert c["request_timeout_seconds"] == 60
+
+
+# ---------------------------------------------------------------------------
+# Open-loop Poisson rate sweeps
+# ---------------------------------------------------------------------------
+
+
+def test_poisson_steps_keep_rate_warmup_and_duration_floor():
+    """Custom rates replace the defaults; overrides cannot shorten a step or cap it by count."""
+    children = _expand(
+        "poisson-rate",
+        steps=[8, 0.5, 8],
+        overrides={"request_rate": 99, "benchmark_duration": 10, "warmup_duration": 5, "request_count": 50},
+    )
+    assert [c["request_rate"] for c in children] == [0.5, 8]
+    assert [c["_variant_label"] for c in children] == ["0.5rps", "8rps"]
+    for c in children:
+        assert c["arrival_pattern"] == "poisson"
+        assert c["goodput"] == "time_to_first_token:2000 inter_token_latency:200"
+        assert c["warmup_duration"] == 30
+        assert "request_count" not in c
+    # 300 requests at 0.5 req/s need 600 s; 8 req/s gets the 120 s floor.
+    assert [c["benchmark_duration"] for c in children] == [600, 120]
+
+
+def test_steps_rejected_for_fixed_sweeps():
+    with pytest.raises(ValueError):
+        _expand("baseline", steps=[1, 2])
+    with pytest.raises(ValueError):
+        _expand("poisson-rate", steps=[0])
+
+
+def test_agentx_mvp_defaults_and_flags():
+    children = _expand("inferencex-agentx-mvp")
+    assert len(children) == 4
+    concurrencies = [c["concurrency"] for c in children]
+    assert concurrencies == [8, 16, 32, 64]
+    labels = [c["_variant_label"] for c in children]
+    assert labels == ["c8", "c16", "c32", "c64"]
+    for c in children:
+        assert c["scenario"] == "inferencex-agentx-mvp"
+        assert c["public_dataset"] == "semianalysis_cc_traces_weka_with_subagents"
+        assert c["endpoint_type"] == "chat"
+        assert c["streaming"] is True
+        assert c["use_server_token_count"] is True
+        assert c["benchmark_duration"] == 900
+        assert c["random_seed"] == 20260707
+        assert "request_count" not in c
+        assert "synthetic_input_tokens_mean" not in c
+
+
+def test_agentx_mvp_custom_steps():
+    children = _expand("inferencex-agentx-mvp", steps=[16, 32])
+    assert [c["concurrency"] for c in children] == [16, 32]
+    assert [c["_variant_label"] for c in children] == ["c16", "c32"]
+
+
+def test_agentx_mvp_is_default_in_catalog():
+    catalog = list_scenarios()
+    agentx = next(c for c in catalog if c["key"] == "inferencex-agentx-mvp")
+    assert agentx["is_default"] is True
+    assert agentx["sweep_param"] == "concurrency"
+    assert agentx["default_steps"] == [8, 16, 32, 64]
+    assert agentx["trace_driven"] is True
+    # Other scenarios must not be default
+    others = [c for c in catalog if c["key"] != "inferencex-agentx-mvp"]
+    assert all(not c.get("is_default") for c in others)
+
+
+def test_agentx_mvp_strips_forbidden_dataset_overrides():
+    children = _expand(
+        "inferencex-agentx-mvp",
+        overrides={
+            "public_dataset": "malicious",
+            "scenario": "custom",
+            "benchmark_duration": 60,
+            "unsafe_override": True,
+        },
+    )
+    for c in children:
+        assert c["public_dataset"] == "semianalysis_cc_traces_weka_with_subagents"
+        assert c["scenario"] == "inferencex-agentx-mvp"
+        assert c["benchmark_duration"] == 60
+        assert c["unsafe_override"] is True

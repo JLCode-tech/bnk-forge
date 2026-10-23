@@ -109,7 +109,7 @@ export function ReleaseDetailPanel({
 
         {release && (
           <div className="flex items-center gap-2 mt-2">
-            <Badge className={cn('text-[10px]', getResourceStatusColor(release.info.status))}>
+            <Badge className={cn('text-2xs', getResourceStatusColor(release.info.status))}>
               {release.info.status}
             </Badge>
             <span className="text-xs text-muted-foreground">
@@ -328,7 +328,7 @@ export function ReleaseDetailPanel({
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-semibold">Rev {rev.revision}</span>
-                            <Badge className={cn('text-[10px]', getResourceStatusColor(rev.status))}>
+                            <Badge className={cn('text-2xs', getResourceStatusColor(rev.status))}>
                               {rev.status}
                             </Badge>
                           </div>

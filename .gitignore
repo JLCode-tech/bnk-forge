@@ -60,6 +60,14 @@ docker-compose.override.yml
 # OPT-001: Smart build script stores last-build commit hash
 .build-hash
 
+# Custom TLS CA certificates (corporate proxy certs, etc.)
+# The certs/ directory itself is tracked (see certs/.gitkeep), but certificate
+# files should never be committed.
+/certs/*.crt
+/certs/*.pem
+/certs/*.cer
+/certs/*.der
+
 # Environment variables
 .env
 .env.local
@@ -123,7 +131,9 @@ configs/.module_catalog/
 *.backup
 backend/venv/
 
+frontend-v2/node_modules
 frontend-v2/node_modules/
+**/node_modules
 **/node_modules/
 frontend-v2/dist/
 frontend-v2/.vite/
@@ -250,6 +260,8 @@ e2e-config.yaml
 
 # Experimental Go CLI — build artifacts, never commit the compiled binary
 cli/go/
+/bin/awsbnkctl
+/bin/.awsbnkctl*
 
 # --- Public release protection ---
 .env
@@ -284,3 +296,7 @@ handoffs/
 *.syncbak
 # Generated secret material (JWT/encryption keys, initial admin password)
 backend/keys/
+
+# Local working/reference directory
+agy-working/
+/backups/

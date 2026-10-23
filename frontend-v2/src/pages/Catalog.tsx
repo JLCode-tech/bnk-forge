@@ -1,187 +1,205 @@
 /**
- * Catalog page — D-020 redesign.
+ * Catalog page — Streamlined 4-tab architecture.
  *
- * Unified home for shared, reusable building blocks behind a single tab strip:
- *   • Modules           — browsable module catalog with source management (Advanced only)
- *   • Blueprints        — browsable blueprint catalog with source management
- *   • Helm Repos        — chart repositories
- *   • DOCA Releases     — paired BFB + DOCA catalog
- *   • bf.conf Templates — DPU config templates
- *
- * The Modules tab is hidden by default and revealed by an "Advanced" toggle
- * (persisted in localStorage key `forge.catalog.advanced`).
+ * Unified home for shared, reusable building blocks behind 4 clear primary tabs:
+ *   • Blueprints & Stacks — browsable blueprint catalog with source management
+ *   • Modules             — browsable module catalog with source management
+ *   • Helm Charts & Repos — chart repositories & registries
+ *   • System & DPU Images — DOCA/BFB releases, BNK releases, and bf.conf templates
  */
-import { lazy, Suspense, useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Tabs, TabsContent } from '@/components/ui/tabs';
-import { Switch } from '@/components/ui/switch';
-import { Layers, Package, HardDrive, FileCode, Loader2, Library, Cpu } from 'lucide-react';
-import { PageHeader } from '@/components/layout/PageHeader';
-import { ResourceViewTabs } from '@/components/layout/ResourceViewTabs';
-import { usePageRefresh } from '@/hooks/usePageRefresh';
+import { lazy, Suspense } from "react";
+import { useSearchParams } from "react-router-dom";
+// eslint-disable-next-line no-restricted-imports -- Vertical flush sub-sidebar requires Radix TabsList + TabsTrigger
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Layers, Package, HardDrive, Library, RefreshCw } from "lucide-react";
+import { CollapsibleInnerSidebar } from "@/components/layout/InnerSidebar";
+import { cn } from "@/lib/utils";
+import { usePageRefresh } from "@/hooks/usePageRefresh";
+import type { SystemSubTab } from "@/components/catalog/SystemImagesPanel";
 
-const Modules = lazy(() => import('@/pages/Modules'));
-const BlueprintCatalogPanel = lazy(() => import('@/components/catalog/BlueprintCatalogPanel'));
-const HelmReposPanel = lazy(() => import('@/components/catalog/HelmReposPanel'));
-const BluefieldImages = lazy(() =>
-  import('@/components/settings/BluefieldImages').then((m) => ({ default: m.BluefieldImages })),
+const Modules = lazy(() => import("@/pages/Modules"));
+const BlueprintCatalogPanel = lazy(
+  () => import("@/components/catalog/BlueprintCatalogPanel"),
 );
-const BfConfTemplates = lazy(() =>
-  import('@/components/settings/BfConfTemplates').then((m) => ({ default: m.BfConfTemplates })),
+const HelmReposPanel = lazy(
+  () => import("@/components/catalog/HelmReposPanel"),
 );
-const BnkReleasesPanel = lazy(() => import('@/components/catalog/BnkReleasesPanel'));
+const SystemImagesPanel = lazy(
+  () => import("@/components/catalog/SystemImagesPanel"),
+);
 
-const ADVANCED_STORAGE_KEY = 'forge.catalog.advanced';
-
-const VALID_TABS = ['modules', 'blueprints', 'helm-repos', 'doca-releases', 'bnk-releases', 'bf-conf-templates'] as const;
+const VALID_TABS = [
+  "blueprints",
+  "modules",
+  "helm-repos",
+  "system-images",
+] as const;
 type CatalogTab = (typeof VALID_TABS)[number];
 
-const DEFAULT_TAB: CatalogTab = 'blueprints';
+const DEFAULT_TAB: CatalogTab = "blueprints";
 
 function TabFallback() {
   return (
-    <div className="flex justify-center p-8">
-      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+    <div className="space-y-4 p-4">
+      <Skeleton className="h-8 w-48" />
+      <Skeleton className="h-64 w-full rounded-xl" />
     </div>
   );
 }
 
-function readAdvancedFromStorage(): boolean {
-  try {
-    return localStorage.getItem(ADVANCED_STORAGE_KEY) === 'true';
-  } catch {
-    return false;
-  }
-}
-
 export default function Catalog() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [advanced, setAdvanced] = useState<boolean>(readAdvancedFromStorage);
 
-  const urlTab = searchParams.get('tab');
-  // Support legacy tab values — redirect old tab names to the new unified tab
-  const resolvedTab =
-    urlTab === 'bfb-images' || urlTab === 'doca-images'
-      ? 'doca-releases'
-      : urlTab === 'module-library'
-        ? 'modules'
-        : urlTab;
-  const requestedTab: CatalogTab = VALID_TABS.includes(resolvedTab as CatalogTab) ? (resolvedTab as CatalogTab) : DEFAULT_TAB;
+  const urlTab = searchParams.get("tab");
+  // Map legacy / deep-link subtab values to primary tab + initial system subtab
+  let initialSystemSubTab: SystemSubTab = "doca";
+  let resolvedTab = urlTab;
+  if (
+    urlTab === "bfb-images" ||
+    urlTab === "doca-images" ||
+    urlTab === "doca-releases" ||
+    urlTab === "system" ||
+    urlTab === "dpu-images" ||
+    urlTab === "pxe-images"
+  ) {
+    resolvedTab = "system-images";
+    initialSystemSubTab = "doca";
+  } else if (urlTab === "bnk-releases") {
+    resolvedTab = "system-images";
+    initialSystemSubTab = "bnk";
+  } else if (urlTab === "bf-conf-templates") {
+    resolvedTab = "system-images";
+    initialSystemSubTab = "bfconf";
+  } else if (urlTab === "module-library") {
+    resolvedTab = "modules";
+  }
 
-  // Deep-link safety: if arriving at ?tab=modules while advanced is off, auto-enable advanced.
-  useEffect(() => {
-    if (requestedTab === 'modules' && !advanced) {
-      setAdvanced(true);
-      try {
-        localStorage.setItem(ADVANCED_STORAGE_KEY, 'true');
-      } catch {
-        // ignore
-      }
-    }
-  // Only run on mount (or if requestedTab changes from a navigation).
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requestedTab]);
-
-  const activeTab: CatalogTab = requestedTab === 'modules' && !advanced ? DEFAULT_TAB : requestedTab;
+  const activeTab: CatalogTab = VALID_TABS.includes(resolvedTab as CatalogTab)
+    ? (resolvedTab as CatalogTab)
+    : DEFAULT_TAB;
 
   const handleTabChange = (tab: string) => {
     if (tab === DEFAULT_TAB) {
-      searchParams.delete('tab');
+      searchParams.delete("tab");
     } else {
-      searchParams.set('tab', tab);
+      searchParams.set("tab", tab);
     }
     setSearchParams(searchParams);
   };
 
-  const handleAdvancedChange = (checked: boolean) => {
-    // If turning off while Modules is active, switch to the default tab first.
-    if (!checked && activeTab === 'modules') {
-      searchParams.delete('tab');
-      setSearchParams(searchParams);
-    }
-    setAdvanced(checked);
-    try {
-      localStorage.setItem(ADVANCED_STORAGE_KEY, String(checked));
-    } catch {
-      // ignore
-    }
-  };
-
   const { refresh, isRefreshing } = usePageRefresh();
 
-  // Build tab list — Modules only shown when advanced is enabled
   const tabs = [
-    ...(advanced ? [{ key: 'modules' as const, label: 'Modules', icon: Layers }] : []),
-    { key: 'blueprints' as const, label: 'Blueprints', icon: Library },
-    { key: 'helm-repos' as const, label: 'Helm Repos', icon: Package },
-    { key: 'doca-releases' as const, label: 'DOCA Releases', icon: HardDrive },
-    { key: 'bnk-releases' as const, label: 'BNK Releases', icon: Cpu },
-    { key: 'bf-conf-templates' as const, label: 'bf.conf Templates', icon: FileCode },
+    { key: "blueprints" as const, label: "Blueprints & Stacks", icon: Library },
+    { key: "modules" as const, label: "Modules", icon: Layers },
+    { key: "helm-repos" as const, label: "Helm Charts & Repos", icon: Package },
+    {
+      key: "system-images" as const,
+      label: "System & DPU Images",
+      icon: HardDrive,
+    },
   ];
 
-  const advancedToggle = (
-    <label className="flex items-center gap-2 cursor-pointer select-none text-sm text-muted-foreground">
-      <Switch checked={advanced} onCheckedChange={handleAdvancedChange} />
-      Advanced
-    </label>
-  );
-
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <PageHeader
-        title="Catalog"
-        subtitle="Shared building blocks used by blueprints and projects — modules, blueprints, DPU bootstreams, bf.conf templates, and their sources."
-        actions={advancedToggle}
-        onRefresh={refresh}
-        isRefreshing={isRefreshing}
-      />
+    <Tabs
+      value={activeTab}
+      onValueChange={handleTabChange}
+      orientation="vertical"
+      className="flex min-h-[calc(100vh-3rem)]"
+    >
+      {/* Left Flush Inner Sub-Sidebar */}
+      <CollapsibleInnerSidebar className="w-52 shrink-0 border-r border-border bg-card/30 p-3 space-y-4">
+        <div className="border-b border-border pb-3 px-1">
+          <h1 className="text-sm font-semibold tracking-tight text-foreground">
+            Catalog &amp; Blueprints
+          </h1>
+          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+            Deployable multi-module blueprints, stacks, Terraform modules, and
+            Helm charts
+          </p>
+        </div>
 
-      <Tabs value={activeTab} onValueChange={handleTabChange}>
-        <ResourceViewTabs
-          variant="inline"
-          aria-label="Catalog sections"
-          active={activeTab}
-          onChange={handleTabChange}
-          tabs={tabs}
-        />
+        <div className="space-y-1">
+          <div className="px-2.5 py-1 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+            CATALOG
+          </div>
+          <TabsList
+            aria-label="Catalog sections"
+            className="flex flex-col items-stretch h-auto bg-transparent p-0 gap-1"
+          >
+            {tabs.map(({ key, label, icon: Icon }) => (
+              <TabsTrigger
+                key={key}
+                value={key}
+                className="w-full justify-start gap-2 px-2.5 py-1.5 text-xs font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
+              >
+                <Icon className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{label}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
+      </CollapsibleInnerSidebar>
 
-        <TabsContent value="modules" className="mt-6">
-          <Suspense fallback={<TabFallback />}>
-            <Modules />
-          </Suspense>
-        </TabsContent>
+      {/* Right Content Pane */}
+      <div className="flex-1 min-w-0 p-6 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold tracking-tight text-foreground">
+              {tabs.find((t) => t.key === activeTab)?.label ??
+                "Catalog & Blueprints"}
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Deployable multi-module blueprints, stacks, Terraform modules, and
+              Helm charts
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 px-3 shrink-0"
+            onClick={refresh}
+            disabled={isRefreshing}
+            title="Refresh"
+            aria-label="Refresh"
+          >
+            <RefreshCw
+              className={cn(
+                "h-3.5 w-3.5 mr-1.5",
+                isRefreshing && "animate-spin",
+              )}
+              aria-hidden="true"
+            />
+            Refresh
+          </Button>
+        </div>
 
-        <TabsContent value="blueprints" className="mt-6">
+        <TabsContent value="blueprints" className="mt-0">
           <Suspense fallback={<TabFallback />}>
             <BlueprintCatalogPanel />
           </Suspense>
         </TabsContent>
 
-        <TabsContent value="helm-repos" className="mt-6">
+        <TabsContent value="modules" className="mt-0">
+          <Suspense fallback={<TabFallback />}>
+            <Modules embedded />
+          </Suspense>
+        </TabsContent>
+
+        <TabsContent value="helm-repos" className="mt-0">
           <Suspense fallback={<TabFallback />}>
             <HelmReposPanel />
           </Suspense>
         </TabsContent>
 
-        <TabsContent value="doca-releases" className="mt-6">
+        <TabsContent value="system-images" className="mt-0">
           <Suspense fallback={<TabFallback />}>
-            <BluefieldImages />
+            <SystemImagesPanel initialSubTab={initialSystemSubTab} />
           </Suspense>
         </TabsContent>
-
-        <TabsContent value="bnk-releases" className="mt-6">
-          <Suspense fallback={<TabFallback />}>
-            <BnkReleasesPanel />
-          </Suspense>
-        </TabsContent>
-
-        <TabsContent value="bf-conf-templates" className="mt-6">
-          <Suspense fallback={<TabFallback />}>
-            <BfConfTemplates />
-          </Suspense>
-        </TabsContent>
-      </Tabs>
-    </div>
+      </div>
+    </Tabs>
   );
 }

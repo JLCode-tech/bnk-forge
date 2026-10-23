@@ -539,7 +539,7 @@ function StepDetails({ details }: { details: Record<string, unknown> }) {
                   key={i}
                   className="flex items-start gap-2 text-xs rounded px-2 py-1 bg-card"
                 >
-                  <Badge variant="outline" className="text-[10px] shrink-0">
+                  <Badge variant="outline" className="text-2xs shrink-0">
                     {String(ev.reason || 'Unknown')}
                   </Badge>
                   <span className="truncate text-muted-foreground">

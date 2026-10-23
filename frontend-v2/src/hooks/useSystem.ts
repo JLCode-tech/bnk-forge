@@ -12,7 +12,7 @@ import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { queryKeys } from '@/lib/queryKeys';
 import { QUERY_STALE_TIME, POLL_INTERVALS } from '@/lib/constants';
-import type { CleanupType, VersionInfo, UpgradeResponse } from '@/types/system';
+import type { CleanupType, VersionInfo, UpgradeResponse, BnkConsumptionResponse } from '@/types/system';
 import { useAppMutation } from '@/hooks/lib/useAppMutation';
 
 /**
@@ -184,6 +184,25 @@ export function useRestartContainers() {
 }
 
 /**
+ * Fetch fleet-wide BNK resource consumption.
+ *
+ * PERFORMANCE: 60s polling, disabled when tab hidden, 2 min stale time.
+ * The backend aggregates multi-cluster data and caches for 20 seconds.
+ */
+export function useBnkConsumption(options?: { enabled?: boolean }) {
+  const isVisible = useDocumentVisibility();
+
+  return useQuery<BnkConsumptionResponse>({
+    queryKey: queryKeys.system.bnkConsumption(),
+    queryFn: () => api.getBnkConsumption(),
+    enabled: options?.enabled !== false,
+    refetchInterval: isVisible && options?.enabled !== false ? POLL_INTERVALS.VERY_SLOW : false,
+    staleTime: QUERY_STALE_TIME.SYSTEM,
+    placeholderData: (previousData) => previousData,
+  });
+}
+
+/**
  * UP-013: Fetch system version info (current, latest, update availability)
  */
 export function useSystemVersion() {
@@ -221,8 +240,11 @@ export function useUpgradeStatus() {
   const query = useQuery({
     queryKey: queryKeys.system.upgradeStatus(),
     queryFn: () => api.getUpgradeStatus(),
-    refetchInterval: isVisible ? 10_000 : false,
-    staleTime: 5_000,
+    refetchInterval: (q) => {
+      if (!isVisible) return false;
+      return q.state.data?.status === 'in_progress' ? 10_000 : 60_000;
+    },
+    staleTime: 30_000,
     retry: false, // Don't retry if backend is down (may be restarting during upgrade)
   });
 

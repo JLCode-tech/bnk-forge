@@ -1,28 +1,29 @@
-import { useState } from 'react';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { useState } from "react";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from "@/components/ui/dropdown-menu";
 import {
   useClusterResources,
   useClusterNamespaces,
@@ -32,18 +33,25 @@ import {
   useDeleteK8sResource,
   useScaleDeployment,
   useRestartPod,
-} from '@/hooks/useK8s';
-import { ResourceCreateDialog } from './ResourceCreateDialog';
-import { ResourceEditDialog } from './ResourceEditDialog';
-import { ResourceDeleteDialog } from './ResourceDeleteDialog';
-import { ScaleDeploymentDialog } from './ScaleDeploymentDialog';
-import { PodLogsViewer } from './PodLogsViewer';
-import { ResourceDescribeViewer } from './ResourceDescribeViewer';
-import { ResourceEventsViewer } from './ResourceEventsViewer';
-import { ResourceMetricsViewer } from './ResourceMetricsViewer';
-import { DeploymentRolloutManager } from './DeploymentRolloutManager';
-import { NodeOperationsDialog } from './NodeOperationsDialog';
-import type { K8sCluster, K8sResource, K8sContainerStatus, K8sServicePort, K8sCondition, K8sLoadBalancerIngress } from '@/types';
+} from "@/hooks/useK8s";
+import { ResourceCreateDialog } from "./ResourceCreateDialog";
+import { ResourceEditDialog } from "./ResourceEditDialog";
+import { ResourceDeleteDialog } from "./ResourceDeleteDialog";
+import { ScaleDeploymentDialog } from "./ScaleDeploymentDialog";
+import { PodLogsViewer } from "./PodLogsViewer";
+import { ResourceDescribeViewer } from "./ResourceDescribeViewer";
+import { ResourceEventsViewer } from "./ResourceEventsViewer";
+import { ResourceMetricsViewer } from "./ResourceMetricsViewer";
+import { DeploymentRolloutManager } from "./DeploymentRolloutManager";
+import { NodeOperationsDialog } from "./NodeOperationsDialog";
+import type {
+  K8sCluster,
+  K8sResource,
+  K8sContainerStatus,
+  K8sServicePort,
+  K8sCondition,
+  K8sLoadBalancerIngress,
+} from "@/types";
 import {
   Loader2,
   RefreshCw,
@@ -66,7 +74,7 @@ import {
   Columns,
   GitBranch,
   Server,
-} from 'lucide-react';
+} from "lucide-react";
 
 interface K8sResourceViewerProps {
   cluster: K8sCluster;
@@ -81,7 +89,7 @@ const formatRelativeTime = (timestamp: string) => {
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
 
-  if (diffMins < 1) return 'just now';
+  if (diffMins < 1) return "just now";
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 30) return `${diffDays}d ago`;
@@ -93,7 +101,7 @@ const getExtendedInfo = (resource: K8sResource): string[] => {
   const kind = resource.kind;
 
   // Pod-specific extended info
-  if (kind === 'Pod') {
+  if (kind === "Pod") {
     if (resource.spec?.nodeName) {
       info.push(`Node: ${resource.spec.nodeName}`);
     }
@@ -106,14 +114,14 @@ const getExtendedInfo = (resource: K8sResource): string[] => {
     if (resource.status?.containerStatuses) {
       const restarts = resource.status.containerStatuses.reduce(
         (sum: number, cs: K8sContainerStatus) => sum + (cs.restartCount || 0),
-        0
+        0,
       );
       info.push(`Restarts: ${restarts}`);
     }
   }
 
   // Service-specific extended info
-  if (kind === 'Service') {
+  if (kind === "Service") {
     if (resource.spec?.type) {
       info.push(`Type: ${resource.spec.type}`);
     }
@@ -122,20 +130,23 @@ const getExtendedInfo = (resource: K8sResource): string[] => {
     }
     if (resource.status?.loadBalancer?.ingress?.[0]) {
       const ingress = resource.status.loadBalancer.ingress[0];
-      info.push(`External IP: ${ingress.ip || ingress.hostname || 'Pending'}`);
+      info.push(`External IP: ${ingress.ip || ingress.hostname || "Pending"}`);
     }
     if (resource.spec?.ports) {
-      const ports = resource.spec.ports.map((p: K8sServicePort) =>
-        `${p.port}${p.targetPort ? `:${p.targetPort}` : ''}/${p.protocol || 'TCP'}`
-      ).join(', ');
+      const ports = resource.spec.ports
+        .map(
+          (p: K8sServicePort) =>
+            `${p.port}${p.targetPort ? `:${p.targetPort}` : ""}/${p.protocol || "TCP"}`,
+        )
+        .join(", ");
       info.push(`Ports: ${ports}`);
     }
   }
 
   // Node-specific extended info
-  if (kind === 'Node') {
-    if (resource.metadata?.labels?.['kubernetes.io/role']) {
-      info.push(`Role: ${resource.metadata.labels['kubernetes.io/role']}`);
+  if (kind === "Node") {
+    if (resource.metadata?.labels?.["kubernetes.io/role"]) {
+      info.push(`Role: ${resource.metadata.labels["kubernetes.io/role"]}`);
     }
     if (resource.status?.nodeInfo?.kubeletVersion) {
       info.push(`Version: ${resource.status.nodeInfo.kubeletVersion}`);
@@ -144,15 +155,19 @@ const getExtendedInfo = (resource: K8sResource): string[] => {
       info.push(`OS: ${resource.status.nodeInfo.osImage}`);
     }
     if (resource.status?.conditions) {
-      const readyCondition = resource.status.conditions.find((c: K8sCondition) => c.type === 'Ready');
+      const readyCondition = resource.status.conditions.find(
+        (c: K8sCondition) => c.type === "Ready",
+      );
       if (readyCondition) {
-        info.push(`Status: ${readyCondition.status === 'True' ? 'Ready' : 'NotReady'}`);
+        info.push(
+          `Status: ${readyCondition.status === "True" ? "Ready" : "NotReady"}`,
+        );
       }
     }
   }
 
   // Deployment-specific extended info
-  if (kind === 'Deployment') {
+  if (kind === "Deployment") {
     if (resource.spec?.replicas !== undefined) {
       const ready = resource.status?.readyReplicas || 0;
       const desired = resource.spec.replicas;
@@ -164,7 +179,7 @@ const getExtendedInfo = (resource: K8sResource): string[] => {
   }
 
   // ReplicaSet-specific extended info
-  if (kind === 'ReplicaSet') {
+  if (kind === "ReplicaSet") {
     if (resource.spec?.replicas !== undefined) {
       const ready = resource.status?.readyReplicas || 0;
       const desired = resource.spec.replicas;
@@ -173,7 +188,7 @@ const getExtendedInfo = (resource: K8sResource): string[] => {
   }
 
   // StatefulSet-specific extended info
-  if (kind === 'StatefulSet') {
+  if (kind === "StatefulSet") {
     if (resource.spec?.replicas !== undefined) {
       const ready = resource.status?.readyReplicas || 0;
       const desired = resource.spec.replicas;
@@ -182,7 +197,7 @@ const getExtendedInfo = (resource: K8sResource): string[] => {
   }
 
   // DaemonSet-specific extended info
-  if (kind === 'DaemonSet') {
+  if (kind === "DaemonSet") {
     if (resource.status) {
       const desired = resource.status.desiredNumberScheduled || 0;
       const ready = resource.status.numberReady || 0;
@@ -191,7 +206,7 @@ const getExtendedInfo = (resource: K8sResource): string[] => {
   }
 
   // Ingress-specific extended info
-  if (kind === 'Ingress') {
+  if (kind === "Ingress") {
     if (resource.spec?.ingressClassName) {
       info.push(`Class: ${resource.spec.ingressClassName}`);
     }
@@ -199,7 +214,7 @@ const getExtendedInfo = (resource: K8sResource): string[] => {
       const addresses = resource.status.loadBalancer.ingress
         .map((ing: K8sLoadBalancerIngress) => ing.ip || ing.hostname)
         .filter(Boolean)
-        .join(', ');
+        .join(", ");
       if (addresses) {
         info.push(`Address: ${addresses}`);
       }
@@ -207,12 +222,12 @@ const getExtendedInfo = (resource: K8sResource): string[] => {
   }
 
   // PersistentVolume-specific extended info
-  if (kind === 'PersistentVolume') {
+  if (kind === "PersistentVolume") {
     if (resource.spec?.capacity?.storage) {
       info.push(`Capacity: ${resource.spec.capacity.storage}`);
     }
     if (resource.spec?.accessModes) {
-      info.push(`Access: ${resource.spec.accessModes.join(', ')}`);
+      info.push(`Access: ${resource.spec.accessModes.join(", ")}`);
     }
     if (resource.spec?.storageClassName) {
       info.push(`Class: ${resource.spec.storageClassName}`);
@@ -220,7 +235,7 @@ const getExtendedInfo = (resource: K8sResource): string[] => {
   }
 
   // PersistentVolumeClaim-specific extended info
-  if (kind === 'PersistentVolumeClaim') {
+  if (kind === "PersistentVolumeClaim") {
     if (resource.spec?.resources?.requests?.storage) {
       info.push(`Request: ${resource.spec.resources.requests.storage}`);
     }
@@ -235,11 +250,19 @@ const getExtendedInfo = (resource: K8sResource): string[] => {
   return info;
 };
 
-export function K8sResourceViewer({ cluster, defaultResourceType = 'pod' }: K8sResourceViewerProps) {
-  const [selectedResourceType, setSelectedResourceType] = useState<string>(defaultResourceType);
-  const [selectedNamespace, setSelectedNamespace] = useState<string>(cluster.default_namespace || 'default');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedResource, setSelectedResource] = useState<K8sResource | null>(null);
+export function K8sResourceViewer({
+  cluster,
+  defaultResourceType = "pod",
+}: K8sResourceViewerProps) {
+  const [selectedResourceType, setSelectedResourceType] =
+    useState<string>(defaultResourceType);
+  const [selectedNamespace, setSelectedNamespace] = useState<string>(
+    cluster.default_namespace || "default",
+  );
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedResource, setSelectedResource] = useState<K8sResource | null>(
+    null,
+  );
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [detailedView, setDetailedView] = useState(false);
 
@@ -259,11 +282,15 @@ export function K8sResourceViewer({ cluster, defaultResourceType = 'pod' }: K8sR
 
   const { data: resourceTypes } = useK8sResourceTypes();
   const { data: namespacesResponse } = useClusterNamespaces(cluster.id);
-  const { data: resourcesResponse, isLoading, refetch } = useClusterResources(
+  const {
+    data: resourcesResponse,
+    isLoading,
+    refetch,
+  } = useClusterResources(
     cluster.id,
     selectedResourceType,
     { namespace: selectedNamespace },
-    { pollingEnabled }
+    { pollingEnabled },
   );
 
   const resources = resourcesResponse?.resources || [];
@@ -278,7 +305,7 @@ export function K8sResourceViewer({ cluster, defaultResourceType = 'pod' }: K8sR
 
   // Filter resources based on search query
   const filteredResources = resources.filter((resource) =>
-    resource.metadata?.name?.toLowerCase().includes(searchQuery.toLowerCase())
+    resource.metadata?.name?.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   const handleViewDetails = (resource: K8sResource) => {
@@ -302,7 +329,7 @@ export function K8sResourceViewer({ cluster, defaultResourceType = 'pod' }: K8sR
             setCreateDialogOpen(false);
           }
         },
-      }
+      },
     );
   };
 
@@ -325,7 +352,7 @@ export function K8sResourceViewer({ cluster, defaultResourceType = 'pod' }: K8sR
             setSelectedResource(null);
           }
         },
-      }
+      },
     );
   };
 
@@ -344,7 +371,7 @@ export function K8sResourceViewer({ cluster, defaultResourceType = 'pod' }: K8sR
           setDeleteDialogOpen(false);
           setSelectedResource(null);
         },
-      }
+      },
     );
   };
 
@@ -363,7 +390,7 @@ export function K8sResourceViewer({ cluster, defaultResourceType = 'pod' }: K8sR
           setScaleDialogOpen(false);
           setSelectedResource(null);
         },
-      }
+      },
     );
   };
 
@@ -407,46 +434,30 @@ export function K8sResourceViewer({ cluster, defaultResourceType = 'pod' }: K8sR
 
   const getResourceIcon = (kind?: string) => {
     switch (kind?.toLowerCase()) {
-      case 'pod':
+      case "pod":
         return <Box className="h-4 w-4" />;
-      case 'service':
+      case "service":
         return <Network className="h-4 w-4" />;
-      case 'deployment':
-      case 'statefulset':
-      case 'daemonset':
+      case "deployment":
+      case "statefulset":
+      case "daemonset":
         return <Database className="h-4 w-4" />;
-      case 'secret':
-      case 'configmap':
+      case "secret":
+      case "configmap":
         return <Shield className="h-4 w-4" />;
       default:
         return <Box className="h-4 w-4" />;
     }
   };
 
-  const getStatusColor = (resource: K8sResource): 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' => {
-    // Simple status detection based on resource status
-    const status = resource.status;
-    if (!status) return 'secondary';
-
-    const phase = status.phase || status.state;
-    if (phase === 'Running' || phase === 'Active' || phase === 'Ready') {
-      return 'outline';
-    }
-    if (phase === 'Pending' || phase === 'Creating') {
-      return 'secondary';
-    }
-    if (phase === 'Failed' || phase === 'Error') {
-      return 'destructive';
-    }
-    return 'secondary';
-  };
-
   const getResourceStatus = (resource: K8sResource) => {
     const status = resource.status;
-    if (!status) return 'Unknown';
+    if (!status) return "Unknown";
 
     // Try common status fields
-    return status.phase || status.state || status.conditions?.[0]?.type || 'Unknown';
+    return (
+      status.phase || status.state || status.conditions?.[0]?.type || "Unknown"
+    );
   };
 
   return (
@@ -457,8 +468,13 @@ export function K8sResourceViewer({ cluster, defaultResourceType = 'pod' }: K8sR
           <div className="flex flex-col md:flex-row gap-4">
             {/* Resource Type Selector */}
             <div className="flex-1">
-              <label className="text-sm font-medium mb-1.5 block">Resource Type</label>
-              <Select value={selectedResourceType} onValueChange={setSelectedResourceType}>
+              <label className="text-sm font-medium mb-1.5 block">
+                Resource Type
+              </label>
+              <Select
+                value={selectedResourceType}
+                onValueChange={setSelectedResourceType}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select resource type" />
                 </SelectTrigger>
@@ -474,8 +490,13 @@ export function K8sResourceViewer({ cluster, defaultResourceType = 'pod' }: K8sR
 
             {/* Namespace Selector - Made more prominent */}
             <div className="flex-1">
-              <label className="text-sm font-medium mb-1.5 block">Namespace</label>
-              <Select value={selectedNamespace} onValueChange={setSelectedNamespace}>
+              <label className="text-sm font-medium mb-1.5 block">
+                Namespace
+              </label>
+              <Select
+                value={selectedNamespace}
+                onValueChange={setSelectedNamespace}
+              >
                 <SelectTrigger className="font-semibold">
                   <SelectValue placeholder="Select namespace" />
                 </SelectTrigger>
@@ -508,34 +529,50 @@ export function K8sResourceViewer({ cluster, defaultResourceType = 'pod' }: K8sR
           <div className="flex gap-2 flex-wrap">
             {/* Detailed View Toggle */}
             <Button
-              variant={detailedView ? 'default' : 'outline'}
+              variant={detailedView ? "default" : "outline"}
               onClick={() => setDetailedView(!detailedView)}
-              title={detailedView ? 'Switch to compact view' : 'Switch to detailed view'}
+              title={
+                detailedView
+                  ? "Switch to compact view"
+                  : "Switch to detailed view"
+              }
             >
               <Columns className="h-4 w-4 mr-2" />
-              {detailedView ? 'Detailed' : 'Compact'}
+              {detailedView ? "Detailed" : "Compact"}
             </Button>
 
             {/* Resource Metrics Button */}
-            <Button variant="outline" onClick={() => {
-              setMetricsDialogOpen(true);
-            }}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setMetricsDialogOpen(true);
+              }}
+            >
               <BarChart3 className="h-4 w-4 mr-2" />
               Metrics
             </Button>
 
             {/* Cluster Events Button */}
-            <Button variant="outline" onClick={() => {
-              setSelectedResource(null);
-              setEventsDialogOpen(true);
-            }}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSelectedResource(null);
+                setEventsDialogOpen(true);
+              }}
+            >
               <Activity className="h-4 w-4 mr-2" />
               Events
             </Button>
 
             {/* Refresh Button */}
-            <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
-              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            <Button
+              variant="outline"
+              onClick={() => refetch()}
+              disabled={isLoading}
+            >
+              <RefreshCw
+                className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`}
+              />
               Refresh
             </Button>
 
@@ -571,7 +608,7 @@ export function K8sResourceViewer({ cluster, defaultResourceType = 'pod' }: K8sR
         <div className="space-y-2">
           <div className="text-sm text-muted-foreground">
             Found {filteredResources.length} {selectedResourceType}
-            {filteredResources.length !== 1 ? 's' : ''} in {selectedNamespace}
+            {filteredResources.length !== 1 ? "s" : ""} in {selectedNamespace}
           </div>
           <div className="grid gap-2">
             {filteredResources.map((resource, index) => (
@@ -581,10 +618,10 @@ export function K8sResourceViewer({ cluster, defaultResourceType = 'pod' }: K8sR
                     {getResourceIcon(resource.kind)}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <h4 className="font-semibold truncate">{resource.metadata.name}</h4>
-                        <Badge variant={getStatusColor(resource)}>
-                          {getResourceStatus(resource)}
-                        </Badge>
+                        <h4 className="font-semibold truncate">
+                          {resource.metadata.name}
+                        </h4>
+                        <StatusBadge status={getResourceStatus(resource)} />
                       </div>
                       <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground flex-wrap">
                         <span>{resource.kind}</span>
@@ -593,7 +630,10 @@ export function K8sResourceViewer({ cluster, defaultResourceType = 'pod' }: K8sR
                         )}
                         {resource.metadata.creationTimestamp && (
                           <span>
-                            Created {formatRelativeTime(resource.metadata.creationTimestamp)}
+                            Created{" "}
+                            {formatRelativeTime(
+                              resource.metadata.creationTimestamp,
+                            )}
                           </span>
                         )}
                       </div>
@@ -601,7 +641,11 @@ export function K8sResourceViewer({ cluster, defaultResourceType = 'pod' }: K8sR
                       {detailedView && getExtendedInfo(resource).length > 0 && (
                         <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground flex-wrap">
                           {getExtendedInfo(resource).map((info, idx) => (
-                            <Badge key={idx} variant="secondary" className="text-xs font-mono">
+                            <Badge
+                              key={idx}
+                              variant="secondary"
+                              className="text-xs font-mono"
+                            >
                               {info}
                             </Badge>
                           ))}
@@ -625,57 +669,75 @@ export function K8sResourceViewer({ cluster, defaultResourceType = 'pod' }: K8sR
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleViewDescribe(resource)}>
+                        <DropdownMenuItem
+                          onClick={() => handleViewDescribe(resource)}
+                        >
                           <FileSearch className="mr-2 h-4 w-4" />
                           Describe
                         </DropdownMenuItem>
 
-                        <DropdownMenuItem onClick={() => handleViewEvents(resource)}>
+                        <DropdownMenuItem
+                          onClick={() => handleViewEvents(resource)}
+                        >
                           <Activity className="mr-2 h-4 w-4" />
                           View Events
                         </DropdownMenuItem>
 
                         <DropdownMenuSeparator />
 
-                        <DropdownMenuItem onClick={() => openEditDialog(resource)}>
+                        <DropdownMenuItem
+                          onClick={() => openEditDialog(resource)}
+                        >
                           <Edit className="mr-2 h-4 w-4" />
                           Edit YAML
                         </DropdownMenuItem>
 
-                        {resource.kind === 'Deployment' && (
+                        {resource.kind === "Deployment" && (
                           <>
-                            <DropdownMenuItem onClick={() => openScaleDialog(resource)}>
+                            <DropdownMenuItem
+                              onClick={() => openScaleDialog(resource)}
+                            >
                               <Scale className="mr-2 h-4 w-4" />
                               Scale
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => {
-                              setSelectedResource(resource);
-                              setRolloutDialogOpen(true);
-                            }}>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedResource(resource);
+                                setRolloutDialogOpen(true);
+                              }}
+                            >
                               <GitBranch className="mr-2 h-4 w-4" />
                               Rollout Management
                             </DropdownMenuItem>
                           </>
                         )}
 
-                        {(resource.kind === 'Pod' || selectedResourceType === 'pod') && (
+                        {(resource.kind === "Pod" ||
+                          selectedResourceType === "pod") && (
                           <>
-                            <DropdownMenuItem onClick={() => handleViewLogs(resource)}>
+                            <DropdownMenuItem
+                              onClick={() => handleViewLogs(resource)}
+                            >
                               <FileText className="mr-2 h-4 w-4" />
                               View Logs {/* DEBUG: kind={resource.kind} */}
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleRestartPod(resource)}>
+                            <DropdownMenuItem
+                              onClick={() => handleRestartPod(resource)}
+                            >
                               <RotateCw className="mr-2 h-4 w-4" />
                               Restart Pod
                             </DropdownMenuItem>
                           </>
                         )}
 
-                        {(resource.kind === 'Node' || selectedResourceType === 'node') && (
-                          <DropdownMenuItem onClick={() => {
-                            setSelectedResource(resource);
-                            setNodeOpsDialogOpen(true);
-                          }}>
+                        {(resource.kind === "Node" ||
+                          selectedResourceType === "node") && (
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setSelectedResource(resource);
+                              setNodeOpsDialogOpen(true);
+                            }}
+                          >
                             <Server className="mr-2 h-4 w-4" />
                             Node Operations
                           </DropdownMenuItem>
@@ -714,35 +776,50 @@ export function K8sResourceViewer({ cluster, defaultResourceType = 'pod' }: K8sR
               <div>
                 <h4 className="font-semibold mb-2">Metadata</h4>
                 <div className="bg-muted p-3 rounded text-sm space-y-1">
-                  <div><strong>Name:</strong> {selectedResource.metadata.name}</div>
+                  <div>
+                    <strong>Name:</strong> {selectedResource.metadata.name}
+                  </div>
                   {selectedResource.metadata.namespace && (
-                    <div><strong>Namespace:</strong> {selectedResource.metadata.namespace}</div>
+                    <div>
+                      <strong>Namespace:</strong>{" "}
+                      {selectedResource.metadata.namespace}
+                    </div>
                   )}
                   {selectedResource.metadata.uid && (
-                    <div><strong>UID:</strong> <code className="text-xs">{selectedResource.metadata.uid}</code></div>
+                    <div>
+                      <strong>UID:</strong>{" "}
+                      <code className="text-xs">
+                        {selectedResource.metadata.uid}
+                      </code>
+                    </div>
                   )}
                   {selectedResource.metadata.creationTimestamp && (
                     <div>
-                      <strong>Created:</strong>{' '}
-                      {new Date(selectedResource.metadata.creationTimestamp).toLocaleString()}
+                      <strong>Created:</strong>{" "}
+                      {new Date(
+                        selectedResource.metadata.creationTimestamp,
+                      ).toLocaleString()}
                     </div>
                   )}
                 </div>
               </div>
 
               {/* Labels */}
-              {selectedResource.metadata.labels && Object.keys(selectedResource.metadata.labels).length > 0 && (
-                <div>
-                  <h4 className="font-semibold mb-2">Labels</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {Object.entries(selectedResource.metadata.labels).map(([key, value]) => (
-                      <Badge key={key} variant="secondary">
-                        {key}: {value}
-                      </Badge>
-                    ))}
+              {selectedResource.metadata.labels &&
+                Object.keys(selectedResource.metadata.labels).length > 0 && (
+                  <div>
+                    <h4 className="font-semibold mb-2">Labels</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(selectedResource.metadata.labels).map(
+                        ([key, value]) => (
+                          <Badge key={key} variant="secondary">
+                            {key}: {value}
+                          </Badge>
+                        ),
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
               {/* Spec */}
               {selectedResource.spec && (
@@ -839,15 +916,17 @@ export function K8sResourceViewer({ cluster, defaultResourceType = 'pod' }: K8sR
             open={rolloutDialogOpen}
             onOpenChange={setRolloutDialogOpen}
             clusterId={cluster.id}
-            deploymentName={selectedResource.metadata?.name || ''}
-            namespace={selectedResource.metadata?.namespace || selectedNamespace}
+            deploymentName={selectedResource.metadata?.name || ""}
+            namespace={
+              selectedResource.metadata?.namespace || selectedNamespace
+            }
           />
 
           <NodeOperationsDialog
             open={nodeOpsDialogOpen}
             onOpenChange={setNodeOpsDialogOpen}
             clusterId={cluster.id}
-            nodeName={selectedResource.metadata?.name || ''}
+            nodeName={selectedResource.metadata?.name || ""}
             nodeStatus={selectedResource}
           />
         </>

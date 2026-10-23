@@ -504,12 +504,12 @@ function TagPicker({ sourceId, onAdd, isPending }: TagPickerProps) {
               />
               <span className="font-mono">{t.tag}</span>
               {t.in_catalog && (
-                <Badge variant="outline" className="text-[10px] h-4 px-1 bg-success/10 text-success border-success/20">
+                <Badge variant="outline" className="text-2xs h-4 px-1 bg-success/10 text-success border-success/20">
                   in Catalog
                 </Badge>
               )}
               {t.prerelease && (
-                <Badge variant="outline" className="text-[10px] h-4 px-1 bg-warning/10 text-warning border-warning/20">
+                <Badge variant="outline" className="text-2xs h-4 px-1 bg-warning/10 text-warning border-warning/20">
                   pre-release
                 </Badge>
               )}

@@ -495,7 +495,7 @@ export function ClusterConfigDialog({ open, onOpenChange, projectId, cluster, pr
                         <div className="flex items-center gap-2">
                           <span className="font-medium">{ctx.name}</span>
                           {ctx.is_current && (
-                            <Badge variant="secondary" className="text-[10px] px-1 py-0">current</Badge>
+                            <Badge variant="secondary" className="text-2xs px-1 py-0">current</Badge>
                           )}
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5">

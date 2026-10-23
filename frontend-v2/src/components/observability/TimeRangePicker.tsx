@@ -18,9 +18,7 @@ import type { LlmTimeRange } from '@/types/llm-observability';
 
 const TIME_RANGE_OPTIONS: { value: LlmTimeRange; label: string }[] = [
   { value: '1h', label: 'Last 1 hour' },
-  { value: '6h', label: 'Last 6 hours' },
-  { value: '24h', label: 'Last 24 hours' },
-  { value: '7d', label: 'Last 7 days' },
+  { value: '6h', label: 'Last 6 hours (Max)' },
 ];
 
 export interface TimeRangePickerProps {

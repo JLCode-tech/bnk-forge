@@ -131,11 +131,9 @@ describe('Project Workflow (integration)', () => {
 
     await user.click(projectCards[0]);
 
-    // mockProjects are sorted alphabetically by name in the component.
-    // Resolve the expected id from the fixture so this stays correct as the
-    // fixture grows.
-    const firstByName = [...mockProjects].sort((a, b) => a.name.localeCompare(b.name))[0];
-    expect(mockNavigate).toHaveBeenCalledWith(`/projects/${firstByName.id}`);
+    // Projects are grouped by cloud provider (AWS first) matching Command Center.
+    // The first rendered project is test-project (AWS, id: 1).
+    expect(mockNavigate).toHaveBeenCalledWith('/projects/1');
   });
 
   // -----------------------------------------------------------------------

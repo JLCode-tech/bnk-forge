@@ -13,9 +13,13 @@ import { notify, deploymentNotify } from '@/lib/notify';
 import { useAppMutation } from '@/hooks/lib/useAppMutation';
 
 export function useModuleLibrary(params?: { category?: string; provider?: string; search?: string }) {
+  const normalizedParams =
+    params && (params.category || params.provider || params.search)
+      ? params
+      : undefined;
   return useQuery({
-    queryKey: queryKeys.modules.library.list(params),
-    queryFn: () => api.getModuleLibrary(params),
+    queryKey: queryKeys.modules.library.list(normalizedParams),
+    queryFn: () => api.getModuleLibrary(normalizedParams),
   });
 }
 

@@ -6,7 +6,7 @@
  * — at 0% this reads as a clean empty arc rather than a pinned/broken pointer.
  * Color shifts green→amber→red as the ratio drops.
  */
-import { fmtPct } from './format';
+import { fmtPct } from "./format";
 
 export interface GaugeProps {
   /** Ratio in [0, 1]. */
@@ -22,9 +22,9 @@ const R = 40;
 const STROKE = 10;
 
 function colorFor(v: number): string {
-  if (v >= 0.66) return '#10b981';
-  if (v >= 0.33) return '#f59e0b';
-  return '#ef4444';
+  if (v >= 0.66) return "#10b981";
+  if (v >= 0.33) return "#f59e0b";
+  return "#ef4444";
 }
 
 /** Point on the arc at fraction f in [0,1] (0 = left end, 1 = right end). */
@@ -51,11 +51,23 @@ export function Gauge({ value, label, height = 200 }: GaugeProps) {
         viewBox="0 0 100 60"
         preserveAspectRatio="xMidYMid meet"
         role="img"
-        aria-label={`${label ?? 'gauge'}: ${fmtPct(clamped, 0)}`}
+        aria-label={`${label ?? "gauge"}: ${fmtPct(clamped, 0)}`}
       >
-        <path d={track} fill="none" stroke="hsl(var(--muted))" strokeWidth={STROKE} strokeLinecap="round" />
+        <path
+          d={track}
+          fill="none"
+          stroke="hsl(var(--muted))"
+          strokeWidth={STROKE}
+          strokeLinecap="round"
+        />
         {clamped > 0.001 && (
-          <path d={filled} fill="none" stroke={fill} strokeWidth={STROKE} strokeLinecap="round" />
+          <path
+            d={filled}
+            fill="none"
+            stroke={fill}
+            strokeWidth={STROKE}
+            strokeLinecap="round"
+          />
         )}
         <text
           x={CX}
@@ -63,14 +75,18 @@ export function Gauge({ value, label, height = 200 }: GaugeProps) {
           textAnchor="middle"
           fontSize={16}
           fontWeight={600}
-          fontFamily="ui-monospace, monospace"
+          className="font-mono"
           fill={fill}
         >
           {fmtPct(clamped, 0)}
         </text>
       </svg>
 
-      {label && <div className="pb-1 text-center text-xs text-muted-foreground">{label}</div>}
+      {label && (
+        <div className="pb-1 text-center text-xs text-muted-foreground">
+          {label}
+        </div>
+      )}
     </div>
   );
 }

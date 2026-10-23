@@ -308,7 +308,7 @@ function RawBlock({ title, text }: { title: string; text: string }) {
       <summary className="cursor-pointer px-3 py-2 text-xs font-medium bg-muted/40 hover:bg-muted/60">
         {title}
       </summary>
-      <pre className="max-h-80 overflow-auto p-3 text-[11px] font-mono whitespace-pre-wrap">
+      <pre className="max-h-80 overflow-auto p-3 text-2xs font-mono whitespace-pre-wrap">
         {text}
       </pre>
     </details>
@@ -398,7 +398,7 @@ function IpmitoolSubsection({
           <summary className="cursor-pointer px-3 py-1.5 text-xs font-medium bg-muted/40 hover:bg-muted/60 font-mono">
             {label}
           </summary>
-          <pre className="max-h-80 overflow-auto p-3 text-[11px] font-mono whitespace-pre-wrap">
+          <pre className="max-h-80 overflow-auto p-3 text-2xs font-mono whitespace-pre-wrap">
             {String(ipmitool[key])}
           </pre>
         </details>

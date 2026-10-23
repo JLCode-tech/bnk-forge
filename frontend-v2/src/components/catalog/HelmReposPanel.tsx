@@ -108,7 +108,7 @@ export default function HelmReposPanel() {
                           {repo.name}
                         </h4>
                         {typeof repo.charts_count === 'number' && (
-                          <Badge variant="outline" className="text-[10px]">
+                          <Badge variant="outline" className="text-2xs">
                             {repo.charts_count} charts
                           </Badge>
                         )}
@@ -117,7 +117,7 @@ export default function HelmReposPanel() {
                         {repo.url}
                       </p>
                       {repo.last_update && (
-                        <p className="text-[10px] mt-1 text-muted-foreground">
+                        <p className="text-2xs mt-1 text-muted-foreground">
                           Updated: {new Date(repo.last_update).toLocaleDateString()}
                         </p>
                       )}

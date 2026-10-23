@@ -53,6 +53,7 @@ def _find_agent_script() -> str:
 # OS detection helper
 # --------------------------------------------------------------------------
 
+
 def _is_debian_family(readiness: dict | None) -> bool:
     """Return True if readiness data indicates a Debian/Ubuntu host."""
     if not readiness:
@@ -64,6 +65,7 @@ def _is_debian_family(readiness: dict | None) -> bool:
 # --------------------------------------------------------------------------
 # Provision steps
 # --------------------------------------------------------------------------
+
 
 def _step(agent: BenchmarkAgent, db: Session, message: str) -> None:
     """Stream a status message to the BenchmarkAgent row."""
@@ -80,22 +82,20 @@ def _install_deps(ssh: SSHSession, agent: BenchmarkAgent, db: Session, has_sudo:
     py_version_result = ssh.execute("python3 --version 2>&1", timeout=15)
     py_ok = py_version_result.exit_code == 0 and "Python 3." in py_version_result.stdout
     if not py_ok:
-        raise RuntimeError(
-            "python3 not found on host. Install Python 3.10+ and re-run provision."
-        )
+        raise RuntimeError("python3 not found on host. Install Python 3.10+ and re-run provision.")
 
     # Ensure build-essential (needed for aiperf's crick C-extension)
     _step(agent, db, "Installing build dependencies (build-essential)…")
-    build_cmd = (
-        f"{sudo}apt-get install -y build-essential python3-dev python3-venv 2>&1"
-    )
+    build_cmd = f"{sudo}apt-get install -y build-essential python3-dev python3-venv 2>&1"
     for line in ssh.execute_streaming(build_cmd, timeout=300):
         if isinstance(line, str):
             logger.debug("install-deps: %s", line.rstrip())
 
     # Create /opt/forge directory
     _step(agent, db, "Creating /opt/forge directory…")
-    for line in ssh.execute_streaming(f"{sudo}mkdir -p /opt/forge /etc/forge && {sudo}chmod 755 /opt/forge", timeout=30):
+    for line in ssh.execute_streaming(
+        f"{sudo}mkdir -p /opt/forge /etc/forge && {sudo}chmod 755 /opt/forge", timeout=30
+    ):
         if isinstance(line, str):
             logger.debug("mkdir: %s", line.rstrip())
 
@@ -132,22 +132,20 @@ def _upload_agent_script(ssh: SSHSession, agent: BenchmarkAgent, db: Session, ha
     # Upload to a temp path then move (SFTP may not honour sudo for /opt paths)
     tmp_path = "/tmp/forge_agent.py"
     ssh.upload_content(script_content, tmp_path, mode="644")
-    for line in ssh.execute_streaming(f"{sudo}mv {tmp_path} /opt/forge/forge_agent.py && {sudo}chmod 755 /opt/forge/forge_agent.py 2>&1", timeout=30):
+    for line in ssh.execute_streaming(
+        f"{sudo}mv {tmp_path} /opt/forge/forge_agent.py && {sudo}chmod 755 /opt/forge/forge_agent.py 2>&1", timeout=30
+    ):
         if isinstance(line, str):
             logger.debug("upload: %s", line.rstrip())
     _step(agent, db, "forge_agent.py uploaded.")
 
 
 def _mint_agent_token(agent: BenchmarkAgent) -> str:
-    """Mint a 365-day JWT for this agent."""
-    from datetime import timedelta
+    """Mint the agent-bound JWT written to the host (see auth_service.mint_agent_token)."""
+    from services.auth_service import mint_agent_token
 
-    from services.auth_service import create_access_token
-
-    return create_access_token(
-        {"agent_id": agent.id, "role": "agent", "sub": agent.name},
-        expires_delta=timedelta(days=365),
-    )
+    token, _expires_at = mint_agent_token(agent.id, token_version=agent.token_version)
+    return token
 
 
 def _write_env_and_service(
@@ -167,10 +165,7 @@ def _write_env_and_service(
     _step(agent, db, "Writing /etc/forge/agent.env…")
 
     env_content = (
-        f"FORGE_URL={forge_url}\n"
-        f"AGENT_NAME={agent.name}\n"
-        f"AGENT_TOKEN={token}\n"
-        f"AGENT_ADVERTISE_IP={advertise_ip}\n"
+        f"FORGE_URL={forge_url}\nAGENT_NAME={agent.name}\nAGENT_TOKEN={token}\nAGENT_ADVERTISE_IP={advertise_ip}\n"
     )
 
     # Write to tmp then sudo move — upload_content with mode 600 is fine when user owns /tmp
@@ -245,6 +240,7 @@ def _has_systemctl(readiness: dict | None) -> bool:
 # Main provision entry point
 # --------------------------------------------------------------------------
 
+
 class BenchmarkAgentProvisionService:
     """Orchestrate SSH provisioning of a Forge-managed benchmark agent host."""
 
@@ -258,12 +254,28 @@ class BenchmarkAgentProvisionService:
         """
         from services.bare_metal.ssh_provision import build_ssh_session_from_credential
 
-        agent = self.db.query(BenchmarkAgent).filter(
-            BenchmarkAgent.id == host_id,
-            BenchmarkAgent.managed.is_(True),
-        ).first()
+        agent = (
+            self.db.query(BenchmarkAgent)
+            .filter(
+                BenchmarkAgent.id == host_id,
+            )
+            .first()
+        )
         if not agent:
             raise NotFoundError("agent host", host_id)
+
+        tags = agent.tags if isinstance(agent.tags, dict) else {}
+        if (
+            not agent.managed
+            or agent.provision_status == "self_managed"
+            or not agent.ssh_credential_id
+            or tags.get("agent_mode") == "outbound"
+            or tags.get("managed_by") in ("awsbnkctl", "azrbnkctl", "gkebnkctl")
+        ):
+            raise BadRequestError(
+                f"Agent host '{agent.name}' is an outbound self-managed agent and cannot be provisioned via SSH",
+                code="AGENT_NOT_SSH_MANAGED",
+            )
 
         if not settings.FORGE_EXTERNAL_URL:
             raise BadRequestError(
@@ -303,9 +315,7 @@ class BenchmarkAgentProvisionService:
             _write_env_and_service(ssh, agent, self.db, has_sudo, token, has_systemctl)
 
             agent.provision_status = "provisioned"
-            agent.provision_message = (
-                "Provisioned — agent is starting. It will connect via WebSocket shortly."
-            )
+            agent.provision_message = "Provisioned — agent is starting. It will connect via WebSocket shortly."
             self.db.commit()
             logger.info("Provision complete for agent host %d", host_id)
             return {"host_id": host_id, "status": "provisioned"}
@@ -326,3 +336,9 @@ class BenchmarkAgentProvisionService:
             # Deterministically remove decrypted key tempfiles on the success path
             if ssh is not None:
                 ssh.close()
+
+    # Alias for compatibility with external references
+    provision_host = provision
+
+
+AgentProvisionService = BenchmarkAgentProvisionService

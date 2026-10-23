@@ -219,7 +219,7 @@ export function ProjectModuleCard({ module, allModules = [] }: ProjectModuleCard
                 <div className="flex items-center gap-1.5">
                   <ModuleStatusBadge status={module.status} />
                   {module.connectivity_risk && (
-                    <Badge variant="warning" className="text-[10px] ml-1">
+                    <Badge variant="warning" className="text-2xs ml-1">
                       Connectivity risk
                     </Badge>
                   )}

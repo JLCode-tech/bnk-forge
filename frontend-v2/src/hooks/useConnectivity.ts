@@ -57,10 +57,13 @@ export function useConnectivitySession(): void {
     const controller = new AbortController();
 
     // Seed cache with one snapshot fetch so first paint isn't blank if SSE
-    // takes a beat to deliver.
-    void getInitialState()
-      .then((states) => {
-        queryClient.setQueryData<StateMap>(QUERY_KEY, statesToMap(states));
+    // takes a beat to deliver. Uses prefetchQuery so concurrent useConnectivity()
+    // calls share the same in-flight promise instead of firing twice.
+    void queryClient
+      .prefetchQuery({
+        queryKey: QUERY_KEY,
+        queryFn: () => getInitialState().then(statesToMap),
+        staleTime: Infinity,
       })
       .catch(() => {
         // Snapshot is best-effort — SSE will populate when it connects.

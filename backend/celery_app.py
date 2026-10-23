@@ -22,6 +22,7 @@ configure_logging(
 
 from celery import Celery
 from celery.signals import (
+    heartbeat_sent,
     task_postrun,
     task_prerun,
     worker_process_init,
@@ -124,7 +125,7 @@ celery_app.conf.update(
         },
         'worker-heartbeat-keepalive': {
             'task': 'tasks.heartbeat_task.worker_heartbeat_keepalive',
-            'schedule': 60.0,  # CP-015: Every 60 seconds (reduced from 15s to cut log noise 4x)
+            'schedule': 25.0,  # Keep worker heartbeat fresh well within 90s TTL across multi-worker queues
         },
         'health-monitor': {
             'task': 'tasks.health_monitor_task.check_cluster_health',
@@ -198,17 +199,46 @@ def init_worker_process(**kwargs):
 import logging as _logging
 
 _celery_logger = _logging.getLogger(__name__)
+_last_heartbeat_publish: float = 0.0
 
 
 @worker_ready.connect
 def on_worker_ready(sender, **kwargs):
     """Publish heartbeat when worker becomes ready."""
     try:
+        from core.cache import cache
         from core.worker_heartbeat import heartbeat
         heartbeat.publish_heartbeat(sender.hostname, status="ready")
+        cache.delete("system:health")
         _celery_logger.info(f"Worker heartbeat registered: {sender.hostname}")
     except Exception as e:
         _celery_logger.error(f"Worker heartbeat failed: {e}")
+
+
+@heartbeat_sent.connect
+def on_worker_heartbeat_sent(sender, **kwargs):
+    """Refresh worker heartbeat in Redis periodically from every worker's main loop."""
+    global _last_heartbeat_publish
+    import socket
+    import time
+
+    now = time.monotonic()
+    if (now - _last_heartbeat_publish) < 15.0:
+        return
+    _last_heartbeat_publish = now
+    try:
+        from core.worker_heartbeat import KEY_ACTIVE_TASKS, heartbeat
+        worker_id = (
+            getattr(sender, "hostname", None)
+            or getattr(getattr(sender, "eventer", None), "hostname", None)
+            or f"celery@{socket.gethostname()}"
+        )
+        active_count = 0
+        if heartbeat.redis:
+            active_count = heartbeat.redis.scard(f"{KEY_ACTIVE_TASKS}{worker_id}") or 0
+        heartbeat.publish_heartbeat(worker_id, status="busy" if active_count > 0 else "ready")
+    except Exception as e:
+        _celery_logger.debug(f"Periodic worker heartbeat refresh failed: {e}")
 
 
 @worker_shutdown.connect

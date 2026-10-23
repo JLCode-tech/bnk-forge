@@ -7,8 +7,27 @@
  * All params go on the query string; the backend maps `range` to Loki
  * start/end nanosecond bounds.
  */
-import { apiClient } from './client';
+import { apiClient } from "./client";
 import type {
+  AiGatewayGovernanceOverview,
+  AiGatewayRouteSummary,
+  AiModelSummary,
+  AiProviderSummary,
+  AiTenantSummary,
+  CreateAiGatewayRouteRequest,
+  CreateAiModelRequest,
+  CreateAiProviderRequest,
+  CreateAiTenantRequest,
+  CreateDssmOrgRequest,
+  CreateDssmPrincipalRequest,
+  CreateDssmTeamRequest,
+  DssmOrganization,
+  DssmPrincipal,
+  DssmTeam,
+  DssmVirtualKey,
+  GatewayInferenceTestRequest,
+  GatewayInferenceTestResponse,
+  IssueVirtualKeyRequest,
   LlmFilterData,
   LlmHistogram,
   LlmHistogramMetric,
@@ -18,39 +37,45 @@ import type {
   LlmProviderUsage,
   LlmRankings,
   LlmStats,
-} from '@/types/llm-observability';
+  RemediationRequest,
+  RemediationResponse,
+  UpdateAiGatewayRoutePoliciesRequest,
+} from "@/types/llm-observability";
 
-const base = (clusterId: number) => `/api/k8s/clusters/${clusterId}/llm-observability`;
+const base = (clusterId?: number) =>
+  clusterId
+    ? `/api/k8s/clusters/${clusterId}/llm-observability`
+    : `/api/k8s/llm-observability`;
 
 export const llmObservabilityApi = {
-  getStats: (clusterId: number, params?: LlmObservabilityParams) =>
+  getStats: (clusterId?: number, params?: LlmObservabilityParams) =>
     apiClient
       .get<LlmStats>(`${base(clusterId)}/stats`, { params })
       .then((res) => res.data),
 
   getHistogram: (
-    clusterId: number,
-    params: LlmObservabilityParams & { metric: LlmHistogramMetric },
+    clusterId?: number,
+    params?: LlmObservabilityParams & { metric?: LlmHistogramMetric },
   ) =>
     apiClient
       .get<LlmHistogram>(`${base(clusterId)}/histogram`, { params })
       .then((res) => res.data),
 
-  getRankings: (clusterId: number, params?: LlmObservabilityParams) =>
+  getRankings: (clusterId?: number, params?: LlmObservabilityParams) =>
     apiClient
       .get<LlmRankings>(`${base(clusterId)}/rankings`, { params })
       .then((res) => res.data),
 
   getProviderUsage: (
-    clusterId: number,
-    params: LlmObservabilityParams & { metric: LlmProviderMetric },
+    clusterId?: number,
+    params?: LlmObservabilityParams & { metric?: LlmProviderMetric },
   ) =>
     apiClient
       .get<LlmProviderUsage>(`${base(clusterId)}/provider-usage`, { params })
       .then((res) => res.data),
 
   getLogs: (
-    clusterId: number,
+    clusterId?: number,
     params?: LlmObservabilityParams & {
       limit?: number;
       end?: string;
@@ -61,8 +86,118 @@ export const llmObservabilityApi = {
       .get<LlmLogs>(`${base(clusterId)}/logs`, { params })
       .then((res) => res.data),
 
-  getFilterData: (clusterId: number, params?: { range?: LlmObservabilityParams['range'] }) =>
+  getFilterData: (
+    clusterId?: number,
+    params?: { range?: LlmObservabilityParams["range"] },
+  ) =>
     apiClient
       .get<LlmFilterData>(`${base(clusterId)}/filterdata`, { params })
+      .then((res) => res.data),
+
+  getGovernanceOverview: (clusterId?: number, namespace = "f5-bnk") =>
+    apiClient
+      .get<AiGatewayGovernanceOverview>(
+        `${base(clusterId)}/governance/overview`,
+        {
+          params: { namespace },
+        },
+      )
+      .then((res) => res.data),
+
+  createTenant: (clusterId: number, payload: CreateAiTenantRequest) =>
+    apiClient
+      .post<AiTenantSummary>(`${base(clusterId)}/governance/tenants`, payload)
+      .then((res) => res.data),
+
+  createProvider: (clusterId: number, payload: CreateAiProviderRequest) =>
+    apiClient
+      .post<AiProviderSummary>(
+        `${base(clusterId)}/governance/providers`,
+        payload,
+      )
+      .then((res) => res.data),
+
+  createModel: (clusterId: number, payload: CreateAiModelRequest) =>
+    apiClient
+      .post<AiModelSummary>(`${base(clusterId)}/governance/models`, payload)
+      .then((res) => res.data),
+
+  createRoute: (clusterId: number, payload: CreateAiGatewayRouteRequest) =>
+    apiClient
+      .post<AiGatewayRouteSummary>(
+        `${base(clusterId)}/governance/routes`,
+        payload,
+      )
+      .then((res) => res.data),
+
+  updateRoutePolicies: (
+    clusterId: number,
+    routeName: string,
+    payload: UpdateAiGatewayRoutePoliciesRequest,
+  ) =>
+    apiClient
+      .patch<RemediationResponse>(
+        `${base(clusterId)}/governance/routes/${encodeURIComponent(routeName)}/policies`,
+        payload,
+      )
+      .then((res) => res.data),
+
+  createOrg: (clusterId: number, payload: CreateDssmOrgRequest) =>
+    apiClient
+      .post<DssmOrganization>(`${base(clusterId)}/governance/orgs`, payload)
+      .then((res) => res.data),
+
+  createTeam: (clusterId: number, payload: CreateDssmTeamRequest) =>
+    apiClient
+      .post<DssmTeam>(`${base(clusterId)}/governance/teams`, payload)
+      .then((res) => res.data),
+
+  createPrincipal: (clusterId: number, payload: CreateDssmPrincipalRequest) =>
+    apiClient
+      .post<DssmPrincipal>(`${base(clusterId)}/governance/principals`, payload)
+      .then((res) => res.data),
+
+  issueVirtualKey: (clusterId: number, payload: IssueVirtualKeyRequest) =>
+    apiClient
+      .post<DssmVirtualKey>(
+        `${base(clusterId)}/governance/virtual-keys`,
+        payload,
+      )
+      .then((res) => res.data),
+
+  rotateVirtualKey: (clusterId: number, keyId: string) =>
+    apiClient
+      .post<DssmVirtualKey>(
+        `${base(clusterId)}/governance/virtual-keys/${encodeURIComponent(keyId)}/rotate`,
+      )
+      .then((res) => res.data),
+
+  revokeVirtualKey: (clusterId: number, keyId: string) =>
+    apiClient
+      .delete<{
+        status: string;
+        key_id: string;
+      }>(
+        `${base(clusterId)}/governance/virtual-keys/${encodeURIComponent(keyId)}`,
+      )
+      .then((res) => res.data),
+
+  remediate: (clusterId: number, payload: RemediationRequest) =>
+    apiClient
+      .post<RemediationResponse>(
+        `${base(clusterId)}/governance/remediate`,
+        payload,
+      )
+      .then((res) => res.data),
+
+  testGatewayRequest: (
+    clusterId: number,
+    payload: GatewayInferenceTestRequest,
+  ) =>
+    apiClient
+      .post<GatewayInferenceTestResponse>(
+        `${base(clusterId)}/governance/test-request`,
+        payload,
+      )
       .then((res) => res.data),
 };

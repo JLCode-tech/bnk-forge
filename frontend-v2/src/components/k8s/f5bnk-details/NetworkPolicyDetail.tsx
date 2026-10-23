@@ -50,12 +50,12 @@ export function NetworkPolicyDetail({ resource }: DetailPanelProps) {
                       </code>
                     </div>
                     {isResolved ? (
-                      <Badge variant="success" className="text-[10px]">
+                      <Badge variant="success" className="text-2xs">
                         <CheckCircle2 className="h-2.5 w-2.5 mr-1" />
                         Resolved
                       </Badge>
                     ) : descendant ? (
-                      <Badge variant="warning" className="text-[10px]">
+                      <Badge variant="warning" className="text-2xs">
                         <AlertCircle className="h-2.5 w-2.5 mr-1" />
                         Pending
                       </Badge>
@@ -81,13 +81,13 @@ export function NetworkPolicyDetail({ resource }: DetailPanelProps) {
                         <code className="font-mono text-foreground/80">
                           {ref.name}
                         </code>
-                        <span className="text-[10px] ml-1.5 text-muted-foreground">
+                        <span className="text-2xs ml-1.5 text-muted-foreground">
                           {ref.kind}
                         </span>
                       </div>
                     </div>
                     {isResolved && (
-                      <Badge variant="success" className="text-[10px]">
+                      <Badge variant="success" className="text-2xs">
                         <CheckCircle2 className="h-2.5 w-2.5 mr-1" />
                         Resolved
                       </Badge>
@@ -131,12 +131,12 @@ export function NetworkPolicyDetail({ resource }: DetailPanelProps) {
                       <span className="font-medium text-sm">{ref.name}</span>
                     </div>
                     {isResolved ? (
-                      <Badge variant="success" className="text-[10px]">
+                      <Badge variant="success" className="text-2xs">
                         <CheckCircle2 className="h-2.5 w-2.5 mr-1" />
                         Bound
                       </Badge>
                     ) : (
-                      <Badge variant="outline" className="text-[10px]">Pending</Badge>
+                      <Badge variant="outline" className="text-2xs">Pending</Badge>
                     )}
                   </div>
                   <div className="space-y-1 text-xs">
@@ -175,7 +175,7 @@ export function NetworkPolicyDetail({ resource }: DetailPanelProps) {
                     {conds.map((c: K8sCondition, cidx: number) => (
                       <div key={cidx} className="flex items-center gap-1.5 ml-4">
                         {getConditionIcon(c.status)}
-                        <span className={cn('text-[11px]', getConditionColor(c.status))}>
+                        <span className={cn('text-2xs', getConditionColor(c.status))}>
                           {c.type}: {c.reason}
                         </span>
                       </div>
@@ -199,14 +199,14 @@ export function NetworkPolicyDetail({ resource }: DetailPanelProps) {
                       <span className="font-medium text-foreground/80">
                         {ref.name}
                       </span>
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="text-2xs text-muted-foreground">
                         {ref.kind}
                       </span>
                     </div>
                     {conds.map((c: K8sCondition, cidx: number) => (
                       <div key={cidx} className="flex items-center gap-1.5 ml-4">
                         {getConditionIcon(c.status)}
-                        <span className={cn('text-[11px]', getConditionColor(c.status))}>
+                        <span className={cn('text-2xs', getConditionColor(c.status))}>
                           {c.type}: {c.message}
                         </span>
                       </div>

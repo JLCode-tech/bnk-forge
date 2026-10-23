@@ -1,354 +1,277 @@
-# BNK Forge
+# F5 BIG-IP Next for Kubernetes — BNK Forge
 
-**Deploy, operate, and monitor F5 BIG-IP Next for Kubernetes (BNK)** — from Day 1 deployment to Day 2 operations through a single pane of glass.
+**The Unified Multi-Cloud & F5 BNK AI Service Plane Control Center for F5 BIG-IP Next for Kubernetes (BNK).**
 
-![Version](https://img.shields.io/badge/Version-current_branch-blue)
-![Docker](https://img.shields.io/badge/Docker-Compose-blue)
-![React](https://img.shields.io/badge/React-18-blue)
-![FastAPI](https://img.shields.io/badge/FastAPI-Python-green)
-![Tests](https://img.shields.io/badge/Tests-CI%20validated-brightgreen)
+[![Version](https://img.shields.io/badge/BNK%20Forge-v4.0.0-blue)](https://github.com/JLCode-tech/bnk-forge/releases)
+[![F5 BNK](https://img.shields.io/badge/F5%20BNK-2.2%20%7C%202.3%20%7C%202.4%20%7C%202.5-green)](https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/overview.html)
+[![Clouds](https://img.shields.io/badge/Clouds-AWS%20EKS%20%7C%20Azure%20AKS%20%7C%20GCP%20GKE%20%7C%20OpenShift%20%7C%20Bare--Metal%20DPU-orange)](#what-you-can-build--operate-with-bnk-forge)
+[![CLI Companion](https://img.shields.io/badge/Companion%20CLI-bnkctl-00ADD8?logo=go)](https://github.com/JLCode-tech/bnkctl)
+[![MCP](https://img.shields.io/badge/MCP-153%20AI%20Tools-purple)](#6-ai-assisted-day-2-operations-via-153-mcp-server-tools--system-lifecycle)
+[![Docker](https://img.shields.io/badge/Docker-Compose-blue)](#quick-start)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
+
+**BNK Forge 4.0.0** is an enterprise orchestration, observability, and **F5 BNK AI Service Plane** control center purpose-built for [**F5 BIG-IP Next for Kubernetes (BNK)**](https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/overview.html). It provides a single visual and API-driven control plane for multi-cloud CNF lifecycle management, L4/L7 traffic and security policy authoring, real-time AI token governance and guardrails, Smart LLM Routing across **AWS Bedrock**, **Azure AI Foundry**, and **Google Vertex AI**, automated GenAI/dataplane benchmarking, and AI-assisted Day-2 operations via **153 MCP Server Tools** — with native integration into the unified [**`bnkctl`**](https://github.com/JLCode-tech/bnkctl) multi-cloud CLI engine.
+
+![BNK Forge Multi-Cloud Platform Overview](docs/images/forge-platform-overview.png)
+
+---
+
+## Why BNK Forge?
+
+Deploying and operating a high-performance Cloud-Native Network Function (CNF) and **F5 BNK AI Service Plane** across **Amazon EKS**, **Azure AKS**, **Google Cloud GKE**, **Red Hat OpenShift**, and **NVIDIA BlueField-3 DPU** bare-metal clusters traditionally requires stitching together cloud-specific infrastructure templates, secondary NIC plumbing, BGP peering, Kubernetes manifests, and disparate observability stacks.
+
+**BNK Forge** unifies Day-0 architecture, Day-1 provisioning, and Day-2 operations into a single platform:
+
+- **Unified Multi-Cloud Control Plane**: Manage clusters provisioned via Turnkey Blueprints (`81` modules, `13` stack templates), standard kubeconfigs, or automatic zero-touch registration from [**`bnkctl`**](https://github.com/JLCode-tech/bnkctl) (`bnkctl up`).
+- **Visual Traffic & Security Policy Authoring**: Configure L4/L7 traffic routing, carrier-grade network translation, DNS delivery, and zero-trust security policies visually without hand-crafting raw YAML manifests. See the [F5 BIG-IP Next for Kubernetes CloudDocs](https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/overview.html) for full platform capabilities.
+- **Turnkey F5 BNK AI Service Plane**: Real-time multi-cloud AI token accounting, tenant budget and rate enforcement, sensitive data (PII/DLP) guardrails, prompt-injection defense, and weighted Smart LLM Routing across **AWS Bedrock**, **Azure AI Foundry**, and **Google Vertex AI**.
+- **Built-In GenAI & Dataplane Benchmarking**: Compare Time-to-First-Token (TTFT), Inter-Token Latency (ITL), token velocity (`tok/s`), and L4/L7 throughput across **F5 BNK + F5 GAIE**, Envoy, HAProxy, and `llm-d` Router (`139` pre-validated benchmark runs across `21` run groups).
+- **153 Governed MCP Server Tools & 200+ REST Endpoints**: Connect Claude, Antigravity, or custom automation pipelines directly to your multi-cloud fleet under strict role-based risk tiers (Read-Only, Mutate, Destructive) and immutable audit logging.
+
+---
+
+## What You Can Build & Operate with BNK Forge
+
+### 1. Unified Multi-Cloud Cluster Fleet & Blueprints Catalog
+
+Manage **AWS EKS**, **Azure AKS**, **GCP GKE**, **OpenShift**, and **Bare-Metal / BlueField-3 DPU** clusters from a single **Cluster Fleet** view with live data-plane telemetry, active listeners, BGP status, configuration drift detection, and one-click deployable **Multi-Cloud Blueprints**:
+
+![Unified Multi-Cloud Cluster Fleet](docs/images/forge-multi-cloud-cluster-fleet.png)
+
+![Deployable Multi-Cloud Blueprints Catalog](docs/images/forge-blueprints-catalog.png)
+
+### 2. Visual Network Security & Traffic Policy Management
+
+Author, visualize, and enforce L4/L7 traffic routing, carrier-grade network translation, DNS delivery, and zero-trust security policies across your Kubernetes clusters from a single visual interface or declaratively via [**`bnkctl`**](https://github.com/JLCode-tech/bnkctl). For complete details on F5 BIG-IP Next for Kubernetes traffic and security capabilities, see the [F5 BIG-IP Next for Kubernetes CloudDocs](https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/overview.html).
+
+![BNK Visual Policy Builder](docs/images/forge-bnk-policy-builder.png)
+
+![F5 BNK Control Plane Dashboard](docs/images/f5-bnk-dashboard.png)
+
+### 3. F5 BNK AI Service Plane: Token Governance & Data Guardrails
+
+Deliver enterprise-grade AI traffic governance across every cloud with real-time token accounting, budget and rate enforcement, sensitive data (PII/DLP) guardrails, and prompt-injection protection managed through **BNK Forge**. Learn more about F5's cloud-native data plane and AI traffic capabilities in the [F5 BIG-IP Next for Kubernetes CloudDocs](https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/overview.html).
+
+![Multi-Cloud AI Token Governance Overview](docs/images/forge-ai-token-governance-overview.png)
+
+![AI Data Governance Guardrails & Rate Limiting](docs/images/forge-ai-governance-guardrails.png)
+
+<details>
+<summary><b>View Per-Cloud AI Token Governance (AWS Bedrock, Azure AI Foundry & Google Vertex AI)</b></summary>
+
+#### AWS EKS (`agentcore-demo` — Amazon Bedrock Claude Sonnet / Haiku)
+![AWS EKS AI Governance](docs/images/forge-aws-governance.png)
+
+#### Azure AKS (`agentfoundry-demo` — Azure AI Foundry GPT-4o / GPT-4.1)
+![Azure AKS AI Governance](docs/images/forge-azure-governance.png)
+
+#### GCP GKE (`vertex-agent-demo` — Google Vertex AI Gemini 2.5 Pro / Flash)
+![GCP GKE AI Governance](docs/images/forge-gcp-governance.png)
+
+</details>
+
+### 4. Smart LLM Router Fleet across AWS Bedrock, Azure AI Foundry & Google Vertex AI
+
+Route agentic and inference traffic across primary and fallback foundation models in **AWS Bedrock** (Claude Sonnet / Haiku), **Azure AI Foundry** (GPT-4o / GPT-4.1), and **Google Vertex AI** (Gemini 2.5 Pro / Flash) — complete with Model Context Protocol (MCP) tool security, real-time KV-cache & queue-depth scoring, and weighted regional failover:
+
+![Smart LLM Router Fleet](docs/images/forge-smart-llm-router-fleet.png)
+
+![Smart LLM Router Topology](docs/images/forge-llm-router-topology.png)
+
+<details>
+<summary><b>View Cloud-Specific LLM Router Pools (AWS, Azure & GCP)</b></summary>
+
+#### AWS Bedrock Pools (`ap-southeast-2` &rarr; `us-east-1` fallback)
+![AWS LLM Router Pools](docs/images/forge-aws-llm-router-pools.png)
+
+#### Azure AI Foundry Pools (`eastus2` &rarr; `swedencentral` fallback)
+![Azure LLM Router Pools](docs/images/forge-azure-llm-router-pools.png)
+
+#### GCP Vertex AI Pools (`australia-southeast1` &rarr; `us-central1` fallback)
+![GCP LLM Router Pools](docs/images/forge-gcp-llm-router-pools.png)
+
+</details>
+
+### 5. Automated GenAI & Dataplane Benchmarking (`aiperf` + Multi-Stack Pareto Frontiers)
+
+Compare throughput, Time-to-First-Token (TTFT), Inter-Token Latency (ITL), and token-rate enforcement across **F5 BNK + F5 GAIE**, Envoy, HAProxy, and `llm-d` Router across concurrency tiers:
+
+![Multi-Stack Benchmark Dashboard](docs/images/forge-benchmark-dashboard.png)
+
+### 6. AI-Assisted Day-2 Operations via 153 MCP Server Tools & System Lifecycle
+
+Inspect, diagnose, and operate every registered cluster through BNK Forge's built-in **Model Context Protocol (MCP) Server** (`153` structured tools across Read-Only, Mutate, and Destructive safety tiers), alongside real-time container lifecycle monitoring, automated PostgreSQL backups, and one-command platform upgrades:
+
+![BNK Forge MCP Server Tools](docs/images/forge-mcp-server-tools.png)
+
+![System Monitor, Upgrades & Container Lifecycle](docs/images/system-settings.png)
+
+<details>
+<summary><b>View Additional Console Views (Light Theme, CR Explorer, Credentials & Container Guardrails)</b></summary>
+
+#### Command Center (Light Theme)
+![BNK Forge Command Center — Light Theme](docs/images/overview-light.png)
+
+#### Kubernetes & F5 BNK CNF Explorer
+![Kubernetes & F5 BNK CNF Explorer](docs/images/cr-explorer.png)
+
+#### Cloud Credentials & Container Registries
+![Credentials & Registries](docs/images/credentials-registries.png)
+
+#### Container Lifecycle & Guardrails
+![Container Lifecycle & Guardrails](docs/images/system-containers.png)
+
+</details>
+
+---
+
+## Companion CLI Ecosystem: [`bnkctl`](https://github.com/JLCode-tech/bnkctl)
+
+**BNK Forge** integrates natively with [**`bnkctl`**](https://github.com/JLCode-tech/bnkctl) — the pure-Go, multi-cloud lifecycle and validation CLI for **F5 BIG-IP Next for Kubernetes (BNK)** and the **F5 BNK AI Service Plane**.
+
+When `forge.enabled: true` is configured in a `bnkctl` `cluster.yaml`, running `bnkctl up` automatically provisions the cloud underlay and BNK overlay, registers the cluster into **BNK Forge**, seeds multi-cloud AI Token Governance and Smart LLM Routing, and cleanly unregisters on `bnkctl down`:
+
+| Repository / Binary | Target Cloud | Capabilities & Integration |
+| :--- | :--- | :--- |
+| [**`bnkctl`**](https://github.com/JLCode-tech/bnkctl) | **AWS, Azure, GCP** | Unified multi-cloud Go engine (`--cloud aws\|azure\|gcp` or auto-detected from `cluster.yaml`) with native `bnkctl forge {register,unregister,status,governance}` and `bnkctl genai parse` integration. |
+| [**`awsbnkctl`**](https://github.com/JLCode-tech/awsbnkctl) | **AWS EKS** | VPC + Public/Private/DataPath Subnets (including AWS Local Zones), secondary ENIs, AWS Route Server BGP peering, and AWS Bedrock **F5 BNK AI Service Plane** integration. |
+| [**`azrbnkctl`**](https://github.com/JLCode-tech/azrbnkctl) | **Azure AKS** | VNet + System & TMM Node Pools, Accelerated Networking (`dual-interface`), dynamic secondary NIC attachment, and Azure AI Foundry **F5 BNK AI Service Plane** integration. |
+| [**`gkebnkctl`**](https://github.com/JLCode-tech/gkebnkctl) | **GCP GKE** | Multi-VPC (`main`, `external`, `internal`) with Jumbo Frames (MTU 8896), GKE multi-network pod attachments, and Google Vertex AI **F5 BNK AI Service Plane** integration. |
+
+---
+
+## Operational Comparison: Manual CLI vs BNK Forge
+
+| Operational Area | Manual CLI & Manifests | BNK Forge Management Plane |
+|---|---|---|
+| **Cluster Provisioning** | Manual infrastructure scripts, Helm values, and custom YAML pipelines | Turnkey multi-cloud blueprints + automatic registration via [`bnkctl`](https://github.com/JLCode-tech/bnkctl) |
+| **Topology & Traffic Flow** | Inspecting disparate Gateway, Route, and Policy manifests across namespaces via CLI | Interactive visual graph mapping Gateways, Listeners, Policies, Routes, and Backends |
+| **Diagnostics & Troubleshooting** | Manual `kubectl exec` into pods, container log chasing, and manual tarball extraction | Direct CWC QKView export, live `tmctl`/`bdt_cli`/`configview` inspection, automated runbooks |
+| **Cross-Cluster Promotion** | Manual YAML file export, text-based diffing, and manual `kubectl apply` | Snapshot engine with semantic cluster-to-cluster diffing and one-click promotion |
+| **F5 BNK AI Service Plane** | Disconnected per-cloud token logs and manual model endpoint failover | Unified multi-cloud Token Governance, PII/DLP guardrails, and Smart LLM Routing across AWS, Azure, and GCP |
+| **GenAI & Dataplane Benchmarking** | Ad-hoc curl scripts without standardized metrics or concurrency analysis | Integrated benchmark suite tracking TTFT, ITL, token throughput, and latency percentiles across stacks |
+| **Automated Tooling** | Uncontrolled shell scripts or ad-hoc API calls without unified audit logging | 200+ RBAC-controlled REST endpoints and 153 governed MCP tools with risk classifications |
 
 ---
 
 ## Quick Start
 
-**Prerequisites:** [Docker](https://docs.docker.com/get-docker/) with Docker Compose, and Git. That's it — all other tools are inside the container.
+### Prerequisites
 
-### Prerequisite: the artifact runner network
+1. **[Docker](https://docs.docker.com/get-docker/)** with Docker Compose, and Git (for source builds).
+2. **F5 BIG-IP Next for Kubernetes License & Registry Access** (required when deploying BNK onto target clusters):
+   - Follow the [F5 BIG-IP Next for Kubernetes CloudDocs](https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/overview.html) to obtain your F5 subscription JWT (`license.jwt`) and configure F5 Artifact Registry (`repo.f5.com`) pull credentials.
 
-BNK Forge's container-image engine runs each artifact step in its own container,
-attached to a dedicated bridge network named **`bnk-forge-artifacts`**. Create it
-once per host, picking any subnet that doesn't overlap your network:
+### Option A: Pre-Built Release Installer (Fastest)
+
+Download the release bundle from [GitHub Releases](https://github.com/JLCode-tech/bnk-forge/releases) — pulls pre-built multi-arch (`linux/amd64`, `linux/arm64`) images from `ghcr.io/jlcode-tech`:
 
 ```bash
-docker network create --driver bridge --subnet 10.200.0.0/24 bnk-forge-artifacts
+curl -sLO https://github.com/JLCode-tech/bnk-forge/releases/download/v4.0.0/bnk-forge-4.0.0.tar.gz
+tar xzf bnk-forge-4.0.0.tar.gz
+cd bnk-forge-4.0.0
+./install.sh --local    # Laptop (macOS / Windows WSL2)
+# OR: ./install.sh      # Linux Server (host networking)
 ```
 
-You only need this once per host. If the network already exists, Docker says so and
-you can ignore it.
+### Option B: Build from Source
 
-**Why a subnet at all.** Docker's auto-assigned pool (starting around
-`172.17.0.0/16`) can overlap a host's VPN or other routed networks, breaking
-connectivity mid-deploy — pinning one avoids that. The `make`/`install.sh` paths
-below don't hardcode a single default (a fixed `10.200.0.0/24` collided on one
-field site); instead they resolve the subnet, in order:
-
-1. **`ARTIFACT_NETWORK_SUBNET=<cidr>`** — use that subnet verbatim.
-2. **`ARTIFACT_NETWORK_SUBNET=auto`** — skip pinning and defer to Docker's
-   `default-address-pools`. Add a dedicated pool for this network in
-   `/etc/docker/daemon.json` (then restart docker):
-   ```json
-   { "default-address-pools": [ { "base": "192.168.200.0/20", "size": 24 } ] }
-   ```
-3. **Unset (default)** — auto-detect: try each subnet in
-   `ARTIFACT_NETWORK_SUBNET_CANDIDATES` (default `10.200.0.0/24
-   192.168.200.0/24 10.213.37.0/24 172.31.255.0/24`) and use the first one that
-   doesn't overlap the host's routes or an existing docker network. If none are
-   clean, it falls back to mode 2 with a warning.
-
-This only runs when the network doesn't exist yet — once created, its own
-subnet becomes a host route, so re-detecting on every `make deploy`/`upgrade`
-would treat it as a collision with itself and never settle. On an existing
-network these tools are a no-op, except: if you've pinned an explicit CIDR
-that no longer matches what's actually there, you'll get a one-time warning
-telling you how to recreate it.
-
-Both variables may also be set in a `.env` file in the repo root.
-
-**Why you have to do this by hand.** Docker Compose only creates networks that a
-service actually attaches to. No BNK Forge service attaches to this one — and on
-a Linux server none *can*, because the stack runs with `network_mode: host`, and
-a host-networked service may not also join a bridge network. So declaring it in
-`docker-compose.yml` would create nothing. The network exists purely for the
-*artifact* containers the engine launches, which is why it has to be created
-outside of Compose.
-
-**Why the network exists at all.** Artifact images are third-party code. Putting
-them on a network of their own keeps them off Docker's default bridge, where they
-would sit alongside every other container on the host. They still get normal
-outbound access, which they need to reach cloud control planes (e.g. `roksbnkctl`
-talking to IBM Cloud), so this costs you nothing functionally.
-
-If you skip it, everything else works — but any container-engine deployment fails
-with `network not found`.
-
-> The `make` targets below (`deploy`, `up`, `install`, `update`, `upgrade-safe`)
-> and `dist/install.sh` create this network for you, so if you use them you can
-> skip this step. They are a convenience, not a requirement — the command above is
-> all they run.
-
-### Laptop (macOS / Windows)
+#### 1. Laptop (macOS / Windows WSL2)
 
 ```bash
-git clone https://github.com/f5devcentral/bnk-forge.git
+git clone https://github.com/JLCode-tech/bnk-forge.git
 cd bnk-forge
-docker network create --driver bridge --subnet 10.200.0.0/24 bnk-forge-artifacts   # once per host; any free --subnet <cidr> works
+docker network create --driver bridge --subnet 10.200.0.0/24 bnk-forge-artifacts   # once per host
+make local-deploy
+```
+
+Open **https://localhost** (or **http://localhost:8080**) in your browser.
+
+#### 2. Linux Server
+
+```bash
+git clone https://github.com/JLCode-tech/bnk-forge.git
+cd bnk-forge
+docker network create --driver bridge --subnet 10.200.0.0/24 bnk-forge-artifacts   # once per host
 make deploy
 ```
 
-Open **https://localhost** and accept the self-signed certificate warning.
+Access via **https://your-server-ip**.
 
-> **Enabling MCP:** the MCP server and backend share a service credential you must
-> set — put `MCP_SERVICE_PASSWORD` in `.env` before starting. Without it the stack
-> still comes up, but the MCP server can't authenticate and MCP tools return auth
-> errors until you set the variable and restart. See [.env.example](.env.example).
+---
 
-`make deploy` detects macOS/WSL and switches to bridge networking with published
-ports (`docker-compose.local.yml`); on a Linux server it uses host networking. You
-do not pick — it picks.
+### Initial Login & Password Rotation
 
-### Windows + WSL2
-
-Everything above works from inside your WSL2 distro, with three differences worth
-knowing:
-
-1. **Docker must be exposed to the distro.** BNK Forge talks to Docker from inside
-   WSL, so enable Docker Desktop → *Settings → Resources → WSL Integration* for the
-   distro you clone into. Without it you get `The command 'docker' could not be
-   found in this WSL 2 distro`. Everything runs on Docker Desktop's daemon, which is
-   shared across distros — so create `bnk-forge-artifacts` **once**, not per distro.
-
-2. **Bridge networking, not host networking — this is automatic.** WSL2 reports
-   itself as Linux, but it runs Docker Desktop, so a `network_mode: host` container
-   binds inside the hidden `docker-desktop` distro rather than yours, and nothing
-   you start is reachable from Windows. The Makefile detects WSL (via `/proc/version`)
-   and applies the laptop overlay, publishing ports instead. Consequence: the workers
-   reach the Docker socket proxy by service DNS (`tcp://docker-socket-proxy:2375`)
-   rather than `tcp://127.0.0.1:2375` as on a server.
-
-3. **Reach it on published ports.** With the overlay, the stack publishes
-   `443`/`80` (proxy), `8080` (frontend), `8000` (backend API), and `8081` (MCP). Use
-   **https://localhost**; if port 443 isn't forwarded on your box, the frontend is
-   directly available at **http://localhost:8080** and the API at
-   **http://localhost:8000**.
-
-Artifact containers behave the same as on a server: they attach to
-`bnk-forge-artifacts` and mount their workspace from the named volume by subpath —
-which is the only thing that works on Docker Desktop, where a host-path bind does
-*not* share storage with the worker's named-volume mount.
-
-### Linux Server
-
-```bash
-ssh user@your-server
-git clone https://github.com/f5devcentral/bnk-forge.git
-cd bnk-forge
-docker network create --driver bridge --subnet 10.200.0.0/24 bnk-forge-artifacts   # once per host; any free --subnet <cidr> works
-make deploy
-# Access from browser: https://your-server-ip
-```
-
-For first-time destructive bootstrap only (wipes existing BNK Forge volumes), use `make install`.
-
-### Login
-
-| Field | Value |
-|-------|-------|
+| Field | Initial Value |
+|---|---|
 | **Username** | `admin` |
-| **Password** | _generated on first startup — see below_ |
+| **Password** | *Randomly generated on first startup* |
 
-The admin password is generated randomly on first startup (there is no shipped
-default). Retrieve it once from the backend logs:
+Retrieve your generated admin password from the backend container:
 
 ```bash
 docker exec bnk-forge-backend cat /app/keys/initial_admin_password
 ```
 
-Or choose your own beforehand by setting `DEFAULT_ADMIN_PASSWORD` in `.env`. You
-will be **required** to change it on first login (enforced server-side).
+*(You will be required to choose a new password upon first login.)*
 
 ---
 
-## Git Workflow (Required)
+### Prerequisite: the artifact runner network
 
-- `staging` is the shared day-to-day integration branch.
-- Create feature/work branches from `staging`.
-- Merge normal feature/work branches back into `staging`.
-- `main` is protected and release-only (promotion path: `staging -> main`).
-
-Example day-to-day flow:
+BNK Forge's container-image engine runs each deployment artifact step in its own isolated container attached to a dedicated bridge network named **`bnk-forge-artifacts`**. Create it once per host:
 
 ```bash
-git checkout staging
-git pull --ff-only
-git checkout -b feature/my-change
-# ...work...
-# open PR/merge target: staging
+docker network create --driver bridge --subnet 10.200.0.0/24 bnk-forge-artifacts
 ```
+
+<details>
+<summary><b>Why is this required? (Technical Details)</b></summary>
+
+1. **Subnet Isolation:** Docker's auto-assigned IP pools can overlap with host VPNs or corporate subnets. Pinning a dedicated subnet prevents mid-deployment network collisions.
+2. **Outside Compose:** On Linux servers, BNK Forge runs with `network_mode: host` for performance, which prevents Compose from declaring a bridge network in the same stack. The artifact network exists strictly for ephemeral runner containers.
+3. **Subnet Customization:** You can define a custom CIDR via `ARTIFACT_NETWORK_SUBNET=<cidr>` or set `ARTIFACT_NETWORK_SUBNET=auto` in `.env`.
+4. **Convenience:** Running `make deploy` or `make local-deploy` automatically invokes `make ensure-artifact-network` if it does not already exist.
+
+</details>
 
 ---
 
 ## Common Commands
 
-### Laptop (macOS / Windows)
-
-```bash
-make local-deploy     # Build + start everything on your laptop
-make local-up         # Start containers (already built)
-make local-down       # Stop and remove containers
-make local-status     # Show container health
-make local-logs       # Tail container logs
-make local-restart    # Restart all containers
-```
-
-### Linux Server
-
-```bash
-make deploy           # Build + start everything on a Linux server
-make up               # Start containers (already built)
-make down             # Stop and remove containers
-make status           # Show container health
-make server-logs      # Tail container logs
-make restart          # Restart all containers
-```
-
-These targets run `make ensure-artifact-network` first, so the
-`bnk-forge-artifacts` network (see [Prerequisite](#prerequisite-the-artifact-runner-network))
-is created if you haven't already made it yourself. Bringing the stack up with a
-bare `docker compose up` skips that, so create the network by hand on that path.
-
-### General
-
-```bash
-make install          # First-time destructive server bootstrap (wipes BNK Forge data)
-make update           # Backward-compatible non-destructive update wrapper
-make upgrade-safe     # Preferred server upgrade path (preflight + strict verification)
-make mcp-readiness    # MCP liveness + runtime readiness gate
-make test             # Run all tests
-make help             # Show all available commands
-```
+| Command | Description |
+|---|---|
+| `make local-deploy` | Build & start all containers on laptop (Docker Desktop / WSL2) |
+| `make local-up` | Start existing laptop containers without rebuilding |
+| `make local-down` | Stop laptop containers |
+| `make local-logs` | Tail laptop container logs |
+| `make deploy` | Build & start all containers on Linux server (host networking) |
+| `make up` | Start existing server containers |
+| `make down` | Stop server containers |
+| `make server-logs` | Tail server container logs |
+| `make status` | Check health and version of all running containers |
+| `make upgrade-safe` | Preferred non-destructive server upgrade path with strict health pre-checks |
+| `make mcp-readiness` | Verify MCP service liveness and runtime tool readiness |
+| `make test` | Run entire test suite (backend, frontend, proxy, operator) |
+| `make help` | Display full list of available targets |
 
 ---
 
-## What It Does
+## Configuration & First Steps
 
-### Day 1 — Deploy BNK
-- **Deployment Wizard** — 3 choices, running BNK in under 10 minutes
-- **Deployment Blueprints** — pre-packaged stacks that deploy BNK in minutes
-- **20 Python-defined modules** — zero OpenTofu dependency for BNK stack
-- **Smart dependency management** — automatic variable wiring between modules
-- **Parallel execution** — independent modules deploy concurrently (25-50% faster)
-
-### Day 2 — Operate & Monitor
-- **Traffic Flow Overview** — visualize how traffic flows through gateways, routes, and backends
-- **BNK Health Dashboard** — real-time health of FLO, TMM, gateways, data plane, security
-- **Multi-Cluster Fleet** — aggregate health across all connected clusters
-- **Drift Detection** — scheduled checks catch out-of-band changes
-- **BNK Upgrade Workflow** — rolling upgrade with pre-checks, health gates, rollback
-- **Config Export/Import** — snapshot BNK resources, diff clusters, promote configs
-- **Webhook Alerting** — Slack, Teams, and generic webhook notifications
-
-### Kubernetes & Helm
-- **Full resource management** — view, describe, scale, restart, delete across all types
-- **Pod operations** — real-time logs, exec terminal, events, metrics
-- **Helm package management** — install, upgrade, rollback with hierarchical browsing
-- **Node operations** — cordon, drain, uncordon for maintenance
-
-### Security
-- **RBAC** — admin, operator, and viewer roles on all 200+ API routes
-- **Audit trail** — automatic logging of every mutating operation
-- **JWT authentication** with forced password change on first use
-
----
-
-## Architecture
-
-```
-                        Browser
-                           |
-                           v
-                    ┌─────────────┐
-                    │  Nginx Proxy │  (HTTPS + WebSocket)
-                    └──────┬──────┘
-                     /     │     /api/
-                     v     │      v
-              ┌──────────┐ │ ┌──────────┐
-              │ Frontend  │ │ │ Backend  │
-              │ React 18  │ │ │ FastAPI  │
-              │ TypeScript│ │ │ Python   │
-              └──────────┘ │ └────┬─────┘
-                           │      │
-                  ┌────────┼──────┼────────┐
-                  v        v      v        v
-              PostgreSQL  Redis  Celery   K8s
-               (data)    (cache) (tasks)  (clusters)
-```
-
-All services run as Docker containers via `docker-compose.yml`, with `docker-compose.local.yml` layered on laptops/Docker Desktop.
-
----
-
-## Configuration
-
-### Module Library
-
-After first login, configure the module library to enable deployment blueprints:
-
-1. Go to **Settings > Defaults**
+### 1. Configure the Module Library
+To enable pre-packaged deployment blueprints after logging in:
+1. Navigate to **Settings > Defaults**.
 2. Set **Module Library Git URL** to: `https://github.com/JLCode-tech/bnk-forge-modules.git`
-3. Set **Module Library Git Ref** to: `release/2.2`
-4. Go to **Settings > Environment Config** and click **Sync Modules**
+3. Set **Module Library Git Ref** to: `release/4.0` (or `release/2.2` for BNK 2.2 environments)
+4. Go to **Settings > Environment Config** and click **Sync Modules**.
 
-### Connecting Kubernetes Clusters
-
-BNK Forge connects to clusters via kubeconfig:
-
-1. Go to **Kubernetes > Clusters**
-2. Click **Add Cluster**
-3. Upload or paste your kubeconfig
-
-Kubeconfig-first fleet (D3) is the primary architecture. Operator connectivity remains available as a secondary/legacy-supported path for specific environments.
-
-### Environment Variables (Optional)
-
-Most settings are configurable in the GUI. For advanced configuration, copy and edit the example:
-
-```bash
-cp .env.example .env
-# Edit .env with your settings
-```
-
-See [.env.example](.env.example) for all available options.
-
----
-
-## Updating
-
-Use deployment-mode-aware update commands:
-
-```bash
-# Laptop (Docker Desktop)
-git pull --ff-only
-make local-deploy
-
-# Linux server (preferred)
-make upgrade-safe
-
-# Compatibility wrapper (non-destructive)
-make update
-```
-
-These paths keep existing data and run health verification. Use `make install` only for intentional clean-slate setup.
-
----
-
-## Troubleshooting
-
-```bash
-# Check container status
-make status
-
-# View backend logs
-docker compose logs backend --tail 50
-
-# View all service logs
-docker compose logs --tail 20
-
-# Full reset (WARNING: destroys all data)
-make install
-```
-
-For detailed troubleshooting, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+### 2. Connect Your Kubernetes Clusters
+You can register clusters either automatically via [**`bnkctl up`**](https://github.com/JLCode-tech/bnkctl) (`forge.enabled: true` in `cluster.yaml`) or manually via kubeconfig:
+1. Navigate to **Kubernetes > Clusters** (or **Cluster Fleet**).
+2. Click **Add Cluster**.
+3. Paste or upload your `kubeconfig` file.
+4. BNK Forge will automatically discover namespaces, nodes, workloads, BNK resources, and **F5 BNK AI Service Plane** telemetry.
 
 ---
 
@@ -356,85 +279,64 @@ For detailed troubleshooting, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING
 
 ```
 bnk-forge/
-├── backend/              # FastAPI backend (Python)
-│   ├── routes/           #   API endpoints (200+)
-│   ├── services/         #   Business logic
-│   ├── models/           #   SQLAlchemy models
-│   └── modules/          #   Python-defined K8s/BNK modules
-├── frontend-v2/          # React 18 frontend (TypeScript)
+├── backend/              # FastAPI REST backend & task workers (Python 3.11)
+│   ├── routes/           #   200+ API endpoints (RBAC-enforced)
+│   ├── services/         #   Business logic (BNK, K8s, AI Service Plane, Diagnostics)
+│   ├── models/           #   SQLAlchemy database models
+│   └── modules/          #   Python-defined deployment modules
+├── frontend-v2/          # React 18 SPA (TypeScript + Vite + Tailwind + shadcn/ui)
 │   └── src/
-│       ├── components/   #   UI components
-│       ├── pages/        #   Route pages
-│       └── hooks/        #   React Query hooks
-├── proxy/                # Nginx reverse proxy
-├── scripts/              # Build and maintenance scripts
-├── docs/                 # Documentation
-├── docker-compose.yml    # Server stack (Linux — host networking)
-├── docker-compose.local.yml  # Laptop overlay (macOS/Windows — bridge networking)
-├── Makefile              # All commands (make help)
-└── upgrade.sh            # Non-destructive upgrade script
+│       ├── components/   #   UI components & visual topology viewers
+│       ├── pages/        #   Route pages (Command Center, Fleet, AI Service Plane, Benchmarks)
+│       └── hooks/        #   React Query data hooks
+├── mcp-server/           # Model Context Protocol server (153 governed AI tools)
+├── proxy/                # Nginx reverse proxy (SSL, WebSocket, rate limiting)
+├── scripts/              # Build, validation, and maintenance automation
+├── docs/                 # Documentation hub & visual screenshots
+├── docker-compose.yml    # Linux production stack (host networking)
+├── docker-compose.local.yml # Laptop overlay (bridge networking with port publishing)
+└── Makefile              # Platform-aware automation harness
 ```
 
 ---
 
-## Documentation
+## Curated Documentation Hub
 
-| Document | Description |
-|----------|-------------|
-| [User Guide](docs/USER_GUIDE.md) | Complete guide to using BNK Forge |
-| [API Reference](docs/API_REFERENCE.md) | Full REST API endpoint catalog (200+ endpoints) |
-| [Testing Guide](docs/TESTING.md) | Test architecture, patterns, and how to run tests |
-| [Installation Guide](docs/INSTALLATION.md) | Detailed setup for all environments |
-| [Deployment Guide](docs/DEPLOYMENT.md) | Production deployment |
-| [Upgrade Runbook](docs/UPGRADE_RUNBOOK.md) | Server upgrade procedure |
-| [Architecture Index](docs/architecture/README.md) | Current vs archived architecture documents |
-| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and solutions |
-| [AWS SSO Setup](docs/AWS_SSO_SETUP.md) | Configure AWS SSO authentication |
-| [Docker Architecture](docs/DOCKER.md) | Multi-target Dockerfile design |
-| [Disk Management](docs/DISK_MANAGEMENT.md) | Docker disk usage and cleanup |
-| [Product Vision](docs/PRODUCT_VISION.md) | Product strategy and positioning |
-| [Strategic Roadmap](docs/STRATEGIC_ROADMAP.md) | Strategic epics and sequencing for platform maturity |
-| [Strategic Backlog](docs/STRATEGIC_BACKLOG.md) | Backlog-ready strategic tickets with Now/Next/Later sequencing |
-| [MCP Productization Plan](docs/MCP_PRODUCTIZATION_PLAN.md) | Roadmap for safe, observable AI-operable interface |
-| [Sprint Plan — Platform Truthfulness 001](docs/SPRINT_PLATFORM_TRUTHFULNESS_001.md) | Agent-ready sprint plan for the first strategic execution wave |
-| [Sprint Plan — Contract Trust 001](docs/SPRINT_CONTRACT_TRUST_001.md) | Agent-ready sprint plan for API contract hardening |
-| [Sprint Plan — MCP Foundation 001](docs/SPRINT_MCP_FOUNDATION_001.md) | Agent-ready sprint plan for AI-operable interface foundations |
-| [Sprint Plan — Operability Baseline 001](docs/SPRINT_OPERABILITY_BASELINE_001.md) | Agent-ready sprint plan for observability and release discipline |
+| Guide | Description | Target Audience |
+|---|---|---|
+| [**F5 BIG-IP Next for Kubernetes CloudDocs**](https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/overview.html) | Official F5 product documentation, architecture guides, and prerequisite setup | Platform Engineers, Architects, Operators |
+| [**`bnkctl` Unified Multi-Cloud CLI**](https://github.com/JLCode-tech/bnkctl) | Pure-Go multi-cloud provisioning, healing, benchmarking, and Forge integration CLI | Cloud & Platform Engineers, SREs |
+| [**DevCentral Technical Reference**](docs/DEVCENTRAL_OVERVIEW.md) | Technical architecture, Gateway API topology, diagnostic tooling, and operational reference | Platform Engineers, SREs, NetOps, TAC |
+| [**User Guide**](docs/USER_GUIDE.md) | Complete walkthrough of all UI features, workflows, and configuration options | Platform Engineers, Operators, Administrators |
+| [**API Reference**](docs/API_REFERENCE.md) | Full catalog of 200+ REST API endpoints with request/response schemas | DevOps, Automation Engineers, Developers |
+| [**Installation Guide**](docs/INSTALLATION.md) | Detailed installation steps for laptop, bare-metal, VM, and cloud environments | Systems Administrators, DevOps |
+| [**Production Deployment**](docs/DEPLOYMENT.md) | Best practices for hardening and sizing production deployments | Infrastructure Architects, SREs |
+| [**Troubleshooting Runbook**](docs/TROUBLESHOOTING.md) | Common error signatures, resolution steps, and diagnostic procedures | Operators, Support Engineers |
+| [**Server Upgrade Runbook**](docs/UPGRADE_RUNBOOK.md) | Step-by-step procedures for non-destructive platform upgrades | Platform Administrators |
+| [**Testing Guide**](docs/TESTING.md) | Test architecture, test suites, and validation standards | Contributors, Developers |
+| [**Docker Architecture**](docs/DOCKER.md) | Multi-target Dockerfile design, image verification, and supply chain | Security & DevOps Engineers |
+| [**Disk Management**](docs/DISK_MANAGEMENT.md) | Managing Docker storage, image cache, and scheduled cleanup | System Administrators |
+| [**AWS SSO Setup**](docs/AWS_SSO_SETUP.md) | Configuring enterprise AWS IAM Identity Center authentication | Security & Cloud Architects |
+| [**BlueField-3 DPU Provisioning**](docs/DPU_PROVISIONING_GUIDE.md) | Bare-metal provisioning with NVIDIA BlueField-3 SmartNICs | Hardware & Network Engineers |
+| [**Module & Blueprint Authoring**](docs/How%20to%20write%20CI%20container%20runner%20modules%20and%20blueprints%20for%20BNK%20Forge.md) | Creating custom reusable runner modules and blueprints | Automation Engineers, Contributors |
+| [**Product Vision**](docs/PRODUCT_VISION.md) | Long-term architectural direction and platform strategy | Product Managers, Architects |
+| [**Platform Roadmap**](docs/ROADMAP.md) / [HTML View](docs/roadmap.html) | Completed milestones, active priorities, and planned features | Community, Customers, Engineering |
 
 ---
 
-## Development
+## Version Compatibility Matrix
 
-```bash
-# Run all tests
-make test
-
-# Run checks before pushing
-make pre-push
-
-# See all commands
-make help
-```
-
-### Version Compatibility
-
-| BNK Forge | Module Library | F5 BNK | Status |
-|-----------|---------------|--------|--------|
-| **Current branch** | **release/2.2** | 2.2 GA | **Active** |
-| 2.10.x - 2.12.x | release/2.2 | 2.2 GA | Supported |
+| BNK Forge Release | Supported F5 BNK Releases | Module Library Ref | Gateway API Version | Kubernetes Versions | Support Status |
+|---|---|---|---|---|---|
+| **4.0.0** | **2.2, 2.3, 2.4, 2.5** | `release/4.0` | v1.1+ (Standard Channel) | 1.28 – 1.32 | **Active (Current Release)** |
+| 3.x | 2.2, 2.3 | `release/2.2` | v1.0+ | 1.26 – 1.30 | Maintained |
+| 2.x | 2.2 | `release/2.2` | v1.0 | 1.24 – 1.28 | Legacy |
 
 ---
 
-## License
+## License & Governance
 
-MIT License — see [LICENSE](LICENSE) for details.
-
----
-
-## Project governance
-
-- [Contributing](CONTRIBUTING.md) — workflow, ADRs, code style
-- [Development guide](docs/DEVELOPMENT.md) — build, test, architecture
-- [Code of Conduct](CODE_OF_CONDUCT.md)
-- [Security policy](SECURITY.md) — how to report a vulnerability
-- Licensed under the [Apache License 2.0](LICENSE)
+* **License**: Licensed under the [Apache License, Version 2.0](LICENSE).
+* **Contributing**: Please review [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+* **Code of Conduct**: See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+* **Security Policy**: See [SECURITY.md](SECURITY.md) for vulnerability disclosure procedures.

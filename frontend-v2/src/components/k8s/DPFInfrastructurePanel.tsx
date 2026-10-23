@@ -12,27 +12,36 @@
  * Polls every 30s. Color-coded severity. Auto-refreshes.
  */
 
-import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { cn } from '@/lib/utils';
-import { useDpfData } from '@/hooks/k8s/useDpf';
-import { DPUDeviceList } from './DPUDeviceList';
-import { DPUClusterDetail } from './DPUClusterDetail';
-import { DPUProvisioningTab } from './DPUProvisioningTab';
-import { DPUServicesTab } from './DPUServicesTab';
-import { DPFSetupWizard } from './DPFSetupWizard';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
+import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+import { cn } from "@/lib/utils";
+import { useDpfData } from "@/hooks/k8s/useDpf";
+import { DPUDeviceList } from "./DPUDeviceList";
+import { DPUClusterDetail } from "./DPUClusterDetail";
+import { DPUProvisioningTab } from "./DPUProvisioningTab";
+import { DPUServicesTab } from "./DPUServicesTab";
+import { DPFSetupWizard } from "./DPFSetupWizard";
+import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import type {
-  DpfDpuDevice, DpfDpuCluster, DpfDpu, DpfDpuSet, DpfBfb, DpfDpuFlavor,
-  DpfDpuService, DpfDpuDeployment, DpfDpuServiceChain, DpfDpuServiceInterface,
-  DpfServiceChain, DpfServiceInterface,
-} from '@/types';
+  DpfDpuDevice,
+  DpfDpuCluster,
+  DpfDpu,
+  DpfDpuSet,
+  DpfBfb,
+  DpfDpuFlavor,
+  DpfDpuService,
+  DpfDpuDeployment,
+  DpfDpuServiceChain,
+  DpfDpuServiceInterface,
+  DpfServiceChain,
+  DpfServiceInterface,
+} from "@/types";
 import {
   CheckCircle2,
   AlertTriangle,
-  XCircle,
   HelpCircle,
   Loader2,
   Server,
@@ -43,39 +52,15 @@ import {
   Box,
   RefreshCw,
   Wand2,
-} from 'lucide-react';
-import type { DpfHealthResponse } from '@/types';
-import { ErrorState } from '@/components/ui/error-state';
-import { parseApiError } from '@/lib/error-handler';
+} from "lucide-react";
+import type { DpfHealthResponse } from "@/types";
+import { ErrorState } from "@/components/ui/error-state";
+import { parseApiError } from "@/lib/error-handler";
 
 // ── Props ─────────────────────────────────────────────────────────────────
 
 interface DPFInfrastructurePanelProps {
   clusterId: number;
-}
-
-// ── Status Helpers ────────────────────────────────────────────────────────
-
-type DpfStatus = DpfHealthResponse['status'];
-type BadgeVariant = 'success' | 'warning' | 'destructive' | 'muted';
-
-const STATUS_CONFIG: Record<DpfStatus, { label: string; variant: BadgeVariant; icon: typeof CheckCircle2 }> = {
-  healthy:       { label: 'Healthy',       variant: 'success',     icon: CheckCircle2 },
-  partial:       { label: 'Partial',       variant: 'warning',     icon: AlertTriangle },
-  degraded:      { label: 'Degraded',      variant: 'destructive', icon: XCircle },
-  no_devices:    { label: 'No Devices',    variant: 'muted',       icon: HelpCircle },
-  not_installed: { label: 'Not Installed', variant: 'muted',       icon: HelpCircle },
-};
-
-function StatusBadge({ status }: { status: DpfStatus }) {
-  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.not_installed;
-  const Icon = cfg.icon;
-  return (
-    <Badge variant={cfg.variant} className="gap-1.5">
-      <Icon className="h-3.5 w-3.5" />
-      {cfg.label}
-    </Badge>
-  );
 }
 
 // ── Stat Card ─────────────────────────────────────────────────────────────
@@ -98,19 +83,11 @@ function StatCard({
           <Icon className="h-5 w-5 text-foreground/80" />
         </div>
         <div>
-          <p className="text-2xl font-semibold text-foreground">
-            {value}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {label}
-          </p>
+          <p className="text-2xl font-semibold text-foreground">{value}</p>
+          <p className="text-xs text-muted-foreground">{label}</p>
         </div>
       </div>
-      {detail && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          {detail}
-        </p>
-      )}
+      {detail && <p className="mt-2 text-xs text-muted-foreground">{detail}</p>}
     </div>
   );
 }
@@ -120,7 +97,8 @@ function StatCard({
 function ReadyBar({ ready, total }: { ready: number; total: number }) {
   if (total === 0) return null;
   const pct = Math.round((ready / total) * 100);
-  const barColor = pct === 100 ? 'bg-success' : pct > 50 ? 'bg-warning' : 'bg-destructive';
+  const barColor =
+    pct === 100 ? "bg-success" : pct > 50 ? "bg-warning" : "bg-destructive";
 
   return (
     <div className="mt-2">
@@ -128,12 +106,13 @@ function ReadyBar({ ready, total }: { ready: number; total: number }) {
         <span className="text-xs text-muted-foreground">
           {ready}/{total} ready
         </span>
-        <span className="text-xs font-medium text-foreground/80">
-          {pct}%
-        </span>
+        <span className="text-xs font-medium text-foreground/80">{pct}%</span>
       </div>
       <div className="h-1.5 rounded-full bg-muted">
-        <div className={cn('h-1.5 rounded-full transition-all', barColor)} style={{ width: `${pct}%` }} />
+        <div
+          className={cn("h-1.5 rounded-full transition-all", barColor)}
+          style={{ width: `${pct}%` }}
+        />
       </div>
     </div>
   );
@@ -147,15 +126,13 @@ function OperatorSection({ health }: { health: DpfHealthResponse }) {
   return (
     <div className="rounded-lg border border-border bg-card p-5">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-foreground">
-          DPF Operator
-        </h3>
+        <h3 className="text-sm font-semibold text-foreground">DPF Operator</h3>
         <div className="flex items-center gap-2">
           {op.version && (
             <Badge variant="outline" className="text-xs">
               {/* status.version already carries a leading 'v' (e.g. "v26.4.0"); strip it
                   so we render a single 'v' whether or not upstream includes one. */}
-              v{op.version.replace(/^v/i, '')}
+              v{op.version.replace(/^v/i, "")}
             </Badge>
           )}
           {op.ready ? (
@@ -185,7 +162,13 @@ function OperatorSection({ health }: { health: DpfHealthResponse }) {
                 {cond.type}
               </span>
               <div className="flex items-center gap-2">
-                <span className={cond.status === 'True' ? 'text-success' : 'text-muted-foreground'}>
+                <span
+                  className={
+                    cond.status === "True"
+                      ? "text-success"
+                      : "text-muted-foreground"
+                  }
+                >
                   {cond.status}
                 </span>
                 {cond.reason && (
@@ -222,7 +205,10 @@ function DeviceInventory({ health }: { health: DpfHealthResponse }) {
       {typeEntries.length > 0 && (
         <div className="mt-3 space-y-1">
           {typeEntries.map(([type, count]) => (
-            <div key={type} className="flex items-center justify-between text-xs">
+            <div
+              key={type}
+              className="flex items-center justify-between text-xs"
+            >
               <span className="text-muted-foreground">{type}</span>
               <span className="font-medium text-foreground/80">{count}</span>
             </div>
@@ -260,15 +246,13 @@ function ClustersSection({ health }: { health: DpfHealthResponse }) {
               className="flex items-center justify-between rounded px-3 py-2 text-xs bg-muted/50"
             >
               <div>
-                <span className="font-medium text-foreground/80">
-                  {c.name}
-                </span>
+                <span className="font-medium text-foreground/80">{c.name}</span>
                 <span className="ml-2 text-muted-foreground">
                   {c.namespace}
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                <Badge variant="outline" className="text-2xs px-1.5 py-0">
                   {c.type}
                 </Badge>
                 {c.ready ? (
@@ -298,9 +282,7 @@ function BfbSection({ health }: { health: DpfHealthResponse }) {
 
   return (
     <div className="rounded-lg border border-border bg-card p-5">
-      <h3 className="text-sm font-semibold mb-3 text-foreground">
-        BFB Images
-      </h3>
+      <h3 className="text-sm font-semibold mb-3 text-foreground">BFB Images</h3>
 
       <ReadyBar ready={bfbs.ready} total={bfbs.total} />
 
@@ -322,9 +304,7 @@ function BfbSection({ health }: { health: DpfHealthResponse }) {
                 )}
               </div>
               {img.url && (
-                <p className="mt-1 truncate text-muted-foreground">
-                  {img.url}
-                </p>
+                <p className="mt-1 truncate text-muted-foreground">{img.url}</p>
               )}
             </div>
           ))}
@@ -350,15 +330,11 @@ function NotInstalledState({ onSetup }: { onSetup?: () => void }) {
         DPF Not Installed
       </h3>
       <p className="text-sm max-w-md mb-4 text-muted-foreground">
-        NVIDIA DOCA Platform Framework was not detected on this cluster.
-        Install the DPF operator to manage DPU devices, clusters, and services.
+        NVIDIA DOCA Platform Framework was not detected on this cluster. Install
+        the DPF operator to manage DPU devices, clusters, and services.
       </p>
       {onSetup && (
-        <Button
-          size="sm"
-          className="gap-1.5"
-          onClick={onSetup}
-        >
+        <Button size="sm" className="gap-1.5" onClick={onSetup}>
           <Wand2 className="h-4 w-4" /> Setup DPF
         </Button>
       )}
@@ -391,14 +367,14 @@ function DPFSkeleton() {
 
 // ── Tab Types ─────────────────────────────────────────────────────────────
 
-type DpfTab = 'overview' | 'devices' | 'clusters' | 'provisioning' | 'services';
+type DpfTab = "overview" | "devices" | "clusters" | "provisioning" | "services";
 
 const TABS: { key: DpfTab; label: string }[] = [
-  { key: 'overview',      label: 'Overview' },
-  { key: 'devices',       label: 'Devices' },
-  { key: 'clusters',      label: 'Clusters' },
-  { key: 'provisioning',  label: 'Provisioning' },
-  { key: 'services',      label: 'Services' },
+  { key: "overview", label: "Overview" },
+  { key: "devices", label: "Devices" },
+  { key: "clusters", label: "Clusters" },
+  { key: "provisioning", label: "Provisioning" },
+  { key: "services", label: "Services" },
 ];
 
 // ── Overview Tab ──────────────────────────────────────────────────────────
@@ -412,25 +388,39 @@ function OverviewTab({ health }: { health: DpfHealthResponse }) {
           icon={Cpu}
           label="DPU Devices"
           value={health.devices.total}
-          detail={health.devices.total > 0 ? `${health.devices.ready} ready` : undefined}
+          detail={
+            health.devices.total > 0
+              ? `${health.devices.ready} ready`
+              : undefined
+          }
         />
         <StatCard
           icon={Server}
           label="DPU Clusters"
           value={health.clusters.total}
-          detail={health.clusters.total > 0 ? `${health.clusters.ready} ready` : undefined}
+          detail={
+            health.clusters.total > 0
+              ? `${health.clusters.ready} ready`
+              : undefined
+          }
         />
         <StatCard
           icon={HardDrive}
           label="BFB Images"
           value={health.bfbs.total}
-          detail={health.bfbs.total > 0 ? `${health.bfbs.ready} ready` : undefined}
+          detail={
+            health.bfbs.total > 0 ? `${health.bfbs.ready} ready` : undefined
+          }
         />
         <StatCard
           icon={Network}
           label="DPU Services"
           value={health.services.total}
-          detail={health.services.total > 0 ? `${health.services.ready} ready` : undefined}
+          detail={
+            health.services.total > 0
+              ? `${health.services.ready} ready`
+              : undefined
+          }
         />
       </div>
 
@@ -453,12 +443,36 @@ function OverviewTab({ health }: { health: DpfHealthResponse }) {
             Additional Resources
           </h3>
           <div className="space-y-2">
-            <ResourceRow icon={Layers} label="DPU Sets" count={health.dpusets.total} />
-            <ResourceRow icon={Box} label="DPU Flavors" count={health.flavors.total} />
-            <ResourceRow icon={Cpu} label="DPUs (lifecycle)" count={health.dpus.total} />
-            <ResourceRow icon={Network} label="Deployments" count={health.deployments.total} />
-            <ResourceRow icon={Layers} label="Service Chains" count={health.serviceChains.total} />
-            <ResourceRow icon={Network} label="Service Interfaces" count={health.serviceInterfaces.total} />
+            <ResourceRow
+              icon={Layers}
+              label="DPU Sets"
+              count={health.dpusets.total}
+            />
+            <ResourceRow
+              icon={Box}
+              label="DPU Flavors"
+              count={health.flavors.total}
+            />
+            <ResourceRow
+              icon={Cpu}
+              label="DPUs (lifecycle)"
+              count={health.dpus.total}
+            />
+            <ResourceRow
+              icon={Network}
+              label="Deployments"
+              count={health.deployments.total}
+            />
+            <ResourceRow
+              icon={Layers}
+              label="Service Chains"
+              count={health.serviceChains.total}
+            />
+            <ResourceRow
+              icon={Network}
+              label="Service Interfaces"
+              count={health.serviceInterfaces.total}
+            />
           </div>
         </div>
       </div>
@@ -468,9 +482,11 @@ function OverviewTab({ health }: { health: DpfHealthResponse }) {
 
 // ── Main Component ────────────────────────────────────────────────────────
 
-export function DPFInfrastructurePanel({ clusterId }: DPFInfrastructurePanelProps) {
+export function DPFInfrastructurePanel({
+  clusterId,
+}: DPFInfrastructurePanelProps) {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<DpfTab>('overview');
+  const [activeTab, setActiveTab] = useState<DpfTab>("overview");
   const [showWizard, setShowWizard] = useState(false);
   const { data, isLoading, error, isFetching } = useDpfData(clusterId);
 
@@ -482,11 +498,16 @@ export function DPFInfrastructurePanel({ clusterId }: DPFInfrastructurePanelProp
   const bfbs = (data?.resources?.bfb ?? []) as DpfBfb[];
   const dpuFlavors = (data?.resources?.dpuflavor ?? []) as DpfDpuFlavor[];
   const dpuServices = (data?.resources?.dpuservice ?? []) as DpfDpuService[];
-  const dpuDeployments = (data?.resources?.dpudeployment ?? []) as DpfDpuDeployment[];
-  const dpuServiceChains = (data?.resources?.dpuservicechain ?? []) as DpfDpuServiceChain[];
-  const dpuServiceInterfaces = (data?.resources?.dpuserviceinterface ?? []) as DpfDpuServiceInterface[];
-  const realizedChains = (data?.resources?.servicechain ?? []) as DpfServiceChain[];
-  const realizedInterfaces = (data?.resources?.serviceinterface ?? []) as DpfServiceInterface[];
+  const dpuDeployments = (data?.resources?.dpudeployment ??
+    []) as DpfDpuDeployment[];
+  const dpuServiceChains = (data?.resources?.dpuservicechain ??
+    []) as DpfDpuServiceChain[];
+  const dpuServiceInterfaces = (data?.resources?.dpuserviceinterface ??
+    []) as DpfDpuServiceInterface[];
+  const realizedChains = (data?.resources?.servicechain ??
+    []) as DpfServiceChain[];
+  const realizedInterfaces = (data?.resources?.serviceinterface ??
+    []) as DpfServiceInterface[];
 
   if (isLoading) {
     return <DPFSkeleton />;
@@ -499,25 +520,37 @@ export function DPFInfrastructurePanel({ clusterId }: DPFInfrastructurePanelProp
       <ErrorState
         error={error}
         size="sm"
-        {...(dpfErrorRoute ? {
-          secondaryAction: {
-            label: parsedDpfError.action!.label,
-            onClick: () => navigate(dpfErrorRoute),
-          },
-        } : {})}
+        {...(dpfErrorRoute
+          ? {
+              secondaryAction: {
+                label: parsedDpfError.action!.label,
+                onClick: () => navigate(dpfErrorRoute),
+              },
+            }
+          : {})}
       />
     );
   }
 
-  if (!health || health.status === 'not_installed') {
+  if (!health || health.status === "not_installed") {
     if (showWizard) {
-      return <DPFSetupWizard clusterId={clusterId} onClose={() => setShowWizard(false)} />;
+      return (
+        <DPFSetupWizard
+          clusterId={clusterId}
+          onClose={() => setShowWizard(false)}
+        />
+      );
     }
     return <NotInstalledState onSetup={() => setShowWizard(true)} />;
   }
 
   if (showWizard) {
-    return <DPFSetupWizard clusterId={clusterId} onClose={() => setShowWizard(false)} />;
+    return (
+      <DPFSetupWizard
+        clusterId={clusterId}
+        onClose={() => setShowWizard(false)}
+      />
+    );
   }
 
   return (
@@ -552,51 +585,64 @@ export function DPFInfrastructurePanel({ clusterId }: DPFInfrastructurePanelProp
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={cn(
-              'flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors',
+              "flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors",
               activeTab === tab.key
-                ? 'bg-card text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground',
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
             {tab.label}
-            {tab.key === 'devices' && devices.length > 0 && (
+            {tab.key === "devices" && devices.length > 0 && (
               <span className="ml-1.5 text-xs text-muted-foreground">
                 ({devices.length})
               </span>
             )}
-            {tab.key === 'clusters' && clusters.length > 0 && (
+            {tab.key === "clusters" && clusters.length > 0 && (
               <span className="ml-1.5 text-xs text-muted-foreground">
                 ({clusters.length})
               </span>
             )}
-            {tab.key === 'provisioning' && dpuSets.length + bfbs.length + dpuFlavors.length > 0 && (
-              <span className="ml-1.5 text-xs text-muted-foreground">
-                ({dpuSets.length + bfbs.length + dpuFlavors.length})
-              </span>
-            )}
-            {tab.key === 'services' && dpuServices.length + dpuServiceChains.length + dpuServiceInterfaces.length > 0 && (
-              <span className="ml-1.5 text-xs text-muted-foreground">
-                ({dpuServices.length + dpuServiceChains.length + dpuServiceInterfaces.length})
-              </span>
-            )}
+            {tab.key === "provisioning" &&
+              dpuSets.length + bfbs.length + dpuFlavors.length > 0 && (
+                <span className="ml-1.5 text-xs text-muted-foreground">
+                  ({dpuSets.length + bfbs.length + dpuFlavors.length})
+                </span>
+              )}
+            {tab.key === "services" &&
+              dpuServices.length +
+                dpuServiceChains.length +
+                dpuServiceInterfaces.length >
+                0 && (
+                <span className="ml-1.5 text-xs text-muted-foreground">
+                  (
+                  {dpuServices.length +
+                    dpuServiceChains.length +
+                    dpuServiceInterfaces.length}
+                  )
+                </span>
+              )}
           </button>
         ))}
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'overview' && (
-        <OverviewTab health={health} />
-      )}
-      {activeTab === 'devices' && (
+      {activeTab === "overview" && <OverviewTab health={health} />}
+      {activeTab === "devices" && (
         <DPUDeviceList devices={devices} isLoading={isLoading} />
       )}
-      {activeTab === 'clusters' && (
+      {activeTab === "clusters" && (
         <DPUClusterDetail clusters={clusters} isLoading={isLoading} />
       )}
-      {activeTab === 'provisioning' && (
-        <DPUProvisioningTab dpuSets={dpuSets} dpus={dpus} bfbs={bfbs} flavors={dpuFlavors} isLoading={isLoading} />
+      {activeTab === "provisioning" && (
+        <DPUProvisioningTab
+          dpuSets={dpuSets}
+          dpus={dpus}
+          bfbs={bfbs}
+          flavors={dpuFlavors}
+          isLoading={isLoading}
+        />
       )}
-      {activeTab === 'services' && (
+      {activeTab === "services" && (
         <DPUServicesTab
           services={dpuServices}
           deployments={dpuDeployments}
@@ -628,9 +674,7 @@ function ResourceRow({
         <Icon className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="text-xs text-muted-foreground">{label}</span>
       </div>
-      <span className="text-sm font-medium text-foreground/80">
-        {count}
-      </span>
+      <span className="text-sm font-medium text-foreground/80">{count}</span>
     </div>
   );
 }
