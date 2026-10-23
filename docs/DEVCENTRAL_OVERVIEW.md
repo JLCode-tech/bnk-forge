@@ -95,12 +95,11 @@ flowchart TB
 
 BNK Forge translates declarative Kubernetes Gateway API resources into active F5 BNK runtime objects. 
 
-### Supported Resource Types
-- **Standard Gateway API**: `GatewayClass`, `Gateway`, `HTTPRoute`, `GRPCRoute`, `TCPRoute`, `UDPRoute`, `TLSRoute`.
-- **F5 BNK Security Policies**: `FirewallPolicy`, `FirewallRuleList`, `SecurityPolicy` (WAF), `DDoSProtection`, `NetworkPolicy`.
-- **F5 BNK Networking Extensions**: `VLAN`, `StaticRoute`, `SNATPool`, `EgressConfig`, `iRules`, `F5BigAnalyzer`.
-- **High-Speed Telemetry**: `HSLPublisher`, `LogProfile`.
-- **Hardware Acceleration**: Data Plane Function (DPF) / SmartNIC configuration CRDs.
+### Supported Capabilities
+- **Standard Gateway API**: L4–L7 ingress, TLS termination, HTTP/gRPC/TCP/UDP routing (`GatewayClass`, `Gateway`, `HTTPRoute`, `GRPCRoute`, `TCPRoute`, `UDPRoute`, `TLSRoute`).
+- **F5 BNK Network & Security Policies**: Zero-trust L4/L7 traffic filtering, carrier-grade network translation, DNS delivery, DDoS mitigation, and programmable traffic inspection. See the [F5 BIG-IP Next for Kubernetes CloudDocs](https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/overview.html) for full platform details.
+- **F5 BNK AI Service Plane**: Multi-cloud AI token governance, rate and budget enforcement, PII/DLP guardrails, and weighted Smart LLM Routing across AWS Bedrock, Azure AI Foundry, and Google Vertex AI.
+- **Hardware Acceleration**: Data Plane Function (DPF) / NVIDIA BlueField-3 SmartNIC configuration and offload.
 
 ### Ingress Packet Flow & Policy Execution Pipeline
 
@@ -240,13 +239,13 @@ flowchart LR
 - **Time-To-First-Token (TTFT)**: Measures prompt-processing latency percentiles (p50, p95, p99) under varying levels of concurrency.
 - **Streaming Throughput**: Evaluates token generation rates (output tokens/sec) and connection reuse efficiency.
 - **Concurrency Scaling**: Maps performance degradation curves as concurrent client sessions increase.
-- **Policy Verification**: Compares benchmark performance before and after applying F5 BNK security policies and `F5BigAnalyzer` load-balancing rules.
+- **Policy Verification**: Compares benchmark performance before and after applying F5 BNK security policies and **F5 BNK AI Service Plane** routing rules.
 
 ---
 
 ## 7. Model Context Protocol (MCP) Architecture
 
-BNK Forge provides a dedicated **Model Context Protocol (MCP)** server on port 8081, exposing **91 tools** for programmatic inspection and operations via AI assistants (Anthropic Claude, Google Antigravity) or custom automation engines.
+BNK Forge provides a dedicated **Model Context Protocol (MCP)** server on port 8081, exposing **153 tools** for programmatic inspection and operations via AI assistants (Anthropic Claude, Google Antigravity) or custom automation engines.
 
 ```mermaid
 flowchart TD

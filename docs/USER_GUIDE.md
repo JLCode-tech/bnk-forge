@@ -84,7 +84,7 @@ The sidebar organizes features into workflow sections:
 - **Benchmarks** (`/benchmarks`) — Cluster network & data-plane performance benchmarks
 
 ### AI SERVICE PLANE
-- **Token Governance and Intelligence** (`/ai/token-governance`) — AI Gateway token telemetry, virtual keys, budgets & tenant governance
+- **Token Governance and Intelligence** (`/ai/token-governance`) — F5 BNK AI Service Plane token telemetry, virtual keys, budgets & tenant governance
 - **Agent Fleet** (`/ai/agents`) — Autonomous AI agents, identities & policies
 - **Intelligent Inference** (`/ai/llm-router`) — SmartLLM traffic routing, failover & model endpoints
 - **AI Traffic Logs** (`/ai/logs`) — AI request audit trail, latency & token telemetry
@@ -100,9 +100,9 @@ The sidebar can be collapsed for more screen space. Sidebar badges show live cou
 
 ## Command Center (Dashboard)
 
-The Overview / Command Center (`/`) is the home page providing a unified summary of your infrastructure, AI gateway telemetry, and recent benchmark activity.
+The Overview / Command Center (`/`) is the home page providing a unified summary of your multi-cloud infrastructure, **F5 BNK AI Service Plane** telemetry, and recent benchmark activity.
 
-![Overview Dark Mode](images/overview-dark.png)
+![Multi-Cloud Platform Overview](images/forge-platform-overview.png)
 
 *Light theme view:*
 
@@ -424,7 +424,7 @@ A comprehensive sidebar + content layout for managing F5 BIG-IP Next for Kuberne
 | **Health Dashboard** | Real-time health for all BNK platform components. Auto-refreshes every 30 seconds. |
 | **Gateway Topology** | Interactive graph visualization of gateways → routes → backends |
 | **Policy Gateway Map** | Security policies mapped to gateway listeners |
-| **AI Analyzers** | AI load balancing analyzers for LLM inference (F5BigAnalyzer CRDs) |
+| **AI Analyzers** | AI load balancing and telemetry analyzers for LLM inference |
 | **Upgrade** | BNK version upgrade panel with pre-flight checks, rolling execution, and rollback |
 | **Diagnostics** | Tabbed panel with 5 diagnostic tools (see below) |
 
@@ -534,32 +534,36 @@ When DPF is not installed, a **Setup Wizard** is offered.
 
 ### Token Governance and Intelligence (`/ai/token-governance`)
 
-Centralized observability and cost/token governance across F5 AI Gateway and Loki telemetry streams.
+Centralized observability and cost/token governance across the **F5 BNK AI Service Plane** and multi-cloud telemetry streams. See the [F5 BIG-IP Next for Kubernetes CloudDocs](https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/overview.html) for complete details on F5's cloud-native data plane and AI traffic capabilities.
 
-![AI Token Governance](images/ai-token-governance.png)
+![Multi-Cloud AI Token Governance Overview](images/forge-ai-token-governance-overview.png)
+
+![AI Data Governance Guardrails & Rate Limiting](images/forge-ai-governance-guardrails.png)
 
 **Capabilities:**
-- **Gateway Summary**: Real-time request success rate, end-to-end latency, total token volume, and cumulative spend across all clusters and namespaces
+- **Service Plane Summary**: Real-time request success rate, end-to-end latency, total token volume, and cumulative spend across all clusters and namespaces
 - **Telemetry Charts**: Request volume (`2xx` vs `429` rate-limited), token breakdown (`input`, `cached`, `output`), cost per model, model usage distribution, and P50/P95 latency trends
-- **AI Gateway & Governance Sub-Navigation**:
+- **F5 BNK AI Service Plane & Governance Sub-Navigation**:
   - **Model Rankings & Provider Usage** — compare latency, throughput, and token efficiency across model backends
-  - **Tenants & Profiles** — configure per-tenant token quotas and rate-limit policies
-  - **Models & Providers** — register upstream LLM providers (vLLM, OpenAI, Anthropic, NIM, Bedrock)
-  - **Access & Virtual Keys** — issue scoped virtual API keys with token budgets and expiration
-  - **Request Audit Logs, Gateway Topology & Diagnostics** — inspect prompt/completion metadata and troubleshoot AI Gateway routing
+  - **Tenants & Profiles** — configure per-tenant token quotas, PII/DLP guardrails, and rate-limit policies
+  - **Models & Providers** — register upstream LLM providers (AWS Bedrock, Azure AI Foundry, Google Vertex AI, vLLM, NIM)
+  - **Access & Virtual Keys** — issue scoped virtual API keys (`f5vk_...`) with token budgets and expiration
+  - **Request Audit Logs, Topology & Diagnostics** — inspect prompt/completion metadata and troubleshoot F5 BNK AI Service Plane routing
 
 ### Intelligent Inference (`/ai/llm-router`)
 
-Real-time Endpoint Picker (EPP) routing topology, KV-cache prefix awareness, and F5 AI Analyzer (`F5BigAnalyzer`) telemetry for GAIE-native inference pools.
+Real-time Endpoint Picker (EPP) routing topology, KV-cache prefix awareness, and weighted multi-cloud LLM failover across **AWS Bedrock**, **Azure AI Foundry**, and **Google Vertex AI**.
 
-![Intelligent Inference Routing Topology](images/ai-llm-router-topology.png)
+![Smart LLM Router Fleet](images/forge-smart-llm-router-fleet.png)
+
+![Intelligent Inference Routing Topology](images/forge-llm-router-topology.png)
 
 **Capabilities:**
 - **F5 EPP Real-Time AI Analyzer**: Monitors live token velocity (`tok/s`), prefix cache hit rate (`%`), TTFT P50/P95, Inter-Token Latency (ITL), active vs queued requests, and GPU KV-cache memory fill
 - **Inference Routing Views**:
-  - **Fleet Overview** — multi-cluster inference pool health
-  - **Routing Topology** — live telemetry, EPP topology & architecture diagram, and declarative CRD manifests
-  - **Inference Pools & Models** — manage `InferencePool` and `InferenceModel` resources
+  - **Fleet Overview** — multi-cluster inference pool health across AWS, Azure, and GCP
+  - **Routing Topology** — live telemetry, EPP topology & architecture diagram, and declarative routing manifests
+  - **Inference Pools & Models** — manage primary and fallback foundation model pools
   - **EPP Policies & Scoring** — tune KV-cache, queue-depth, and LoRA-affinity scoring weights
 
 ---
@@ -568,9 +572,9 @@ Real-time Endpoint Picker (EPP) routing topology, KV-cache prefix awareness, and
 
 ### Benchmarks (`/benchmarks`)
 
-LLM inference load testing dashboard for comparing proxy/load-balancer performance.
+LLM inference and dataplane load testing dashboard for comparing proxy/load-balancer performance across **F5 BNK + F5 GAIE**, Envoy, HAProxy, and `llm-d` Router.
 
-![Benchmarks Dashboard](images/benchmarks-dashboard.png)
+![Benchmarks Dashboard](images/forge-benchmark-dashboard.png)
 
 **6 Tabs:**
 
@@ -843,29 +847,30 @@ The maintenance mode banner appears at the top of the page for any users who are
 
 ![Credentials & Registries](images/credentials-registries.png)
 
-### How-To 3: Deploying a Blueprint & Inspecting F5 BNK 2.4.1 CNF CRs
+### How-To 3: Deploying a Blueprint & Managing F5 BNK Policies
 
-1. Navigate to **Projects** (`/projects`), click **Create from Blueprint**, and select a blueprint from the **Blueprint Catalog** (for example, *AWS EKS — F5 BNK + Dual-Tier Gateway* or *Bare-Metal & DPF — High-Performance BNK*).
+1. Navigate to **Projects** (`/projects`), click **Create from Blueprint**, and select a blueprint from the **Blueprint Catalog** (or provision and register automatically via [`bnkctl up`](https://github.com/JLCode-tech/bnkctl)).
 2. Enter a project name, bind your validated Cloud Credential, SSH Key, and F5 License / Registry in the wizard, and click **Create Project**.
-3. Open the project's **Execution Plan** tab and click **Deploy All** to execute the topological OpenTofu waves in sequence (`VPC` → `EKS / K8s` → `F5 BNK`).
-4. Once deployment completes, navigate to **F5 BNK** (`/bnk`) and **CNF CR Explorer** (`/crds`) in the sidebar and select your cluster from the top cluster selector.
-5. **Expected Outcome:** The **F5 BNK Overview** displays `v2.4.0`, `8/8 Healthy` CNE components (`BNK Controller`, `CNE Speaker (BGP)`, `TMM Dataplane`, `F5 IngressLink`, `Cert Manager`, `OTel Collector`, `BGP Watchdog`, `AFM Firewall`), and the **CNF CR Explorer** (`/crds`) lists live F5 BNK 2.4.1 Custom Resource Definitions (`F5SPKVlan`, `F5SPKSnatpool`, `F5BigNetVlan`, `F5BigCneSub`, `Gateway`, `HTTPRoute`) with zero configuration drift.
+3. Open the project's **Execution Plan** tab and click **Deploy All** to execute the topological waves in sequence (`VPC` → `EKS / K8s` → `F5 BNK`).
+4. Once deployment completes, navigate to **Cluster Fleet** (`/fleet`), **F5 BNK** (`/bnk`), and **CNF CR Explorer** (`/crds`) in the sidebar and select your cluster from the top cluster selector. For complete details on F5 BIG-IP Next for Kubernetes traffic and security capabilities, see the [F5 BIG-IP Next for Kubernetes CloudDocs](https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/overview.html).
+5. **Expected Outcome:** Your cluster appears in the **Multi-Cloud Cluster Fleet**, the **F5 BNK Policy Builder** allows visual authoring of L4/L7 traffic and security policies, and the **CNF CR Explorer** (`/crds`) lists live cluster resources with zero configuration drift.
 
-![Blueprint Catalog](images/blueprint-catalog.png)
-![F5 BNK Dashboard](images/f5-bnk-dashboard.png)
-![Kubernetes & F5 BNK 2.4.1 CNF CR Explorer](images/cr-explorer.png)
+![Multi-Cloud Cluster Fleet](images/forge-multi-cloud-cluster-fleet.png)
+![Blueprint Catalog](images/forge-blueprints-catalog.png)
+![BNK Visual Policy Builder](images/forge-bnk-policy-builder.png)
+![Kubernetes & F5 BNK CNF Explorer](images/cr-explorer.png)
 
-### How-To 4: Running a Benchmark Suite & Inspecting AI Gateway Telemetry
+### How-To 4: Running a Benchmark Suite & Inspecting F5 BNK AI Service Plane Telemetry
 
 1. Navigate to **Benchmarks** (`/benchmarks`) in the sidebar and click **New Benchmark** (or **New Suite**) to launch a throughput, latency, or EPP AI routing benchmark against your target cluster.
 2. Select the test profile (HTTP/L7 CPS, L4 throughput, or LLM inference token streaming), configure concurrency and duration, and start the run.
 3. Compare p50/p95/p99 latency curves, RPS/tok/s throughput, and pass/warn/fail assertions across historical runs (`139` runs across `21` run groups) in the **Benchmarks** dashboard.
-4. For AI workloads, navigate to **Token Governance and Intelligence** (`/ai/token-governance`) and **Intelligent Inference** (`/ai/llm-router`) to inspect request success rates, token consumption, cost attribution, and F5 EPP prefix-cache hit rates (`78.4%`) and TTFT/ITL latency.
-5. **Expected Outcome:** Benchmark results are persisted with full historical comparison charts, and the AI Service Plane shows real-time token governance budgets and live EPP pod routing topology.
+4. For AI workloads, navigate to **Token Governance and Intelligence** (`/ai/token-governance`) and **Intelligent Inference** (`/ai/llm-router`) to inspect request success rates, token consumption, PII/DLP guardrail enforcement, cost attribution, and Smart LLM Router topology across AWS Bedrock, Azure AI Foundry, and Google Vertex AI.
+5. **Expected Outcome:** Benchmark results are persisted with full historical comparison charts, and the **F5 BNK AI Service Plane** shows real-time token governance budgets and live Smart LLM Router pool topology.
 
-![Benchmarks Dashboard](images/benchmarks-dashboard.png)
-![AI Token Governance](images/ai-token-governance.png)
-![Intelligent Inference Routing Topology](images/ai-llm-router-topology.png)
+![Benchmarks Dashboard](images/forge-benchmark-dashboard.png)
+![Multi-Cloud AI Token Governance Overview](images/forge-ai-token-governance-overview.png)
+![Smart LLM Router Topology](images/forge-llm-router-topology.png)
 
 ### How-To 5: Safe In-Place Platform Upgrade & Rollback
 
