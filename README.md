@@ -21,6 +21,37 @@ Operating modern Gateway API architectures across multi-cloud and hybrid cluster
 
 **BNK Forge 4.0.0** is an orchestration and management plane purpose-built for **F5 BNK releases 2.2, 2.3, and 2.4**. It provides a single control point for automated multi-cloud deployments, interactive traffic topology visualization, multi-cluster fleet synchronization, one-click QKView diagnostics, and AI-operable MCP automation.
 
+![BNK Forge Command Center](docs/images/overview-dark.png)
+
+<details>
+<summary><b>View Platform Console Tour (Blueprints, F5 BNK, AI Service Plane, Benchmarks & System Monitor)</b></summary>
+
+### Command Center (Light Theme)
+![BNK Forge Command Center — Light Theme](docs/images/overview-light.png)
+
+### Unified Blueprint & Module Catalog
+![Catalog & Blueprints](docs/images/blueprint-catalog.png)
+
+### F5 BNK Gateway & CNE Control Plane
+![F5 BNK Dashboard](docs/images/f5-bnk-dashboard.png)
+
+### Kubernetes & F5 BNK 2.4.1 CNF CR Explorer
+![Kubernetes & F5 BNK 2.4.1 CNF CR Explorer](docs/images/cr-explorer.png)
+
+### LLM Inference & Data-Plane Benchmarks
+![Benchmarks Dashboard](docs/images/benchmarks-dashboard.png)
+
+### AI Service Plane — Token Governance & Real-Time EPP Routing
+![AI Token Governance](docs/images/ai-token-governance.png)
+![Intelligent Inference Routing Topology](docs/images/ai-llm-router-topology.png)
+
+### Cloud Credentials, System Monitor & Container Lifecycle
+![Credentials & Registries](docs/images/credentials-registries.png)
+![System Monitor & Upgrades](docs/images/system-settings.png)
+![Container Lifecycle & Guardrails](docs/images/system-containers.png)
+
+</details>
+
 ---
 
 ## Key Technical Capabilities
@@ -310,12 +341,26 @@ flowchart LR
 
 ## Quick Start
 
-**Prerequisites:** [Docker](https://docs.docker.com/get-docker/) with Docker Compose, and Git.
+**Prerequisites:** [Docker](https://docs.docker.com/get-docker/) with Docker Compose, and Git (for source builds).
 
-### 1. Laptop (macOS / Windows WSL2)
+### Option A: Pre-Built Release Installer (Fastest)
+
+Download the release bundle from [GitHub Releases](https://github.com/JLCode-tech/bnk-forge/releases) — pulls pre-built multi-arch (`linux/amd64`, `linux/arm64`) images from `ghcr.io/jlcode-tech`:
 
 ```bash
-git clone https://github.com/f5devcentral/bnk-forge.git
+curl -sLO https://github.com/JLCode-tech/bnk-forge/releases/download/v4.0.0/bnk-forge-4.0.0.tar.gz
+tar xzf bnk-forge-4.0.0.tar.gz
+cd bnk-forge-4.0.0
+./install.sh --local    # Laptop (macOS / Windows WSL2)
+# OR: ./install.sh      # Linux Server (host networking)
+```
+
+### Option B: Build from Source
+
+#### 1. Laptop (macOS / Windows WSL2)
+
+```bash
+git clone https://github.com/JLCode-tech/bnk-forge.git
 cd bnk-forge
 docker network create --driver bridge --subnet 10.200.0.0/24 bnk-forge-artifacts   # once per host
 make local-deploy
@@ -323,10 +368,10 @@ make local-deploy
 
 Open **https://localhost** in your browser and accept the self-signed certificate warning.
 
-### 2. Linux Server
+#### 2. Linux Server
 
 ```bash
-git clone https://github.com/f5devcentral/bnk-forge.git
+git clone https://github.com/JLCode-tech/bnk-forge.git
 cd bnk-forge
 docker network create --driver bridge --subnet 10.200.0.0/24 bnk-forge-artifacts   # once per host
 make deploy

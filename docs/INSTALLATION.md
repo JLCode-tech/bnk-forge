@@ -19,20 +19,40 @@ This guide covers installing BNK Forge on various environments.
 
 ## Quick Start
 
-### Laptop (macOS / Windows — Docker Desktop)
+### Option A: Pre-Built Release Bundle (Fastest — No Local Build)
+
+Download the latest release bundle from [GitHub Releases](https://github.com/JLCode-tech/bnk-forge/releases), which pulls pre-built multi-arch (`linux/amd64`, `linux/arm64`) images from `ghcr.io/jlcode-tech`:
 
 ```bash
-git clone https://github.com/f5devcentral/bnk-forge.git
+curl -sLO https://github.com/JLCode-tech/bnk-forge/releases/download/v4.0.0/bnk-forge-4.0.0.tar.gz
+tar xzf bnk-forge-4.0.0.tar.gz
+cd bnk-forge-4.0.0
+
+# Laptop (macOS / Windows WSL2 — bridge networking)
+./install.sh --local
+
+# Linux Server (host networking)
+./install.sh
+```
+
+> First-run automatically creates `.env` from `.env.example` and generates random `POSTGRES_PASSWORD` and `REDIS_PASSWORD` credentials if not already set.
+
+### Option B: Build from Source
+
+#### Laptop (macOS / Windows — Docker Desktop)
+
+```bash
+git clone https://github.com/JLCode-tech/bnk-forge.git
 cd bnk-forge
 make local-deploy
 ```
 
 Open **https://localhost** and accept the self-signed certificate warning. Log in as **admin** — no default password ships; retrieve the generated one from `/app/keys/initial_admin_password` (the boot log points at this file; the plaintext is never logged), or set `DEFAULT_ADMIN_PASSWORD`. You'll change it on first login.
 
-### Linux Server
+#### Linux Server
 
 ```bash
-git clone https://github.com/f5devcentral/bnk-forge.git
+git clone https://github.com/JLCode-tech/bnk-forge.git
 cd bnk-forge
 make deploy
 ```
@@ -80,7 +100,7 @@ Log in as **admin** using the generated password from `/app/keys/initial_admin_p
 ### Step 1: Clone Repository
 
 ```bash
-git clone https://github.com/f5devcentral/bnk-forge.git
+git clone https://github.com/JLCode-tech/bnk-forge.git
 cd bnk-forge
 ```
 
@@ -211,7 +231,7 @@ docker compose version
 ### Step 2: Clone Repository
 
 ```bash
-git clone https://github.com/f5devcentral/bnk-forge.git
+git clone https://github.com/JLCode-tech/bnk-forge.git
 cd bnk-forge
 ```
 
@@ -368,41 +388,67 @@ docker exec bnk-forge-celery-worker tofu version
 
 ## First Steps After Installation
 
-After starting BNK Forge for the first time:
+After starting BNK Forge for the first time, follow these step-by-step operational workflows to complete initial setup and credential onboarding.
 
-### 1. Log In
+![Command Center Overview](images/overview-dark.png)
 
-Open the application URL and log in as **`admin`**. There is no default
-password: retrieve the one generated on first startup —
-`docker exec bnk-forge-backend cat /app/keys/initial_admin_password` (compose),
-or `kubectl get secret <release>-bnk-forge-secrets -o jsonpath='{.data.admin-password}' | base64 -d` (Helm).
-You will be **required** to set a new password before the API accepts other calls.
+### How-To 1: Fresh Install & First-Time Setup
 
-### 2. Connect a Kubernetes Cluster
+1. **Deploy the Platform Stack**
+   - **Pre-Built Release Bundle**: Extract `bnk-forge-4.0.0.tar.gz` and run `./install.sh --local` (laptop) or `./install.sh` (Linux server).
+   - **From Source**: Clone `https://github.com/JLCode-tech/bnk-forge.git` and run `make local-deploy` (laptop) or `make deploy` (Linux server).
+2. **Retrieve the Initial Admin Password**
+   - No default password ships. Retrieve the auto-generated bootstrap password from the backend container:
+     ```bash
+     docker exec bnk-forge-backend cat /app/keys/initial_admin_password
+     ```
+   - *(On Helm deployments, retrieve the secret via `kubectl get secret <release>-bnk-forge-secrets -o jsonpath='{.data.admin-password}' | base64 -d`.)*
+3. **Sign In & Rotate Password**
+   - Open `https://localhost` (or `https://<server-ip>`) and sign in as **`admin`**.
+   - Complete the mandatory first-login password rotation prompt. The backend API enforces a `403 Must change password` gate until rotation succeeds.
+4. **Verify Container & Database Health**
+   - Navigate to **Settings & Access → System** (or run `make local-status` / `make status`) to confirm Backend, Database, Redis, and Celery workers all report **Healthy**.
 
-If you have an existing K8s cluster with F5 BNK:
+**Expected Outcome:** You land on the **Forge** Command Center (`/`) with `All systems operational` in the sidebar footer, ready to onboard credentials and clusters.
 
-1. Navigate to **Kubernetes > Clusters**
-2. Click **Add Cluster**
-3. Select a project (or create one)
-4. Upload or paste your kubeconfig
-5. Explore **F5 BNK** in the sidebar for Traffic Flow, Health Dashboard, Topology, and more
+---
 
-### 3. Configure Module Library (Optional — for OpenTofu deployments)
+### How-To 2: Configuring Cloud Credentials, SSH Keys & Container Registries
 
-If you want to deploy infrastructure modules via OpenTofu:
+Navigate to **Settings & Access → Credentials & Registries** (`/access-methods`) to configure reusable authentication templates before provisioning infrastructure or connecting private clusters.
 
-1. Navigate to **Settings > System > Defaults**
-2. Set **Module Library Git URL** to: `https://github.com/JLCode-tech/bnk-forge-modules.git`
-3. Set **Module Library Git Ref** to: `release/2.2`
-4. Go to **Settings > Environment Config** and click **Sync Modules**
+![Credentials & Registries](images/credentials-registries.png)
 
-### 4. Create a Project and Deploy
+1. **Add Cloud Provider Templates (AWS / Azure / GCP)**
+   - Under **Cloud Provider Credentials**, click **Add Template**.
+   - Select your provider (**AWS**, **Azure**, or **GCP**), enter a descriptive template name, and provide credentials (AWS Access Keys / IAM Identity Center SSO, Azure Service Principal Tenant & Client ID, or GCP Service Account JSON).
+   - Click **Test** on the created template card to validate live provider authentication.
+2. **Register SSH Keys for Bare-Metal & On-Premises Clusters**
+   - Switch to the **SSH Keys** tab and click **Add SSH Key**.
+   - Choose **Auto-setup** (provides password once to generate and install an Ed25519 key pair) or paste an existing private key, then click **Test Connection**.
+3. **Configure Container Registry & F5 FAR Credentials**
+   - Place your F5 Artifact Registry service account JSON at `./secrets/far-credentials.json` or register registry pull credentials under the **Container Registries** tab so BNK chart pulls authenticate seamlessly.
 
-Navigate to **Build > Projects**:
-- Click **New Project**
-- Enter a name and select your region
-- Add modules from the catalog, or use **Build > Blueprints** for pre-configured stacks
+**Expected Outcome:** Cloud credential templates show a green **Valid** badge and are selectable when creating workspaces or deploying blueprints from **Build → Catalog & Blueprints**.
+
+---
+
+### 3. Connect an Existing Kubernetes Cluster
+
+If you already have a Kubernetes cluster running F5 BNK:
+
+1. Navigate to **Clusters → Kubernetes** (or click **Add Cluster** on the Overview page)
+2. Select a workspace/project (or create one)
+3. Upload or paste your `kubeconfig`
+4. Explore **Clusters → F5 BNK** in the sidebar for Gateway Topology, Traffic Flow, CNE health, QKView diagnostics, and TMM debug tools
+
+### 4. Sync the Module Library & Browse Blueprints
+
+![Catalog & Blueprints](images/blueprint-catalog.png)
+
+1. Navigate to **Settings & Access → System → Defaults**
+2. Verify **Module Library Git URL** is set to `https://github.com/JLCode-tech/bnk-forge-modules.git` and **Git Ref** is `release/2.2` (or `release/4.0`)
+3. Trigger a sync and verify blueprints and modules appear in **Build → Catalog & Blueprints**
 
 ### Test Database
 
@@ -416,15 +462,6 @@ with engine.connect() as conn:
     print('Database connection: OK')
 "
 ```
-
-### Test Module Library Sync
-
-1. Open https://localhost (or your server URL)
-2. Navigate to **Settings**
-3. Click **Environment Config** tab
-4. Configure module library URL (if not in `.env`)
-5. Click **Sync Modules** in Module Library section
-6. Verify modules appear in **Build → Modules**
 
 ---
 

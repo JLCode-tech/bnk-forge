@@ -106,11 +106,11 @@ done
 log "Using SSH key '${SSH_KEY_NAME}'."
 
 # ── Prompt 5 & 6: registry + (optional) PAT ──────────────────────────────────
-read -rp "Container registry to pull bnk-forge images from [ghcr.io/jgruberf5]: " REGISTRY
-REGISTRY="${REGISTRY:-ghcr.io/jgruberf5}"
+read -rp "Container registry to pull bnk-forge images from [ghcr.io/jlcode-tech]: " REGISTRY
+REGISTRY="${REGISTRY:-ghcr.io/jlcode-tech}"
 REGISTRY="${REGISTRY%/}"                         # trim any trailing slash
 REGISTRY_HOST="${REGISTRY%%/*}"                  # e.g. ghcr.io
-# Derive a login username from the registry namespace (e.g. ghcr.io/jgruberf5 -> jgruberf5).
+# Derive a login username from the registry namespace (e.g. ghcr.io/jlcode-tech -> jlcode-tech).
 REGISTRY_USER="${REGISTRY#*/}"; REGISTRY_USER="${REGISTRY_USER%%/*}"
 [ -n "${REGISTRY_USER}" ] && [ "${REGISTRY_USER}" != "${REGISTRY}" ] || REGISTRY_USER="${NAME_PREFIX}"
 
@@ -510,7 +510,7 @@ services:
     restart: unless-stopped
 
   backend:
-    image: ${BNK_FORGE_REGISTRY:-ghcr.io/f5devcentral}/bnk-forge-api:${BNK_FORGE_VERSION:-4.0.0}
+    image: ${BNK_FORGE_REGISTRY:-ghcr.io/jlcode-tech}/bnk-forge-api:${BNK_FORGE_VERSION:-4.0.0}
     container_name: bnk-forge-backend
     network_mode: host
     logging: *default-logging
@@ -543,7 +543,7 @@ services:
       start_period: 30s
 
   celery-worker:
-    image: ${BNK_FORGE_REGISTRY:-ghcr.io/f5devcentral}/bnk-forge-worker:${BNK_FORGE_VERSION:-4.0.0}
+    image: ${BNK_FORGE_REGISTRY:-ghcr.io/jlcode-tech}/bnk-forge-worker:${BNK_FORGE_VERSION:-4.0.0}
     container_name: bnk-forge-celery-worker
     network_mode: host
     logging: *default-logging
@@ -561,7 +561,7 @@ services:
     restart: unless-stopped
 
   celery-worker-2:
-    image: ${BNK_FORGE_REGISTRY:-ghcr.io/f5devcentral}/bnk-forge-worker:${BNK_FORGE_VERSION:-4.0.0}
+    image: ${BNK_FORGE_REGISTRY:-ghcr.io/jlcode-tech}/bnk-forge-worker:${BNK_FORGE_VERSION:-4.0.0}
     container_name: bnk-forge-celery-worker-2
     network_mode: host
     logging: *default-logging
@@ -579,7 +579,7 @@ services:
     restart: unless-stopped
 
   celery-beat:
-    image: ${BNK_FORGE_REGISTRY:-ghcr.io/f5devcentral}/bnk-forge-beat:${BNK_FORGE_VERSION:-4.0.0}
+    image: ${BNK_FORGE_REGISTRY:-ghcr.io/jlcode-tech}/bnk-forge-beat:${BNK_FORGE_VERSION:-4.0.0}
     container_name: bnk-forge-celery-beat
     network_mode: host
     logging: *default-logging
@@ -595,7 +595,7 @@ services:
     restart: unless-stopped
 
   frontend:
-    image: ${BNK_FORGE_REGISTRY:-ghcr.io/f5devcentral}/bnk-forge-frontend:${BNK_FORGE_VERSION:-4.0.0}
+    image: ${BNK_FORGE_REGISTRY:-ghcr.io/jlcode-tech}/bnk-forge-frontend:${BNK_FORGE_VERSION:-4.0.0}
     container_name: bnk-forge-frontend
     network_mode: host
     logging: *default-logging
@@ -611,7 +611,7 @@ services:
       start_period: 10s
 
   proxy:
-    image: ${BNK_FORGE_REGISTRY:-ghcr.io/f5devcentral}/bnk-forge-proxy:${BNK_FORGE_VERSION:-4.0.0}
+    image: ${BNK_FORGE_REGISTRY:-ghcr.io/jlcode-tech}/bnk-forge-proxy:${BNK_FORGE_VERSION:-4.0.0}
     container_name: bnk-forge-proxy
     network_mode: host
     logging: *default-logging
@@ -623,7 +623,7 @@ services:
     restart: unless-stopped
 
   mcp:
-    image: ${BNK_FORGE_REGISTRY:-ghcr.io/f5devcentral}/bnk-forge-mcp:${BNK_FORGE_VERSION:-4.0.0}
+    image: ${BNK_FORGE_REGISTRY:-ghcr.io/jlcode-tech}/bnk-forge-mcp:${BNK_FORGE_VERSION:-4.0.0}
     container_name: bnk-forge-mcp
     network_mode: host
     logging: *default-logging

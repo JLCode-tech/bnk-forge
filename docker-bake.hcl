@@ -17,7 +17,7 @@ variable "GIT_REVISION" {
   default = "unknown"
 }
 variable "SOURCE_URL" {
-  default = "https://github.com/f5devcentral/bnk-forge"
+  default = "https://github.com/JLCode-tech/bnk-forge"
 }
 # Build timestamp for org.opencontainers.image.created (RFC 3339). Empty by
 # default so a plain `docker buildx bake` does not stamp a wall-clock time into
@@ -57,7 +57,7 @@ variable "CREATED" {
 }
 
 group "default" {
-  targets = ["api", "worker", "beat", "frontend", "proxy", "mcp", "operator"]
+  targets = ["api", "worker", "beat", "frontend", "proxy", "mcp", "operator", "agent"]
 }
 
 target "_common" {
@@ -149,5 +149,15 @@ target "operator" {
   tags = concat(
     ["${REGISTRY}/bnk-forge-operator:${VERSION}"],
     ROLLING_TAG != "" ? ["${REGISTRY}/bnk-forge-operator:${ROLLING_TAG}"] : [],
+  )
+}
+
+target "agent" {
+  inherits   = ["_common"]
+  context    = "."
+  dockerfile = "Dockerfile.agent"
+  tags = concat(
+    ["${REGISTRY}/bnk-forge-agent:${VERSION}"],
+    ROLLING_TAG != "" ? ["${REGISTRY}/bnk-forge-agent:${ROLLING_TAG}"] : [],
   )
 }

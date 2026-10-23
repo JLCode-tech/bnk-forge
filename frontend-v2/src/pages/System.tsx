@@ -107,12 +107,13 @@ export default function System() {
     <Tabs
       value={activeTab}
       onValueChange={handleTabChange}
-      className="min-h-[calc(100vh-3rem)] flex"
+      className="h-[calc(100vh-3rem)] flex overflow-hidden"
     >
       {/* Left Flush Inner Sub-Sidebar */}
       <CollapsibleInnerSidebar
+        defaultCollapsed={false}
         aria-label="System sections"
-        className="w-52 shrink-0 border-r border-border bg-card/30 p-3 flex flex-col gap-4"
+        className="w-52 shrink-0 border-r border-border bg-card/30 p-3 flex flex-col gap-4 h-full"
       >
         <div className="px-2 pt-1 pb-2 border-b border-border">
           <h1 className="text-sm font-semibold text-foreground tracking-tight">
@@ -139,7 +140,10 @@ export default function System() {
       </CollapsibleInnerSidebar>
 
       {/* Right Content Area */}
-      <div className="flex-1 min-w-0 p-6 space-y-5">
+      <div
+        id="system-content-scroll"
+        className="flex-1 min-w-0 p-6 space-y-5 overflow-y-auto"
+      >
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-base font-semibold tracking-tight text-foreground">

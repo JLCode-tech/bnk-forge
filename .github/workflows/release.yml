@@ -890,9 +890,13 @@ jobs:
           git push origin "${REF_NAME}"
           git push origin "v${{ needs.preflight.outputs.new_version }}"
 
+      - name: Build release distribution tarball
+        run: make dist
+
       - name: Create GitHub Release
         run: |
           gh release create "v${{ needs.preflight.outputs.new_version }}" \
+            "dist/bnk-forge-${{ needs.preflight.outputs.new_version }}.tar.gz" \
             --title "v${{ needs.preflight.outputs.new_version }}" \
             --notes-file "${{ steps.notes.outputs.notes_file }}" \
             --target "${REF_NAME}"
@@ -1072,9 +1076,13 @@ jobs:
           git push origin "${REF_NAME}"
           git push origin "v${{ needs.preflight.outputs.new_version }}"
 
+      - name: Build release distribution tarball
+        run: make dist
+
       - name: Create GitHub Release
         run: |
           gh release create "v${{ needs.preflight.outputs.new_version }}" \
+            "dist/bnk-forge-${{ needs.preflight.outputs.new_version }}.tar.gz" \
             --title "v${{ needs.preflight.outputs.new_version }}" \
             --notes "${RELEASE_NOTES}" \
             --target "${REF_NAME}"
@@ -1135,7 +1143,7 @@ jobs:
       group: release-publish-latest
       cancel-in-progress: false
     permissions:
-      contents: read
+      contents: write
       packages: write
       id-token: write
     env:
@@ -1144,6 +1152,12 @@ jobs:
       REGISTRY: ghcr.io/${{ github.repository_owner }}
       VERSION: ${{ needs.preflight.outputs.new_version }}
     steps:
+      - name: Normalize registry namespace to lowercase
+        run: |
+          # Docker/OCI image repository names must be strictly lowercase; GitHub
+          # repository owners (e.g. JLCode-tech) can contain uppercase characters.
+          echo "REGISTRY=$(printf '%s' "$REGISTRY" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
       - name: Checkout release tag
         uses: actions/checkout@v6
         with:
@@ -1170,7 +1184,7 @@ jobs:
           sparse-checkout-cone-mode: false
           # bonnyr-f5 #193 M3: docker-bake.hcl is sourced here too so the overwrite
           # guard's INDEPENDENT vacuity floor comes from the CURRENT workflow ref
-          # (stable 7-image "default" group), not from the possibly-ancient release
+          # (stable 8-image "default" group), not from the possibly-ancient release
           # tag's tree — a publish_only recovery of an old tag must not depend on
           # that tag's bake-file format.
 
@@ -1314,7 +1328,9 @@ jobs:
         # (bonnyr-f5 #193 r3 minor): the Publish summary below counts THAT, not the
         # static bake target list, so a tag whose tree builds 6 images is not
         # reported as 7.
-        run: docker buildx bake --push --metadata-file "$RUNNER_TEMP/bake-metadata.json" default
+        run: |
+          REGISTRY="$(printf '%s' "$REGISTRY" | tr '[:upper:]' '[:lower:]')" \
+            docker buildx bake --push --metadata-file "$RUNNER_TEMP/bake-metadata.json" default
         env:
           REGISTRY: ${{ env.REGISTRY }}
           VERSION: ${{ env.VERSION }}
@@ -1363,6 +1379,21 @@ jobs:
             --file dist/docker-compose.yml \
             --file dist/docker-compose.local.yml \
             --file scripts/ibm_cloud_bnk_forge.sh
+
+      - name: Ensure GitHub Release and installer bundle asset exist
+        if: inputs.sign_only != true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          make dist
+          TARBALL="dist/bnk-forge-${VERSION}.tar.gz"
+          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+            gh release upload "v${VERSION}" "$TARBALL" --clobber
+          else
+            gh release create "v${VERSION}" "$TARBALL" \
+              --title "v${VERSION}" \
+              --generate-notes
+          fi
 
       - name: Publish summary
         env:

@@ -16,7 +16,7 @@ export interface ProcessMetrics {
 }
 
 export interface ServiceStatus {
-  status: 'healthy' | 'degraded' | 'offline';
+  status: "healthy" | "degraded" | "offline";
   response_time_ms?: number | null;
   workers?: number;
   active_tasks?: number;
@@ -117,13 +117,12 @@ export interface CleanupResult {
 }
 
 export interface VacuumResult {
-  status: 'success' | 'skipped';
+  status: "success" | "skipped";
   duration_seconds: number;
   message?: string;
 }
 
-export type CleanupType = 'deployment_logs' | 'audit_logs' | 'completed_tasks';
-
+export type CleanupType = "deployment_logs" | "audit_logs" | "completed_tasks";
 
 // ============================================================================
 // System Upgrade types (UP-013)
@@ -134,7 +133,7 @@ export interface UpgradeReadiness {
   docker_socket_available: boolean;
   upgrade_ready: boolean;
   upgrade_in_progress: boolean;
-  deployment_mode?: 'local' | 'server' | string;
+  deployment_mode?: "local" | "server" | string;
   recommended_command?: string | null;
   recommended_label?: string | null;
   gui_upgrade_supported?: boolean;
@@ -143,6 +142,7 @@ export interface UpgradeReadiness {
 export interface VersionInfo {
   current_version: string;
   latest_version: string;
+  min_upgrade_from?: string;
   update_available: boolean;
   commits_behind: number;
   error?: string;
@@ -172,8 +172,11 @@ export interface UpgradeState {
 }
 
 export interface UpgradeVerification {
-  verdict: 'healthy' | 'degraded' | 'unhealthy';
-  checks: Record<string, { status: string; error?: string; note?: string; [key: string]: unknown }>;
+  verdict: "healthy" | "degraded" | "unhealthy";
+  checks: Record<
+    string,
+    { status: string; error?: string; note?: string; [key: string]: unknown }
+  >;
   timestamp: string;
 }
 

@@ -19,11 +19,13 @@ Complete guide to using BNK Forge for deploying and managing F5 BIG-IP Next for 
 - [Helm Operations](#helm-operations)
 - [F5 BNK](#f5-bnk)
 - [Fleet Management](#fleet-management)
+- [AI Service Plane](#ai-service-plane)
 - [Performance Benchmarks](#performance-benchmarks)
 - [Auth Templates](#auth-templates)
 - [User Management](#user-management)
 - [System Administration](#system-administration)
 - [Backup & Restore](#backup--restore)
+- [Step-by-Step Operational How-To Workflows](#step-by-step-operational-how-to-workflows)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 
 ---
@@ -62,35 +64,49 @@ BNK Forge has three user roles:
 
 ## Navigation
 
-The sidebar organizes features into four workflow sections:
+The sidebar organizes features into workflow sections:
 
-### OBSERVE
-- **Command Center** — Dashboard with fleet health, active operations, drift alerts
+### OVERVIEW
+- **Overview** (`/`) — Platform overview, fleet health, AI infrastructure telemetry & quick actions
 
 ### BUILD
-- **Blueprints** — Pre-packaged deployment patterns
-- **Projects** — Create and manage infrastructure projects (shows project count + drift badge)
-- **Module Catalog** — Browse and import OpenTofu modules
+- **Workspaces** (`/projects`) — IaC workspaces, modules, variables & state (shows project count + drift badge)
+- **Catalog & Blueprints** (`/catalog`) — Deployable blueprints, stacks, modules & Helm charts
+- **Activity Log** (`/tasks`) — Global task queue, execution logs & history (shows in-progress count + status dot)
 
-### OPERATE
-- **Operations Log** — Task history and deployment logs (shows in-progress count + status dot)
-- **Kubernetes** — K8s resource explorer with Helm integration (shows cluster count)
-- **F5 BNK** — F5 BIG-IP Next for Kubernetes management (38 resource types + diagnostics)
-- **Fleet** — Fleet health monitoring across all clusters (shows fleet count)
-- **Benchmarks** — LLM inference performance testing
+### CLUSTERS
+- **Cluster Fleet** (`/fleet`) — Multi-cluster health, comparison, promotion & lifecycle
+- **Kubernetes** (`/kubernetes`) — Single-cluster workloads, networking, storage & CRDs
+- **F5 BNK** (`/bnk`) — BIG-IP Next for Kubernetes — Gateway, BGP/BFD, CGNAT & Security
+- **F5 CNF** (`/cnf`) — Cloud-Native Network Functions — DNS, Telco & L4/L7
+- **CR Explorer** (`/crds`) — Browse Custom Resource Definitions, schemas & live instances
+- **Infrastructure** (`/infrastructure`) — Bare-metal hosts, NVIDIA BlueField DPUs & topology
+- **Benchmarks** (`/benchmarks`) — Cluster network & data-plane performance benchmarks
 
-### SETTINGS (operator+ role required)
-- **Auth Templates** — SSH credentials and cloud credential templates
-- **Users** — User management (admin only)
-- **System** — System administration, upgrades, monitoring (admin only)
+### AI SERVICE PLANE
+- **Token Governance and Intelligence** (`/ai/token-governance`) — AI Gateway token telemetry, virtual keys, budgets & tenant governance
+- **Agent Fleet** (`/ai/agents`) — Autonomous AI agents, identities & policies
+- **Intelligent Inference** (`/ai/llm-router`) — SmartLLM traffic routing, failover & model endpoints
+- **AI Traffic Logs** (`/ai/logs`) — AI request audit trail, latency & token telemetry
 
-The sidebar can be collapsed for more screen space. Sidebar badges show live counts and status indicators (drift count on Projects, task status dot on Operations Log).
+### SETTINGS & ACCESS
+- **Credentials & Registries** (`/access-methods`) — SSH keys, cloud credentials & container registries
+- **Users** (`/users`) — User accounts & role assignments (admin only)
+- **System** (`/system`) — Platform health, backups, upgrades & configuration (admin only)
+
+The sidebar can be collapsed for more screen space. Sidebar badges show live counts and status indicators (drift count on Workspaces, task status dot on Activity Log).
 
 ---
 
 ## Command Center (Dashboard)
 
-The Command Center (`/`) is the home page providing an overview of your infrastructure.
+The Overview / Command Center (`/`) is the home page providing a unified summary of your infrastructure, AI gateway telemetry, and recent benchmark activity.
+
+![Overview Dark Mode](images/overview-dark.png)
+
+*Light theme view:*
+
+![Overview Light Mode](images/overview-light.png)
 
 ### Greeting and Quick Actions
 
@@ -234,9 +250,11 @@ Browse, import, and manage OpenTofu/Terraform modules.
 
 ## Blueprints
 
-### Blueprints (`/stacks`)
+### Catalog & Blueprints (`/catalog` / `/stacks`)
 
 Pre-packaged module collections for common deployment patterns.
+
+![Catalog & Blueprints](images/blueprint-catalog.png)
 
 **Features:**
 - Browse by category: Infrastructure, BNK, Solution, Custom
@@ -388,6 +406,8 @@ Browse charts from configured Helm repositories. Search by name, then **Install*
 
 A comprehensive sidebar + content layout for managing F5 BIG-IP Next for Kubernetes resources.
 
+![F5 BNK Dashboard](images/f5-bnk-dashboard.png)
+
 **Header Controls:**
 - Project selector, Cluster selector, Namespace filter
 - Search input (press `/` to focus)
@@ -510,11 +530,47 @@ When DPF is not installed, a **Setup Wizard** is offered.
 
 ---
 
+## AI Service Plane
+
+### Token Governance and Intelligence (`/ai/token-governance`)
+
+Centralized observability and cost/token governance across F5 AI Gateway and Loki telemetry streams.
+
+![AI Token Governance](images/ai-token-governance.png)
+
+**Capabilities:**
+- **Gateway Summary**: Real-time request success rate, end-to-end latency, total token volume, and cumulative spend across all clusters and namespaces
+- **Telemetry Charts**: Request volume (`2xx` vs `429` rate-limited), token breakdown (`input`, `cached`, `output`), cost per model, model usage distribution, and P50/P95 latency trends
+- **AI Gateway & Governance Sub-Navigation**:
+  - **Model Rankings & Provider Usage** — compare latency, throughput, and token efficiency across model backends
+  - **Tenants & Profiles** — configure per-tenant token quotas and rate-limit policies
+  - **Models & Providers** — register upstream LLM providers (vLLM, OpenAI, Anthropic, NIM, Bedrock)
+  - **Access & Virtual Keys** — issue scoped virtual API keys with token budgets and expiration
+  - **Request Audit Logs, Gateway Topology & Diagnostics** — inspect prompt/completion metadata and troubleshoot AI Gateway routing
+
+### Intelligent Inference (`/ai/llm-router`)
+
+Real-time Endpoint Picker (EPP) routing topology, KV-cache prefix awareness, and F5 AI Analyzer (`F5BigAnalyzer`) telemetry for GAIE-native inference pools.
+
+![Intelligent Inference Routing Topology](images/ai-llm-router-topology.png)
+
+**Capabilities:**
+- **F5 EPP Real-Time AI Analyzer**: Monitors live token velocity (`tok/s`), prefix cache hit rate (`%`), TTFT P50/P95, Inter-Token Latency (ITL), active vs queued requests, and GPU KV-cache memory fill
+- **Inference Routing Views**:
+  - **Fleet Overview** — multi-cluster inference pool health
+  - **Routing Topology** — live telemetry, EPP topology & architecture diagram, and declarative CRD manifests
+  - **Inference Pools & Models** — manage `InferencePool` and `InferenceModel` resources
+  - **EPP Policies & Scoring** — tune KV-cache, queue-depth, and LoRA-affinity scoring weights
+
+---
+
 ## Performance Benchmarks
 
 ### Benchmarks (`/benchmarks`)
 
 LLM inference load testing dashboard for comparing proxy/load-balancer performance.
+
+![Benchmarks Dashboard](images/benchmarks-dashboard.png)
 
 **6 Tabs:**
 
@@ -583,9 +639,11 @@ Side-by-side comparison of 2+ benchmark runs.
 
 ## Auth Templates
 
-### Auth Templates (`/auth-templates`)
+### Credentials & Registries (`/access-methods` / `/auth-templates`)
 
 Configure credentials for cluster access and cloud providers. Requires operator role.
+
+![Credentials & Registries](images/credentials-registries.png)
 
 ### SSH Credentials
 
@@ -638,6 +696,8 @@ Admin-only page for managing user accounts.
 
 Admin-only page with 7 tabs for system configuration and monitoring.
 
+![System Administration](images/system-settings.png)
+
 ### System Monitor Tab (default)
 
 **System Upgrade:**
@@ -662,9 +722,12 @@ Admin-only page with 7 tabs for system configuration and monitoring.
 - Vacuum & Optimize
 
 **Container Management (collapsible):**
+
+![Container Management](images/system-containers.png)
+
 - Container list with status (running/exited/dead/restarting/paused)
-- Restart selected containers or all services
-- PostgreSQL and Redis are protected from restart
+- Restart selected application containers (`backend`, `frontend`, `celery-worker`, `celery-worker-2`, `celery-beat`, `proxy`, `mcp`, `agent`) or all services
+- Infrastructure sidecars (`postgres`, `postgres-backup`, `redis`, `docker-socket-proxy`, `docker-socket-proxy-infra`) are protected from UI restart
 
 ### Audit Log Tab
 
@@ -756,6 +819,64 @@ After restart, refresh your browser to reconnect.
 During restore operations, the system enters maintenance mode. All API requests (except health checks) return a 503 response with a message explaining the maintenance.
 
 The maintenance mode banner appears at the top of the page for any users who are logged in during the restore.
+
+---
+
+## Step-by-Step Operational How-To Workflows
+
+### How-To 1: Fresh Install & First-Time Setup
+
+1. Run `./install.sh` (or `./install.sh --local` / `make local-deploy` on macOS/Dev) to generate TLS certificates, random secrets in `.env`, apply Alembic migrations, and seed the module library and stack templates.
+2. Copy the generated initial `admin` password printed in the installation banner (or read it with `docker exec bnk-forge-backend cat /app/keys/initial_admin_password`).
+3. Open `https://localhost` (or `http://localhost:8080` in local mode) in your browser, log in as `admin`, and complete the mandatory first-login password change.
+4. **Expected Outcome:** The **Command Center** (`Overview`) loads with all backend services (`Database`, `Redis Cache`, `Task Workers`) reporting `Healthy`, `81` seeded modules in the catalog, and `13` ready-to-deploy blueprints.
+
+![BNK Forge Command Center](images/overview-dark.png)
+
+### How-To 2: Configuring Cloud Credentials, SSH Keys & Container Registries
+
+1. Navigate to **Settings & Access → Credentials & Registries** (`/access-methods`) in the left sidebar.
+2. Under **Cloud Credentials**, click **+ Add Credential**, select your cloud provider (`AWS`, `Azure`, or `GCP`), enter a descriptive profile name, and provide your credentials or initiate browser-based SSO.
+3. Click the **Refresh / Validate** icon on the credential row to verify live cloud authentication (`Valid` green status badge).
+4. Switch to the **SSH Keys** tab to generate or import an Ed25519/RSA keypair for node access, and switch to **Container Registries** to add your F5 FAR (`repo.f5.com`) service-account JSON key so BNK Helm charts and images can be pulled cleanly.
+5. **Expected Outcome:** All configured cloud profiles show a green `Valid` status badge, SSH keys are available for selection in project variables, and F5 FAR registry credentials are ready for BNK deployment.
+
+![Credentials & Registries](images/credentials-registries.png)
+
+### How-To 3: Deploying a Blueprint & Inspecting F5 BNK 2.4.1 CNF CRs
+
+1. Navigate to **Projects** (`/projects`), click **Create from Blueprint**, and select a blueprint from the **Blueprint Catalog** (for example, *AWS EKS — F5 BNK + Dual-Tier Gateway* or *Bare-Metal & DPF — High-Performance BNK*).
+2. Enter a project name, bind your validated Cloud Credential, SSH Key, and F5 License / Registry in the wizard, and click **Create Project**.
+3. Open the project's **Execution Plan** tab and click **Deploy All** to execute the topological OpenTofu waves in sequence (`VPC` → `EKS / K8s` → `F5 BNK`).
+4. Once deployment completes, navigate to **F5 BNK** (`/bnk`) and **CNF CR Explorer** (`/crds`) in the sidebar and select your cluster from the top cluster selector.
+5. **Expected Outcome:** The **F5 BNK Overview** displays `v2.4.0`, `8/8 Healthy` CNE components (`BNK Controller`, `CNE Speaker (BGP)`, `TMM Dataplane`, `F5 IngressLink`, `Cert Manager`, `OTel Collector`, `BGP Watchdog`, `AFM Firewall`), and the **CNF CR Explorer** (`/crds`) lists live F5 BNK 2.4.1 Custom Resource Definitions (`F5SPKVlan`, `F5SPKSnatpool`, `F5BigNetVlan`, `F5BigCneSub`, `Gateway`, `HTTPRoute`) with zero configuration drift.
+
+![Blueprint Catalog](images/blueprint-catalog.png)
+![F5 BNK Dashboard](images/f5-bnk-dashboard.png)
+![Kubernetes & F5 BNK 2.4.1 CNF CR Explorer](images/cr-explorer.png)
+
+### How-To 4: Running a Benchmark Suite & Inspecting AI Gateway Telemetry
+
+1. Navigate to **Benchmarks** (`/benchmarks`) in the sidebar and click **New Benchmark** (or **New Suite**) to launch a throughput, latency, or EPP AI routing benchmark against your target cluster.
+2. Select the test profile (HTTP/L7 CPS, L4 throughput, or LLM inference token streaming), configure concurrency and duration, and start the run.
+3. Compare p50/p95/p99 latency curves, RPS/tok/s throughput, and pass/warn/fail assertions across historical runs (`139` runs across `21` run groups) in the **Benchmarks** dashboard.
+4. For AI workloads, navigate to **Token Governance and Intelligence** (`/ai/token-governance`) and **Intelligent Inference** (`/ai/llm-router`) to inspect request success rates, token consumption, cost attribution, and F5 EPP prefix-cache hit rates (`78.4%`) and TTFT/ITL latency.
+5. **Expected Outcome:** Benchmark results are persisted with full historical comparison charts, and the AI Service Plane shows real-time token governance budgets and live EPP pod routing topology.
+
+![Benchmarks Dashboard](images/benchmarks-dashboard.png)
+![AI Token Governance](images/ai-token-governance.png)
+![Intelligent Inference Routing Topology](images/ai-llm-router-topology.png)
+
+### How-To 5: Safe In-Place Platform Upgrade & Rollback
+
+1. Navigate to **Settings & Access → System** (`/system`) and check the **System Upgrade** card (`v4.0.0`) or click **Check for Updates** to inspect available releases and the minimum supported upgrade floor (`min_upgrade_from: 3.0.0`).
+2. To upgrade from the CLI with full pre-migration safety, run `./upgrade.sh` (or `./upgrade.sh --skip-build` when using pre-built GHCR images, or `make local-deploy` on macOS/Dev) from the installation directory.
+3. `upgrade.sh` verifies version compatibility against `MIN_UPGRADE_FROM`, automatically snapshots the PostgreSQL database to `./backups/pre-upgrade-<old_version>-<timestamp>.sql.gz`, runs `alembic upgrade head`, syncs new system defaults (`JLCode-tech/bnk-forge`), rebuilds changed containers, and refreshes `bnk-forge-proxy` upstream DNS.
+4. If a rollback is ever required, restore the pre-upgrade snapshot via `gunzip -c ./backups/pre-upgrade-<old_version>-<timestamp>.sql.gz | docker exec -i bnk-forge-postgres psql -U bnkforge -d bnkforge` and check out the previous release tag.
+5. **Expected Outcome:** All containers return to `healthy`/`running` status in **Container Management** and **System Diagnostics**, `Current Version` reports the new release, and all existing projects, credentials, and benchmark history remain intact.
+
+![System Monitor & Upgrades](images/system-settings.png)
+![Container Lifecycle & System Diagnostics](images/system-containers.png)
 
 ---
 
