@@ -4,6 +4,10 @@ All notable changes to BNK-Forge.
 
 ---
 
+## v4.1.1 (2026-10-23) — patch bump
+
+- chore(repo): consolidate root directories and config files into subdirectories
+
 ## v4.1.0 (2026-10-23) — minor bump
 
 - chore(repo): declutter root directory by relocating community and doc files
