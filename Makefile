@@ -1560,9 +1560,9 @@ security-audit:
 	@pip-audit -r bnk-operator/requirements.txt --progress-spinner=off
 	@echo ""
 	@echo "--- Python: mcp-server (pyproject.toml) ---"
-	# PYSEC-2026-196 is the build-env pip itself (pip<26.1.2), not a project dependency.
+	# PYSEC-2026-196 / PYSEC-2026-3721 is the build-env pip itself (pip<26.2.0), not a project dependency.
 	# PYSEC-2026-3447 is the build-env setuptools (<83.0.0), not a project dependency.
-	@cd mcp-server && pip-audit --progress-spinner=off $(PIP_AUDIT_DEFER) --ignore-vuln PYSEC-2026-196 --ignore-vuln PYSEC-2026-3447
+	@cd mcp-server && pip-audit --progress-spinner=off $(PIP_AUDIT_DEFER) --ignore-vuln PYSEC-2026-196 --ignore-vuln PYSEC-2026-3721 --ignore-vuln PYSEC-2026-3447
 	@echo ""
 	@echo "--- JavaScript: frontend-v2 (prod deps, HIGH+) ---"
 	@cd frontend-v2 && npm audit --omit=dev --audit-level=high
