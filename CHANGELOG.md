@@ -4,6 +4,242 @@ All notable changes to BNK-Forge.
 
 ---
 
+## v4.1.0 (2026-10-23) — minor bump
+
+- chore(repo): declutter root directory by relocating community and doc files
+- Merge pull request #4 from JLCode-tech/staging
+- docs(readme): remove mermaid diagrams for clean visual flow matching bnkctl
+- Merge pull request #3 from JLCode-tech/feat/docs-visual-tour-system-upgrade-v4
+- fix(security): bump gitpython to 3.2.1 and dompurify to 3.4.17 for P4 security audit
+- docs: align front README, visual tour, F5 BNK AI Service Plane terminology, and bnkctl integration
+- fix(ci): keep MIN_UPGRADE_FROM at v3.1.6 tag and remove unused shellcheck variable
+- feat(docs,system,release): visual tour docs, Forge brand typography, GHCR fork packaging, and v4.0.0 upgrade verification
+- Merge pull request #2 from JLCode-tech/feat/bnk-241-ai-governance-cnf-topology
+- fix(ci): bump follow-redirects to 1.16.1 to resolve high severity npm audit
+- fix(ci): update multi-cluster latency histogram component test for percentile aggregation
+- fix(ci): resolve backend lint/mypy, openapi types, and frontend unit tests
+- feat(ai-gateway): align BNK 2.4.1 manual schema, live multi-cloud telemetry, and A2A/EPP observability
+- feat(ui): replace hardcoded f5-bnk input with discovered namespace dropdown defaulting to all
+- fix(system): restore celery worker heartbeat resilience, container status fallback, and cluster health checks
+- refactor(ui): consolidate FinOps spend share and budget utilization into Model Rankings and Access & Virtual Keys
+- fix(ai): unify token governance telemetry, separate inference router tabs, and fix f5-bnk namespace filter
+- feat(ai): move AI Gateway governance to /ai/token-governance and restore Intelligent Inference
+- fix(cnf): filter CNF CRD counts, support composite OpenAPIV3Schema, and fix branch tests/lint
+- feat: complete BNK 2.4.1 CNF CRUD, CRD schema inspector, and topology upgrades
+- fix(ai-gateway): complete Polaris multi-cluster console, RBAC, and cross-CRD fabric
+- feat(ai-gateway): add BNK 2.4.1 multi-cluster AI governance console and Dependency Fabric topology
+- Merge pull request #1 from JLCode-tech/perf/ui-load-caching-and-async
+- perf(ui,backend): lazy-load monaco, deduplicate queries, unblock async routes, and add redis caching
+- fix(ui,fleet): resolve phases 1-3 navigation, deep-link, and live-data audit findings
+- fix(fleet,qkview): isolate worker db sessions, short-circuit failed connection probes, and guard cwc meta key
+- test(benchmarks): seed registered agent rows for agent-bound token unit tests
+- fix(ui): preserve bnk sidebar crd group filtering from human-tip baseline
+- fix(benchmarks): add arrival_pattern and warmup_duration flags to forge_agent (#225)
+- fix(benchmarks): restore admin gate for unscoped agent deletion and enforce bound agent validation
+- fix(benchmarks): allow operator deletion of global agents and handle test token decoding
+- fix(benchmarks): resolve backend mypy assignment and sync generated api types
+- fix(benchmarks): address review findings for agent token lifecycle and revocation
+- fix(perf): address review findings for caching, routing, and crd discovery (#224)
+- fix(bnk): address review findings for bnk 2.4 resources and fleet observability
+- fix(bnk): remove unused import and avoid caching partial fetch failures
+- fix(k8s): harden global search, fleet observability, and a2a discovery
+- fix(bnk): resolve staging regressions from v4 migration (#228)
+- security: bump PyJWT to 2.15.0, urllib3 to 2.8.0 and axios to 1.20.0
+- feat(ui): unify sidebar navigation, collapsible inner rails, and cluster scope selectors
+- feat(benchmarks): add Poisson scenario catalog, model server stats, and inference pool discovery
+- feat(fleet): add fleet deployable configs API and harden error handling
+- feat(cli): add azrbnkctl and gkebnkctl multi-cloud CLI wrappers and credential validation
+- feat(bnk): add EPP runtime telemetry, traffic stats, and policy associations
+- perf(backend): bound topology/qkview builders and remove unauthenticated debug route
+- docs: add DevCentral overview, agent guidelines, and remove archived spec docs
+- fix(ui): remediate navigation, title harmonization, and cluster scope bugs (Phase 0)
+- docs(ui): add frontend UI consistency audit and remediation plan
+- fix(benchmarks): accept null in handleClusterChange to match ClusterPicker onChange signature
+- merge: fold PR #201 (stream opentofu task logs incrementally)
+- merge: fold PR #200 (cluster inventory never syncs)
+- merge: fold PR #221 (benchmark agent token endpoint)
+- merge: fold PR #217 (proxy discovery, k8s hardening, benchmarks stack)
+- merge: incorporate Fleet 3-tab layout from PR #206 (38cbabd)
+- feat(fleet): restore Overview, BNK Resources, and Fleets 3-tab layout
+- fix(bnk): export and finalizer-clean BNK 2.4 and GAIE resources
+- fix(frontend): key Kubernetes-page describe/edit/delete by apiVersion
+- fix(discovery): match Forge proxies in the target namespace; auth failure closes half-open breaker
+- Merge branch 'feat/benchmarks-external-url-and-fleet-filtering' into feat/proxy-discovery-and-k8s-hardening
+- fix(benchmarks): protect the built-in agent row; bind bootstrap token on WS layer 2
+- Merge branch 'feat/v4-multi-cloud-ux-enhancements' into feat/bnk-24-resources
+- fix(bnk): probe A2A pod fallback on the Service targetPort
+- Merge branch 'feat/azure-auth-templates' into feat/v4-multi-cloud-ux-enhancements
+- Merge branch 'work/v4-localhost' into feat/azure-auth-templates
+- fix(frontend): force BNK data refetch after builder apply
+- Merge branch 'fix/agent-ws-reconnect-drain' into feat/benchmarks-external-url-and-fleet-filtering
+- fix(benchmarks): spare runs sent on the new connection; park superseded agent
+- fix(benchmarks): close a removed agent host's live WebSocket
+- fix(discovery): tie proxy Services to their Deployment; breaker check before kubeconfig
+- Merge branch 'feat/benchmarks-external-url-and-fleet-filtering' into feat/proxy-discovery-and-k8s-hardening
+- fix(benchmarks): make the built-in agent marker server-owned
+- Merge branch 'feat/v4-multi-cloud-ux-enhancements' into feat/bnk-24-resources
+- Merge branch 'feat/azure-auth-templates' into feat/v4-multi-cloud-ux-enhancements
+- Merge branch 'fix/agent-ws-reconnect-drain' into feat/benchmarks-external-url-and-fleet-filtering
+- fix(benchmarks): fail only runs whose connection is gone; one connection per agent
+- Merge branch 'work/v4-localhost' into feat/azure-auth-templates
+- fix(bnk): BNK 2.4 edit/delete keys, Infra health card, topology cleanups
+- fix(frontend): module-first cluster detection, targeted BNK force refresh
+- fix(backend): keep route serviceSettings in topology responses; always clear CWC caches after resync
+- fix(auth): keep Entra ID SSO templates out of provisioning defaults
+- docs(bnk): finish the shared fetch executor comment
+- fix(llm-observability): skip clusters the reachability probe marks unreachable
+- fix(a2a): interleave service and pod proxy probes per port and path
+- fix(benchmarks): close a deleted agent's WebSocket and signal re-mint with 4401
+- Merge branch 'feat/v4-multi-cloud-ux-enhancements' into feat/bnk-24-resources
+- Merge branch 'feat/azure-auth-templates' into feat/v4-multi-cloud-ux-enhancements
+- Merge branch 'feat/benchmarks-external-url-and-fleet-filtering' into feat/proxy-discovery-and-k8s-hardening
+- Merge branch 'fix/benchmark-target-cluster-uniqueness' into feat/benchmarks-external-url-and-fleet-filtering
+- Merge branch 'fix/agent-ws-reconnect-drain' into feat/benchmarks-external-url-and-fleet-filtering
+- Merge branch 'fix/gitpython-3.1.60' into fix/agent-ws-reconnect-drain
+- Merge branch 'work/v4-localhost' into feat/azure-auth-templates
+- Merge branch 'fix/benchmark-target-cluster-uniqueness' into work/v4-localhost
+- Merge branch 'fix/gitpython-3.1.60' into work/v4-localhost
+- Merge branch 'fix/gitpython-3.1.60' into feat/benchmark-agent-token-endpoint
+- Merge branch 'fix/gitpython-3.1.60' into fix/benchmark-target-cluster-uniqueness
+- security: bump gitpython to 3.1.60
+- fix(discovery): exact proxy matching, scoped ConfigMap parsing, restored cluster breaker
+- fix(bnk): expose BNK 2.4 fields in typed responses and search
+- Merge branch 'feat/azure-auth-templates' into feat/v4-multi-cloud-ux-enhancements
+- chore(migrations): renumber Azure credential template migration to v2_159
+- Merge branch 'work/v4-localhost' into feat/azure-auth-templates
+- chore(migrations): renumber cluster discovery migrations after v2_156
+- chore(openapi): regenerate spec and types for search project ids and the scoped cluster delete
+- fix(ui): scope the embedded operations KPIs to the project and map on-prem aliases
+- fix(clusters): enforce the project on the project-scoped cluster delete
+- fix(llm-observability): default to one cluster and bound fleet queries
+- fix(scanner): mark clusters the scan did not reach as unreachable
+- fix(a2a): cap agent-card probes and match fallback pods by Service selector
+- fix(bnk): give the BNK data fetch one deadline and cache partial results briefly
+- fix(search): bound the live cluster scan and deep-link hits with their project
+- Merge branch 'fix/benchmark-target-cluster-uniqueness' into work/v4-localhost
+- fix(k8s): signal a missing bound template with a reason code
+- fix(bnk): align BNK 2.4 support with live CRD shapes
+- Merge branch 'feat/benchmarks-external-url-and-fleet-filtering' into feat/proxy-discovery-and-k8s-hardening
+- fix(benchmarks): bind the bootstrap WS bypass to the built-in agent and tighten URL matching
+- Merge branch 'fix/agent-ws-reconnect-drain' into feat/benchmarks-external-url-and-fleet-filtering
+- fix(frontend): cluster detection confirm, BNK cache keys, per-cluster placeholders
+- fix(auth): scope Azure credentials to the chosen auth method
+- fix(backend): BNK data pipeline, credential discovery and cache correctness
+- fix(benchmarks): claim single runs before dispatch and unwedge the agent queue
+- fix(benchmarks): bind agent tokens to their agent and never to a user
+- fix(benchmarks): include cluster id in target picker labels
+- fix(migrations): v2_156 downgrade restores unique ix_benchmark_targets_name
+- fix(scanner): stamp last_synced_at and connected only when the scan reached the cluster
+- merge: bring in #199 credential-template provider validation (fix/191 1ad1099)
+- feat(benchmarks): mint agent-bound tokens for external benchmark agents
+- fix(ui): type the BNK 2.4 Infra, GatewaySettings and F5EPP detail components
+- fix(ui): use accent design tokens for the Azure provider badge
+- chore(openapi): regenerate spec and types for the consumption badges and project-scoped cluster delete
+- feat(ux): fold the localhost v4 tuning into the multi-cloud UX branch
+- feat(bnk): surface BNK 2.4 resources across registry, scanner, topology and UI
+- fix: lint import hygiene and agent auth test import
+- fix(discovery): address review findings on linear envoy parsing, scoped inventory query, and k8s logging
+- fix(k8s): add --disable-openapi-validation to Helm, auto-export SSL_CERT_FILE, and optimize connection pools
+- feat(discovery): classify standalone proxy deployments and parse ConfigMap backends for HAProxy, NGINX, and Envoy
+- fix(benchmarks): log the K8s validation fallback miss at debug level
+- fix(benchmarks): fix missing group_id signature parameter and regenerate stale OpenAPI/TypeScript definitions
+- fix(benchmarks): restrict claimless ws token bypass to builtin agent and update test fixtures
+- feat(benchmarks): add multi-cluster fleet filtering and cluster badging to benchmarks UI
+- feat(benchmarks): resolve external routable nodeport URLs for deployed proxies and align HAProxy 10080 port mapping
+- fix(benchmarks): serialize sibling claims and release locks before ws send
+- fix(#209): close double-dispatch + concurrent-sibling races in ws-connect drain
+- fix(test): use proper BenchmarkAgent fixture for get_first_pending_run_for_agent tests
+- fix(benchmarks): auto-drain and dispatch pending runs on agent ws connect
+- chore(api): update openapi.json and generated typescript types
+- fix(benchmarks): scope target name uniqueness to cluster and add name filter
+- fix(dashboard): resolve merge conflict and align multi-cloud dashboard view
+- chore(openapi): regenerate openapi spec and sync credentials service
+- fix(#206): correct fleet distinct-model stat + cover k8s search-scan core
+- fix(f5bnk): use functional state updates in search params effect
+- fix(bnk,a2a): route egress search to traffic flow and fix a2a card probe fallback
+- fix(frontend): optional placement props and node zone types on HealthPodDetail
+- chore(openapi): regenerate openapi spec and frontend types for pr branch
+- fix(ci): format backend imports, fix boolean filter, and sync openapi types
+- fix(ui): resolve search kind routing, azure zone formatting, and a2a probe discovery
+- refactor(frontend): centralize cloud provider normalization and deduplicate filter logic
+- fix(obs): resolve thread-safe DB session access and prevent N+1 query in search
+- feat(observability): add multi-cluster latency breakdown and fleet-wide log aggregation
+- chore(types): update frontend api-generated.ts from openapi schema
+- chore(openapi): update backend openapi schema and sort imports
+- fix(ux): decouple multi-cloud UX from other branches and resolve search concurrency
+- feat(ux): streamline multi-cloud estate, global omni-search, and bnk topology views
+- fix(auth): update openapi spec and frontend api types for azure auth method
+- fix(auth): address review findings for azure auth templates
+- fix(#207): self-review — tz-naive expiry crash, drop token-leaking SSO routes, doc SSO/terraform split
+- fix(auth): deduplicate 24-hour credential expiry notification and align alembic docstring
+- fix(auth): set migration revision to v2_156 for independent branch on staging
+- fix(auth): rebase migration to v2_157 and harden azure sso token refresh
+- feat(auth): add Microsoft Azure Service Principal and Entra ID SSO credential templates
+- fix(frontend): fail closed when blueprint template load errors in deploy dialog
+- fix(#205 r*): assert kubeconfig encryption-at-rest (M1) + normalize Azure api_server (M3)
+- fix(fleet): remove unused re import
+- refactor(bnk): consolidate bnk version extraction and coordinate query invalidation
+- fix(system): isolate thread db sessions in bnk consumption and harden ca bundle
+- fix(ci): suppress upstream CVE-2026-56854 in bundled Go binaries
+- perf: optimize F5 BNK diagnostics data caching and cross-tab navigation
+- perf(k8s,f5bnk,fleet): eliminate blocking spinners and redundant fetches across tab navigation
+- feat(system): add node capacity fallback for bnk resources and polish deploy dialog
+- feat(f5bnk): show per-listener connection counters in Traffic Flow
+- perf(bnk): cache shared BNK state across tabs, diagnostics, and license endpoints; fix project-switch refresh
+- test(f5bnk): return real cluster from mocked KubernetesService.get_cluster
+- feat(k8s): expose cluster metadata fields end-to-end
+- perf(bnk): cap thread pools and cache expensive cloud/BNK/license work
+- fix(f5bnk): evaluate BNK 2.3 policy refs, route parent conditions, and CNE available state
+- perf(system): parallelize bnk-consumption cluster collection with 30s timeout
+- perf(f5bnk): stop blocking health dashboard on unified data; skip configview probes when no VS rows
+- fix(module-library): honor git_ref tag refs and reconcile official source with settings
+- feat: support custom TLS CA certificates for corporate SSL inspection proxies
+- feat: add operational-state polish to App Delivery (Slice 7)
+- feat: add TMM traffic stats to BNK gateway/listener/egress views
+- refactor: relocate BNK Resources, MCP, and Benchmarks navigation
+- feat: add BNK Resources fleet consumption dashboard to System page
+- feat: credential-template-driven cluster auto-detection
+- feat: BNK Health dashboard connectivity and integration status
+- refactor: DRY operator connectivity, node enrichment, and region selector
+- feat: enrich BNK Health dashboard with node/AZ placement metadata
+- feat: allow free-form cloud regions and add cluster discovery metadata
+- Merge pull request #208 from f5devcentral/feat/unified-cloud-k8s-access
+- Merge pull request #203 from f5devcentral/fix/202-multus-openshift-namespace
+- security(deps): bump js-yaml 4.3.1 -> 4.3.2 (P4 Security Audit npm HIGH)
+- security(deps): bump gitpython 3.1.58 -> 3.1.59 (P4 Security Audit gate)
+- security(trivy): suppress CVE-2026-56854 (x/crypto/ssh) until helm 3.22.0 stable
+- Merge pull request #215 from f5devcentral/security/trivyignore-cve-2026-56854
+- security(deps): bump js-yaml 4.3.1 -> 4.3.2 (P4 Security Audit npm HIGH)
+- security(deps): bump gitpython 3.1.58 -> 3.1.59 (P4 Security Audit gate)
+- security(trivy): suppress CVE-2026-56854 (x/crypto/ssh) until helm 3.22.0 stable
+- fix(#201 r2): close self-review minors in _stream_subprocess (M1 EOF-alive timeout, M2 multibyte-timeout, M3 newline parity)
+- fix(#194 r2): clear bonnyr-f5 minors — remove /resync, fix health-gate row-lock, align stamp/comment
+- fix(#195 r1): enforce the streaming timeout past a grandchild-held pipe + kill the child on any abrupt exit (B-1, B-2); stop the retry log rewind (F1)
+- fix(#208): fail closed on mismatched credential template + self-review nits
+- fix(#191 r2): constrain provider via Literal to close the 422 body-leak + wire the enum into the contract
+- fix(#202 review r1): shared ranked Multus DaemonSet picker; file the class follow-ups
+- fix(#194 r2): stamp last_synced_at only on a scan that reached the cluster + forward-compat #203
+- fix(k8s): load kubeconfig purely in-memory and isolate project credential templates
+- fix(k8s): correct AKS AAD server app id and extract multi-cloud badge utilities
+- fix(frontend): sync version to 4.0.0 in package-lock.json for npm audit
+- chore(deps): bump GitPython to 3.1.59, mcp urllib3, and ignore CVE-2026-56854
+- fix(deps): pin urllib3>=2.6.4 to remediate CVE-2026-21441
+- chore(security): allowlist microsoft public azure cli client id in gitleaks
+- fix(backend,frontend): fix boolean filter syntax and design tokens
+- feat(frontend): add multi-cloud provider badges and flags for gke and azure
+- fix(k8s): retry cloud OAuth token minting on corporate proxy SSL interception
+- feat(k8s): support pure-Python GCP and Azure OAuth token generation with fallback
+- fix(#202): deterministic Multus DaemonSet selection + document the pod-count scope (self-review)
+- chore(#194): regenerate OpenAPI spec + TS types after the resync docstring edit
+- fix(#202): count Multus pods in the DaemonSet's namespace so OpenShift reports correctly
+- test(#195): make the streaming handshake test non-vacuous (self-review)
+- fix(#194): correct the misleading pod-inventory test + drop redundant 404 (self-review)
+- docs(#191): correct the azure/gcp consumer comment per self-review
+- chore(#194): regenerate OpenAPI spec + TS types for the new resync endpoint
+- fix(#195): stream opentofu task logs incrementally and expose log fields in the task list
+- fix(#194): stamp last_synced_at on scan completion and add an explicit resync trigger
+- fix(#191): validate credential-template provider against the injection set
+
 ## v4.0.0 (2026-08-24) — major bump
 
 ### ⚠️ Breaking Changes
