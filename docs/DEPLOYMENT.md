@@ -25,7 +25,7 @@ Use Makefile entry points (preferred) so deployment mode is explicit:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/f5devcentral/bnk-forge.git
+git clone https://github.com/JLCode-tech/bnk-forge.git
 cd bnk-forge
 
 # 2. Create your environment file (optional — works without it for local dev)
@@ -190,29 +190,42 @@ To obtain credentials:
 
 ## Upgrading
 
-Non-destructive — preserves all data, volumes, and configuration:
+### How-To 5: Safe In-Place Platform Upgrade & Rollback
 
-```bash
-# Preferred on Linux servers
-make upgrade-safe
+Non-destructive upgrades preserve all PostgreSQL data, encrypted keys, Docker volumes, and environment configuration:
 
-# Compatibility wrapper (also non-destructive)
-make update
+![System Monitor & Upgrade Status](images/system-settings.png)
 
-# On laptops, pull then redeploy local overlay
-git pull --ff-only
-make local-deploy
-```
+1. **Check Version Compatibility (`MIN_UPGRADE_FROM`)**
+   - Review the root `MIN_UPGRADE_FROM` file (currently `3.0.0`). Direct in-place upgrades are supported from any version `>= MIN_UPGRADE_FROM`.
+   - From the UI (**Settings & Access → System → System Monitor**), click **Check for Updates** to inspect the current and latest versions.
+2. **Run the Non-Destructive Upgrade**
+   - **Linux Server (preferred):**
+     ```bash
+     make upgrade-safe
+     # Or invoke upgrade.sh directly:
+     ./upgrade.sh
+     ```
+   - **Laptop (Docker Desktop / WSL2):**
+     ```bash
+     git pull --ff-only
+     make local-deploy
+     ```
+   - **GUI One-Click Upgrade (when `HOST_REPO_PATH` and Docker socket are mounted):** Click **Upgrade Now** in **Settings & Access → System**.
+3. **What `upgrade.sh` Executes Automatically**
+   - **Step 1 (Version Check):** Validates that the current version meets `MIN_UPGRADE_FROM` (`3.0.0`) before pulling code.
+   - **Step 2 (Git Pull & Change Analysis):** Pulls the target ref and inspects changed files across `backend/`, `frontend-v2/`, `proxy/`, `mcp_server/`, `agent/`, and `backend/alembic/versions/`.
+   - **Step 3 (Smart Container Build):** Rebuilds only the service images whose source files changed (`--skip-build` skips image builds when using pre-built GHCR images).
+   - **Step 4 (Rolling Service Restart & Proxy DNS Refresh):** Recreates changed containers in dependency order and refreshes `bnk-forge-proxy` upstream DNS resolution.
+   - **Step 5 (Automatic Pre-Migration DB Snapshot & Alembic Migration):** Creates a compressed PostgreSQL dump at `./backups/pre-upgrade-<old_version>-<timestamp>.sql.gz` before running `alembic upgrade head`.
+   - **Step 6 (Post-Upgrade Health & Version Verification):** Verifies container readiness, database connectivity, and `/api/system/version`.
+4. **Inspect Container Lifecycle & Rollback if Needed**
+   - Expand **Container management** at the bottom of **Settings & Access → System** to view live container status and restart application services (`backend`, `frontend`, `proxy`, `mcp`, `agent`, `celery-worker`). Stateful infrastructure containers (`postgres`, `redis`, `docker-socket-proxy`) are protected from accidental UI restarts.
+   - To roll back a migration using the automatic pre-upgrade backup, follow the [Upgrade Runbook](UPGRADE_RUNBOOK.md#rollback-restoring-the-pre-upgrade-database-backup).
 
-What it does:
-1. Records current version
-2. Pulls latest code from Git
-3. Checks if already up to date (skips rebuild if so)
-4. Rebuilds Docker images
-5. Restarts services in correct order
-6. Runs database migrations
-7. Verifies health checks pass
-8. Shows version diff
+![Container Management & Guardrails](images/system-containers.png)
+
+**Expected Outcome:** `System Upgrade` displays the new release version with a green **Up to date** badge, all service health cards report **Healthy**, and `./backups/` contains the pre-migration snapshot.
 
 ### MCP runtime smoke check (recommended after deploy)
 

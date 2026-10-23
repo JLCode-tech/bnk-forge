@@ -107,7 +107,7 @@
     <span class="f5mark">F5</span>
     <div>
       <h1>BNK Forge &mdash; Install Guide</h1>
-      <div class="sub">Public registry edition &nbsp;|&nbsp; current-release distribution &nbsp;|&nbsp; registry: ghcr.io/f5devcentral</div>
+      <div class="sub">Public registry edition &nbsp;|&nbsp; current-release distribution &nbsp;|&nbsp; registry: ghcr.io/jlcode-tech</div>
     </div>
   </div>
 </header>
@@ -161,7 +161,7 @@
     </tr>
     <tr>
       <td><code>BNK_FORGE_REGISTRY</code></td>
-      <td><code>ghcr.io/f5devcentral</code></td>
+      <td><code>ghcr.io/jlcode-tech</code></td>
       <td>Points to the public registry.</td>
     </tr>
     <tr>
@@ -326,7 +326,7 @@
     If your <code>.env</code> predates this release, reconcile it first, or the upgrade will fail
     to pull or refuse to boot:
     <ul>
-      <li><b>Registry &amp; version.</b> Set <code>BNK_FORGE_REGISTRY=ghcr.io/f5devcentral</code>
+      <li><b>Registry &amp; version.</b> Set <code>BNK_FORGE_REGISTRY=ghcr.io/jlcode-tech</code>
           (older packages pointed at a private org that no longer resolves), and replace any pinned
           <code>BNK_FORGE_VERSION</code> such as <code>3.0.1</code> with the version this bundle
           ships (see its <code>VERSION</code> file) — a stale pin pulls a tag that no longer exists.
@@ -365,7 +365,7 @@
     <li>
       <b><code>manifest unknown</code>, or a pull that hangs or times out</b>
       The images are public, so no login is required. Check that <code>BNK_FORGE_REGISTRY</code>
-      is <code>ghcr.io/f5devcentral</code> and that the version tag exists, and that outbound
+      is <code>ghcr.io/jlcode-tech</code> and that the version tag exists, and that outbound
       HTTPS to <code>ghcr.io</code> (port 443) is allowed through any proxy or firewall.
     </li>
     <li>
@@ -387,7 +387,7 @@
 
 <footer>
   BNK Forge install guide &mdash; generated for the current release &nbsp;&middot;&nbsp;
-  Registry: <code>ghcr.io/f5devcentral</code> &nbsp;&middot;&nbsp; Tag: this bundle's <code>VERSION</code>
+  Registry: <code>ghcr.io/jlcode-tech</code> &nbsp;&middot;&nbsp; Tag: this bundle's <code>VERSION</code>
 </footer>
 
 </body>

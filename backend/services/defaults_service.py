@@ -7,6 +7,7 @@ All configurable defaults are stored in ApplicationSetting table.
 Sensible defaults are pre-populated on first run. Users can change them
 via System > Defaults in the UI at any time.
 """
+
 import logging
 import os
 from typing import Any
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 # mirror behind a corporate network) override this with BNKFORGE_REPO_URL so
 # builds and version checks point at their own remote. The DB setting
 # `system.update_repo_url` overrides both at runtime.
-DEFAULT_REPO_URL = os.environ.get("BNKFORGE_REPO_URL", "https://github.com/f5devcentral/bnk-forge")
+DEFAULT_REPO_URL = os.environ.get("BNKFORGE_REPO_URL", "https://github.com/JLCode-tech/bnk-forge")
 
 # ============================================================================
 # Default Definitions
@@ -53,7 +54,6 @@ SYSTEM_DEFAULTS = {
         "is_encrypted": True,
         "optional": True,
     },
-
     # Blueprint Catalog
     "blueprint_library.git_url": {
         "value": "",
@@ -69,7 +69,6 @@ SYSTEM_DEFAULTS = {
         "category": "blueprint_library",
         "optional": True,
     },
-
     # BNK Defaults
     "bnk.far_pull_secret_default": {
         "value": "",
@@ -79,7 +78,6 @@ SYSTEM_DEFAULTS = {
         "is_encrypted": True,
         "optional": True,
     },
-
     # Container Supply Chain
     "container.registry_host_allowlist": {
         "value": "ghcr.io,quay.io,docker.io,registry.k8s.io",
@@ -88,7 +86,6 @@ SYSTEM_DEFAULTS = {
         "category": "container",
         "optional": True,
     },
-
     # System Update Source
     "system.update_repo_url": {
         "value": DEFAULT_REPO_URL,
@@ -97,7 +94,6 @@ SYSTEM_DEFAULTS = {
         "category": "system",
         "optional": True,
     },
-
     # Project Defaults
     "project.default_type": {
         "value": "cloud-aws",
@@ -106,7 +102,6 @@ SYSTEM_DEFAULTS = {
         "category": "project",
         "optional": True,
     },
-
     # Cloud Provider Default Regions
     "cloud.aws.default_region": {
         "value": "us-east-1",
@@ -132,7 +127,6 @@ SYSTEM_DEFAULTS = {
         "description": "Default IBM Cloud region for new projects and templates",
         "category": "cloud",
     },
-
     # OpenTofu Timeouts (seconds)
     "opentofu.timeout.init": {
         "value": "300",
@@ -158,7 +152,6 @@ SYSTEM_DEFAULTS = {
         "description": "Timeout for tofu destroy command (seconds)",
         "category": "opentofu",
     },
-
     # Execution Settings
     "execution.max_retries": {
         "value": "3",
@@ -188,9 +181,7 @@ def get_default(db: Session, key: str) -> Any:
     Returns:
         The setting value (converted to appropriate type), or None if not configured
     """
-    setting = db.query(ApplicationSetting).filter(
-        ApplicationSetting.key == key
-    ).first()
+    setting = db.query(ApplicationSetting).filter(ApplicationSetting.key == key).first()
 
     if not setting or setting.value is None or setting.value == "":
         return None
@@ -221,6 +212,7 @@ def _convert_value(value: str, value_type: str) -> Any:
         return value.lower() in ("true", "1", "yes")
     elif value_type == "json":
         import json
+
         return json.loads(value)
     return value
 
@@ -233,9 +225,7 @@ def get_all_defaults(db: Session) -> dict[str, Any]:
         Dict with category -> settings mapping
     """
     # Get all settings from database
-    settings = db.query(ApplicationSetting).filter(
-        ApplicationSetting.key.in_(SYSTEM_DEFAULTS.keys())
-    ).all()
+    settings = db.query(ApplicationSetting).filter(ApplicationSetting.key.in_(SYSTEM_DEFAULTS.keys())).all()
 
     settings_map = {s.key: s for s in settings}
 
@@ -301,9 +291,7 @@ def set_default(db: Session, key: str, value: Any) -> bool:
         stored_value = encrypted or ""
 
     # Find or create setting
-    setting = db.query(ApplicationSetting).filter(
-        ApplicationSetting.key == key
-    ).first()
+    setting = db.query(ApplicationSetting).filter(ApplicationSetting.key == key).first()
 
     if setting:
         setting.value = stored_value
@@ -357,11 +345,20 @@ def seed_defaults(db: Session) -> int:
         Number of settings seeded
     """
     seeded = 0
+    migrated = 0
+    legacy_repo_urls = {
+        "system.update_repo_url": {
+            "https://github.com/f5devcentral/bnk-forge",
+            "https://github.com/bonnyr-f5/bnk-forge",
+        },
+        "module_library.git_url": {
+            "https://github.com/f5devcentral/bnk-forge-modules.git",
+            "https://github.com/bonnyr-f5/bnk-forge-modules.git",
+        },
+    }
 
     for key, definition in SYSTEM_DEFAULTS.items():
-        existing = db.query(ApplicationSetting).filter(
-            ApplicationSetting.key == key
-        ).first()
+        existing = db.query(ApplicationSetting).filter(ApplicationSetting.key == key).first()
 
         if not existing:
             setting = ApplicationSetting(
@@ -375,11 +372,16 @@ def seed_defaults(db: Session) -> int:
             db.add(setting)
             seeded += 1
             logger.debug(f"Seeded default: {key}")
+        elif key in legacy_repo_urls and existing.value in legacy_repo_urls[key]:
+            existing.value = definition["value"]
+            migrated += 1
+            logger.info(f"Migrated legacy default for {key} to {definition['value']}")
 
-    if seeded > 0:
+    if seeded > 0 or migrated > 0:
         # ENG-006: Startup seed manages its own transaction
         db.commit()
-        logger.info(f"Seeded {seeded} system defaults")
+        if seeded > 0:
+            logger.info(f"Seeded {seeded} system defaults")
 
     return seeded
 
@@ -403,17 +405,17 @@ def check_required_configured(db: Session) -> dict[str, Any]:
         if definition.get("optional", False):
             continue
 
-        setting = db.query(ApplicationSetting).filter(
-            ApplicationSetting.key == key
-        ).first()
+        setting = db.query(ApplicationSetting).filter(ApplicationSetting.key == key).first()
 
         if not setting or not setting.value:
-            missing.append({
-                "key": key,
-                "description": definition["description"],
-                "category": definition["category"],
-                "suggested_value": definition.get("suggested_value"),
-            })
+            missing.append(
+                {
+                    "key": key,
+                    "description": definition["description"],
+                    "category": definition["category"],
+                    "suggested_value": definition.get("suggested_value"),
+                }
+            )
 
     return {
         "all_configured": len(missing) == 0,

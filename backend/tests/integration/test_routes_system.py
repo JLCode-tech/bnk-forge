@@ -389,8 +389,11 @@ class TestCheckWorkspaceLock:
     def test_check_locked(self, client, admin_headers, sample_user):
         """Check a locked module returns holder info."""
         holder = {
-            "module_id": 2, "project_id": 1, "holding_task_id": 456,
-            "heartbeat_at": "2026-01-01T00:00:00", "fence_token": 3,
+            "module_id": 2,
+            "project_id": 1,
+            "holding_task_id": 456,
+            "heartbeat_at": "2026-01-01T00:00:00",
+            "fence_token": 3,
         }
         with patch("services.module_lock.ModuleLockService") as mock_cls:
             mock_svc = mock_cls.return_value
@@ -428,8 +431,11 @@ class TestForceReleaseWorkspaceLock:
     def test_release_existing_lock(self, client, admin_headers, sample_user):
         """Admin can force-release an existing lock."""
         holder = {
-            "module_id": 2, "project_id": 1, "holding_task_id": 789,
-            "heartbeat_at": "2026-01-01T00:00:00", "fence_token": 4,
+            "module_id": 2,
+            "project_id": 1,
+            "holding_task_id": 789,
+            "heartbeat_at": "2026-01-01T00:00:00",
+            "fence_token": 4,
         }
         with patch("services.module_lock.ModuleLockService") as mock_cls:
             mock_svc = mock_cls.return_value
@@ -468,7 +474,9 @@ class TestContainerRestart:
 
     def test_viewer_denied(self, client, viewer_headers, all_test_users):
         response = client.post(
-            "/api/system/containers/restart", json={}, headers=viewer_headers,
+            "/api/system/containers/restart",
+            json={},
+            headers=viewer_headers,
         )
         assert response.status_code == 403
 
@@ -513,13 +521,30 @@ class TestContainerRestart:
         assert response.status_code == 400
 
     def test_rejects_restricted_services(self, client, admin_headers, sample_user):
-        """postgres and redis cannot be restarted via API."""
+        """Database and socket-proxy services cannot be restarted via API."""
+        for svc in ("postgres", "postgres-backup", "redis", "docker-socket-proxy", "docker-socket-proxy-infra"):
+            response = client.post(
+                "/api/system/containers/restart",
+                json={"services": [svc]},
+                headers=admin_headers,
+            )
+            assert response.status_code == 400
+
+    @patch("subprocess.run")
+    def test_restart_mcp_and_agent_services(self, mock_run, client, admin_headers, sample_user):
+        """Admin can restart mcp and agent services."""
+        mock_run.return_value = MagicMock(returncode=0, stderr="")
         response = client.post(
             "/api/system/containers/restart",
-            json={"services": ["postgres"]},
+            json={"services": ["mcp", "agent"]},
             headers=admin_headers,
         )
-        assert response.status_code == 400
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["results"]) == 2
+        assert [r["service"] for r in data["results"]] == ["mcp", "agent"]
+        assert all(r["status"] == "restarted" for r in data["results"])
 
 
 class TestContainerStatus:
@@ -531,10 +556,10 @@ class TestContainerStatus:
 
     @patch("subprocess.run")
     def test_returns_container_list(self, mock_run, client, admin_headers, sample_user):
-        """Admin can get container status."""
+        """Admin can get container status with normalized service names."""
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout="bnk-forge-v2-backend-1|Up 2 hours|running\nbnk-forge-v2-frontend-1|Up 2 hours|running\n",
+            stdout="bnk-forge-v2-backend-1|Up 2 hours|running\nbnk-forge-agent|Up 2 hours|running\n",
         )
         response = client.get("/api/system/containers/status", headers=admin_headers)
 
@@ -542,7 +567,9 @@ class TestContainerStatus:
         data = response.json()
         assert data["total"] == 2
         assert len(data["containers"]) == 2
+        assert data["containers"][0]["service"] == "backend"
         assert data["containers"][0]["state"] == "running"
+        assert data["containers"][1]["service"] == "agent"
 
 
 # ============================================================================

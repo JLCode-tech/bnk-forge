@@ -37,6 +37,7 @@ BAKE_FILE="${BAKE_FILE:-docker-bake.hcl}"
 FORCE="${FORCE:-}"
 : "${REGISTRY:?REGISTRY is required (e.g. ghcr.io/your-org)}"
 : "${VERSION:?VERSION is required (e.g. 3.1.6)}"
+REGISTRY="$(printf '%s' "$REGISTRY" | tr '[:upper:]' '[:lower:]')"
 
 # ── Independent vacuity floor (M2/M3): count docker-bake.hcl's DEFAULT group via
 # the tool, scoped to `.group.default.targets`, so a second bake group cannot wedge

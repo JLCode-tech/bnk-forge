@@ -240,11 +240,11 @@ export function Sidebar() {
               className="flex items-center gap-2.5 min-w-0"
             >
               <BrandLogo
-                className="w-7 h-7 text-foreground shrink-0"
+                className="w-7 h-7 text-muted-foreground shrink-0"
                 aria-hidden="true"
               />
               <div className="min-w-0">
-                <h1 className="text-base font-bold tracking-tight text-foreground leading-tight truncate">
+                <h1 className="text-xl font-extrabold tracking-wide text-muted-foreground leading-tight truncate">
                   {getBrand() === "f5" ? "Forge" : "BNK Forge"}
                 </h1>
                 {getBrand() !== "f5" && (

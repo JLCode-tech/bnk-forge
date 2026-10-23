@@ -122,13 +122,20 @@ _install-clean:
 	@echo "========================================="
 	@echo ""
 	@echo "Stopping and removing existing containers..."
-	@docker compose down 2>/dev/null || true
+	@$(COMPOSE) down 2>/dev/null || true
 	@echo "Removing existing volumes..."
 	@docker volume ls -q | grep bnk-forge | xargs docker volume rm 2>/dev/null || echo "  No volumes to remove"
 	@echo "Removing existing images..."
 	@docker images | grep bnk-forge | awk '{print $$1":"$$2}' | xargs docker rmi 2>/dev/null || echo "  No images to remove"
 
 _install-override:
+ifeq ($(UNAME_S),Darwin)
+	@echo ""
+	@echo "Skipping docker-compose.override.yml on macOS (using docker-compose.local.yml bridge overlay)"
+else ifeq ($(IS_WSL),1)
+	@echo ""
+	@echo "Skipping docker-compose.override.yml on WSL2 (using docker-compose.local.yml bridge overlay)"
+else
 	@echo ""
 	@echo "Configuring GUI Upgrade..."
 	@printf '%s\n' \
@@ -145,19 +152,22 @@ _install-override:
 		> docker-compose.override.yml
 	@echo "  HOST_REPO_PATH=$(CURDIR)"
 	@echo "  ✓ Created docker-compose.override.yml"
+endif
 
 _install-build:
+	@$(MAKE) fetch-awsbnkctl || echo "  ⚠ Skipping awsbnkctl fetch ($(AWSBNKCTL_REPO) unavailable — install/auth 'gh' to enable the cli-bnkctl engine)."
 	@echo ""
 	@echo "Building all images (first build: ~3 min, cached: ~30s)..."
-	BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker compose build
+	BUILDX_NO_DEFAULT_ATTESTATIONS=1 $(COMPOSE) build
 
 _install-start: ensure-artifact-network
+	@mkdir -p secrets certs
 	@echo ""
 	@echo "Starting infrastructure (postgres, redis)..."
-	@docker compose up -d postgres redis
+	@$(COMPOSE) up -d postgres redis
 	@echo "  Waiting for database..."
 	@for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do \
-	  if docker compose exec -T postgres pg_isready -U bnkforge > /dev/null 2>&1; then \
+	  if $(COMPOSE) exec -T postgres pg_isready -U bnkforge > /dev/null 2>&1; then \
 	    echo "  ✓ Database ready"; \
 	    break; \
 	  fi; \
@@ -165,14 +175,18 @@ _install-start: ensure-artifact-network
 	done
 	@echo ""
 	@echo "Fixing volume permissions..."
-	@PROJECT=$$(basename "$(CURDIR)"); \
-	for v in bnk-forge-data bnk-forge-keys bnk-forge-agent-token state_data helm_cache helm_config helm_charts workspace_data; do \
+	@PROJECT=$$(grep -E '^COMPOSE_PROJECT_NAME=' .env 2>/dev/null | head -1 | cut -d= -f2); \
+	if [ -z "$$PROJECT" ]; then \
+	  PROJECT=$$(basename "$(CURDIR)" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]//g'); \
+	fi; \
+	for v in module_catalog bnk-forge-data bnk-forge-keys bnk-forge-agent-token state_data helm_cache helm_config helm_charts workspace_data provider_cache bfb_cache; do \
 	  docker volume create \
 	    --label com.docker.compose.project=$${PROJECT} \
 	    --label com.docker.compose.volume=$${v} \
 	    "$${PROJECT}_$${v}" >/dev/null; \
 	done; \
 	docker run --rm \
+	  -v "$${PROJECT}_module_catalog:/tmp/bnk-forge-modules" \
 	  -v "$${PROJECT}_bnk-forge-data:/app/projects" \
 	  -v "$${PROJECT}_bnk-forge-keys:/app/keys" \
 	  -v "$${PROJECT}_bnk-forge-agent-token:/app/agent-token" \
@@ -181,22 +195,24 @@ _install-start: ensure-artifact-network
 	  -v "$${PROJECT}_helm_config:/home/bnkforge/.config/helm" \
 	  -v "$${PROJECT}_helm_charts:/app/helm_charts" \
 	  -v "$${PROJECT}_workspace_data:/app/workspaces" \
+	  -v "$${PROJECT}_provider_cache:/app/provider-cache" \
+	  -v "$${PROJECT}_bfb_cache:/app/bfb-cache" \
 	  alpine:latest sh -c " \
-	    mkdir -p /app/projects /app/keys /app/agent-token /app/state /app/helm_charts /app/workspaces \
+	    mkdir -p /tmp/bnk-forge-modules /app/projects /app/keys /app/agent-token /app/state /app/helm_charts /app/workspaces /app/provider-cache /app/bfb-cache \
 	      /home/bnkforge/.cache/helm /home/bnkforge/.config/helm && \
-	    chown -R 1000:1000 /app/projects /app/keys /app/agent-token /app/state /app/helm_charts \
-	      /app/workspaces /home/bnkforge" \
+	    chown -R 1000:1000 /tmp/bnk-forge-modules /app/projects /app/keys /app/agent-token /app/state /app/helm_charts \
+	      /app/workspaces /app/provider-cache /app/bfb-cache /home/bnkforge" \
 	  2>/dev/null && echo "  ✓ Volume permissions configured" \
 	  || echo "  ⚠  Could not pre-configure permissions"
 	@echo ""
 	@echo "Starting all services..."
-	@docker compose up -d
+	@$(COMPOSE) up -d
 	@echo ""
 	$(call wait-healthy,12,5)
 
 _install-info:
 	@echo ""
-	@docker compose ps
+	@$(COMPOSE) ps
 	@echo ""
 	@HOST_IP=$$(ip route get 1 2>/dev/null | awk '{print $$7; exit}' \
 	  || hostname -I 2>/dev/null | awk '{print $$1}' \
@@ -207,7 +223,9 @@ _install-info:
 	echo ""; \
 	echo "  Version: $$(cat VERSION 2>/dev/null || echo 'unknown')"; \
 	echo ""; \
-	if [ "$$HOST_IP" = "localhost" ]; then \
+	if [ "$(UNAME_S)" = "Darwin" ] || [ "$(IS_WSL)" = "1" ]; then \
+	  echo "  Open: https://localhost (or http://localhost:8080)"; \
+	elif [ "$$HOST_IP" = "localhost" ]; then \
 	  echo "  Open: https://localhost:8443"; \
 	else \
 	  echo "  Open: https://$$HOST_IP:8443"; \
@@ -314,6 +332,7 @@ $(AWSBNKCTL_STAMP):
 	( cd "$$tmp" && grep " $$asset$$" checksums.txt | shasum -a 256 -c - ) || { echo "  ✗ checksum mismatch"; rm -rf "$$tmp"; exit 1; }; \
 	echo "  Extracting awsbnkctl -> $(AWSBNKCTL_BIN)"; \
 	tar -xzf "$$tmp/$$asset" -C "$$tmp" awsbnkctl || { rm -rf "$$tmp"; exit 1; }; \
+	[ -d "$(AWSBNKCTL_BIN)" ] && rmdir "$(AWSBNKCTL_BIN)" 2>/dev/null || true; \
 	install -m 0755 "$$tmp/awsbnkctl" "$(AWSBNKCTL_BIN)"; \
 	rm -rf "$$tmp"
 	@rm -f bin/.awsbnkctl-*.stamp
@@ -617,6 +636,16 @@ restart:
 
 logs:
 	$(COMPOSE) logs -f --tail 50
+
+# Backwards-compatible aliases (platform auto-detection now handled by $(COMPOSE))
+.PHONY: local-deploy local-up local-down local-restart local-status local-logs server-logs
+local-deploy: deploy
+local-up: up
+local-down: down
+local-restart: restart
+local-status: status
+local-logs: logs
+server-logs: logs
 
 # ─── Default: run all tests ─────────────────────────────────────────────────
 
@@ -1531,9 +1560,9 @@ security-audit:
 	@pip-audit -r bnk-operator/requirements.txt --progress-spinner=off
 	@echo ""
 	@echo "--- Python: mcp-server (pyproject.toml) ---"
-	# PYSEC-2026-196 is the build-env pip itself (pip<26.1.2), not a project dependency.
+	# PYSEC-2026-196 / PYSEC-2026-3721 is the build-env pip itself (pip<26.2.0), not a project dependency.
 	# PYSEC-2026-3447 is the build-env setuptools (<83.0.0), not a project dependency.
-	@cd mcp-server && pip-audit --progress-spinner=off $(PIP_AUDIT_DEFER) --ignore-vuln PYSEC-2026-196 --ignore-vuln PYSEC-2026-3447
+	@cd mcp-server && pip-audit --progress-spinner=off $(PIP_AUDIT_DEFER) --ignore-vuln PYSEC-2026-196 --ignore-vuln PYSEC-2026-3721 --ignore-vuln PYSEC-2026-3447
 	@echo ""
 	@echo "--- JavaScript: frontend-v2 (prod deps, HIGH+) ---"
 	@cd frontend-v2 && npm audit --omit=dev --audit-level=high

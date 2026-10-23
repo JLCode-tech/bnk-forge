@@ -134,7 +134,7 @@ esac
 # BLOCKS every push (bonnyr-f5 #193 M3).
 LIST=()
 while IFS= read -r _img; do LIST+=("$_img"); done < <(bash "$PROBE" --images)
-check "image count is 7"             "${#LIST[@]}"                     7
+check "image count is 8"             "${#LIST[@]}"                     8
 # Enumerate the SAME group the guard counts — the DEFAULT group (the guard uses
 # `docker buildx bake --print default | jq '.group.default.targets'`). The old test
 # used an UNSCOPED `targets = [` sed that matched EVERY group's targets line, so

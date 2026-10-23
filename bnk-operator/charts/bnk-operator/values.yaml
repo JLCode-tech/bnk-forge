@@ -45,7 +45,7 @@ cwc:
 
 # Operator image
 image:
-  repository: ghcr.io/f5devcentral/bnk-forge-operator
+  repository: ghcr.io/jlcode-tech/bnk-forge-operator
   tag: "4.0.0"
   pullPolicy: IfNotPresent
 

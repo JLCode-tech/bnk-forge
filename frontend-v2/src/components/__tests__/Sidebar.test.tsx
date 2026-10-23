@@ -41,13 +41,43 @@ describe("Sidebar", () => {
     localStorage.clear();
   });
 
-  it("renders the BNK Forge logo text", () => {
+  it("renders the BNK Forge logo text with harmonized muted-foreground typography", () => {
     act(() => {
       useAuthStore.getState().login("token", mockAdmin);
     });
     render(<Sidebar />);
 
-    expect(screen.getByText("BNK Forge")).toBeInTheDocument();
+    const heading = screen.getByRole("heading", { name: "BNK Forge" });
+    expect(heading).toBeInTheDocument();
+    expect(heading).toHaveClass(
+      "text-xl",
+      "font-extrabold",
+      "tracking-wide",
+      "text-muted-foreground",
+    );
+    expect(heading).not.toHaveClass("text-foreground");
+  });
+
+  it("renders the Forge brand title with muted-foreground typography when window.__BRAND__ is f5", () => {
+    window.__BRAND__ = "f5";
+    try {
+      act(() => {
+        useAuthStore.getState().login("token", mockAdmin);
+      });
+      render(<Sidebar />);
+
+      const heading = screen.getByRole("heading", { name: "Forge" });
+      expect(heading).toBeInTheDocument();
+      expect(heading).toHaveClass(
+        "text-xl",
+        "font-extrabold",
+        "tracking-wide",
+        "text-muted-foreground",
+      );
+      expect(heading).not.toHaveClass("text-foreground");
+    } finally {
+      delete window.__BRAND__;
+    }
   });
 
   it("renders the Infrastructure subtitle", () => {

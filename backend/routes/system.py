@@ -40,6 +40,7 @@ def _cleanup_file(path: str) -> None:
     except OSError as exc:
         logger.warning("Failed to clean up backup file %s: %s", path, exc)
 
+
 router = APIRouter(prefix="/api/system", tags=["system"], dependencies=[Depends(require_admin)])
 
 # Separate router for public endpoints (no auth required)
@@ -49,6 +50,7 @@ public_router = APIRouter(prefix="/api/system", tags=["system"])
 # ============================================================
 # Request Models
 # ============================================================
+
 
 class CleanupRequest(BaseModel):
     cleanup_type: str
@@ -66,6 +68,7 @@ class DefaultsUpdateRequest(BaseModel):
 # ============================================================
 # Service Health Endpoints
 # ============================================================
+
 
 @public_router.get("/health", response_model=SystemHealthResponse)
 @handle_route_errors("system health check")
@@ -155,6 +158,7 @@ def get_process_metrics() -> ProcessMetricsResponse:
 # Task Queue Metrics
 # ============================================================
 
+
 @public_router.get("/bnk-consumption", response_model=BnkConsumptionResponse, dependencies=[Depends(require_viewer)])
 @handle_route_errors("BNK consumption")
 def get_bnk_consumption(db: Session = Depends(get_db)):
@@ -173,6 +177,7 @@ def get_queue_metrics(db: Session = Depends(get_db)):
 # Performance Metrics
 # ============================================================
 
+
 @router.get("/performance")
 @handle_route_errors("performance metrics")
 def get_performance_metrics(db: Session = Depends(get_db)):
@@ -184,6 +189,7 @@ def get_performance_metrics(db: Session = Depends(get_db)):
 # Recent Errors
 # ============================================================
 
+
 @router.get("/errors")
 @handle_route_errors("get recent errors")
 def get_recent_errors(limit: int = 10, db: Session = Depends(get_db)):
@@ -194,6 +200,7 @@ def get_recent_errors(limit: int = 10, db: Session = Depends(get_db)):
 # ============================================================
 # Database Management
 # ============================================================
+
 
 @router.get("/database/stats")
 @handle_route_errors("database stats")
@@ -224,11 +231,13 @@ def vacuum_database(db: Session = Depends(get_db)):
 # Workspace Management (delegates to WorkspaceManager)
 # ============================================================
 
+
 @router.get("/workspaces/stats")
 @handle_route_errors("workspace stats")
 def get_workspace_stats(db: Session = Depends(get_db)):
     """Get statistics about persistent workspaces."""
     from services.workspace_manager import WorkspaceManager
+
     stats = WorkspaceManager(db).get_workspace_stats()
     return {"success": True, **stats}
 
@@ -238,6 +247,7 @@ def get_workspace_stats(db: Session = Depends(get_db)):
 def list_orphaned_workspaces(db: Session = Depends(get_db)):
     """List orphaned workspaces."""
     from services.workspace_manager import WorkspaceManager
+
     orphaned = WorkspaceManager(db).get_orphaned_workspaces()
     return {"success": True, "orphaned": orphaned, "count": len(orphaned)}
 
@@ -247,6 +257,7 @@ def list_orphaned_workspaces(db: Session = Depends(get_db)):
 def cleanup_workspaces(db: Session = Depends(get_db)):
     """Clean up orphaned workspaces."""
     from services.workspace_manager import WorkspaceManager
+
     workspace = WorkspaceManager(db)
     orphaned = workspace.get_orphaned_workspaces()
     deleted_count = workspace.cleanup_orphaned_workspaces()
@@ -258,11 +269,13 @@ def cleanup_workspaces(db: Session = Depends(get_db)):
 # Module Lock Management (Postgres heartbeat + fencing tokens)
 # ============================================================
 
+
 @router.get("/workspaces/locks")
 @handle_route_errors("list module locks")
 def list_workspace_locks(db: Session = Depends(get_db)):
     """List all currently held module locks (heartbeat + fence-token columns)."""
     from services.module_lock import ModuleLockService
+
     locks = ModuleLockService(db).list_held()
     return {"success": True, "locks": locks, "count": len(locks)}
 
@@ -276,6 +289,7 @@ def check_workspace_lock(project_id: int, module_id: int, db: Session = Depends(
     module_id is used internally — module_id is unique.
     """
     from services.module_lock import ModuleLockService
+
     svc = ModuleLockService(db)
     holder = svc.get_holder(module_id)
     return {
@@ -292,6 +306,7 @@ def force_release_workspace_lock(project_id: int, module_id: int, db: Session = 
     + heartbeat_at without bumping the fence token. Use only when the worker
     holding the lock is verified dead."""
     from services.module_lock import ModuleLockService
+
     svc = ModuleLockService(db)
     holder = svc.get_holder(module_id)
     if holder is None:
@@ -299,7 +314,9 @@ def force_release_workspace_lock(project_id: int, module_id: int, db: Session = 
     released = svc.force_release(module_id)
     logger.warning(
         "Force-released module lock for project=%s module=%s. Previous holder: %s",
-        project_id, module_id, holder,
+        project_id,
+        module_id,
+        holder,
     )
     return {"success": True, "released": released, "previous_holder": holder}
 
@@ -307,6 +324,7 @@ def force_release_workspace_lock(project_id: int, module_id: int, db: Session = 
 # ============================================================
 # Container Management (subprocess, no service extraction needed)
 # ============================================================
+
 
 def _docker_api_urls() -> list[str]:
     """Return candidate Docker Engine HTTP API base URLs (e.g. docker-socket-proxy)."""
@@ -316,7 +334,7 @@ def _docker_api_urls() -> list[str]:
     env_host = os.environ.get("DOCKER_HOST", "").strip()
     if env_host:
         if env_host.startswith("tcp://"):
-            candidates.append("http://" + env_host[len("tcp://"):].rstrip("/"))
+            candidates.append("http://" + env_host[len("tcp://") :].rstrip("/"))
         elif env_host.startswith(("http://", "https://")):
             candidates.append(env_host.rstrip("/"))
     for fallback in ("http://docker-socket-proxy:2375", "http://127.0.0.1:2375"):
@@ -344,26 +362,41 @@ def restart_containers(request: RestartContainersRequest, db: Session = Depends(
         "celery-beat",
         "frontend",
         "postgres",
+        "postgres-backup",
         "redis",
+        "docker-socket-proxy",
+        "docker-socket-proxy-infra",
         "proxy",
+        "mcp",
+        "agent",
     }
     invalid_services = [s for s in services if s not in valid_services]
     if invalid_services:
         raise BadRequestError(f"Invalid service names: {', '.join(invalid_services)}", code="INVALID_SERVICE_NAME")
 
-    if "postgres" in services or "redis" in services:
-        raise BadRequestError("Cannot restart database services from API for safety", code="RESTRICTED_SERVICE")
+    restricted_services = {
+        "postgres",
+        "postgres-backup",
+        "redis",
+        "docker-socket-proxy",
+        "docker-socket-proxy-infra",
+    }
+    if any(s in restricted_services for s in services):
+        raise BadRequestError(
+            "Cannot restart database or socket-proxy services from API for safety", code="RESTRICTED_SERVICE"
+        )
 
     results = []
     for service in services:
         container_name = f"bnk-forge-{service}"
         try:
-            result = subprocess.run(["docker", "restart", container_name],
-                                    capture_output=True, text=True, timeout=60)
+            result = subprocess.run(["docker", "restart", container_name], capture_output=True, text=True, timeout=60)
             if result.returncode == 0:
                 results.append({"service": service, "status": "restarted", "container": container_name})
             else:
-                results.append({"service": service, "status": "failed", "error": result.stderr or "Container not found"})
+                results.append(
+                    {"service": service, "status": "failed", "error": result.stderr or "Container not found"}
+                )
         except FileNotFoundError:
             restarted = False
             last_err = "Docker CLI and Docker HTTP proxy unavailable"
@@ -386,11 +419,15 @@ def restart_containers(request: RestartContainersRequest, db: Session = Depends(
 
     failed = [r for r in results if r["status"] != "restarted"]
     if failed and len(failed) == len(results):
-        raise InternalError("All container restarts failed. Docker socket may not be accessible.",
-                            code="CONTAINER_RESTART_FAILED")
+        raise InternalError(
+            "All container restarts failed. Docker socket may not be accessible.", code="CONTAINER_RESTART_FAILED"
+        )
 
-    return {"message": f"Restart initiated for {len(services)} service(s)", "results": results,
-            "note": "Backend container will restart last and may cause API disconnection"}
+    return {
+        "message": f"Restart initiated for {len(services)} service(s)",
+        "results": results,
+        "note": "Backend container will restart last and may cause API disconnection",
+    }
 
 
 @router.get("/containers/status")
@@ -404,7 +441,9 @@ def get_container_status(db: Session = Depends(get_db)):
     try:
         result = subprocess.run(
             ["docker", "ps", "-a", "--filter", "name=bnk-forge", "--format", "{{.Names}}|{{.Status}}|{{.State}}"],
-            capture_output=True, text=True, timeout=10
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
     except FileNotFoundError:
         for base_url in _docker_api_urls():
@@ -420,23 +459,22 @@ def get_container_status(db: Session = Depends(get_db)):
                             continue
                         status = item.get("Status", "")
                         state = item.get("State", "")
-                        service_name = (
-                            raw_name.replace("bnk-forge-v2-", "")
-                            .replace("bnk-forge-", "")
-                            .replace("-1", "")
+                        service_name = raw_name.replace("bnk-forge-v2-", "").replace("bnk-forge-", "").replace("-1", "")
+                        containers.append(
+                            {
+                                "service": service_name,
+                                "container_name": raw_name,
+                                "status": status,
+                                "state": state,
+                            }
                         )
-                        containers.append({
-                            "service": service_name,
-                            "container_name": raw_name,
-                            "status": status,
-                            "state": state,
-                        })
                     return {"containers": containers, "total": len(containers), "available": True}
             except Exception:
                 continue
         return {"containers": [], "total": 0, "available": False, "reason": "Docker CLI not found in environment"}
     except subprocess.TimeoutExpired:
         from core.errors import TimeoutError
+
         raise TimeoutError("Docker command")
 
     if result.returncode != 0:
@@ -450,7 +488,7 @@ def get_container_status(db: Session = Depends(get_db)):
         if len(parts) != 3:
             continue
         name, status, state = parts
-        service_name = name.replace("bnk-forge-v2-", "").replace("-1", "")
+        service_name = name.replace("bnk-forge-v2-", "").replace("bnk-forge-", "").replace("-1", "")
         containers.append({"service": service_name, "container_name": name, "status": status, "state": state})
 
     return {"containers": containers, "total": len(containers)}
@@ -460,11 +498,13 @@ def get_container_status(db: Session = Depends(get_db)):
 # System Defaults (delegates to defaults_service)
 # ============================================================
 
+
 @router.get("/defaults")
 @handle_route_errors("get system defaults")
 def get_system_defaults(db: Session = Depends(get_db)):
     """Get all system defaults organized by category."""
     from services.defaults_service import get_all_defaults
+
     return get_all_defaults(db)
 
 
@@ -473,6 +513,7 @@ def get_system_defaults(db: Session = Depends(get_db)):
 def get_defaults_status(db: Session = Depends(get_db)):
     """Check if all required system defaults are configured."""
     from services.defaults_service import check_required_configured
+
     return check_required_configured(db)
 
 
@@ -481,6 +522,7 @@ def get_defaults_status(db: Session = Depends(get_db)):
 def update_system_defaults(request: DefaultsUpdateRequest, db: Session = Depends(get_db)):
     """Update multiple system defaults at once."""
     from services.defaults_service import set_defaults_batch
+
     results = set_defaults_batch(db, request.updates)
     failed = [k for k, v in results.items() if not v]
     # ENG-006: Route owns the transaction boundary
@@ -497,6 +539,7 @@ def update_single_default(key: str, value: str, db: Session = Depends(get_db)):
     import urllib.parse
 
     from services.defaults_service import set_default
+
     decoded_key = urllib.parse.unquote(key)
     success = set_default(db, decoded_key, value)
     if not success:
@@ -509,6 +552,7 @@ def update_single_default(key: str, value: str, db: Session = Depends(get_db)):
 # ============================================================
 # System Version & Upgrade
 # ============================================================
+
 
 @router.get("/version")
 @handle_route_errors("get system version")
@@ -567,6 +611,7 @@ def trigger_system_upgrade(db: Session = Depends(get_db)):
 # ============================================================
 # MCP Server Status
 # ============================================================
+
 
 @router.get("/mcp/status")
 @handle_route_errors("MCP server status")
@@ -741,6 +786,7 @@ def get_mcp_status():
 # Backup & Restore Endpoints
 # ============================================================
 
+
 @router.post("/backup")
 @handle_route_errors("create backup")
 def create_backup(request: BackupCreateRequest, db: Session = Depends(get_db)):
@@ -808,6 +854,7 @@ def restore_backup(
         background = BackgroundTask(_trigger_restart)
         # Attach via raw Response so the task runs post-send
         from starlette.responses import JSONResponse as StarletteJSONResponse
+
         return StarletteJSONResponse(
             content=response.model_dump(),
             background=background,

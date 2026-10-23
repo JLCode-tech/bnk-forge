@@ -36,10 +36,12 @@ Use overrides **only when you understand the risk**.
 
 | Flag | What it skips | When to use |
 |------|---------------|-------------|
+| `--skip-build` | `docker compose build` step | Deploying pre-built GHCR images (`user-pack` or tagged release) |
 | `--allow-dirty` | Clean working tree check | Agent left stale files; you verified they're safe |
 | `--allow-diverged` | HEAD == origin/staging check | Intentionally deploying a local-only commit |
 | `--allow-non-main` | Must be on `staging` branch | Testing a feature branch on server (rare) |
 | `--allow-same-version` | VERSION bump policy (D17) | Docs-only or .agent-only changes |
+| `--allow-unsupported-version` | `MIN_UPGRADE_FROM` version check | Upgrading across a major baseline after manual DB prep |
 | `--skip-disk-check` | Disk usage threshold | Disk script missing or false positive |
 | `--no-cache` | Docker build cache | requirements.txt or Dockerfile tool versions changed |
 
@@ -48,6 +50,14 @@ Use overrides **only when you understand the risk**.
 ```bash
 ./upgrade.sh --local --allow-dirty --allow-same-version
 ```
+
+---
+
+## Version Compatibility & Automatic Pre-Migration Backup
+
+- **Minimum Upgrade Version (`MIN_UPGRADE_FROM`)**: The repository root file `MIN_UPGRADE_FROM` (currently `3.0.0`) defines the oldest release that can be upgraded directly in-place to the current version. `upgrade.sh` verifies `OLD_VERSION >= MIN_UPGRADE_FROM` before building containers.
+- **Smart Build Coverage**: `upgrade.sh` detects changes across `backend/`, `frontend-v2/`, `proxy/`, `mcp_server/` (`Dockerfile.mcp`), and `agent/` (`Dockerfile.agent`), rebuilding only modified services and automatically refreshing `bnk-forge-proxy` upstream DNS when `backend` or `frontend` containers are recreated.
+- **Pre-Migration Database Backup**: Immediately before running `alembic upgrade head` in `##PHASE:migrate`, `upgrade.sh` dumps the running PostgreSQL database to `./backups/pre-upgrade-<old-version>-<timestamp>.sql.gz`.
 
 ---
 
@@ -64,6 +74,7 @@ Script stopped before any changes were made. Fix the reported issue and retry.
 | Upgrade must run from staging branch | `git checkout staging` |
 | Disk usage above critical threshold | `make clean-docker` or `./scripts/docker-cleanup.sh` |
 | VERSION was not bumped | Bump `VERSION` file, commit, push, pull again |
+| Minimum supported upgrade version is X.Y.Z | Upgrade to the intermediate baseline version X.Y.Z first |
 
 ### Build failed (exit 2)
 
@@ -87,12 +98,16 @@ docker compose up -d --force-recreate
 
 ### Migration failed (exit 4)
 
-Services are running but database may be inconsistent.
+Services are running but database may be inconsistent. You can either fix and re-run migrations or restore the automatic pre-upgrade backup created in `./backups/`:
 
 ```bash
 docker exec bnk-forge-backend alembic upgrade head
 # If that fails, check migration history:
 docker exec bnk-forge-backend alembic history --verbose | head -20
+
+# Or restore from the automatic pre-upgrade backup:
+gunzip -c ./backups/pre-upgrade-<version>-<timestamp>.sql.gz | \
+  docker exec -i bnk-forge-postgres psql -U bnkforge -d bnkforge
 ```
 
 ### Health check failed (exit 5)
@@ -124,7 +139,7 @@ docker ps --format 'table {{.Names}}\t{{.Status}}' | grep bnk-forge
 docker logs bnk-forge-backend --tail 20
 
 # 3. Health endpoint responds
-curl -sk https://10.176.11.91/api/system/health
+curl -sk https://localhost/api/system/health
 ```
 
 ---
@@ -137,13 +152,14 @@ Run the automated policy guard tests locally:
 ./scripts/test-upgrade-policy.sh
 ```
 
-This validates all preflight guard paths (dirty tree, non-staging branch, diverged HEAD) in an isolated temporary git repo.
+This validates all preflight guard paths (dirty tree, non-staging branch, diverged HEAD, D17 version bump policy, and `MIN_UPGRADE_FROM` version compatibility) in an isolated temporary git repo.
 
 ---
 
 ## Related Files
 
 - `upgrade.sh` — the upgrade script
+- `MIN_UPGRADE_FROM` — minimum supported direct-upgrade baseline version
 - `Makefile` — `make upgrade-safe` wrapper
 - `scripts/test-upgrade-policy.sh` — automated policy tests
 - `scripts/check-disk-space.sh` — disk threshold checker
