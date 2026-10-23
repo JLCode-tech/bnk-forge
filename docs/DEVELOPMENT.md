@@ -4,7 +4,7 @@
 
 Everything below is tool-neutral: build, test, architecture, style, and workflow
 conventions for anyone working on this repo. Contribution process lives in
-[CONTRIBUTING.md](../CONTRIBUTING.md).
+[CONTRIBUTING.md](../.github/CONTRIBUTING.md).
 
 ---
 

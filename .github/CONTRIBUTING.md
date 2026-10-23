@@ -47,7 +47,7 @@ We follow a lightweight **Issue ➔ ADR ➔ Branch ➔ PR** design workflow for 
 
 ## Development & Code Style
 
-Full build, test, architecture, and style reference: **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**. Summary:
+Full build, test, architecture, and style reference: **[docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md)**. Summary:
 
 - **Backend**: Python 3.11+ using FastAPI and SQLAlchemy. Code MUST comply with `ruff` formatting (`line-length = 120`) and type annotations (`mypy`).
 - **Frontend**: React 18 + TypeScript + Vite + TailwindCSS. Code MUST pass `eslint` and `tsc --noEmit`.
@@ -60,4 +60,4 @@ Full build, test, architecture, and style reference: **[docs/DEVELOPMENT.md](doc
 
 ## Licensing
 
-By contributing to this project, you agree that your contributions will be licensed under the project's [Apache 2.0 License](LICENSE).
+By contributing to this project, you agree that your contributions will be licensed under the project's [Apache 2.0 License](../LICENSE).

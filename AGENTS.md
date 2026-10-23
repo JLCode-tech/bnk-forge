@@ -3,7 +3,7 @@
 > Optional. This file exists for coding agents; nothing in this repo requires
 > you to use one. Humans should read **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**
 > (build, test, architecture, style, gotchas) and
-> **[CONTRIBUTING.md](CONTRIBUTING.md)** (contribution process) instead — those
+> **[CONTRIBUTING.md](.github/CONTRIBUTING.md)** (contribution process) instead — those
 > are the source of truth, and this file only adds agent-specific framing on top.
 
 **Agents: read [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) first.** It carries the

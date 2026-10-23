@@ -337,6 +337,6 @@ bnk-forge/
 ## License & Governance
 
 * **License**: Licensed under the [Apache License, Version 2.0](LICENSE).
-* **Contributing**: Please review [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
-* **Code of Conduct**: See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
-* **Security Policy**: See [SECURITY.md](SECURITY.md) for vulnerability disclosure procedures.
+* **Contributing**: Please review [CONTRIBUTING.md](.github/CONTRIBUTING.md) and [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+* **Code of Conduct**: See [CODE_OF_CONDUCT.md](.github/CODE_OF_CONDUCT.md).
+* **Security Policy**: See [SECURITY.md](.github/SECURITY.md) for vulnerability disclosure procedures.
