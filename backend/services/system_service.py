@@ -542,7 +542,7 @@ class SystemService:
         result = {
             "current_version": "unknown",
             "latest_version": "unknown",
-            "min_upgrade_from": "3.0.0",
+            "min_upgrade_from": "3.1.6",
             "update_available": False,
             "commits_behind": 0,
             "error": None,
@@ -559,7 +559,7 @@ class SystemService:
         for min_file in min_upgrade_paths:
             if os.path.exists(min_file):
                 with open(min_file) as f:
-                    val = f.read().strip()
+                    val = f.read().strip().lstrip("v")
                     if val:
                         result["min_upgrade_from"] = val
                 break

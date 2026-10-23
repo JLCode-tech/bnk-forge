@@ -27,7 +27,6 @@ TOTAL=0
 # Colors (if terminal supports them)
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
 
 assert_exit_code() {
@@ -102,7 +101,7 @@ fi
 cd "$TMPDIR/repo"
 git init -q
 git checkout -b staging
-echo "3.0.0" > VERSION
+echo "3.1.6" > VERSION
 git add -A
 git commit -q -m "initial"
 
