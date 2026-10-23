@@ -94,7 +94,7 @@ x-worker-volumes: &worker-volumes
   # the API container deliberately omits CLI tools.
   # Provisioned by `make fetch-awsbnkctl` (pinned + checksum-verified release
   # download); build-worker depends on it. Override with AWSBNKCTL_VERSION.
-  - ./bin/awsbnkctl:/usr/local/bin/awsbnkctl:ro
+  - ./scripts/bin/awsbnkctl:/usr/local/bin/awsbnkctl:ro
 
 x-logging: &default-logging
   driver: json-file
@@ -188,12 +188,12 @@ services:
       # Custom TLS CA certificates (corporate SSL inspection proxies). Read-only;
       # backend/entrypoint.sh installs them into the system trust store on startup.
       - ./certs:/app/certs:ro
-      - ./bin/awsbnkctl:/usr/local/bin/awsbnkctl:ro
+      - ./scripts/bin/awsbnkctl:/usr/local/bin/awsbnkctl:ro
       # Backend-specific volumes (not needed by workers)
       - ./VERSION:/app/VERSION:ro
       # SEC-004: Docker socket moved to docker-compose.override.yml (opt-in).
       # Only needed for GUI "Upgrade Now" feature (System → Upgrade).
-      # To enable: copy docker-compose.override.example.yml → docker-compose.override.yml
+      # To enable: copy docs/compose/docker-compose.override.example.yml → docker-compose.override.yml
     # With network_mode: host, backend listens on port 8000 directly on the host.
     depends_on:
       postgres:
@@ -548,7 +548,7 @@ services:
   forge-agent:
     build:
       context: .
-      dockerfile: Dockerfile.agent
+      dockerfile: proxy/Dockerfile.agent
     image: bnk-forge-agent:latest
     container_name: bnk-forge-agent
     network_mode: host
@@ -577,7 +577,7 @@ services:
       # token is deliberately narrow (role=agent, no agent_id): it can register
       # and open a claimless WS, nothing more.
       - bnk-forge-agent-token:/run/forge:ro
-      - ./bin/awsbnkctl:/usr/local/bin/awsbnkctl:ro
+      - ./scripts/bin/awsbnkctl:/usr/local/bin/awsbnkctl:ro
     depends_on:
       backend:
         condition: service_healthy

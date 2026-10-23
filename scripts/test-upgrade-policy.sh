@@ -95,6 +95,8 @@ fi
 
 if [ -f "$REPO_ROOT/MIN_UPGRADE_FROM" ]; then
     cp "$REPO_ROOT/MIN_UPGRADE_FROM" "$TMPDIR/repo/MIN_UPGRADE_FROM"
+elif [ -f "$REPO_ROOT/.github/MIN_UPGRADE_FROM" ]; then
+    cp "$REPO_ROOT/.github/MIN_UPGRADE_FROM" "$TMPDIR/repo/MIN_UPGRADE_FROM"
 fi
 
 # Initialize git repo with a commit

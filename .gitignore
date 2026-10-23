@@ -260,8 +260,12 @@ e2e-config.yaml
 
 # Experimental Go CLI — build artifacts, never commit the compiled binary
 cli/go/
+/bin
 /bin/awsbnkctl
 /bin/.awsbnkctl*
+/scripts/bin/awsbnkctl
+/scripts/bin/.awsbnkctl*
+/AGENTS.md
 
 # --- Public release protection ---
 .env
@@ -272,10 +276,8 @@ cli/go/
 .ssh/
 # Anchored to the repo root on purpose: an unanchored `secrets/` also matches
 # frontend-v2/src/components/secrets/, which silently removed a shipped component.
-# `/secrets/*` rather than `/secrets/`: git will not descend into an excluded
-# directory, so the tracked placeholder README could not be negated otherwise.
-/secrets/*
-!/secrets/README.md
+/secrets/
+/certs/
 .agent/
 .agent-prev/
 .agent-local/

@@ -155,7 +155,7 @@ target "operator" {
 target "agent" {
   inherits   = ["_common"]
   context    = "."
-  dockerfile = "Dockerfile.agent"
+  dockerfile = "proxy/Dockerfile.agent"
   tags = concat(
     ["${REGISTRY}/bnk-forge-agent:${VERSION}"],
     ROLLING_TAG != "" ? ["${REGISTRY}/bnk-forge-agent:${ROLLING_TAG}"] : [],

@@ -47,7 +47,7 @@ open https://localhost
 
 That's it. The database migrations run automatically on startup. All 9 containers will start in the correct order with health check dependencies.
 
-Need the host itself provisioned too? [`vm-bnk-forge/`](../vm-bnk-forge/README.md) builds a fresh Ubuntu 24.04 VM (local KVM or any cloud that takes cloud-init user-data) that runs these steps unattended on first boot.
+Need the host itself provisioned too? [`docs/vm-bnk-forge/`](vm-bnk-forge/README.md) builds a fresh Ubuntu 24.04 VM (local KVM or any cloud that takes cloud-init user-data) that runs these steps unattended on first boot.
 
 ---
 

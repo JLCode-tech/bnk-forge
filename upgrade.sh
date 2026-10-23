@@ -246,8 +246,14 @@ NEW_VERSION=$(cat VERSION 2>/dev/null || echo "unknown")
 echo "  Target version: ${NEW_VERSION}"
 
 # Minimum upgrade compatibility check (MIN_UPGRADE_FROM)
+MIN_UPGRADE_FILE=""
 if [ -f "MIN_UPGRADE_FROM" ]; then
-    MIN_UPGRADE_VERSION=$(tr -d '[:space:]' < MIN_UPGRADE_FROM 2>/dev/null || echo "")
+    MIN_UPGRADE_FILE="MIN_UPGRADE_FROM"
+elif [ -f ".github/MIN_UPGRADE_FROM" ]; then
+    MIN_UPGRADE_FILE=".github/MIN_UPGRADE_FROM"
+fi
+if [ -n "$MIN_UPGRADE_FILE" ]; then
+    MIN_UPGRADE_VERSION=$(tr -d '[:space:]' < "$MIN_UPGRADE_FILE" 2>/dev/null || echo "")
     if [ -n "$MIN_UPGRADE_VERSION" ] && [[ "$OLD_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ "$MIN_UPGRADE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         if [ "$ALLOW_UNSUPPORTED_VERSION" = false ] && version_lt "$OLD_VERSION" "$MIN_UPGRADE_VERSION"; then
             echo ""
@@ -330,7 +336,7 @@ if [ "$OLD_COMMIT" != "unknown" ] && [ "$CURRENT_COMMIT" != "unknown" ] && [ "$O
         fi
 
         # Check AI Agent changes
-        if echo "$CHANGED_FILES" | grep -qE "^(agent/|Dockerfile\.agent)"; then
+        if echo "$CHANGED_FILES" | grep -qE "^(agent/|proxy/Dockerfile\.agent|Dockerfile\.agent)"; then
             AGENT_CHANGED=true
         fi
         

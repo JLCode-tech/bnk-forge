@@ -27,9 +27,9 @@ except ImportError:
     )
     sys.exit(1)
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 YAML_PATH = os.path.join(REPO, "docs", "roadmap.yaml")
-GEN_PATH = os.path.join(REPO, "bin", "roadmap-gen.py")
+GEN_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "roadmap-gen.py")
 
 
 def load():
