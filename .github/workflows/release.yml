@@ -38,7 +38,7 @@ on:
       - '.opencode/**'
       - 'LICENSE'
       - '.gitignore'
-      - '.trivyignore'
+      - '.github/.trivyignore'
       - 'USER_GUIDE.md'
   workflow_dispatch:
     inputs:
@@ -734,18 +734,18 @@ jobs:
               next
             }
             { print }
-          ' CHANGELOG.md > CHANGELOG.md.new
+          ' docs/CHANGELOG.md > docs/CHANGELOG.md.new
           # Fail CLOSED if the insertion was a no-op: the awk anchors on the first
           # `^---$`, and if that separator is ever absent every line passes through
           # unchanged with rc 0 — the entry is silently dropped and the release
           # ships with no CHANGELOG record (bonnyr-f5 #193 minor). Assert the output
           # actually grew before replacing the file.
-          if cmp -s CHANGELOG.md CHANGELOG.md.new; then
-            echo "::error::CHANGELOG.md insertion was a no-op (no '---' anchor found?) — refusing to commit a release with no changelog entry."
-            rm -f CHANGELOG.md.new "$ENTRY_FILE"
+          if cmp -s docs/CHANGELOG.md docs/CHANGELOG.md.new; then
+            echo "::error::docs/CHANGELOG.md insertion was a no-op (no '---' anchor found?) — refusing to commit a release with no changelog entry."
+            rm -f docs/CHANGELOG.md.new "$ENTRY_FILE"
             exit 1
           fi
-          mv CHANGELOG.md.new CHANGELOG.md
+          mv docs/CHANGELOG.md.new docs/CHANGELOG.md
           rm -f "$ENTRY_FILE"
 
       - name: Commit and tag
@@ -755,7 +755,7 @@ jobs:
 
           # Stage VERSION, dist/VERSION (if tracked), CHANGELOG, and the
           # version-bearing artifacts synced above (#177 Blocker 2).
-          git add VERSION CHANGELOG.md
+          git add VERSION docs/CHANGELOG.md
           # Stage EXACTLY the artifacts sync-version-artifacts.sh owns, from its
           # own --list, so a newly-synced file can never be left unstaged and die
           # with the runner (bonnyr-f5 #180 r3, BLOCKER 1: --write rewrote five
@@ -995,21 +995,21 @@ jobs:
               next
             }
             { print }
-          ' CHANGELOG.md > CHANGELOG.md.new
+          ' docs/CHANGELOG.md > docs/CHANGELOG.md.new
           # Fail CLOSED if the awk insertion was a no-op (missing `^---$` anchor),
           # so a release never ships with a silently-dropped changelog entry
           # (bonnyr-f5 #193 minor).
-          if cmp -s CHANGELOG.md CHANGELOG.md.new; then
-            echo "::error::CHANGELOG.md insertion was a no-op (no '---' anchor found?) — refusing to commit a release with no changelog entry."
-            rm -f CHANGELOG.md.new "$ENTRY_FILE"
+          if cmp -s docs/CHANGELOG.md docs/CHANGELOG.md.new; then
+            echo "::error::docs/CHANGELOG.md insertion was a no-op (no '---' anchor found?) — refusing to commit a release with no changelog entry."
+            rm -f docs/CHANGELOG.md.new "$ENTRY_FILE"
             exit 1
           fi
-          mv CHANGELOG.md.new CHANGELOG.md
+          mv docs/CHANGELOG.md.new docs/CHANGELOG.md
           rm -f "$ENTRY_FILE"
 
       - name: Commit and tag
         run: |
-          git add VERSION CHANGELOG.md
+          git add VERSION docs/CHANGELOG.md
           # Stage EXACTLY the artifacts sync-version-artifacts.sh owns, from its
           # own --list, so a newly-synced file can never be left unstaged and die
           # with the runner (bonnyr-f5 #180 r3, BLOCKER 1: --write rewrote five

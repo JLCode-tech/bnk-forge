@@ -289,11 +289,11 @@ make server-logs      # Tail logs
 
 The steps above assume a host you already have. To get a **fresh** VM that
 installs BNK Forge unattended on first boot, use the harness in
-[`vm-bnk-forge/`](../vm-bnk-forge/README.md) — it renders a cloud-init that
+[`docs/vm-bnk-forge/`](vm-bnk-forge/README.md) — it renders a cloud-init that
 installs Docker, clones the repo, and runs `make install`.
 
 ```bash
-cd vm-bnk-forge
+cd docs/vm-bnk-forge
 cp config.env.example config.env
 $EDITOR config.env       # VM_NAME, sizing, BRANCH (pin a release tag for demos)
 

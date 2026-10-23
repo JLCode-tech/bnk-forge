@@ -20,7 +20,7 @@ How architecture work flows from **decision → tracked → shipped**. Applies t
 **Regenerate** (after editing the yaml by hand):
 
 ```
-backend/.venv/bin/python bin/roadmap-gen.py
+backend/.venv/bin/python scripts/bin/roadmap-gen.py
 ```
 
 This rewrites `docs/ROADMAP.md` + `docs/roadmap.html` and is idempotent.
@@ -28,7 +28,7 @@ This rewrites `docs/ROADMAP.md` + `docs/roadmap.html` and is idempotent.
 **Add an item** (appends to the yaml, then regenerates):
 
 ```
-backend/.venv/bin/python bin/roadmap-add.py \
+backend/.venv/bin/python scripts/bin/roadmap-add.py \
   --section <section-id> --title "..." --status <key> \
   [--refs "#216,PR #188"] [--note "..."] [--group "..."]
 ```

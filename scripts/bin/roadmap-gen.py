@@ -25,7 +25,7 @@ except ImportError:
     )
     sys.exit(1)
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 YAML_PATH = os.path.join(REPO, "docs", "roadmap.yaml")
 MD_PATH = os.path.join(REPO, "docs", "ROADMAP.md")
 HTML_PATH = os.path.join(REPO, "docs", "roadmap.html")

@@ -76,8 +76,8 @@ PYTEST_COV  = --cov --cov-fail-under=0
 # `make fetch-awsbnkctl` downloads + checksum-verifies the pinned linux/amd64
 AWSBNKCTL_VERSION ?= 2.4.0
 AWSBNKCTL_REPO    ?= JLCode-tech/awsbnkctl
-AWSBNKCTL_BIN     := bin/awsbnkctl
-AWSBNKCTL_STAMP   := bin/.awsbnkctl-$(AWSBNKCTL_VERSION).stamp
+AWSBNKCTL_BIN     := scripts/bin/awsbnkctl
+AWSBNKCTL_STAMP   := scripts/bin/.awsbnkctl-$(AWSBNKCTL_VERSION).stamp
 UNAME_M           := $(shell uname -m)
 ifeq ($(UNAME_M),arm64)
   AWSBNKCTL_ARCH  ?= arm64
@@ -335,7 +335,7 @@ $(AWSBNKCTL_STAMP):
 	[ -d "$(AWSBNKCTL_BIN)" ] && rmdir "$(AWSBNKCTL_BIN)" 2>/dev/null || true; \
 	install -m 0755 "$$tmp/awsbnkctl" "$(AWSBNKCTL_BIN)"; \
 	rm -rf "$$tmp"
-	@rm -f bin/.awsbnkctl-*.stamp
+	@rm -f scripts/bin/.awsbnkctl-*.stamp
 	@touch "$(AWSBNKCTL_STAMP)"
 	@echo "  ✓ awsbnkctl $(AWSBNKCTL_VERSION) ready at $(AWSBNKCTL_BIN)"
 
@@ -495,7 +495,7 @@ shellcheck:
 	@# (the hardcoded globs missed 14 tracked scripts incl. dist/install.sh).
 	@# bonnyr-f5 #182 r2: include the (extensionless) git hooks, and fail on an
 	@# EMPTY list -- `xargs shellcheck` with no files exits 0 on BSD (blind).
-	@files="$$(git ls-files '*.sh' .githooks/pre-commit .githooks/pre-push 2>/dev/null)"; \
+	@files="$$(git ls-files '*.sh' scripts/githooks/pre-commit scripts/githooks/pre-push 2>/dev/null)"; \
 	  n=$$(printf '%s\n' "$$files" | grep -c .); \
 	  [ "$$n" -ge 1 ] || { echo "::error::shellcheck found no files to lint"; exit 1; }; \
 	  printf '%s\n' "$$files" | xargs shellcheck --severity=warning
@@ -1041,15 +1041,15 @@ frontend-v2/node_modules: frontend-v2/package.json frontend-v2/package-lock.json
 install-hooks:
 	@echo "Installing git hooks..."
 	@mkdir -p .git/hooks
-	@cp .githooks/pre-commit .git/hooks/pre-commit
-	@cp .githooks/pre-push .git/hooks/pre-push
+	@cp scripts/githooks/pre-commit .git/hooks/pre-commit
+	@cp scripts/githooks/pre-push .git/hooks/pre-push
 	@chmod +x .git/hooks/pre-commit .git/hooks/pre-push
 	@echo "Git hooks installed:"
 	@echo "  pre-commit: lint + migration chain check on every commit (~5-10s)"
 	@echo "  pre-push:   migration chain check + lint + unit + component + frontend tests (~2-3m)"
 
-setup-hooks: ## Configure git to use project hooks (.githooks/)
-	git config core.hooksPath .githooks
+setup-hooks: ## Configure git to use project hooks (scripts/githooks/)
+	git config core.hooksPath scripts/githooks
 	@echo "Git hooks installed — pre-commit and pre-push migration checks active"
 
 # ─── OpenAPI & Type Generation ───────────────────────────────────────────────
@@ -1221,7 +1221,7 @@ dist:
 	cp proxy/nginx.local.conf dist/nginx/proxy.local.conf; \
 	cp frontend-v2/nginx.local.conf dist/nginx/frontend.local.conf; \
 	echo "=== Bundling install guide ==="; \
-	cp user-pack/install-guide.html dist/install-guide.html; \
+	cp docs/install-guide.html dist/install-guide.html; \
 	echo "=== Creating tarball (tracked files + generated artifacts only) ==="; \
 	TMPDIR=$$(mktemp -d); \
 	STAGE="$$TMPDIR/bnk-forge-$${VERSION}"; \

@@ -51,7 +51,7 @@ echo "gitleaks scanning range: ${range:-<all history>}  (repo: $repo_dir)"
 out="$(docker run --rm \
   -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo \
   -v "$repo_dir:/repo:ro" -w /repo "$IMAGE" detect \
-  --source=/repo --config=/repo/.gitleaks.toml --redact --verbose \
+  --source=/repo --config=/repo/.github/.gitleaks.toml --redact --verbose \
   --max-archive-depth 2 \
   ${range:+--log-opts="$range"} 2>&1)"
 rc=$?

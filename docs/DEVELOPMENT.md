@@ -133,7 +133,7 @@ bnk-operator/              # Kopf-based Python agent run inside customer cluster
 proxy/                     # Nginx config + TLS
 cli/                       # CLI helpers
 scripts/                   # Build/maintenance/upgrade (notably upgrade.sh, mcp_live_smoke.py)
-vm-bnk-forge/              # cloud-init harness: fresh KVM/cloud VM that self-installs bnk-forge
+docs/vm-bnk-forge/         # cloud-init harness: fresh KVM/cloud VM that self-installs bnk-forge
 ```
 
 ### Backend layering

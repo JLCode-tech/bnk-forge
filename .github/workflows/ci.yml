@@ -817,7 +817,7 @@ jobs:
           # about one release back, so the window it exercises is one release
           # wide and contains no accumulated drift. Raise this only when a
           # release genuinely stops being supported as an upgrade source.
-          ref="$(tr -d '[:space:]' < MIN_UPGRADE_FROM)"
+          ref="$(tr -d '[:space:]' < .github/MIN_UPGRADE_FROM)"
           if ! git rev-parse --verify "$ref^{commit}" >/dev/null 2>&1; then
             echo "::error::MIN_UPGRADE_FROM names '$ref', which is not a commit in this repo"
             exit 1
@@ -1193,7 +1193,7 @@ jobs:
             docker run --rm \
               -v /var/run/docker.sock:/var/run/docker.sock \
               -v trivy-cache:/root/.cache/trivy \
-              -v "$PWD/.trivyignore:/.trivyignore:ro" \
+              -v "$PWD/.github/.trivyignore:/.trivyignore:ro" \
               aquasec/trivy:0.62.1 image \
               --ignorefile /.trivyignore --scanners vuln --quiet "$@"
           }
