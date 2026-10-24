@@ -1,0 +1,266 @@
+/*
+ * Topology Canvas styles. Card, frame and edge-label rules are adapted from
+ * Gateway Atlas (frontend/src/explorer.css, graph.css), Apache-2.0, Copyright
+ * 2026 Gateway Atlas contributors. Chrome uses Forge tokens; the relationship
+ * palette is a fixed data-viz palette (D-020 allows it on graph surfaces).
+ */
+
+.bnk-canvas {
+  --canvas-flow-parent: #7164ae;
+  --canvas-flow-backend: #328378;
+  --canvas-flow-policy: #8a6696;
+  --canvas-flow-config: #a27a36;
+  --canvas-flow-logging: #9aa6b2;
+  --canvas-flow-tls: #967428;
+  --canvas-flow-workload: #547caa;
+  position: relative;
+  height: 100%;
+  width: 100%;
+  background: hsl(var(--background));
+}
+.dark .bnk-canvas {
+  --canvas-flow-parent: #a398d2;
+  --canvas-flow-backend: #6bb6a6;
+  --canvas-flow-policy: #be9bc8;
+  --canvas-flow-config: #c8a565;
+  --canvas-flow-logging: #718095;
+  --canvas-flow-tls: #d5b46c;
+  --canvas-flow-workload: #8aadd7;
+}
+
+/* Cards */
+.bnk-canvas .react-flow__node.bnk-card {
+  --node-accent: hsl(var(--border));
+  padding: 8px 10px;
+  border: 2px solid var(--node-accent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--node-accent) 7%, hsl(var(--card)));
+  color: hsl(var(--card-foreground));
+  font-size: 12px;
+  line-height: 1.25;
+  text-align: left;
+  box-shadow: 0 2px 7px rgb(0 0 0 / 0.12);
+  cursor: pointer;
+}
+.bnk-canvas .bnk-card.gateway {
+  --node-accent: var(--canvas-flow-parent);
+}
+.bnk-canvas .bnk-card.route {
+  --node-accent: hsl(var(--primary));
+}
+.bnk-canvas .bnk-card.service {
+  --node-accent: var(--canvas-flow-backend);
+}
+.bnk-canvas .bnk-card.secret {
+  --node-accent: var(--canvas-flow-tls);
+}
+.bnk-canvas .bnk-card.policy {
+  --node-accent: var(--canvas-flow-policy);
+}
+.bnk-canvas .bnk-card.config {
+  --node-accent: var(--canvas-flow-config);
+}
+.bnk-canvas .bnk-card.network {
+  --node-accent: var(--canvas-flow-workload);
+}
+.bnk-canvas .react-flow__node.bnk-card.entry {
+  background: color-mix(in srgb, var(--node-accent) 13%, hsl(var(--card)));
+  box-shadow:
+    inset 4px 0 0 var(--node-accent),
+    0 0 0 3px color-mix(in srgb, var(--node-accent) 14%, transparent),
+    0 4px 14px color-mix(in srgb, var(--node-accent) 22%, transparent);
+}
+.bnk-canvas .bnk-card.broken {
+  --node-accent: hsl(var(--destructive));
+  border-style: dashed;
+}
+.bnk-canvas .react-flow__node.bnk-card.expected-absent {
+  --node-accent: hsl(var(--muted-foreground) / 0.55);
+  border-style: dashed;
+  background: color-mix(in srgb, hsl(var(--card)) 70%, transparent);
+}
+.bnk-canvas .bnk-card .bnk-card-kind {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--node-accent) 80%, hsl(var(--foreground)));
+}
+.bnk-canvas .bnk-card .bnk-card-name,
+.bnk-canvas .bnk-card .bnk-card-fact {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bnk-canvas .bnk-card .bnk-card-name {
+  font-weight: 600;
+  font-size: 13px;
+}
+.bnk-canvas .bnk-card.entry .bnk-card-name {
+  font-size: 14px;
+}
+.bnk-canvas .bnk-card .bnk-card-fact {
+  font-size: 10px;
+  color: hsl(var(--muted-foreground));
+}
+.bnk-canvas .bnk-card .bnk-card-badge {
+  margin-left: auto;
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: 700;
+  color: hsl(var(--destructive-foreground));
+  background: hsl(var(--destructive));
+}
+.bnk-canvas .bnk-card .bnk-card-badge.warning {
+  color: hsl(var(--warning-foreground));
+  background: hsl(var(--warning));
+}
+.bnk-canvas .bnk-card .bnk-card-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: hsl(var(--success));
+}
+.bnk-canvas .bnk-card .bnk-card-dot.false {
+  background: hsl(var(--destructive));
+}
+.bnk-canvas .bnk-card .react-flow__handle {
+  opacity: 0;
+  width: 6px;
+  height: 6px;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+}
+.bnk-canvas .react-flow__node.bnk-card.selected,
+.bnk-canvas .react-flow__node.bnk-card.canvas-selected {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+.bnk-canvas .react-flow__node.canvas-muted {
+  opacity: 0.25;
+}
+.bnk-canvas .react-flow__edge.canvas-muted {
+  opacity: 0.12;
+}
+
+/* Namespace and class frames */
+.bnk-canvas .react-flow__node.bnk-frame {
+  border: 1px dashed hsl(var(--border));
+  border-radius: 10px;
+  background: hsl(var(--muted) / 0.35);
+  pointer-events: none;
+}
+.bnk-canvas .bnk-frame-label {
+  position: absolute;
+  top: 10px;
+  left: 14px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+
+/* Edge labels */
+.bnk-canvas-edge-label {
+  position: absolute;
+  z-index: 3;
+  max-width: 170px;
+  padding: 2px 5px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 4px;
+  background: color-mix(in srgb, hsl(var(--card)) 96%, transparent);
+  color: hsl(var(--foreground));
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
+}
+.bnk-canvas-edge-label > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bnk-canvas-edge-label.stack {
+  display: grid;
+  gap: 2px;
+  max-width: 210px;
+  padding: 4px 6px;
+}
+.bnk-canvas-edge-label.stack > span + span {
+  padding-top: 2px;
+  border-top: 1px solid hsl(var(--border) / 0.7);
+}
+.bnk-canvas .react-flow__edge.broken path.react-flow__edge-path {
+  stroke: hsl(var(--destructive)) !important;
+}
+
+/* Legend and controls */
+.bnk-canvas-legend {
+  position: absolute;
+  z-index: 5;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  max-width: calc(100% - 20px);
+  padding: 5px 8px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  background: hsl(var(--card) / 0.92);
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+}
+.bnk-canvas-legend span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.bnk-canvas .react-flow__controls {
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.15);
+}
+.bnk-canvas .react-flow__controls-button {
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  border-bottom-color: hsl(var(--border));
+}
+.bnk-canvas .react-flow__controls-button svg {
+  fill: currentColor;
+}
+.bnk-canvas .react-flow__controls-button:hover {
+  background: hsl(var(--accent));
+}
+.bnk-canvas .react-flow__minimap {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+}
+.bnk-canvas .react-flow__minimap-mask {
+  fill: hsl(var(--background) / 0.7);
+}
+.bnk-canvas .react-flow__minimap-node.minimap-card {
+  fill: hsl(var(--muted-foreground));
+}
+.bnk-canvas .react-flow__minimap-node.minimap-frame {
+  fill: transparent;
+  stroke: hsl(var(--border));
+}
+@media (max-width: 760px) {
+  .bnk-canvas-legend,
+  .bnk-canvas .react-flow__minimap {
+    display: none;
+  }
+}

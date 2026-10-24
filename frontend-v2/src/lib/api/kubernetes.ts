@@ -30,6 +30,7 @@ import type {
   BatchConnectivityResponse,
   F5PolicyGatewayAssociationsResponse,
   BnkDataResponse,
+  BnkCanvasResponse,
   GatewayTopologyResponse,
   BnkHealthEndpointResponse,
   BnkUpgradeVersionsResponse,
@@ -297,6 +298,17 @@ export const kubernetesApi = {
       })
       .then((res) => res.data),
 
+  // Topology Canvas — typed relationship graph of BNK resources (read-only)
+  getBnkCanvas: (
+    clusterId: number,
+    params?: { namespace?: string; force?: boolean },
+  ) =>
+    apiClient
+      .get<BnkCanvasResponse>(`/api/k8s/clusters/${clusterId}/f5bnk/canvas`, {
+        params,
+      })
+      .then((res) => res.data),
+
   // Legacy individual endpoints (kept for backward compat, all delegate to shared fetch on backend)
   getF5PolicyGatewayAssociations: (
     clusterId: number,
@@ -467,7 +479,10 @@ export const kubernetesApi = {
         success: boolean;
         message: string;
         resource: K8sResource;
-      }>(`/api/k8s/clusters/${clusterId}/resources/${resourceType}/${resourceName}`, data)
+      }>(
+        `/api/k8s/clusters/${clusterId}/resources/${resourceType}/${resourceName}`,
+        data,
+      )
       .then((res) => res.data),
 
   deleteK8sResource: (
@@ -480,7 +495,10 @@ export const kubernetesApi = {
       .delete<{
         success: boolean;
         message: string;
-      }>(`/api/k8s/clusters/${clusterId}/resources/${resourceType}/${resourceName}`, { params })
+      }>(
+        `/api/k8s/clusters/${clusterId}/resources/${resourceType}/${resourceName}`,
+        { params },
+      )
       .then((res) => res.data),
 
   scaleDeployment: (
@@ -493,7 +511,10 @@ export const kubernetesApi = {
         success: boolean;
         message: string;
         replicas: number;
-      }>(`/api/k8s/clusters/${clusterId}/deployments/${deploymentName}/scale`, data)
+      }>(
+        `/api/k8s/clusters/${clusterId}/deployments/${deploymentName}/scale`,
+        data,
+      )
       .then((res) => res.data),
 
   getPodLogs: (
@@ -518,7 +539,9 @@ export const kubernetesApi = {
       .post<{
         success: boolean;
         message: string;
-      }>(`/api/k8s/clusters/${clusterId}/pods/${podName}/restart`, null, { params })
+      }>(`/api/k8s/clusters/${clusterId}/pods/${podName}/restart`, null, {
+        params,
+      })
       .then((res) => res.data),
 
   // Kubernetes Advanced Operations
@@ -567,7 +590,9 @@ export const kubernetesApi = {
         namespace: string;
         containers: K8sPodContainer[];
         init_containers: K8sPodContainer[];
-      }>(`/api/k8s/clusters/${clusterId}/pods/${podName}/containers`, { params: { namespace } })
+      }>(`/api/k8s/clusters/${clusterId}/pods/${podName}/containers`, {
+        params: { namespace },
+      })
       .then((res) => res.data),
 
   getPodMetrics: (
@@ -602,7 +627,10 @@ export const kubernetesApi = {
         history: K8sRolloutHistoryEntry[];
         deployment_name: string;
         namespace: string;
-      }>(`/api/k8s/clusters/${clusterId}/deployments/${deploymentName}/rollout/history`, { params: { namespace } })
+      }>(
+        `/api/k8s/clusters/${clusterId}/deployments/${deploymentName}/rollout/history`,
+        { params: { namespace } },
+      )
       .then((res) => res.data),
 
   getRolloutStatus: (
@@ -627,7 +655,11 @@ export const kubernetesApi = {
       .post<{
         success: boolean;
         message: string;
-      }>(`/api/k8s/clusters/${clusterId}/deployments/${deploymentName}/rollout/undo`, null, { params: { namespace, revision } })
+      }>(
+        `/api/k8s/clusters/${clusterId}/deployments/${deploymentName}/rollout/undo`,
+        null,
+        { params: { namespace, revision } },
+      )
       .then((res) => res.data),
 
   rolloutRestart: (
@@ -639,7 +671,11 @@ export const kubernetesApi = {
       .post<{
         success: boolean;
         message: string;
-      }>(`/api/k8s/clusters/${clusterId}/deployments/${deploymentName}/rollout/restart`, null, { params: { namespace } })
+      }>(
+        `/api/k8s/clusters/${clusterId}/deployments/${deploymentName}/rollout/restart`,
+        null,
+        { params: { namespace } },
+      )
       .then((res) => res.data),
 
   rolloutPause: (
@@ -652,7 +688,11 @@ export const kubernetesApi = {
         success: boolean;
         message: string;
         paused: boolean;
-      }>(`/api/k8s/clusters/${clusterId}/deployments/${deploymentName}/rollout/pause`, null, { params: { namespace } })
+      }>(
+        `/api/k8s/clusters/${clusterId}/deployments/${deploymentName}/rollout/pause`,
+        null,
+        { params: { namespace } },
+      )
       .then((res) => res.data),
 
   rolloutResume: (
@@ -665,7 +705,11 @@ export const kubernetesApi = {
         success: boolean;
         message: string;
         paused: boolean;
-      }>(`/api/k8s/clusters/${clusterId}/deployments/${deploymentName}/rollout/resume`, null, { params: { namespace } })
+      }>(
+        `/api/k8s/clusters/${clusterId}/deployments/${deploymentName}/rollout/resume`,
+        null,
+        { params: { namespace } },
+      )
       .then((res) => res.data),
 
   // Kubernetes Node Operations (Phase 3)
@@ -701,7 +745,9 @@ export const kubernetesApi = {
         message: string;
         evicted_pods: Array<{ name: string; namespace: string }>;
         failed_pods: Array<{ name: string; namespace: string; error: string }>;
-      }>(`/api/k8s/clusters/${clusterId}/nodes/${nodeName}/drain`, null, { params: options })
+      }>(`/api/k8s/clusters/${clusterId}/nodes/${nodeName}/drain`, null, {
+        params: options,
+      })
       .then((res) => res.data),
 
   // Kubernetes Patch, Label, Annotate Operations (Phase 6)
@@ -720,7 +766,10 @@ export const kubernetesApi = {
         success: boolean;
         message: string;
         resource: K8sResource;
-      }>(`/api/k8s/clusters/${clusterId}/resources/${resourceType}/${resourceName}`, data)
+      }>(
+        `/api/k8s/clusters/${clusterId}/resources/${resourceType}/${resourceName}`,
+        data,
+      )
       .then((res) => res.data),
 
   labelK8sResource: (
@@ -738,7 +787,10 @@ export const kubernetesApi = {
         success: boolean;
         message: string;
         resource: K8sResource;
-      }>(`/api/k8s/clusters/${clusterId}/resources/${resourceType}/${resourceName}/label`, data)
+      }>(
+        `/api/k8s/clusters/${clusterId}/resources/${resourceType}/${resourceName}/label`,
+        data,
+      )
       .then((res) => res.data),
 
   annotateK8sResource: (
@@ -756,7 +808,10 @@ export const kubernetesApi = {
         success: boolean;
         message: string;
         resource: K8sResource;
-      }>(`/api/k8s/clusters/${clusterId}/resources/${resourceType}/${resourceName}/annotate`, data)
+      }>(
+        `/api/k8s/clusters/${clusterId}/resources/${resourceType}/${resourceName}/annotate`,
+        data,
+      )
       .then((res) => res.data),
 
   // Kubernetes Cluster Management

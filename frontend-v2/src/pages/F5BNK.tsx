@@ -72,6 +72,7 @@ import {
   F5BNKTopologyViewer,
   type TopologyResourceSelection,
 } from "@/components/k8s/F5BNKTopologyViewer";
+import { F5BNKCanvasView } from "@/components/k8s/bnk-canvas/F5BNKCanvasView";
 import { F5BNKPolicyViewer } from "@/components/k8s/F5BNKPolicyViewer";
 import { RunbookWizard } from "@/components/runbooks/RunbookWizard";
 import { QKViewPanel } from "@/components/k8s/QKViewPanel";
@@ -93,6 +94,7 @@ import {
   VIEW_POLICY_MAP,
   VIEW_AI_ANALYZERS,
   VIEW_TOPOLOGY,
+  VIEW_CANVAS,
   VIEW_TRAFFIC_FLOW,
   VIEW_UPGRADE,
   VIEW_DIAGNOSTICS,
@@ -268,6 +270,27 @@ function renderSpecialView(
         </div>
       );
 
+    case VIEW_CANVAS:
+      return (
+        <div className="flex h-full min-h-0 flex-col p-6">
+          <div className="mb-4">
+            <h2 className="text-xl font-semibold mb-2">Topology Canvas</h2>
+            <p className={descClass}>
+              Every BIG-IP Next resource and how it connects: one row per
+              Gateway family, grouped by GatewayClass, with broken references
+              and attachment findings
+            </p>
+          </div>
+          <div className="min-h-0 flex-1">
+            <F5BNKCanvasView
+              clusterId={clusterId}
+              namespace={namespace}
+              onSelectResource={onTopologySelect}
+            />
+          </div>
+        </div>
+      );
+
     case VIEW_POLICY_MAP:
       return (
         <div className="p-6 overflow-y-auto">
@@ -387,6 +410,7 @@ function mapParamToViewOrResource(param?: string | null): string | null {
   if (!param) return null;
   const p = param.toLowerCase().trim();
   if (p === "topology" || p === "view-topology") return VIEW_TOPOLOGY;
+  if (p === "canvas" || p === "view-canvas") return VIEW_CANVAS;
   if (
     p === "traffic-flow" ||
     p === "trafficflow" ||
@@ -1437,6 +1461,7 @@ export default function F5BNK() {
                 (!!selectedResource && !isSpecialView(selectedResourceType)) ||
                 (!!topologySelectedResource &&
                   (selectedResourceType === VIEW_TOPOLOGY ||
+                    selectedResourceType === VIEW_CANVAS ||
                     selectedResourceType === VIEW_TRAFFIC_FLOW ||
                     selectedResourceType === VIEW_POLICY_MAP))
               }
@@ -1457,6 +1482,7 @@ export default function F5BNK() {
               {/* Topology / Traffic Flow selection */}
               {topologySelectedResource &&
                 (selectedResourceType === VIEW_TOPOLOGY ||
+                  selectedResourceType === VIEW_CANVAS ||
                   selectedResourceType === VIEW_TRAFFIC_FLOW ||
                   selectedResourceType === VIEW_POLICY_MAP) && (
                   <F5BNKDetailPanel
@@ -1472,6 +1498,7 @@ export default function F5BNK() {
                 )}
               {topologyLoading &&
                 (selectedResourceType === VIEW_TOPOLOGY ||
+                  selectedResourceType === VIEW_CANVAS ||
                   selectedResourceType === VIEW_TRAFFIC_FLOW ||
                   selectedResourceType === VIEW_POLICY_MAP) && (
                   <div className="flex items-center justify-center py-20">
