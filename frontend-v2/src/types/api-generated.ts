@@ -1604,6 +1604,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/k8s/clusters/{cluster_id}/f5bnk/canvas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Topology Canvas
+         * @description Topology Canvas graph: exact-identity BIG-IP Next relationships, edges and findings.
+         *
+         *     Read-only: reuses the shared BNK fetch (get/list only) and its cache. Secrets are never read; a Secret
+         *     appears only as a reference.
+         */
+        get: operations["get_topology_canvas_api_k8s_clusters__cluster_id__f5bnk_canvas_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/k8s/clusters/{cluster_id}/f5bnk/policy-gateway-associations": {
         parameters: {
             query?: never;
@@ -16174,6 +16197,120 @@ export interface components {
             description?: string | null;
             /** Make Default */
             make_default?: boolean | null;
+        };
+        /**
+         * BnkCanvasEdge
+         * @description A reference from ``source`` to ``target``, with the field it was read from.
+         */
+        BnkCanvasEdge: {
+            /** Id */
+            id: string;
+            /** Source */
+            source: string;
+            /** Target */
+            target: string;
+            /** Type */
+            type: string;
+            /** Field */
+            field: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "valid" | "broken" | "unresolved";
+            /**
+             * Inferred
+             * @default false
+             */
+            inferred: boolean;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+        };
+        /** BnkCanvasFact */
+        BnkCanvasFact: {
+            /** Label */
+            label: string;
+            /** Value */
+            value: string;
+        };
+        /** BnkCanvasFinding */
+        BnkCanvasFinding: {
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "error" | "warning" | "info";
+            /** Rule */
+            rule: string;
+            /** Resource */
+            resource: string;
+            /** Field */
+            field: string;
+            /** Explanation */
+            explanation: string;
+            /** Evidence */
+            evidence: string;
+            /** Remediation */
+            remediation: string;
+        };
+        /**
+         * BnkCanvasResource
+         * @description A card. ``id`` is the exact identity ``group|version|kind|namespace|name``; placeholders (missing or
+         *     unread targets, such as a Secret, which is never read) have an empty version and no ``resourceType``.
+         */
+        BnkCanvasResource: {
+            /** Id */
+            id: string;
+            /** Group */
+            group: string;
+            /** Version */
+            version: string;
+            /** Kind */
+            kind: string;
+            /** Namespace */
+            namespace: string;
+            /** Name */
+            name: string;
+            /** Resourcetype */
+            resourceType?: string | null;
+            /**
+             * Placeholder
+             * @default false
+             */
+            placeholder: boolean;
+            /** Conditions */
+            conditions?: {
+                [key: string]: string;
+            };
+            /** Facts */
+            facts?: components["schemas"]["BnkCanvasFact"][];
+        };
+        /** BnkCanvasResponse */
+        BnkCanvasResponse: {
+            /** Resources */
+            resources: components["schemas"]["BnkCanvasResource"][];
+            /** Edges */
+            edges: components["schemas"]["BnkCanvasEdge"][];
+            /** Findings */
+            findings: components["schemas"]["BnkCanvasFinding"][];
+            /** Warnings */
+            warnings?: string[];
+            /** Generatedat */
+            generatedAt: string;
+            /**
+             * Partial
+             * @default false
+             */
+            partial: boolean;
+            /** Cluster Id */
+            cluster_id: number;
+            /** Namespace */
+            namespace?: string | null;
         };
         /** BnkClusterConfigCreateRequest */
         BnkClusterConfigCreateRequest: {
@@ -30772,6 +30909,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GatewayTopologyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_topology_canvas_api_k8s_clusters__cluster_id__f5bnk_canvas_get: {
+        parameters: {
+            query?: {
+                namespace?: string | null;
+                force?: boolean;
+            };
+            header?: never;
+            path: {
+                cluster_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BnkCanvasResponse"];
                 };
             };
             /** @description Validation Error */
