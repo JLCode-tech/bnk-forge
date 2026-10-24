@@ -5,6 +5,10 @@
  * a card emits the same TopologyResourceSelection as the Object Topology
  * Graph, so the page opens Forge's F5BNKDetailPanel. Secrets are drawn only as
  * reference placeholders and are never selectable.
+ *
+ * Traffic counters come from the BNK data bundle (GET /f5bnk/data) that the
+ * F5 BNK page already prefetches for every BNK view; reading it here shares
+ * that cache entry and adds no cluster calls.
  */
 
 import { useMemo, useState } from "react";
@@ -22,11 +26,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Switch } from "@/components/ui/switch";
-import { useBnkCanvas } from "@/hooks/useK8s";
+import { useBnkCanvas, useBnkData } from "@/hooks/useK8s";
 import { cn } from "@/lib/utils";
 import type { BnkCanvasFinding, BnkCanvasResource } from "@/types";
 import type { TopologyResourceSelection } from "@/components/k8s/F5BNKTopologyViewer";
 import { BnkCanvas } from "./BnkCanvas";
+import { trafficOverlay } from "./trafficOverlay";
 
 interface F5BNKCanvasViewProps {
   clusterId: number;
@@ -97,7 +102,15 @@ export function F5BNKCanvasView({
     clusterId,
     namespace ? { namespace } : undefined,
   );
+  const { data: bnkData } = useBnkData(
+    clusterId,
+    { namespace },
+    { pollingEnabled: false },
+  );
+  const stats = bnkData?.trafficStats;
   const [showSecrets, setShowSecrets] = useState(true);
+  const [showTraffic, setShowTraffic] = useState(true);
+  const [tracePath, setTracePath] = useState(true);
   const [findingsOpen, setFindingsOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string>();
 
@@ -118,6 +131,13 @@ export function F5BNKCanvasView({
       ),
     [data],
   );
+  const traffic = useMemo(
+    () => (showTraffic ? trafficOverlay(resources, stats) : undefined),
+    [resources, stats, showTraffic],
+  );
+  const trafficHint = stats?.available
+    ? `TMM counters from ${stats.podName ?? "the TMM pod"}${stats.sampledAt ? `, sampled ${new Date(stats.sampledAt).toLocaleTimeString()}` : ""}`
+    : stats?.error || "No TMM traffic counters are available for this cluster.";
   const errors = findings.filter((f) => f.severity === "error").length;
   const warnings = findings.filter((f) => f.severity === "warning").length;
   const broken = (data?.edges ?? []).filter(
@@ -184,14 +204,37 @@ export function F5BNKCanvasView({
         {broken > 0 && <Badge variant="destructive">{broken} broken</Badge>}
         {errors > 0 && <Badge variant="destructive">{errors} errors</Badge>}
         {warnings > 0 && <Badge variant="warning">{warnings} warnings</Badge>}
-        <label className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+        <div
+          className="ml-auto flex items-center gap-2 text-xs text-muted-foreground"
+          title={trafficHint}
+        >
+          <Switch
+            checked={showTraffic && !!stats?.available}
+            onCheckedChange={setShowTraffic}
+            disabled={!stats?.available}
+            aria-label="Show traffic counters"
+          />
+          Traffic
+        </div>
+        <div
+          className="flex items-center gap-2 text-xs text-muted-foreground"
+          title="Selecting a card highlights its whole traffic chain instead of only its direct relationships"
+        >
+          <Switch
+            checked={tracePath}
+            onCheckedChange={setTracePath}
+            aria-label="Trace the full traffic path"
+          />
+          Full path
+        </div>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Switch
             checked={showSecrets}
             onCheckedChange={setShowSecrets}
             aria-label="Show Secret references"
           />
           Secret references
-        </label>
+        </div>
         <Button
           size="sm"
           variant="outline"
@@ -252,6 +295,9 @@ export function F5BNKCanvasView({
           findings={findings}
           selectedId={selectedId}
           onSelect={select}
+          traffic={traffic}
+          trace={tracePath ? "path" : "neighbours"}
+          exportName={`bnk-topology-cluster-${clusterId}${namespace ? `-${namespace}` : ""}`}
         />
       </div>
     </div>

@@ -243,6 +243,12 @@
 .bnk-canvas .react-flow__controls-button:hover {
   background: hsl(var(--accent));
 }
+.bnk-canvas .react-flow__attribution {
+  background: hsl(var(--card) / 0.7);
+}
+.bnk-canvas .react-flow__attribution a {
+  color: hsl(var(--muted-foreground));
+}
 .bnk-canvas .react-flow__minimap {
   background: hsl(var(--card));
   border: 1px solid hsl(var(--border));
@@ -263,4 +269,10 @@
   .bnk-canvas .react-flow__minimap {
     display: none;
   }
+}
+
+/* Traffic overlay (Forge addition) */
+.bnk-canvas .bnk-card .bnk-card-fact.traffic {
+  color: color-mix(in srgb, var(--node-accent) 70%, hsl(var(--foreground)));
+  font-weight: 600;
 }

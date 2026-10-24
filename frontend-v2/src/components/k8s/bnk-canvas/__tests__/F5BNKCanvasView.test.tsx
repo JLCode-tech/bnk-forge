@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@/test/test-utils";
 import { http, HttpResponse } from "msw";
 import { server } from "@/test/mocks/server";
@@ -114,14 +114,49 @@ const canvas = {
   namespace: null,
 };
 
+const trafficStats = (available: boolean) => ({
+  source: available ? "tmctl" : null,
+  podName: available ? "f5-tmm-0" : null,
+  sampledAt: null,
+  available,
+  error: available ? null : "No TMM pod with a debug sidecar",
+  listeners: available
+    ? [
+        {
+          gatewayName: "edge-gw",
+          gatewayNamespace: "shop",
+          listenerName: "http",
+          clientsideBytesIn: 0,
+          clientsideBytesOut: 0,
+          clientsideCurConns: 1,
+          clientsideTotConns: 12,
+          serversideBytesIn: 0,
+          serversideBytesOut: 0,
+          serversideCurConns: 0,
+          serversideTotConns: 0,
+        },
+      ]
+    : [],
+  egresses: [],
+  firewallRules: [],
+});
+const bnkData = (available: boolean) =>
+  http.get("*/api/k8s/clusters/:id/f5bnk/data", () =>
+    HttpResponse.json({ trafficStats: trafficStats(available) }),
+  );
+const cardFor = (name: string) =>
+  screen.getByText(name).closest(".react-flow__node") as HTMLElement;
+
 describe("F5BNKCanvasView", () => {
   beforeEach(() => {
     server.use(
       http.get("*/api/k8s/clusters/:id/f5bnk/canvas", () =>
         HttpResponse.json(canvas),
       ),
+      bnkData(false),
     );
   });
+  afterEach(() => vi.restoreAllMocks());
 
   it("draws a card per resource with counts and findings", async () => {
     render(<F5BNKCanvasView clusterId={1} />);
@@ -182,5 +217,71 @@ describe("F5BNKCanvasView", () => {
         screen.getByText("No BIG-IP Next resources found"),
       ).toBeInTheDocument(),
     );
+  });
+
+  it("keeps the traffic switch off when TMM counters are unavailable", async () => {
+    render(<F5BNKCanvasView clusterId={1} />);
+    const toggle = await screen.findByLabelText("Show traffic counters");
+    await waitFor(() =>
+      expect(toggle.closest("[title]")).toHaveAttribute(
+        "title",
+        "No TMM pod with a debug sidecar",
+      ),
+    );
+    expect(toggle).toBeDisabled();
+    expect(screen.getByText("address 192.0.2.10")).toBeInTheDocument();
+  });
+
+  it("shows TMM counters on the Gateway card and hides them on request", async () => {
+    server.use(bnkData(true));
+    render(<F5BNKCanvasView clusterId={1} />);
+    expect(await screen.findByText("1 open · 12 conns")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Show traffic counters"));
+    await waitFor(() =>
+      expect(screen.queryByText("1 open · 12 conns")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText("address 192.0.2.10")).toBeInTheDocument();
+  });
+
+  it("highlights the whole traffic path, or only neighbours when asked", async () => {
+    render(<F5BNKCanvasView clusterId={1} />);
+    await waitFor(() => expect(screen.getByText("web")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("web"));
+    // Path: route → Gateway → class, plus the Gateway's TLS Secret.
+    expect(cardFor("f5")).not.toHaveClass("canvas-muted");
+    expect(cardFor("shop-tls")).not.toHaveClass("canvas-muted");
+    fireEvent.click(screen.getByLabelText("Trace the full traffic path"));
+    await waitFor(() => expect(cardFor("f5")).toHaveClass("canvas-muted"));
+    expect(cardFor("shop-tls")).toHaveClass("canvas-muted");
+    expect(cardFor("edge-gw")).not.toHaveClass("canvas-muted");
+    expect(cardFor("gone")).not.toHaveClass("canvas-muted");
+  });
+
+  it("saves the graph as a standalone SVG", async () => {
+    let saved: Blob | undefined;
+    const createObjectURL = vi.fn((blob: Blob) => {
+      saved = blob;
+      return "blob:canvas";
+    });
+    Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() });
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+    render(<F5BNKCanvasView clusterId={1} namespace="shop" />);
+    await waitFor(() => expect(screen.getByText("web")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Save as SVG" }));
+    expect(click).toHaveBeenCalledOnce();
+    const link = click.mock.contexts[0] as HTMLAnchorElement;
+    expect(link.download).toBe("bnk-topology-cluster-1-shop.svg");
+    expect(saved?.type).toBe("image/svg+xml");
+    const svg = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.readAsText(saved!);
+    });
+    expect(svg).toContain("<title>BNK Topology Canvas</title>");
+    expect(svg).toContain(">edge-gw</text>");
+    expect(svg).toContain(">Secret · not read</text>");
+    expect(svg).not.toContain("var(--");
   });
 });

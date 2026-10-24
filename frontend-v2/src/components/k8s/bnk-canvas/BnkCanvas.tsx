@@ -5,14 +5,18 @@
  * familiesHandles, placeEdgeLabels, namespace frames), Apache-2.0, Copyright
  * 2026 Gateway Atlas contributors, adapted from @xyflow/react v12 to reactflow
  * v11. Atlas's Classic (ELK) layout, export, popover and camera rules are not
- * ported; selection opens Forge's detail panel instead.
+ * ported; selection opens Forge's detail panel instead. Forge additions: the
+ * traffic overlay (trafficOverlay.ts), full-path tracing (tracePath.ts) and a
+ * vector SVG export (exportSvg.ts).
  */
 
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Download } from "lucide-react";
 import ReactFlow, {
   Background,
   BackgroundVariant,
   BaseEdge,
+  ControlButton,
   Controls,
   EdgeLabelRenderer,
   getBezierPath,
@@ -53,6 +57,14 @@ import {
   relationshipStroke,
   visualDirection,
 } from "./edgeStyles";
+import {
+  buildCanvasSvg,
+  type SvgCard,
+  type SvgEdge,
+  type SvgFrame,
+} from "./exportSvg";
+import { neighbours, tracePath } from "./tracePath";
+import { withListenerTraffic, type TrafficOverlay } from "./trafficOverlay";
 
 export interface BnkCanvasProps {
   resources: BnkCanvasResource[];
@@ -60,6 +72,13 @@ export interface BnkCanvasProps {
   findings: BnkCanvasFinding[];
   selectedId?: string;
   onSelect?: (resource: BnkCanvasResource | undefined) => void;
+  // TMM counters to show on cards and listener edges; omit to hide them.
+  traffic?: TrafficOverlay;
+  // "path" highlights the selected card's whole traffic chain; "neighbours"
+  // only its direct relationships (Atlas's rule).
+  trace?: "path" | "neighbours";
+  // File name, without extension, for "Save as SVG".
+  exportName?: string;
 }
 
 type Point = { x: number; y: number };
@@ -72,6 +91,7 @@ type CardData = {
   // Placeholder state: "missing" = a reference that should resolve and does
   // not; "unread" = a kind the Canvas does not read (Secrets, ClusterIssuers).
   absent?: "missing" | "unread";
+  traffic?: string;
 };
 type FrameData = { label: string };
 type CanvasEdgeData = {
@@ -110,10 +130,20 @@ function readiness(conditions: Record<string, string> | undefined) {
   return undefined;
 }
 
-const CanvasCard = memo(function CanvasCard({ data }: NodeProps<CardData>) {
-  const { resource, errors, warnings, absent } = data;
-  const ready = readiness(resource.conditions);
+const factText = (resource: BnkCanvasResource) => {
   const fact = resource.facts?.[0];
+  return fact ? `${fact.label} ${fact.value}` : undefined;
+};
+const kindText = (data: CardData) =>
+  `${data.resource.kind}${data.absent === "missing" ? " · not found" : data.absent === "unread" ? " · not read" : ""}`;
+
+const CanvasCard = memo(function CanvasCard({ data }: NodeProps<CardData>) {
+  const { resource, errors, warnings, absent, traffic } = data;
+  const ready = readiness(resource.conditions);
+  const fact = factText(resource);
+  const facts = (resource.facts ?? []).map(
+    (item) => `${item.label}: ${item.value}`,
+  );
   return (
     <>
       {(["Top", "Bottom", "Left", "Right"] as const).map((side) => (
@@ -158,15 +188,19 @@ const CanvasCard = memo(function CanvasCard({ data }: NodeProps<CardData>) {
       <span className="bnk-card-name" title={resource.name}>
         {resource.name}
       </span>
-      {fact && (
+      {traffic ? (
         <span
-          className="bnk-card-fact"
-          title={(resource.facts ?? [])
-            .map((item) => `${item.label}: ${item.value}`)
-            .join("\n")}
+          className="bnk-card-fact traffic"
+          title={[`traffic: ${traffic}`, ...facts].join("\n")}
         >
-          {fact.label} {fact.value}
+          {traffic}
         </span>
+      ) : (
+        fact && (
+          <span className="bnk-card-fact" title={facts.join("\n")}>
+            {fact}
+          </span>
+        )
       )}
     </>
   );
@@ -277,6 +311,22 @@ function handlePoint(position: Point, handle: string) {
   };
 }
 
+// The Bézier reactflow draws between two cards' chosen handles.
+function edgePath(relationship: unknown, source: Point, target: Point) {
+  const handles = familiesHandles(relationship, source, target);
+  const from = handlePoint(source, handles.sourceHandle);
+  const to = handlePoint(target, handles.targetHandle);
+  return getBezierPath({
+    sourceX: from.x,
+    sourceY: from.y,
+    sourcePosition: from.position,
+    targetX: to.x,
+    targetY: to.y,
+    targetPosition: to.position,
+    curvature: 0.28,
+  });
+}
+
 // One deterministic pass: each label takes the first spot along its curve
 // clear of cards and earlier labels.
 function placeEdgeLabels(
@@ -297,18 +347,11 @@ function placeEdgeLabels(
     const source = positions.get(edge.source);
     const target = positions.get(edge.target);
     if (!lines.length || !source || !target) continue;
-    const handles = familiesHandles(edge.data?.relationship, source, target);
-    const from = handlePoint(source, handles.sourceHandle);
-    const to = handlePoint(target, handles.targetHandle);
-    const [path, midX, midY] = getBezierPath({
-      sourceX: from.x,
-      sourceY: from.y,
-      sourcePosition: from.position,
-      targetX: to.x,
-      targetY: to.y,
-      targetPosition: to.position,
-      curvature: 0.28,
-    });
+    const [path, midX, midY] = edgePath(
+      edge.data?.relationship,
+      source,
+      target,
+    );
     const size = estimateLabelSize(lines);
     const point = placeEdgeLabel(path, { x: midX, y: midY }, size, [
       ...cards,
@@ -373,8 +416,12 @@ function CanvasInner({
   findings,
   selectedId,
   onSelect,
+  traffic,
+  trace = "path",
+  exportName = "bnk-topology-canvas",
 }: BnkCanvasProps) {
   const { fitView } = useReactFlow();
+  const containerRef = useRef<HTMLDivElement>(null);
   const byId = useMemo(
     () => new Map(resources.map((resource) => [resource.id, resource])),
     [resources],
@@ -467,13 +514,15 @@ function CanvasInner({
 
   const related = useMemo(() => {
     if (!focusId) return undefined;
-    const ids = new Set([focusId]);
-    for (const edge of grouped) {
-      if (edge.source === focusId) ids.add(edge.target);
-      if (edge.target === focusId) ids.add(edge.source);
-    }
-    return ids;
-  }, [focusId, grouped]);
+    const pathEdges = grouped.map((edge) => ({
+      source: edge.source,
+      target: edge.target,
+      relationship: edge.data?.relationship,
+    }));
+    return trace === "path"
+      ? tracePath(focusId, pathEdges)
+      : neighbours(focusId, pathEdges);
+  }, [focusId, grouped, trace]);
 
   const findingCounts = useMemo(() => {
     const counts = new Map<string, { errors: number; warnings: number }>();
@@ -518,6 +567,7 @@ function CanvasInner({
           errors: counts?.errors ?? 0,
           warnings: counts?.warnings ?? 0,
           absent,
+          traffic: traffic?.cards.get(resource.id),
         },
         className: classes.filter(Boolean).join(" "),
         style: { width: cardWidth, height: cardHeight },
@@ -527,18 +577,22 @@ function CanvasInner({
       };
     });
     return [...frames(resources, layout.positions, layout.frameKeys), ...cards];
-  }, [resources, edges, layout, findingCounts, related, focusId]);
+  }, [resources, edges, layout, findingCounts, related, focusId, traffic]);
 
   // Unfocused edges keep only labels that add facts; the selected resource's
   // relationships show every label.
   const displayEdges = useMemo(() => {
     const labelled = grouped.map((edge) => {
-      const all = String(edge.label ?? "")
+      const relationship = String(edge.data?.relationship);
+      const all = (
+        relationship === "parent"
+          ? withListenerTraffic(String(edge.label ?? ""), edge.source, traffic)
+          : String(edge.label ?? "")
+      )
         .split("\n")
         .filter(Boolean);
       const focused =
         !!focusId && (edge.source === focusId || edge.target === focusId);
-      const relationship = String(edge.data?.relationship);
       const shown = collapseLabel(
         focused
           ? all
@@ -566,7 +620,7 @@ function CanvasInner({
         },
       };
     });
-  }, [grouped, layout, focusId, related]);
+  }, [grouped, layout, focusId, related, traffic]);
 
   const legend = useMemo(
     () => [...new Set(edges.map((edge) => edge.type))].sort(),
@@ -580,6 +634,126 @@ function CanvasInner({
     },
     [byId, onSelect],
   );
+
+  // Colours are resolved from the live theme, so the file matches what is on
+  // screen (light or dark) and needs no CSS variables to render.
+  const saveSvg = useCallback(() => {
+    const root = containerRef.current;
+    if (!root) return;
+    const probe = document.createElement("span");
+    root.appendChild(probe);
+    // A colour the engine cannot resolve falls back to a neutral grey, so the
+    // file never carries CSS variables.
+    const solid = (color: string | undefined) =>
+      color && !color.includes("var(") ? color : "#7f7f7f";
+    const resolve = (value: string) => {
+      probe.style.color = "";
+      probe.style.color = value;
+      return solid(getComputedStyle(probe).color);
+    };
+    const escapeId =
+      globalThis.CSS?.escape ?? ((id: string) => id.replace(/"/g, '\\"'));
+    const svgCards: SvgCard[] = [];
+    const svgFrames: SvgFrame[] = [];
+    for (const node of nodes) {
+      const width = Number(node.style?.width ?? cardWidth);
+      const height = Number(node.style?.height ?? cardHeight);
+      if (node.type === "frame") {
+        svgFrames.push({
+          ...node.position,
+          width,
+          height,
+          label: (node.data as FrameData).label,
+        });
+        continue;
+      }
+      const data = node.data as CardData;
+      const element = root.querySelector<HTMLElement>(
+        `.react-flow__node[data-id="${escapeId(node.id)}"]`,
+      );
+      const style = element ? getComputedStyle(element) : undefined;
+      const factElement = element?.querySelector<HTMLElement>(".bnk-card-fact");
+      svgCards.push({
+        ...node.position,
+        width,
+        height,
+        kind: kindText(data),
+        name: data.resource.name,
+        fact: data.traffic ?? factText(data.resource),
+        accent: style?.borderTopColor
+          ? solid(style.borderTopColor)
+          : resolve("hsl(var(--border))"),
+        fill: style?.backgroundColor
+          ? solid(style.backgroundColor)
+          : resolve("hsl(var(--card))"),
+        text: style?.color
+          ? solid(style.color)
+          : resolve("hsl(var(--card-foreground))"),
+        muted: factElement
+          ? solid(getComputedStyle(factElement).color)
+          : resolve("hsl(var(--muted-foreground))"),
+        dashed: /\b(broken|expected-absent)\b/.test(node.className ?? ""),
+      });
+    }
+    const svgEdges: SvgEdge[] = displayEdges.flatMap((edge) => {
+      const source = layout.positions.get(edge.source);
+      const target = layout.positions.get(edge.target);
+      if (!source || !target) return [];
+      const [path, midX, midY] = edgePath(
+        edge.data?.relationship,
+        source,
+        target,
+      );
+      const broken = /\bbroken\b/.test(edge.className ?? "");
+      return [
+        {
+          path,
+          color: resolve(
+            broken
+              ? "hsl(var(--destructive))"
+              : String(edge.style?.stroke ?? "hsl(var(--border))"),
+          ),
+          width: Number(
+            relationshipStroke(edge.data?.relationship ?? "").width,
+          ),
+          dash: edge.style?.strokeDasharray
+            ? String(edge.style.strokeDasharray)
+            : undefined,
+          opacity:
+            typeof edge.style?.opacity === "number"
+              ? edge.style.opacity
+              : undefined,
+          label: String(edge.label ?? "")
+            .split("\n")
+            .filter(Boolean),
+          labelAt: edge.data?.labelPosition ?? { x: midX, y: midY },
+        },
+      ];
+    });
+    const svg = buildCanvasSvg({
+      frames: svgFrames,
+      cards: svgCards,
+      edges: svgEdges,
+      title: "BNK Topology Canvas",
+      theme: {
+        background: solid(getComputedStyle(root).backgroundColor),
+        frameFill: resolve("hsl(var(--muted) / 0.35)"),
+        frameStroke: resolve("hsl(var(--border))"),
+        frameText: resolve("hsl(var(--muted-foreground))"),
+        labelFill: resolve("hsl(var(--card))"),
+        labelText: resolve("hsl(var(--foreground))"),
+        labelStroke: resolve("hsl(var(--border))"),
+      },
+    });
+    probe.remove();
+    const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${exportName}.svg`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }, [nodes, displayEdges, layout, exportName]);
+
   useEffect(() => {
     const dismiss = (event: KeyboardEvent) => {
       if (event.key === "Escape") select(undefined);
@@ -589,7 +763,7 @@ function CanvasInner({
   }, [select]);
 
   return (
-    <div className="bnk-canvas" data-testid="bnk-canvas">
+    <div className="bnk-canvas" data-testid="bnk-canvas" ref={containerRef}>
       <div className="bnk-canvas-legend" aria-label="Relationship legend">
         {legend.map((type) => {
           const stroke = relationshipStroke(type);
@@ -630,7 +804,15 @@ function CanvasInner({
         attributionPosition="bottom-left"
       >
         <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
-        <Controls showInteractive />
+        <Controls showInteractive>
+          <ControlButton
+            onClick={saveSvg}
+            title="Save as SVG"
+            aria-label="Save as SVG"
+          >
+            <Download aria-hidden="true" />
+          </ControlButton>
+        </Controls>
         <MiniMap
           pannable
           zoomable
