@@ -29,6 +29,8 @@ F5_GATEWAY_GROUP = "gateway.k8s.f5.com"
 F5_GATEWAY_LEGACY_GROUP = "gateway.k8s.f5net.com"
 F5_NET_GROUP = "k8s.f5net.com"
 F5_K8S_GROUP = "k8s.f5.com"
+INFERENCE_GROUP = "inference.networking.k8s.io"
+F5_INFERENCE_GROUP = "inference.k8s.f5.com"
 
 # Resource types (``fetch_all_bnk_data`` keys) the Canvas draws or resolves references against.
 CANVAS_RESOURCE_TYPES: list[str] = [
@@ -63,8 +65,23 @@ CANVAS_RESOURCE_TYPES: list[str] = [
     "f5spkstaticroute",
     "f5spksnatpool",
     "f5spkegress",
+    "inferencepool",
+    "f5epp",
+    "f5bnkgateway",
     "service",
 ]
+
+# Canvas-only kinds Forge's resource registry does not know: (group, version, kind). The Canvas endpoint lists
+# them itself (get/list only) so references to them can be checked.
+CANVAS_LOCAL_TYPES: dict[str, tuple[str, str, str]] = {
+    # BNK 2.4 Gateway infrastructure parameters (Gateway spec.infrastructure.parametersRef).
+    "f5bnkgateway": (F5_NET_GROUP, "v1", "F5BnkGateway"),
+}
+CANVAS_LOCAL_PLURALS: dict[str, str] = {"f5bnkgateway": "f5-bnkgateways"}
+
+# Which Gateways the Canvas draws: every controller side by side (BIG-IP Next next to Istio, NGINX and
+# others), or only BIG-IP Next Gateways and what they touch.
+CONTROLLER_SCOPES = ("all", "bnk")
 
 GATEWAY_ROUTE_KINDS = {"HTTPRoute", "GRPCRoute", "TCPRoute", "TLSRoute", "UDPRoute"}
 L4ROUTE_GROUPS = {F5_GATEWAY_GROUP, F5_GATEWAY_LEGACY_GROUP}
@@ -184,22 +201,25 @@ def _normalize(resources: dict[str, list[dict[str, Any]]]) -> tuple[dict[str, _R
     for key in CANVAS_RESOURCE_TYPES:
         try:
             registered = get_resource_type(key)
+            type_group, type_version, type_kind = registered.api_group, registered.api_version, registered.kind
         except ValueError:
-            continue
+            if key not in CANVAS_LOCAL_TYPES:
+                continue
+            type_group, type_version, type_kind = CANVAS_LOCAL_TYPES[key]
         if key in resources:
-            fetched.add((registered.api_group, registered.kind))
+            fetched.add((type_group, type_kind))
         for item in resources.get(key) or []:
             if not isinstance(item, dict):
                 continue
             api_version = _str(_get(item, "apiVersion", "api_version"))
             group, _, version = api_version.rpartition("/")
             if not api_version:
-                group, version = registered.api_group, registered.api_version
+                group, version = type_group, type_version
             meta = _map(item.get("metadata"))
             resource = _Resource(
                 group=group,
                 version=version,
-                kind=_str(item.get("kind")) or registered.kind,
+                kind=_str(item.get("kind")) or type_kind,
                 namespace=_str(meta.get("namespace")),
                 name=_str(meta.get("name")),
                 obj=item,
@@ -347,6 +367,36 @@ def _refs(resource: _Resource, index: "_Index") -> list[_Ref]:
     elif group == GATEWAY_GROUP and kind == "ReferenceGrant":
         pass  # Drawn by _add_grant_edges: a grant points at every object it authorizes.
 
+    elif group == INFERENCE_GROUP and kind == "InferencePool":
+        # analyzer.go (GA-121): the Endpoint Picker is an extension the Gateway calls for each request, not a
+        # traffic backend; status.parents is controller status, shown as conditions, not a relationship.
+        picker = _map(spec.get("endpointPickerRef"))
+        port = _num(_map(picker.get("port")).get("number"))
+        add(
+            _str(picker.get("group")),
+            _str(picker.get("kind")) or "Service",
+            "",
+            _str(picker.get("name")),
+            "spec.endpointPickerRef",
+            "endpoint-picker",
+            "InferencePool asks this Endpoint Picker which model server takes each request.",
+            port=port,
+            label=port,
+        )
+
+    elif group == F5_INFERENCE_GROUP and kind == "F5EPP":
+        # f5.go: F5's Endpoint Picker for BIG-IP Next runs the EPP for one InferencePool (spec.poolRef).
+        pool = _map(spec.get("poolRef"))
+        add(
+            _str(pool.get("group")) or INFERENCE_GROUP,
+            _str(pool.get("kind")) or "InferencePool",
+            _str(pool.get("namespace")),
+            _str(pool.get("name")),
+            "spec.poolRef",
+            "configuration",
+            "F5EPP runs the Endpoint Picker for this InferencePool.",
+        )
+
     elif (group, kind) in POLICY_KINDS:
         for i, target in enumerate(_maps(spec.get("targetRefs"))):
             add(
@@ -462,7 +512,10 @@ def _refs(resource: _Resource, index: "_Index") -> list[_Ref]:
         for i, rule in enumerate(rules):
             for direction in ("source", "destination"):
                 side = _map(rule.get(direction))
-                for list_field, ref_kind in (("addressLists", "F5BigCneAddresslist"), ("portLists", "F5BigCnePortlist")):
+                for list_field, ref_kind in (
+                    ("addressLists", "F5BigCneAddresslist"),
+                    ("portLists", "F5BigCnePortlist"),
+                ):
                     for name in _list(side.get(list_field)):
                         if isinstance(name, str) and name and (ref_kind, name) not in seen:
                             seen.add((ref_kind, name))
@@ -635,8 +688,12 @@ def _placeholder_id(ref: _Ref) -> str:
     return "|".join([ref.group, "", ref.kind, ref.namespace, ref.name])
 
 
-def _scope(index: _Index, namespace: str | None) -> list[_Resource]:
-    """Seed resources: F5 objects, Gateways of F5 classes, and Gateway API routes attached to those Gateways.
+def _scope(index: _Index, namespace: str | None, controllers: str = "all") -> list[_Resource]:
+    """Seed resources: F5 objects, Gateways, and Gateway API routes attached to those Gateways.
+
+    ``controllers="all"`` draws every Gateway whatever its controller, so BIG-IP Next runs side by side with
+    Istio, NGINX and others; ``"bnk"`` keeps only Gateways of F5 classes, Gateways with F5 parameters and
+    Gateways that F5 policies target.
 
     Under a namespace filter, a route whose parent Gateway is in another namespace stays in scope: that
     Gateway was not fetched, so the route is kept and its parent edge reported unresolved.
@@ -654,7 +711,8 @@ def _scope(index: _Index, namespace: str | None) -> list[_Resource]:
     for gw in index.of_kind(GATEWAY_GROUP, "Gateway"):
         params = _map(_map(gw.spec.get("infrastructure")).get("parametersRef"))
         if (
-            _str(gw.spec.get("gatewayClassName")) in f5_classes
+            controllers == "all"
+            or _str(gw.spec.get("gatewayClassName")) in f5_classes
             or _is_f5_group(_str(params.get("group")))
             or (gw.namespace, gw.name) in policy_targets
         ):
@@ -671,16 +729,19 @@ def _scope(index: _Index, namespace: str | None) -> list[_Resource]:
     return sorted(seeds.values(), key=lambda r: r.id)
 
 
-def build_canvas_graph(data: dict[str, Any], namespace: str | None = None) -> dict[str, Any]:
+def build_canvas_graph(data: dict[str, Any], namespace: str | None = None, controllers: str = "all") -> dict[str, Any]:
     """Build the Canvas graph from ``fetch_all_bnk_data`` output.
 
     ``namespace`` is the namespace filter the data was fetched with: references into other namespaces
-    cannot be checked and are reported ``unresolved`` instead of ``broken``.
+    cannot be checked and are reported ``unresolved`` instead of ``broken``. ``controllers`` is one of
+    ``CONTROLLER_SCOPES`` (see ``_scope``).
     """
+    if controllers not in CONTROLLER_SCOPES:
+        raise ValueError(f"controllers must be one of {CONTROLLER_SCOPES}")
     resources, fetched = _normalize(_map(data.get("resources")))
     index = _Index(resources)
     graph = _Graph(resources={})
-    queue = _scope(index, namespace)
+    queue = _scope(index, namespace, controllers)
     refs_by_source: dict[str, list[_Ref]] = {}
     while queue:
         resource = queue.pop(0)
@@ -704,13 +765,9 @@ def build_canvas_graph(data: dict[str, Any], namespace: str | None = None) -> di
 
     warnings = []
     if data.get("partial"):
-        warnings.append(
-            "Some BIG-IP Next resource types could not be read; references to them may show as missing."
-        )
+        warnings.append("Some BIG-IP Next resource types could not be read; references to them may show as missing.")
     if namespace:
-        warnings.append(
-            f"Filtered to namespace {namespace}: references into other namespaces are shown as unresolved."
-        )
+        warnings.append(f"Filtered to namespace {namespace}: references into other namespaces are shown as unresolved.")
     graph.findings.sort(key=lambda f: (f["rule"], f["resource"], f["field"]))
     return {
         "resources": [_resource_out(r) for r in sorted(graph.resources.values(), key=lambda r: r.id)]
@@ -901,9 +958,7 @@ def _check_policy_section(graph: _Graph, source: _Resource, target: _Resource, r
 
 
 def _service_has_port(service: _Resource, port: str) -> bool:
-    return any(
-        _str(p.get("name")) == port or _num(p.get("port")) == port for p in _maps(service.spec.get("ports"))
-    )
+    return any(_str(p.get("name")) == port or _num(p.get("port")) == port for p in _maps(service.spec.get("ports")))
 
 
 def _grant_allows(index: _Index, source: _Resource, target: _Resource) -> bool:
@@ -1030,7 +1085,9 @@ def _attach(route: _Resource, gateway: _Resource, ref: dict[str, Any]) -> tuple[
         if (not section or _str(listener.get("name")) == section) and (not port or _num(listener.get("port")) == port)
     ]
     if not candidates:
-        wanted = ", ".join(part for part in (f"sectionName {section}" if section else "", f"port {port}" if port else "") if part)
+        wanted = ", ".join(
+            part for part in (f"sectionName {section}" if section else "", f"port {port}" if port else "") if part
+        )
         detail = f"{wanted}; listeners: {', '.join(names)}" if names else f"{wanted}; the Gateway has no listeners"
         return set(), [("parent-listener-not-found", detail)], False
     accepted: set[str] = set()
@@ -1056,7 +1113,8 @@ def _check_listener(route: _Resource, gateway: _Resource, listener: dict[str, An
     if kinds:
         listed = [_str(k.get("kind")) for k in kinds]
         if not any(
-            _str(k.get("kind")) == route.kind and (_str(k.get("group")) if "group" in k else GATEWAY_GROUP) == route.group
+            _str(k.get("kind")) == route.kind
+            and (_str(k.get("group")) if "group" in k else GATEWAY_GROUP) == route.group
             for k in kinds
         ):
             return "listener-kind-not-allowed", f"listener {name} accepts {', '.join(listed)}", False
@@ -1065,7 +1123,11 @@ def _check_listener(route: _Resource, gateway: _Resource, listener: dict[str, An
         defaults = PROTOCOL_ROUTE_KINDS.get(_str(listener.get("protocol")).upper())
         if defaults is not None and route.kind not in defaults:
             protocol = _str(listener.get("protocol"))
-            return "listener-kind-not-allowed", f"listener {name} ({protocol}) accepts {', '.join(sorted(defaults))}", False
+            return (
+                "listener-kind-not-allowed",
+                f"listener {name} ({protocol}) accepts {', '.join(sorted(defaults))}",
+                False,
+            )
     rule, detail, unknown = _check_namespace(route, gateway, name, _map(allowed.get("namespaces")))
     if rule:
         return rule, detail, unknown
@@ -1081,7 +1143,9 @@ def _check_listener(route: _Resource, gateway: _Resource, listener: dict[str, An
     return "", "", False
 
 
-def _check_namespace(route: _Resource, gateway: _Resource, listener: str, rule: dict[str, Any]) -> tuple[str, str, bool]:
+def _check_namespace(
+    route: _Resource, gateway: _Resource, listener: str, rule: dict[str, Any]
+) -> tuple[str, str, bool]:
     origin = _str(rule.get("from")) or "Same"
     if origin == "All":
         return "", "", False
@@ -1099,8 +1163,10 @@ def _check_namespace(route: _Resource, gateway: _Resource, listener: str, rule: 
         labels = {NAMESPACE_NAME_LABEL: route.namespace}
         match_labels = {k: v for k, v in _map(selector.get("matchLabels")).items() if isinstance(v, str)}
         expressions = _maps(selector.get("matchExpressions"))
-        only_name = (match_labels or expressions) and all(k == NAMESPACE_NAME_LABEL for k in match_labels) and all(
-            _str(e.get("key")) == NAMESPACE_NAME_LABEL for e in expressions
+        only_name = (
+            (match_labels or expressions)
+            and all(k == NAMESPACE_NAME_LABEL for k in match_labels)
+            and all(_str(e.get("key")) == NAMESPACE_NAME_LABEL for e in expressions)
         )
         if not only_name:
             return "listener-namespace-not-allowed", "", True
@@ -1223,7 +1289,17 @@ def _validate_listeners(graph: _Graph, attached: dict[str, set[str]]) -> None:
 
 def _conditions(resource: _Resource) -> dict[str, str]:
     out: dict[str, str] = {}
-    for condition in _maps(_map(resource.obj.get("status")).get("conditions")):
+    status = _map(resource.obj.get("status"))
+    if resource.group == INFERENCE_GROUP and resource.kind == "InferencePool":
+        # Pools report per parent Gateway; a condition is True only when every parent reports it True.
+        for parent in _maps(status.get("parents")):
+            for condition in _maps(parent.get("conditions")):
+                kind = _str(condition.get("type"))
+                value = _str(condition.get("status")) or "Unknown"
+                if kind and out.get(kind, "True") == "True":
+                    out[kind] = value
+        return out
+    for condition in _maps(status.get("conditions")):
         kind = _str(condition.get("type"))
         if kind:
             out[kind] = _str(condition.get("status")) or "Unknown"
@@ -1281,13 +1357,29 @@ def _facts(resource: _Resource) -> list[dict[str, str]]:
         add("IPAM", [_str(i.get("name")) for i in _maps(spec.get("ipams"))])
         for attachment in _maps(spec.get("networkAttachments")):
             nads = [_str(n.get("name")) for n in _maps(attachment.get("networkAttachmentDefinitions"))]
-            add("attachment", f"{_str(attachment.get('name'))} → {', '.join(nads)}" if nads else _str(attachment.get("name")))
+            add(
+                "attachment",
+                f"{_str(attachment.get('name'))} → {', '.join(nads)}" if nads else _str(attachment.get("name")),
+            )
         for route in _maps(spec.get("staticRoutes")):
-            add("route", f"{', '.join(_str(d) for d in _list(route.get('destinations')))} via {_str(route.get('nextHop'))}")
+            add(
+                "route",
+                f"{', '.join(_str(d) for d in _list(route.get('destinations')))} via {_str(route.get('nextHop'))}",
+            )
     elif kind == "EgressGateway":
         selector = _map(spec.get("sourceSelector"))
         add("selection", _str(selector.get("selectionMode")))
         add("namespaces", [_str(n) for n in _list(_map(selector.get("namespaces")).get("matchNames"))])
+    elif kind == "InferencePool" and group == INFERENCE_GROUP:
+        labels = _map(_map(spec.get("selector")).get("matchLabels")) or _map(spec.get("selector"))
+        add("selector", [f"{k}={_str(v)}" for k, v in sorted(labels.items()) if isinstance(v, str)])
+        add("target ports", [_num(_map(p).get("number")) for p in _maps(spec.get("targetPorts"))])
+        add("protocol", _str(spec.get("appProtocol")))
+        add("failure mode", _str(_map(spec.get("endpointPickerRef")).get("failureMode")))
+    elif kind == "F5EPP" and group == F5_INFERENCE_GROUP:
+        add("engine", _str(spec.get("engine")))
+        add("mode", _str(spec.get("mode")))
+        add("replicas", _num(spec.get("replicas")))
     elif kind == "CNEInstance":
         add("version", _str(spec.get("manifestVersion")))
         add("size", _str(spec.get("deploymentSize")))

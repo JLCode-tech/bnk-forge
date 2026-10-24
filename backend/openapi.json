@@ -4216,7 +4216,7 @@
           "k8s-f5bnk"
         ],
         "summary": "Get Topology Canvas",
-        "description": "Topology Canvas graph: exact-identity BIG-IP Next relationships, edges and findings.\n\nRead-only: reuses the shared BNK fetch (get/list only) and its cache. Secrets are never read; a Secret\nappears only as a reference.",
+        "description": "Topology Canvas graph: exact-identity BIG-IP Next relationships, edges and findings.\n\nRead-only: reuses the shared BNK fetch (get/list only) and its cache, plus a list of the few kinds the\nCanvas reads itself. Secrets are never read; a Secret appears only as a reference. ``controllers=all``\nalso draws Gateways of other controllers (Istio, NGINX, ...) beside BIG-IP Next; ``bnk`` keeps F5 only.",
         "operationId": "get_topology_canvas_api_k8s_clusters__cluster_id__f5bnk_canvas_get",
         "parameters": [
           {
@@ -4252,6 +4252,20 @@
               "type": "boolean",
               "default": false,
               "title": "Force"
+            }
+          },
+          {
+            "name": "controllers",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "all",
+                "bnk"
+              ],
+              "type": "string",
+              "default": "all",
+              "title": "Controllers"
             }
           }
         ],

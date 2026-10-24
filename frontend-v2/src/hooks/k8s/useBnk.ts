@@ -13,6 +13,7 @@ import type {
   BnkHealthEndpointResponse,
   BnkClusterConfigCreateRequest,
   BnkClusterMemberAssignRequest,
+  BnkCanvasControllers,
 } from "@/types";
 import { POLL_INTERVALS, QUERY_STALE_TIME } from "@/lib/constants";
 import { notify } from "@/lib/notify";
@@ -81,20 +82,28 @@ export function useBnkData(
 
 export function useBnkCanvas(
   clusterId: number,
-  params?: { namespace?: string },
+  params?: { namespace?: string; controllers?: BnkCanvasControllers },
   options?: { enabled?: boolean },
 ) {
   const namespace = params?.namespace || undefined;
-  const queryClient = useQueryClient();
-  const queryKey = queryKeys.k8s.clusters.bnkCanvas(
-    clusterId,
-    namespace ? { namespace } : undefined,
+  // "all" is the server default, so it keeps the key the Canvas had before controllers existed.
+  const controllers =
+    params?.controllers === "bnk" ? ("bnk" as const) : undefined;
+  const keyParams = useMemo(
+    () => (namespace || controllers ? { namespace, controllers } : undefined),
+    [namespace, controllers],
   );
+  const queryClient = useQueryClient();
+  const queryKey = queryKeys.k8s.clusters.bnkCanvas(clusterId, keyParams);
   const query = useQuery({
     queryKey,
     queryFn: ({ queryKey: key }) => {
       const force = forceNextFetch.delete(hashKey(key)) || undefined;
-      return api.getBnkCanvas(clusterId, { namespace, force });
+      return api.getBnkCanvas(clusterId, {
+        namespace,
+        force,
+        controllers: controllers ?? "all",
+      });
     },
     enabled: options?.enabled !== false && !!clusterId,
     staleTime: QUERY_STALE_TIME.DEFAULT,
@@ -104,12 +113,9 @@ export function useBnkCanvas(
   const refresh = useCallback(() => {
     forceNextFetch.add(keyHash);
     return queryClient.invalidateQueries({
-      queryKey: queryKeys.k8s.clusters.bnkCanvas(
-        clusterId,
-        namespace ? { namespace } : undefined,
-      ),
+      queryKey: queryKeys.k8s.clusters.bnkCanvas(clusterId, keyParams),
     });
-  }, [queryClient, keyHash, clusterId, namespace]);
+  }, [queryClient, keyHash, clusterId, keyParams]);
   return { ...query, refresh };
 }
 

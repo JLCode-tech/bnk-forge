@@ -211,6 +211,39 @@
   },
   {
    "field": "spec.gatewayClassName",
+   "id": "gateway.networking.k8s.io|v1|Gateway|models|inference-gw->gateway.networking.k8s.io|v1|GatewayClass||f5-gateway-class#spec.gatewayClassName",
+   "inferred": false,
+   "label": "",
+   "reason": "Gateway selects its controller class.",
+   "source": "gateway.networking.k8s.io|v1|Gateway|models|inference-gw",
+   "status": "valid",
+   "target": "gateway.networking.k8s.io|v1|GatewayClass||f5-gateway-class",
+   "type": "class"
+  },
+  {
+   "field": "spec.infrastructure.parametersRef",
+   "id": "gateway.networking.k8s.io|v1|Gateway|models|inference-gw->k8s.f5net.com||F5BnkGateway|models|inference-params#spec.infrastructure.parametersRef",
+   "inferred": false,
+   "label": "",
+   "reason": "Gateway uses this infrastructure configuration.",
+   "source": "gateway.networking.k8s.io|v1|Gateway|models|inference-gw",
+   "status": "broken",
+   "target": "k8s.f5net.com||F5BnkGateway|models|inference-params",
+   "type": "configuration"
+  },
+  {
+   "field": "spec.gatewayClassName",
+   "id": "gateway.networking.k8s.io|v1|Gateway|other-team|other-gw->gateway.networking.k8s.io|v1|GatewayClass||example-other#spec.gatewayClassName",
+   "inferred": false,
+   "label": "",
+   "reason": "Gateway selects its controller class.",
+   "source": "gateway.networking.k8s.io|v1|Gateway|other-team|other-gw",
+   "status": "valid",
+   "target": "gateway.networking.k8s.io|v1|GatewayClass||example-other",
+   "type": "class"
+  },
+  {
+   "field": "spec.gatewayClassName",
    "id": "gateway.networking.k8s.io|v1|Gateway|payments|edge-gw->gateway.networking.k8s.io|v1|GatewayClass||f5-gateway-class#spec.gatewayClassName",
    "inferred": false,
    "label": "",
@@ -274,6 +307,50 @@
    "status": "unresolved",
    "target": "||Secret|shop|shop-tls",
    "type": "tls"
+  },
+  {
+   "field": "spec.parentRefs[0]",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|models|chat-route->gateway.networking.k8s.io|v1|Gateway|models|inference-gw#spec.parentRefs[0]",
+   "inferred": false,
+   "label": "http",
+   "reason": "Route attaches through parentRefs.",
+   "source": "gateway.networking.k8s.io|v1|HTTPRoute|models|chat-route",
+   "status": "valid",
+   "target": "gateway.networking.k8s.io|v1|Gateway|models|inference-gw",
+   "type": "parent"
+  },
+  {
+   "field": "spec.rules[0].backendRefs[0]",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|models|chat-route->inference.networking.k8s.io|v1|InferencePool|models|chat-pool#spec.rules[0].backendRefs[0]",
+   "inferred": false,
+   "label": "/v1",
+   "reason": "Rule forwards to this backend.",
+   "source": "gateway.networking.k8s.io|v1|HTTPRoute|models|chat-route",
+   "status": "valid",
+   "target": "inference.networking.k8s.io|v1|InferencePool|models|chat-pool",
+   "type": "backend"
+  },
+  {
+   "field": "spec.parentRefs[0]",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|other-team|other-route->gateway.networking.k8s.io|v1|Gateway|other-team|other-gw#spec.parentRefs[0]",
+   "inferred": false,
+   "label": "http",
+   "reason": "Route attaches through parentRefs.",
+   "source": "gateway.networking.k8s.io|v1|HTTPRoute|other-team|other-route",
+   "status": "valid",
+   "target": "gateway.networking.k8s.io|v1|Gateway|other-team|other-gw",
+   "type": "parent"
+  },
+  {
+   "field": "spec.rules[0].backendRefs[0]",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|other-team|other-route->|v1|Service|other-team|other-svc#spec.rules[0].backendRefs[0]",
+   "inferred": false,
+   "label": "",
+   "reason": "Rule forwards to this backend.",
+   "source": "gateway.networking.k8s.io|v1|HTTPRoute|other-team|other-route",
+   "status": "valid",
+   "target": "|v1|Service|other-team|other-svc",
+   "type": "backend"
   },
   {
    "field": "spec.parentRefs[0]",
@@ -384,6 +461,28 @@
    "status": "broken",
    "target": "|v1|Service|shop|reviews-svc",
    "type": "backend"
+  },
+  {
+   "field": "spec.poolRef",
+   "id": "inference.k8s.f5.com|v1alpha1|F5EPP|models|chat-epp->inference.networking.k8s.io|v1|InferencePool|models|chat-pool#spec.poolRef",
+   "inferred": false,
+   "label": "",
+   "reason": "F5EPP runs the Endpoint Picker for this InferencePool.",
+   "source": "inference.k8s.f5.com|v1alpha1|F5EPP|models|chat-epp",
+   "status": "valid",
+   "target": "inference.networking.k8s.io|v1|InferencePool|models|chat-pool",
+   "type": "configuration"
+  },
+  {
+   "field": "spec.endpointPickerRef",
+   "id": "inference.networking.k8s.io|v1|InferencePool|models|chat-pool->|v1|Service|models|chat-pool-epp#spec.endpointPickerRef",
+   "inferred": false,
+   "label": "9002",
+   "reason": "InferencePool asks this Endpoint Picker which model server takes each request.",
+   "source": "inference.networking.k8s.io|v1|InferencePool|models|chat-pool",
+   "status": "valid",
+   "target": "|v1|Service|models|chat-pool-epp",
+   "type": "endpoint-picker"
   },
   {
    "field": "spec.certificate.clusterIssuer",
@@ -533,6 +632,15 @@
    "field": "spec.rules[0].backendRefs[1]",
    "remediation": "Create the resource or correct the reference.",
    "resource": "gateway.k8s.f5.com|v1|L4Route|payments|ledger-db",
+   "rule": "unresolved-reference",
+   "severity": "error"
+  },
+  {
+   "evidence": "models/inference-params",
+   "explanation": "Referenced F5BnkGateway was not found.",
+   "field": "spec.infrastructure.parametersRef",
+   "remediation": "Create the resource or correct the reference.",
+   "resource": "gateway.networking.k8s.io|v1|Gateway|models|inference-gw",
    "rule": "unresolved-reference",
    "severity": "error"
   }
@@ -741,6 +849,23 @@
    "version": "v1beta1"
   },
   {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "controller",
+     "value": "example.com/other-controller"
+    }
+   ],
+   "group": "gateway.networking.k8s.io",
+   "id": "gateway.networking.k8s.io|v1|GatewayClass||example-other",
+   "kind": "GatewayClass",
+   "name": "example-other",
+   "namespace": "",
+   "placeholder": false,
+   "resourceType": "gatewayclass",
+   "version": "v1"
+  },
+  {
    "conditions": {
     "Accepted": "True"
    },
@@ -757,6 +882,40 @@
    "namespace": "",
    "placeholder": false,
    "resourceType": "gatewayclass",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "listener",
+     "value": "http HTTP:80"
+    }
+   ],
+   "group": "gateway.networking.k8s.io",
+   "id": "gateway.networking.k8s.io|v1|Gateway|models|inference-gw",
+   "kind": "Gateway",
+   "name": "inference-gw",
+   "namespace": "models",
+   "placeholder": false,
+   "resourceType": "gateway",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "listener",
+     "value": "http HTTP:80"
+    }
+   ],
+   "group": "gateway.networking.k8s.io",
+   "id": "gateway.networking.k8s.io|v1|Gateway|other-team|other-gw",
+   "kind": "Gateway",
+   "name": "other-gw",
+   "namespace": "other-team",
+   "placeholder": false,
+   "resourceType": "gateway",
    "version": "v1"
   },
   {
@@ -813,6 +972,30 @@
    "namespace": "shop",
    "placeholder": false,
    "resourceType": "gateway",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [],
+   "group": "gateway.networking.k8s.io",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|models|chat-route",
+   "kind": "HTTPRoute",
+   "name": "chat-route",
+   "namespace": "models",
+   "placeholder": false,
+   "resourceType": "httproute",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [],
+   "group": "gateway.networking.k8s.io",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|other-team|other-route",
+   "kind": "HTTPRoute",
+   "name": "other-route",
+   "namespace": "other-team",
+   "placeholder": false,
+   "resourceType": "httproute",
    "version": "v1"
   },
   {
@@ -876,6 +1059,65 @@
    "namespace": "storefront",
    "placeholder": false,
    "resourceType": "httproute",
+   "version": "v1"
+  },
+  {
+   "conditions": {
+    "Available": "True"
+   },
+   "facts": [
+    {
+     "label": "engine",
+     "value": "vllm"
+    },
+    {
+     "label": "mode",
+     "value": "aggregated"
+    },
+    {
+     "label": "replicas",
+     "value": "1"
+    }
+   ],
+   "group": "inference.k8s.f5.com",
+   "id": "inference.k8s.f5.com|v1alpha1|F5EPP|models|chat-epp",
+   "kind": "F5EPP",
+   "name": "chat-epp",
+   "namespace": "models",
+   "placeholder": false,
+   "resourceType": "f5epp",
+   "version": "v1alpha1"
+  },
+  {
+   "conditions": {
+    "Accepted": "True",
+    "ResolvedRefs": "True"
+   },
+   "facts": [
+    {
+     "label": "selector",
+     "value": "app=model-sim"
+    },
+    {
+     "label": "target ports",
+     "value": "8000"
+    },
+    {
+     "label": "protocol",
+     "value": "http"
+    },
+    {
+     "label": "failure mode",
+     "value": "FailClose"
+    }
+   ],
+   "group": "inference.networking.k8s.io",
+   "id": "inference.networking.k8s.io|v1|InferencePool|models|chat-pool",
+   "kind": "InferencePool",
+   "name": "chat-pool",
+   "namespace": "models",
+   "placeholder": false,
+   "resourceType": "inferencepool",
    "version": "v1"
   },
   {
@@ -1131,6 +1373,40 @@
    "facts": [
     {
      "label": "port",
+     "value": "grpc-ext-proc 9002"
+    }
+   ],
+   "group": "",
+   "id": "|v1|Service|models|chat-pool-epp",
+   "kind": "Service",
+   "name": "chat-pool-epp",
+   "namespace": "models",
+   "placeholder": false,
+   "resourceType": "service",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "port",
+     "value": "80"
+    }
+   ],
+   "group": "",
+   "id": "|v1|Service|other-team|other-svc",
+   "kind": "Service",
+   "name": "other-svc",
+   "namespace": "other-team",
+   "placeholder": false,
+   "resourceType": "service",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "port",
      "value": "postgres 5432"
     }
    ],
@@ -1260,6 +1536,18 @@
    "kind": "F5BigLogProfile",
    "name": "shop-log",
    "namespace": "shop",
+   "placeholder": true,
+   "resourceType": null,
+   "version": ""
+  },
+  {
+   "conditions": {},
+   "facts": [],
+   "group": "k8s.f5net.com",
+   "id": "k8s.f5net.com||F5BnkGateway|models|inference-params",
+   "kind": "F5BnkGateway",
+   "name": "inference-params",
+   "namespace": "models",
    "placeholder": true,
    "resourceType": null,
    "version": ""

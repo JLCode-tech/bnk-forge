@@ -24,6 +24,7 @@ None of this has been checked yet against a cluster with BIG-IP Next controllers
 | 6 | Some F5 CRDs fail to install on recent Kubernetes | lab seeding (upstream F5) | Environment | Not a Forge issue |
 | 7 | License status answers 502 when CWC is not installed, and the failure is not cached | backend | Noise | Open |
 | 8 | Opening BNK views can write to the cluster and read Secret data (CWC client pod, TMM exec) | backend | Safety: read-only and second-Forge setups | Open |
+| 9 | F5BnkGateway is not in Forge's resource registry | backend | Missing data | Worked around in the Canvas only |
 
 The canvas's own limitations and its deviations from Gateway Atlas are listed separately at the end.
 
@@ -183,6 +184,18 @@ Traffic stats also `exec` into the TMM debug sidecar (`tmctl`, `configview`).
 - Document the RBAC each feature needs, so a read-only (viewer) Forge is a supported setup.
 
 **Status:** open. For testing on a cluster another Forge already manages, use a kubeconfig bound to a get/list-only role. The Kubernetes `view` ClusterRole excludes Secrets and `pods/exec`. Grant `pods/exec` on the TMM pods only if real traffic counters are needed.
+
+## 9. F5BnkGateway is not in Forge's resource registry
+
+**Where:** `backend/core/k8s_resource_registry.py` and `BNK_RESOURCE_TYPES` (`backend/services/bnk/helpers.py`). BIG-IP Next 2.x installs the `f5-bnkgateways.k8s.f5net.com` CRD (kind `F5BnkGateway`, namespaced), and a Gateway can name one in `spec.infrastructure.parametersRef`.
+
+**Evidence:** on a BIG-IP Next 2.4 cluster, a Gateway's `parametersRef` names an F5BnkGateway that does not exist; the cluster has the CRD and no F5BnkGateway objects. Forge never lists the kind, so none of its BNK views can tell whether such a reference resolves.
+
+**Impact:** a Gateway whose infrastructure parameters are missing looks healthy in Forge's tree and health views.
+
+**Suggested fix:** register `f5bnkgateway` (group `k8s.f5net.com`, version `v1`, plural `f5-bnkgateways`) and add it to `BNK_RESOURCE_TYPES`, treating a missing CRD as absent (see finding 2).
+
+**Status:** the Canvas lists F5BnkGateways itself (`backend/services/bnk/canvas_fetch.py`, get/list only) and reports the missing one as a broken reference. The registry and the shared fetch are unchanged.
 
 ---
 

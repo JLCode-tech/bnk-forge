@@ -200,6 +200,21 @@ describe("F5BNKCanvasView", () => {
     expect(screen.getByText("4 resources")).toBeInTheDocument();
   });
 
+  it("asks for other controllers by default and BIG-IP Next only on request", async () => {
+    const seen: (string | null)[] = [];
+    server.use(
+      http.get("*/api/k8s/clusters/:id/f5bnk/canvas", ({ request }) => {
+        seen.push(new URL(request.url).searchParams.get("controllers"));
+        return HttpResponse.json(canvas);
+      }),
+    );
+    render(<F5BNKCanvasView clusterId={1} />);
+    await waitFor(() => expect(screen.getByText("web")).toBeInTheDocument());
+    expect(seen).toEqual(["all"]);
+    fireEvent.click(screen.getByLabelText("Show other controllers"));
+    await waitFor(() => expect(seen).toEqual(["all", "bnk"]));
+  });
+
   it("explains an empty namespace", async () => {
     server.use(
       http.get("*/api/k8s/clusters/:id/f5bnk/canvas", () =>

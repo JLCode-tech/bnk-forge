@@ -98,9 +98,11 @@ export function F5BNKCanvasView({
   namespace,
   onSelectResource,
 }: F5BNKCanvasViewProps) {
+  // Other controllers (Istio, NGINX, ...) are drawn beside BIG-IP Next so they can be compared.
+  const [otherControllers, setOtherControllers] = useState(true);
   const { data, isLoading, isFetching, error, refresh } = useBnkCanvas(
     clusterId,
-    namespace ? { namespace } : undefined,
+    { namespace, controllers: otherControllers ? "all" : "bnk" },
   );
   const { data: bnkData } = useBnkData(
     clusterId,
@@ -189,8 +191,8 @@ export function F5BNKCanvasView({
         title="No BIG-IP Next resources found"
         description={
           namespace
-            ? `Namespace "${namespace}" has no F5 Gateways, routes or BNK configuration.`
-            : "This cluster has no F5 Gateways, routes or BNK configuration."
+            ? `Namespace "${namespace}" has no Gateways, routes or BNK configuration.`
+            : "This cluster has no Gateways, routes or BNK configuration."
         }
         size="sm"
       />
@@ -226,6 +228,17 @@ export function F5BNKCanvasView({
             aria-label="Trace the full traffic path"
           />
           Full path
+        </div>
+        <div
+          className="flex items-center gap-2 text-xs text-muted-foreground"
+          title="Also draw Gateways of other controllers, such as Istio or NGINX, beside BIG-IP Next"
+        >
+          <Switch
+            checked={otherControllers}
+            onCheckedChange={setOtherControllers}
+            aria-label="Show other controllers"
+          />
+          Other controllers
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Switch

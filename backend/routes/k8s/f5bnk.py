@@ -11,7 +11,7 @@ re-fetch from the cluster.
 
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends
 from kubernetes import client as k8s_client
@@ -41,6 +41,7 @@ from schemas.k8s import (
 from services.analyzer_metrics_service import get_analyzer_runtime_metrics
 from services.backend_health_service import get_backend_health
 from services.bnk.a2a_discovery import discover_a2a_agents
+from services.bnk.canvas_fetch import fetch_canvas_extras
 from services.bnk.canvas_graph import build_canvas_graph
 from services.bnk_data_service import (
     analyze_backends,
@@ -285,17 +286,21 @@ def get_topology_canvas(
     cluster_id: int,
     namespace: str | None = None,
     force: bool = False,
+    controllers: Literal["all", "bnk"] = "all",
     db: Session = Depends(get_db),
 ):
     """Topology Canvas graph: exact-identity BIG-IP Next relationships, edges and findings.
 
-    Read-only: reuses the shared BNK fetch (get/list only) and its cache. Secrets are never read; a Secret
-    appears only as a reference.
+    Read-only: reuses the shared BNK fetch (get/list only) and its cache, plus a list of the few kinds the
+    Canvas reads itself. Secrets are never read; a Secret appears only as a reference. ``controllers=all``
+    also draws Gateways of other controllers (Istio, NGINX, ...) beside BIG-IP Next; ``bnk`` keeps F5 only.
     """
     k8s_service = KubernetesService(db)
     # include_nodes=True aligns the cache key with /f5bnk/data and /f5bnk/health.
     data = fetch_all_bnk_data(k8s_service, cluster_id, namespace, include_nodes=True, force=force)
-    result = build_canvas_graph(data, namespace)
+    # The shared fetch result is cached: merge into a copy, never into it.
+    resources = {**(data.get("resources") or {}), **fetch_canvas_extras(k8s_service, cluster_id, namespace, force)}
+    result = build_canvas_graph({**data, "resources": resources}, namespace, controllers)
     result["generatedAt"] = datetime.now(UTC).isoformat()
     result["partial"] = bool(data.get("partial"))
     result["cluster_id"] = cluster_id

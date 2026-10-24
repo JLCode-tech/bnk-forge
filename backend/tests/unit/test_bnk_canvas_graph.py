@@ -16,7 +16,7 @@ import yaml
 
 from core.k8s_resource_registry import get_resource_type
 from schemas.bnk import BnkCanvasResponse
-from services.bnk.canvas_graph import CANVAS_RESOURCE_TYPES, build_canvas_graph
+from services.bnk.canvas_graph import CANVAS_LOCAL_TYPES, CANVAS_RESOURCE_TYPES, build_canvas_graph
 
 pytestmark = pytest.mark.unit
 
@@ -24,6 +24,8 @@ FIXTURES = Path(__file__).resolve().parent.parent / "fixtures" / "bnk_canvas"
 GW = "gateway.networking.k8s.io/v1"
 F5GW = "gateway.k8s.f5.com/v1alpha1"
 F5NET = "k8s.f5net.com/v1"
+INFERENCE = "inference.networking.k8s.io/v1"
+F5_INFERENCE = "inference.k8s.f5.com/v1alpha1"
 CLASS = {
     "apiVersion": GW,
     "kind": "GatewayClass",
@@ -31,7 +33,16 @@ CLASS = {
     "spec": {"controllerName": "f5.com/f5-bnk-f5-cne-controller"},
 }
 
-_KEYS = {(get_resource_type(k).api_group, get_resource_type(k).kind): k for k in CANVAS_RESOURCE_TYPES}
+
+
+def _type_key(key: str) -> tuple[str, str]:
+    if key in CANVAS_LOCAL_TYPES:
+        return CANVAS_LOCAL_TYPES[key][0], CANVAS_LOCAL_TYPES[key][2]
+    registered = get_resource_type(key)
+    return registered.api_group, registered.kind
+
+
+_KEYS = {_type_key(k): k for k in CANVAS_RESOURCE_TYPES}
 
 
 def obj(api_version: str, kind: str, namespace: str, name: str, spec: dict | None = None, **extra: Any) -> dict:
@@ -53,6 +64,17 @@ def service(namespace: str, name: str, port: int = 80) -> dict:
 def http_route(namespace: str, name: str, parent: dict, backends: list[dict] | None = None, **spec: Any) -> dict:
     rules = [{"backendRefs": backends}] if backends else []
     return obj(GW, "HTTPRoute", namespace, name, {"parentRefs": [parent], "rules": rules, **spec})
+
+
+def inference_pool(namespace: str, name: str, picker: str = "", port: int = 9002) -> dict:
+    spec: dict[str, Any] = {"selector": {"matchLabels": {"app": "model"}}, "targetPorts": [{"number": 8000}]}
+    if picker:
+        spec["endpointPickerRef"] = {"name": picker, "port": {"number": port}}
+    return obj(INFERENCE, "InferencePool", namespace, name, spec)
+
+
+POOL_BACKEND = {"group": "inference.networking.k8s.io", "kind": "InferencePool", "name": "pool"}
+BNK_PARAMS = {"group": "k8s.f5net.com", "kind": "F5BnkGateway", "name": "params"}
 
 
 def fetched(items: list[dict]) -> dict[str, Any]:
@@ -475,6 +497,71 @@ RULES = [
         set(),
         id="firewall-address-and-port-lists",
     ),
+    pytest.param(
+        [
+            CLASS,
+            gateway("ai", "gw"),
+            http_route("ai", "r", {"name": "gw"}, [POOL_BACKEND]),
+            inference_pool("ai", "pool", picker="pool-epp"),
+            service("ai", "pool-epp", 9002),
+        ],
+        {
+            ("backend", "HTTPRoute/ai/r", "InferencePool/ai/pool", "valid"),
+            ("endpoint-picker", "InferencePool/ai/pool", "Service/ai/pool-epp", "valid"),
+        },
+        set(),
+        id="inferencepool-endpoint-picker",
+    ),
+    pytest.param(
+        [
+            CLASS,
+            gateway("ai", "gw"),
+            http_route("ai", "r", {"name": "gw"}, [POOL_BACKEND]),
+            inference_pool("ai", "pool", picker="pool-epp"),
+        ],
+        {("endpoint-picker", "InferencePool/ai/pool", "Service/ai/pool-epp", "broken")},
+        {("unresolved-reference", "InferencePool/ai/pool")},
+        id="inferencepool-endpoint-picker-missing",
+    ),
+    pytest.param(
+        [
+            CLASS,
+            gateway("ai", "gw"),
+            http_route("ai", "r", {"name": "gw"}, [POOL_BACKEND]),
+            inference_pool("ai", "pool", picker="pool-epp", port=9003),
+            service("ai", "pool-epp", 9002),
+        ],
+        {("endpoint-picker", "InferencePool/ai/pool", "Service/ai/pool-epp", "broken")},
+        {("service-port-not-found", "InferencePool/ai/pool")},
+        id="inferencepool-endpoint-picker-wrong-port",
+    ),
+    pytest.param(
+        [
+            inference_pool("ai", "pool"),
+            obj(F5_INFERENCE, "F5EPP", "ai", "epp", {"poolRef": {"group": "inference.networking.k8s.io", "kind": "InferencePool", "name": "pool"}}),
+        ],
+        {("configuration", "F5EPP/ai/epp", "InferencePool/ai/pool", "valid")},
+        set(),
+        id="f5epp-pool",
+    ),
+    pytest.param(
+        [obj(F5_INFERENCE, "F5EPP", "ai", "epp", {"poolRef": {"name": "gone"}})],
+        {("configuration", "F5EPP/ai/epp", "InferencePool/ai/gone", "broken")},
+        {("unresolved-reference", "F5EPP/ai/epp")},
+        id="f5epp-pool-missing",
+    ),
+    pytest.param(
+        [CLASS, gateway("ai", "gw", infrastructure={"parametersRef": BNK_PARAMS}), obj(F5NET, "F5BnkGateway", "ai", "params")],
+        {("configuration", "Gateway/ai/gw", "F5BnkGateway/ai/params", "valid")},
+        set(),
+        id="gateway-parameters-f5bnkgateway",
+    ),
+    pytest.param(
+        [CLASS, gateway("ai", "gw", infrastructure={"parametersRef": BNK_PARAMS})],
+        {("configuration", "Gateway/ai/gw", "F5BnkGateway/ai/params", "broken")},
+        {("unresolved-reference", "Gateway/ai/gw")},
+        id="gateway-parameters-f5bnkgateway-missing",
+    ),
 ]
 
 
@@ -505,9 +592,9 @@ def test_policyMatching_isNamespaceScoped_forSameNameGateways():
     }
 
 
-def test_scope_leavesOutOtherControllersAndUnreferencedServices():
+def _other_controller_items() -> list[dict]:
     other = obj(GW, "GatewayClass", "", "other", {"controllerName": "example.com/other"})
-    items = [
+    return [
         CLASS,
         other,
         gateway("shop", "gw"),
@@ -516,8 +603,55 @@ def test_scope_leavesOutOtherControllersAndUnreferencedServices():
         service("team", "other-svc"),
         service("shop", "unused"),
     ]
-    ids = {short(r["id"]) for r in build_canvas_graph(fetched(items))["resources"]}
+
+
+def test_scope_bnk_leavesOutOtherControllersAndUnreferencedServices():
+    ids = {short(r["id"]) for r in build_canvas_graph(fetched(_other_controller_items()), controllers="bnk")["resources"]}
     assert ids == {"GatewayClass/f5", "Gateway/shop/gw"}
+
+
+def test_scope_all_drawsOtherControllersBesideBigIpNext():
+    """The default: every Gateway and what its routes reach, so controllers can run side by side."""
+    graph = build_canvas_graph(fetched(_other_controller_items()))
+    assert {short(r["id"]) for r in graph["resources"]} == {
+        "GatewayClass/f5",
+        "GatewayClass/other",
+        "Gateway/shop/gw",
+        "Gateway/team/other-gw",
+        "HTTPRoute/team/other-route",
+        "Service/team/other-svc",
+    }
+    assert ("backend", "HTTPRoute/team/other-route", "Service/team/other-svc", "valid") in edges_of(graph)
+
+
+def test_scope_rejectsUnknownControllers():
+    with pytest.raises(ValueError):
+        build_canvas_graph(fetched([CLASS]), controllers="istio")
+
+
+def test_inferencePool_conditionsAggregateParents_andFacts():
+    pool = inference_pool("ai", "pool", picker="epp")
+    ok = {"type": "Accepted", "status": "True"}
+    pool["status"] = {
+        "parents": [
+            {"parentRef": {"name": "a"}, "conditions": [ok, {"type": "ResolvedRefs", "status": "True"}]},
+            {"parentRef": {"name": "b"}, "conditions": [ok, {"type": "ResolvedRefs", "status": "False"}]},
+        ]
+    }
+    items = [CLASS, gateway("ai", "gw"), http_route("ai", "r", {"name": "gw"}, [POOL_BACKEND]), pool, service("ai", "epp", 9002)]
+    card = next(r for r in build_canvas_graph(fetched(items))["resources"] if r["kind"] == "InferencePool")
+    assert card["conditions"] == {"Accepted": "True", "ResolvedRefs": "False"}
+    assert {"label": "selector", "value": "app=model"} in card["facts"]
+    assert {"label": "target ports", "value": "8000"} in card["facts"]
+
+
+def test_f5BnkGateway_notListed_isNotInspected():
+    """If the Canvas could not list F5BnkGateways (CRD absent or forbidden), a reference to one is not broken."""
+    data = fetched([CLASS, gateway("ai", "gw", infrastructure={"parametersRef": BNK_PARAMS})])
+    del data["resources"]["f5bnkgateway"]
+    graph = build_canvas_graph(data)
+    assert ("configuration", "Gateway/ai/gw", "F5BnkGateway/ai/params", "unresolved") in edges_of(graph)
+    assert ("reference-not-inspected", "Gateway/ai/gw") in rules_of(graph)
 
 
 def test_secrets_areReferencesOnly_neverData():

@@ -926,6 +926,8 @@ export interface A2AAgentsResponse {
 
 // Topology Canvas (GET /f5bnk/canvas) — generated from the backend schema.
 export type BnkCanvasResponse = components['schemas']['BnkCanvasResponse'];
+/** Which Gateways the Canvas draws: every controller, or BIG-IP Next only. */
+export type BnkCanvasControllers = 'all' | 'bnk';
 export type BnkCanvasResource = components['schemas']['BnkCanvasResource'];
 export type BnkCanvasEdge = components['schemas']['BnkCanvasEdge'];
 export type BnkCanvasFinding = components['schemas']['BnkCanvasFinding'];
