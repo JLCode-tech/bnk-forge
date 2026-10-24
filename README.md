@@ -48,6 +48,10 @@ Author, visualize, and enforce L4/L7 traffic routing, carrier-grade network tran
 
 ![F5 BNK Control Plane Dashboard](docs/images/f5-bnk-dashboard.png)
 
+The **Topology Canvas** draws every BIG-IP Next resource in a cluster and how they connect, from GatewayClass through routes and Services to policies and the data plane. It marks broken references and attachment problems, and can overlay TMM traffic counters. See the [Topology Canvas guide](docs/TOPOLOGY_CANVAS.md).
+
+![BNK Topology Canvas](docs/images/topology-canvas-path.png)
+
 ### 3. F5 BNK AI Service Plane: Token Governance & Data Guardrails
 
 Deliver enterprise-grade AI traffic governance across every cloud with real-time token accounting, budget and rate enforcement, sensitive data (PII/DLP) guardrails, and prompt-injection protection managed through **BNK Forge**. Learn more about F5's cloud-native data plane and AI traffic capabilities in the [F5 BIG-IP Next for Kubernetes CloudDocs](https://clouddocs.f5.com/bigip-next-for-kubernetes/latest/overview.html).

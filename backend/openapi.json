@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "BNK-Forge API",
-    "version": "4.0.0"
+    "version": "4.1.1"
   },
   "paths": {
     "/": {
@@ -4193,6 +4193,89 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/GatewayTopologyResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/k8s/clusters/{cluster_id}/f5bnk/canvas": {
+      "get": {
+        "tags": [
+          "k8s-f5bnk"
+        ],
+        "summary": "Get Topology Canvas",
+        "description": "Topology Canvas graph: exact-identity BIG-IP Next relationships, edges and findings.\n\nRead-only: reuses the shared BNK fetch (get/list only) and its cache, plus a list of the few kinds the\nCanvas reads itself. Secrets are never read; a Secret appears only as a reference. ``controllers=all``\nalso draws Gateways of other controllers (Istio, NGINX, ...) beside BIG-IP Next; ``bnk`` keeps F5 only.",
+        "operationId": "get_topology_canvas_api_k8s_clusters__cluster_id__f5bnk_canvas_get",
+        "parameters": [
+          {
+            "name": "cluster_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Cluster Id"
+            }
+          },
+          {
+            "name": "namespace",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Namespace"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Force"
+            }
+          },
+          {
+            "name": "controllers",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "all",
+                "bnk"
+              ],
+              "type": "string",
+              "default": "all",
+              "title": "Controllers"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BnkCanvasResponse"
                 }
               }
             }
@@ -42887,6 +42970,265 @@
         },
         "type": "object",
         "title": "BlueprintSourceUpdate"
+      },
+      "BnkCanvasEdge": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "target": {
+            "type": "string",
+            "title": "Target"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "valid",
+              "broken",
+              "unresolved"
+            ],
+            "title": "Status"
+          },
+          "inferred": {
+            "type": "boolean",
+            "title": "Inferred",
+            "default": false
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source",
+          "target",
+          "type",
+          "field",
+          "reason",
+          "status"
+        ],
+        "title": "BnkCanvasEdge",
+        "description": "A reference from ``source`` to ``target``, with the field it was read from."
+      },
+      "BnkCanvasFact": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "value"
+        ],
+        "title": "BnkCanvasFact"
+      },
+      "BnkCanvasFinding": {
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": [
+              "error",
+              "warning",
+              "info"
+            ],
+            "title": "Severity"
+          },
+          "rule": {
+            "type": "string",
+            "title": "Rule"
+          },
+          "resource": {
+            "type": "string",
+            "title": "Resource"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation"
+          },
+          "evidence": {
+            "type": "string",
+            "title": "Evidence"
+          },
+          "remediation": {
+            "type": "string",
+            "title": "Remediation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "severity",
+          "rule",
+          "resource",
+          "field",
+          "explanation",
+          "evidence",
+          "remediation"
+        ],
+        "title": "BnkCanvasFinding"
+      },
+      "BnkCanvasResource": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "group": {
+            "type": "string",
+            "title": "Group"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "namespace": {
+            "type": "string",
+            "title": "Namespace"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "resourceType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resourcetype"
+          },
+          "placeholder": {
+            "type": "boolean",
+            "title": "Placeholder",
+            "default": false
+          },
+          "conditions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Conditions"
+          },
+          "facts": {
+            "items": {
+              "$ref": "#/components/schemas/BnkCanvasFact"
+            },
+            "type": "array",
+            "title": "Facts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "group",
+          "version",
+          "kind",
+          "namespace",
+          "name"
+        ],
+        "title": "BnkCanvasResource",
+        "description": "A card. ``id`` is the exact identity ``group|version|kind|namespace|name``; placeholders (missing or\nunread targets, such as a Secret, which is never read) have an empty version and no ``resourceType``."
+      },
+      "BnkCanvasResponse": {
+        "properties": {
+          "resources": {
+            "items": {
+              "$ref": "#/components/schemas/BnkCanvasResource"
+            },
+            "type": "array",
+            "title": "Resources"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/BnkCanvasEdge"
+            },
+            "type": "array",
+            "title": "Edges"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/BnkCanvasFinding"
+            },
+            "type": "array",
+            "title": "Findings"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "generatedAt": {
+            "type": "string",
+            "title": "Generatedat"
+          },
+          "partial": {
+            "type": "boolean",
+            "title": "Partial",
+            "default": false
+          },
+          "cluster_id": {
+            "type": "integer",
+            "title": "Cluster Id"
+          },
+          "namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespace"
+          }
+        },
+        "type": "object",
+        "required": [
+          "resources",
+          "edges",
+          "findings",
+          "generatedAt",
+          "cluster_id"
+        ],
+        "title": "BnkCanvasResponse"
       },
       "BnkClusterConfigCreateRequest": {
         "properties": {

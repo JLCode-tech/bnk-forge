@@ -1,0 +1,1593 @@
+{
+ "edges": [
+  {
+   "field": "spec.gatewayClassName",
+   "id": "gateway.k8s.f5.com|v1alpha1|EgressGateway|egress-apps|apps-egress->gateway.networking.k8s.io|v1|GatewayClass||f5-gateway-class#spec.gatewayClassName",
+   "inferred": false,
+   "label": "",
+   "reason": "EgressGateway selects its BIG-IP Next controller class.",
+   "source": "gateway.k8s.f5.com|v1alpha1|EgressGateway|egress-apps|apps-egress",
+   "status": "valid",
+   "target": "gateway.networking.k8s.io|v1|GatewayClass||f5-gateway-class",
+   "type": "class"
+  },
+  {
+   "field": "spec.infrastructure.parametersRef",
+   "id": "gateway.k8s.f5.com|v1alpha1|EgressGateway|egress-apps|apps-egress->gateway.k8s.f5.com|v1alpha1|GatewaySettings|egress-apps|egress-settings#spec.infrastructure.parametersRef",
+   "inferred": false,
+   "label": "egress-default",
+   "reason": "EgressGateway uses these BIG-IP Next gateway settings.",
+   "source": "gateway.k8s.f5.com|v1alpha1|EgressGateway|egress-apps|apps-egress",
+   "status": "valid",
+   "target": "gateway.k8s.f5.com|v1alpha1|GatewaySettings|egress-apps|egress-settings",
+   "type": "configuration"
+  },
+  {
+   "field": "spec (ipamRefs, networkRefs, vrfRefs)",
+   "id": "gateway.k8s.f5.com|v1alpha1|GatewaySettings|egress-apps|egress-settings->gateway.k8s.f5.com|v1alpha1|Infra|f5-utils|infra#spec (ipamRefs, networkRefs, vrfRefs)",
+   "inferred": true,
+   "label": "external, snat-pool",
+   "reason": "GatewaySettings uses these entries of the cluster's Infra underlay.",
+   "source": "gateway.k8s.f5.com|v1alpha1|GatewaySettings|egress-apps|egress-settings",
+   "status": "valid",
+   "target": "gateway.k8s.f5.com|v1alpha1|Infra|f5-utils|infra",
+   "type": "configuration"
+  },
+  {
+   "field": "spec (ipamRefs, networkRefs, vrfRefs)",
+   "id": "gateway.k8s.f5.com|v1alpha1|GatewaySettings|payments|payments-settings->gateway.k8s.f5.com|v1alpha1|Infra|f5-utils|infra#spec (ipamRefs, networkRefs, vrfRefs)",
+   "inferred": true,
+   "label": "db-pool",
+   "reason": "GatewaySettings uses these entries of the cluster's Infra underlay.",
+   "source": "gateway.k8s.f5.com|v1alpha1|GatewaySettings|payments|payments-settings",
+   "status": "broken",
+   "target": "gateway.k8s.f5.com|v1alpha1|Infra|f5-utils|infra",
+   "type": "configuration"
+  },
+  {
+   "field": "spec (ipamRefs, networkRefs, vrfRefs)",
+   "id": "gateway.k8s.f5.com|v1alpha1|GatewaySettings|shop|shop-settings->gateway.k8s.f5.com|v1alpha1|Infra|f5-utils|infra#spec (ipamRefs, networkRefs, vrfRefs)",
+   "inferred": true,
+   "label": "ext-pool, external, snat-pool",
+   "reason": "GatewaySettings uses these entries of the cluster's Infra underlay.",
+   "source": "gateway.k8s.f5.com|v1alpha1|GatewaySettings|shop|shop-settings",
+   "status": "valid",
+   "target": "gateway.k8s.f5.com|v1alpha1|Infra|f5-utils|infra",
+   "type": "configuration"
+  },
+  {
+   "field": "spec.targetRefs[0]",
+   "id": "gateway.k8s.f5.com|v1alpha1|NetPolicy|payments|payments-net->gateway.networking.k8s.io|v1|Gateway|payments|edge-gw#spec.targetRefs[0]",
+   "inferred": false,
+   "label": "",
+   "reason": "BIG-IP Next policy attaches to this target.",
+   "source": "gateway.k8s.f5.com|v1alpha1|NetPolicy|payments|payments-net",
+   "status": "valid",
+   "target": "gateway.networking.k8s.io|v1|Gateway|payments|edge-gw",
+   "type": "policy"
+  },
+  {
+   "field": "spec.extensionRefs[0]",
+   "id": "gateway.k8s.f5.com|v1alpha1|NetPolicy|payments|payments-net->k8s.f5net.com|v1|F5BigPersistenceProfile|payments|ledger-persist#spec.extensionRefs[0]",
+   "inferred": false,
+   "label": "",
+   "reason": "BIG-IP Next policy uses this extension configuration.",
+   "source": "gateway.k8s.f5.com|v1alpha1|NetPolicy|payments|payments-net",
+   "status": "valid",
+   "target": "k8s.f5net.com|v1|F5BigPersistenceProfile|payments|ledger-persist",
+   "type": "configuration"
+  },
+  {
+   "field": "spec.targetRefs[0]",
+   "id": "gateway.k8s.f5.com|v1alpha1|NetPolicy|payments|stray-net->gateway.networking.k8s.io||Gateway|payments|retired-gw#spec.targetRefs[0]",
+   "inferred": false,
+   "label": "",
+   "reason": "BIG-IP Next policy attaches to this target.",
+   "source": "gateway.k8s.f5.com|v1alpha1|NetPolicy|payments|stray-net",
+   "status": "broken",
+   "target": "gateway.networking.k8s.io||Gateway|payments|retired-gw",
+   "type": "policy"
+  },
+  {
+   "field": "spec.extensionRefs[0]",
+   "id": "gateway.k8s.f5.com|v1alpha1|NetPolicy|payments|stray-net->k8s.f5net.com|v1|F5BigPersistenceProfile|payments|ledger-persist#spec.extensionRefs[0]",
+   "inferred": false,
+   "label": "",
+   "reason": "BIG-IP Next policy uses this extension configuration.",
+   "source": "gateway.k8s.f5.com|v1alpha1|NetPolicy|payments|stray-net",
+   "status": "valid",
+   "target": "k8s.f5net.com|v1|F5BigPersistenceProfile|payments|ledger-persist",
+   "type": "configuration"
+  },
+  {
+   "field": "spec.targetRefs[0]",
+   "id": "gateway.k8s.f5.com|v1alpha1|NetPolicy|shop|shop-net->gateway.networking.k8s.io|v1|Gateway|shop|edge-gw#spec.targetRefs[0]",
+   "inferred": false,
+   "label": "http",
+   "reason": "BIG-IP Next policy attaches to this target.",
+   "source": "gateway.k8s.f5.com|v1alpha1|NetPolicy|shop|shop-net",
+   "status": "valid",
+   "target": "gateway.networking.k8s.io|v1|Gateway|shop|edge-gw",
+   "type": "policy"
+  },
+  {
+   "field": "spec.extensionRefs[0]",
+   "id": "gateway.k8s.f5.com|v1alpha1|NetPolicy|shop|shop-net->k8s.f5net.com|v1|F5BigCneIrule|shop|xff-header#spec.extensionRefs[0]",
+   "inferred": false,
+   "label": "",
+   "reason": "BIG-IP Next policy uses this extension configuration.",
+   "source": "gateway.k8s.f5.com|v1alpha1|NetPolicy|shop|shop-net",
+   "status": "valid",
+   "target": "k8s.f5net.com|v1|F5BigCneIrule|shop|xff-header",
+   "type": "configuration"
+  },
+  {
+   "field": "spec.targetRefs[0]",
+   "id": "gateway.k8s.f5.com|v1alpha1|SecPolicy|egress-apps|egress-sec->gateway.k8s.f5.com|v1alpha1|EgressGateway|egress-apps|apps-egress#spec.targetRefs[0]",
+   "inferred": false,
+   "label": "",
+   "reason": "BIG-IP Next policy attaches to this target.",
+   "source": "gateway.k8s.f5.com|v1alpha1|SecPolicy|egress-apps|egress-sec",
+   "status": "valid",
+   "target": "gateway.k8s.f5.com|v1alpha1|EgressGateway|egress-apps|apps-egress",
+   "type": "policy"
+  },
+  {
+   "field": "spec.extensionRefs[0]",
+   "id": "gateway.k8s.f5.com|v1alpha1|SecPolicy|egress-apps|egress-sec->k8s.f5net.com|v1|F5BigFwPolicy|egress-apps|egress-fw#spec.extensionRefs[0]",
+   "inferred": false,
+   "label": "",
+   "reason": "BIG-IP Next policy uses this extension configuration.",
+   "source": "gateway.k8s.f5.com|v1alpha1|SecPolicy|egress-apps|egress-sec",
+   "status": "valid",
+   "target": "k8s.f5net.com|v1|F5BigFwPolicy|egress-apps|egress-fw",
+   "type": "configuration"
+  },
+  {
+   "field": "spec.targetRefs[0]",
+   "id": "gateway.k8s.f5.com|v1alpha1|SecPolicy|shop|shop-sec->gateway.networking.k8s.io|v1|Gateway|shop|edge-gw#spec.targetRefs[0]",
+   "inferred": false,
+   "label": "",
+   "reason": "BIG-IP Next policy attaches to this target.",
+   "source": "gateway.k8s.f5.com|v1alpha1|SecPolicy|shop|shop-sec",
+   "status": "valid",
+   "target": "gateway.networking.k8s.io|v1|Gateway|shop|edge-gw",
+   "type": "policy"
+  },
+  {
+   "field": "spec.extensionRefs[0]",
+   "id": "gateway.k8s.f5.com|v1alpha1|SecPolicy|shop|shop-sec->k8s.f5net.com|v1|F5BigFwPolicy|shop|shop-fw#spec.extensionRefs[0]",
+   "inferred": false,
+   "label": "",
+   "reason": "BIG-IP Next policy uses this extension configuration.",
+   "source": "gateway.k8s.f5.com|v1alpha1|SecPolicy|shop|shop-sec",
+   "status": "valid",
+   "target": "k8s.f5net.com|v1|F5BigFwPolicy|shop|shop-fw",
+   "type": "configuration"
+  },
+  {
+   "field": "spec.extensionRefs[1]",
+   "id": "gateway.k8s.f5.com|v1alpha1|SecPolicy|shop|shop-sec->k8s.f5net.com||F5BigLogProfile|shop|shop-log#spec.extensionRefs[1]",
+   "inferred": false,
+   "label": "",
+   "reason": "BIG-IP Next policy uses this extension configuration.",
+   "source": "gateway.k8s.f5.com|v1alpha1|SecPolicy|shop|shop-sec",
+   "status": "broken",
+   "target": "k8s.f5net.com||F5BigLogProfile|shop|shop-log",
+   "type": "configuration"
+  },
+  {
+   "field": "spec.parentRefs[0]",
+   "id": "gateway.k8s.f5.com|v1|L4Route|payments|ledger-db->gateway.networking.k8s.io|v1|Gateway|payments|edge-gw#spec.parentRefs[0]",
+   "inferred": false,
+   "label": "tcp",
+   "reason": "Route attaches through parentRefs.",
+   "source": "gateway.k8s.f5.com|v1|L4Route|payments|ledger-db",
+   "status": "valid",
+   "target": "gateway.networking.k8s.io|v1|Gateway|payments|edge-gw",
+   "type": "parent"
+  },
+  {
+   "field": "spec.rules[0].backendRefs[0]",
+   "id": "gateway.k8s.f5.com|v1|L4Route|payments|ledger-db->|v1|Service|payments|ledger-svc#spec.rules[0].backendRefs[0]",
+   "inferred": false,
+   "label": ":5432 \u00b7 75%",
+   "reason": "Rule forwards to this backend.",
+   "source": "gateway.k8s.f5.com|v1|L4Route|payments|ledger-db",
+   "status": "valid",
+   "target": "|v1|Service|payments|ledger-svc",
+   "type": "backend"
+  },
+  {
+   "field": "spec.rules[0].backendRefs[1]",
+   "id": "gateway.k8s.f5.com|v1|L4Route|payments|ledger-db->||Service|payments|ledger-replica#spec.rules[0].backendRefs[1]",
+   "inferred": false,
+   "label": ":5432 \u00b7 25%",
+   "reason": "Rule forwards to this backend.",
+   "source": "gateway.k8s.f5.com|v1|L4Route|payments|ledger-db",
+   "status": "broken",
+   "target": "||Service|payments|ledger-replica",
+   "type": "backend"
+  },
+  {
+   "field": "spec.gatewayClassName",
+   "id": "gateway.networking.k8s.io|v1|Gateway|models|inference-gw->gateway.networking.k8s.io|v1|GatewayClass||f5-gateway-class#spec.gatewayClassName",
+   "inferred": false,
+   "label": "",
+   "reason": "Gateway selects its controller class.",
+   "source": "gateway.networking.k8s.io|v1|Gateway|models|inference-gw",
+   "status": "valid",
+   "target": "gateway.networking.k8s.io|v1|GatewayClass||f5-gateway-class",
+   "type": "class"
+  },
+  {
+   "field": "spec.infrastructure.parametersRef",
+   "id": "gateway.networking.k8s.io|v1|Gateway|models|inference-gw->k8s.f5net.com||F5BnkGateway|models|inference-params#spec.infrastructure.parametersRef",
+   "inferred": false,
+   "label": "",
+   "reason": "Gateway uses this infrastructure configuration.",
+   "source": "gateway.networking.k8s.io|v1|Gateway|models|inference-gw",
+   "status": "broken",
+   "target": "k8s.f5net.com||F5BnkGateway|models|inference-params",
+   "type": "configuration"
+  },
+  {
+   "field": "spec.gatewayClassName",
+   "id": "gateway.networking.k8s.io|v1|Gateway|other-team|other-gw->gateway.networking.k8s.io|v1|GatewayClass||example-other#spec.gatewayClassName",
+   "inferred": false,
+   "label": "",
+   "reason": "Gateway selects its controller class.",
+   "source": "gateway.networking.k8s.io|v1|Gateway|other-team|other-gw",
+   "status": "valid",
+   "target": "gateway.networking.k8s.io|v1|GatewayClass||example-other",
+   "type": "class"
+  },
+  {
+   "field": "spec.gatewayClassName",
+   "id": "gateway.networking.k8s.io|v1|Gateway|payments|edge-gw->gateway.networking.k8s.io|v1|GatewayClass||f5-gateway-class#spec.gatewayClassName",
+   "inferred": false,
+   "label": "",
+   "reason": "Gateway selects its controller class.",
+   "source": "gateway.networking.k8s.io|v1|Gateway|payments|edge-gw",
+   "status": "valid",
+   "target": "gateway.networking.k8s.io|v1|GatewayClass||f5-gateway-class",
+   "type": "class"
+  },
+  {
+   "field": "spec.infrastructure.parametersRef",
+   "id": "gateway.networking.k8s.io|v1|Gateway|payments|edge-gw->gateway.k8s.f5.com|v1alpha1|GatewaySettings|payments|payments-settings#spec.infrastructure.parametersRef",
+   "inferred": false,
+   "label": "",
+   "reason": "Gateway uses this infrastructure configuration.",
+   "source": "gateway.networking.k8s.io|v1|Gateway|payments|edge-gw",
+   "status": "valid",
+   "target": "gateway.k8s.f5.com|v1alpha1|GatewaySettings|payments|payments-settings",
+   "type": "configuration"
+  },
+  {
+   "field": "spec.gatewayClassName",
+   "id": "gateway.networking.k8s.io|v1|Gateway|shop|edge-gw->gateway.networking.k8s.io|v1|GatewayClass||f5-gateway-class#spec.gatewayClassName",
+   "inferred": false,
+   "label": "",
+   "reason": "Gateway selects its controller class.",
+   "source": "gateway.networking.k8s.io|v1|Gateway|shop|edge-gw",
+   "status": "valid",
+   "target": "gateway.networking.k8s.io|v1|GatewayClass||f5-gateway-class",
+   "type": "class"
+  },
+  {
+   "field": "spec.infrastructure.parametersRef",
+   "id": "gateway.networking.k8s.io|v1|Gateway|shop|edge-gw->gateway.k8s.f5.com|v1alpha1|GatewaySettings|shop|shop-settings#spec.infrastructure.parametersRef",
+   "inferred": false,
+   "label": "",
+   "reason": "Gateway uses this infrastructure configuration.",
+   "source": "gateway.networking.k8s.io|v1|Gateway|shop|edge-gw",
+   "status": "valid",
+   "target": "gateway.k8s.f5.com|v1alpha1|GatewaySettings|shop|shop-settings",
+   "type": "configuration"
+  },
+  {
+   "field": "spec.listeners[1].tls.certificateRefs[0]",
+   "id": "gateway.networking.k8s.io|v1|Gateway|shop|edge-gw->||Secret|shop|shop-tls#spec.listeners[1].tls.certificateRefs[0]",
+   "inferred": false,
+   "label": "https",
+   "reason": "Listener terminates TLS with this certificate (metadata only).",
+   "source": "gateway.networking.k8s.io|v1|Gateway|shop|edge-gw",
+   "status": "unresolved",
+   "target": "||Secret|shop|shop-tls",
+   "type": "tls"
+  },
+  {
+   "field": "spec.listeners[2].tls.certificateRefs[0]",
+   "id": "gateway.networking.k8s.io|v1|Gateway|shop|edge-gw->||Secret|shop|shop-tls#spec.listeners[2].tls.certificateRefs[0]",
+   "inferred": false,
+   "label": "admin",
+   "reason": "Listener terminates TLS with this certificate (metadata only).",
+   "source": "gateway.networking.k8s.io|v1|Gateway|shop|edge-gw",
+   "status": "unresolved",
+   "target": "||Secret|shop|shop-tls",
+   "type": "tls"
+  },
+  {
+   "field": "spec.parentRefs[0]",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|models|chat-route->gateway.networking.k8s.io|v1|Gateway|models|inference-gw#spec.parentRefs[0]",
+   "inferred": false,
+   "label": "http",
+   "reason": "Route attaches through parentRefs.",
+   "source": "gateway.networking.k8s.io|v1|HTTPRoute|models|chat-route",
+   "status": "valid",
+   "target": "gateway.networking.k8s.io|v1|Gateway|models|inference-gw",
+   "type": "parent"
+  },
+  {
+   "field": "spec.rules[0].backendRefs[0]",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|models|chat-route->inference.networking.k8s.io|v1|InferencePool|models|chat-pool#spec.rules[0].backendRefs[0]",
+   "inferred": false,
+   "label": "/v1",
+   "reason": "Rule forwards to this backend.",
+   "source": "gateway.networking.k8s.io|v1|HTTPRoute|models|chat-route",
+   "status": "valid",
+   "target": "inference.networking.k8s.io|v1|InferencePool|models|chat-pool",
+   "type": "backend"
+  },
+  {
+   "field": "spec.parentRefs[0]",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|other-team|other-route->gateway.networking.k8s.io|v1|Gateway|other-team|other-gw#spec.parentRefs[0]",
+   "inferred": false,
+   "label": "http",
+   "reason": "Route attaches through parentRefs.",
+   "source": "gateway.networking.k8s.io|v1|HTTPRoute|other-team|other-route",
+   "status": "valid",
+   "target": "gateway.networking.k8s.io|v1|Gateway|other-team|other-gw",
+   "type": "parent"
+  },
+  {
+   "field": "spec.rules[0].backendRefs[0]",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|other-team|other-route->|v1|Service|other-team|other-svc#spec.rules[0].backendRefs[0]",
+   "inferred": false,
+   "label": "",
+   "reason": "Rule forwards to this backend.",
+   "source": "gateway.networking.k8s.io|v1|HTTPRoute|other-team|other-route",
+   "status": "valid",
+   "target": "|v1|Service|other-team|other-svc",
+   "type": "backend"
+  },
+  {
+   "field": "spec.parentRefs[0]",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|shop|checkout->gateway.networking.k8s.io|v1|Gateway|shop|edge-gw#spec.parentRefs[0]",
+   "inferred": false,
+   "label": "https",
+   "reason": "Route attaches through parentRefs.",
+   "source": "gateway.networking.k8s.io|v1|HTTPRoute|shop|checkout",
+   "status": "valid",
+   "target": "gateway.networking.k8s.io|v1|Gateway|shop|edge-gw",
+   "type": "parent"
+  },
+  {
+   "field": "spec.rules[0].backendRefs[0]",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|shop|checkout->|v1|Service|shop|checkout-svc#spec.rules[0].backendRefs[0]",
+   "inferred": false,
+   "label": "/checkout",
+   "reason": "Rule forwards to this backend.",
+   "source": "gateway.networking.k8s.io|v1|HTTPRoute|shop|checkout",
+   "status": "valid",
+   "target": "|v1|Service|shop|checkout-svc",
+   "type": "backend"
+  },
+  {
+   "field": "spec.parentRefs[0]",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|shop|legacy-api->gateway.networking.k8s.io|v1|Gateway|shop|edge-gw#spec.parentRefs[0]",
+   "inferred": false,
+   "label": "api",
+   "reason": "Route attaches through parentRefs.",
+   "source": "gateway.networking.k8s.io|v1|HTTPRoute|shop|legacy-api",
+   "status": "broken",
+   "target": "gateway.networking.k8s.io|v1|Gateway|shop|edge-gw",
+   "type": "parent"
+  },
+  {
+   "field": "spec.rules[0].backendRefs[0]",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|shop|legacy-api->|v1|Service|shop|web-svc#spec.rules[0].backendRefs[0]",
+   "inferred": false,
+   "label": "",
+   "reason": "Rule forwards to this backend.",
+   "source": "gateway.networking.k8s.io|v1|HTTPRoute|shop|legacy-api",
+   "status": "valid",
+   "target": "|v1|Service|shop|web-svc",
+   "type": "backend"
+  },
+  {
+   "field": "spec.parentRefs[0]",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|shop|web->gateway.networking.k8s.io|v1|Gateway|shop|edge-gw#spec.parentRefs[0]",
+   "inferred": false,
+   "label": "http",
+   "reason": "Route attaches through parentRefs.",
+   "source": "gateway.networking.k8s.io|v1|HTTPRoute|shop|web",
+   "status": "valid",
+   "target": "gateway.networking.k8s.io|v1|Gateway|shop|edge-gw",
+   "type": "parent"
+  },
+  {
+   "field": "spec.rules[0].backendRefs[0]",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|shop|web->|v1|Service|shop|web-svc#spec.rules[0].backendRefs[0]",
+   "inferred": false,
+   "label": "90%",
+   "reason": "Rule forwards to this backend.",
+   "source": "gateway.networking.k8s.io|v1|HTTPRoute|shop|web",
+   "status": "valid",
+   "target": "|v1|Service|shop|web-svc",
+   "type": "backend"
+  },
+  {
+   "field": "spec.rules[0].backendRefs[1]",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|shop|web->|v1|Service|shop|web-canary#spec.rules[0].backendRefs[1]",
+   "inferred": false,
+   "label": "10%",
+   "reason": "Rule forwards to this backend.",
+   "source": "gateway.networking.k8s.io|v1|HTTPRoute|shop|web",
+   "status": "valid",
+   "target": "|v1|Service|shop|web-canary",
+   "type": "backend"
+  },
+  {
+   "field": "spec.parentRefs[0]",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|storefront|catalog->gateway.networking.k8s.io|v1|Gateway|shop|edge-gw#spec.parentRefs[0]",
+   "inferred": false,
+   "label": "http",
+   "reason": "Route attaches through parentRefs.",
+   "source": "gateway.networking.k8s.io|v1|HTTPRoute|storefront|catalog",
+   "status": "valid",
+   "target": "gateway.networking.k8s.io|v1|Gateway|shop|edge-gw",
+   "type": "parent"
+  },
+  {
+   "field": "spec.rules[0].backendRefs[0]",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|storefront|catalog->|v1|Service|shop|catalog-svc#spec.rules[0].backendRefs[0]",
+   "inferred": false,
+   "label": "/catalog",
+   "reason": "Rule forwards to this backend.",
+   "source": "gateway.networking.k8s.io|v1|HTTPRoute|storefront|catalog",
+   "status": "valid",
+   "target": "|v1|Service|shop|catalog-svc",
+   "type": "backend"
+  },
+  {
+   "field": "spec.rules[1].backendRefs[0]",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|storefront|catalog->|v1|Service|shop|reviews-svc#spec.rules[1].backendRefs[0]",
+   "inferred": false,
+   "label": "/reviews",
+   "reason": "Rule forwards to this backend.",
+   "source": "gateway.networking.k8s.io|v1|HTTPRoute|storefront|catalog",
+   "status": "broken",
+   "target": "|v1|Service|shop|reviews-svc",
+   "type": "backend"
+  },
+  {
+   "field": "spec.poolRef",
+   "id": "inference.k8s.f5.com|v1alpha1|F5EPP|models|chat-epp->inference.networking.k8s.io|v1|InferencePool|models|chat-pool#spec.poolRef",
+   "inferred": false,
+   "label": "",
+   "reason": "F5EPP runs the Endpoint Picker for this InferencePool.",
+   "source": "inference.k8s.f5.com|v1alpha1|F5EPP|models|chat-epp",
+   "status": "valid",
+   "target": "inference.networking.k8s.io|v1|InferencePool|models|chat-pool",
+   "type": "configuration"
+  },
+  {
+   "field": "spec.endpointPickerRef",
+   "id": "inference.networking.k8s.io|v1|InferencePool|models|chat-pool->|v1|Service|models|chat-pool-epp#spec.endpointPickerRef",
+   "inferred": false,
+   "label": "9002",
+   "reason": "InferencePool asks this Endpoint Picker which model server takes each request.",
+   "source": "inference.networking.k8s.io|v1|InferencePool|models|chat-pool",
+   "status": "valid",
+   "target": "|v1|Service|models|chat-pool-epp",
+   "type": "endpoint-picker"
+  },
+  {
+   "field": "spec.certificate.clusterIssuer",
+   "id": "k8s.f5.com|v1|CNEInstance|f5-bnk|bnk->cert-manager.io||ClusterIssuer||bnk-ca-issuer#spec.certificate.clusterIssuer",
+   "inferred": false,
+   "label": "",
+   "reason": "CNEInstance issues its certificates from this cert-manager ClusterIssuer.",
+   "source": "k8s.f5.com|v1|CNEInstance|f5-bnk|bnk",
+   "status": "unresolved",
+   "target": "cert-manager.io||ClusterIssuer||bnk-ca-issuer",
+   "type": "tls"
+  },
+  {
+   "field": "spec.registry.imagePullSecrets[0]",
+   "id": "k8s.f5.com|v1|CNEInstance|f5-bnk|bnk->||Secret|f5-bnk|registry-pull#spec.registry.imagePullSecrets[0]",
+   "inferred": false,
+   "label": "",
+   "reason": "CNEInstance pulls its images with this Secret (metadata only).",
+   "source": "k8s.f5.com|v1|CNEInstance|f5-bnk|bnk",
+   "status": "unresolved",
+   "target": "||Secret|f5-bnk|registry-pull",
+   "type": "authentication"
+  },
+  {
+   "field": "spec.rule[0].source.addressLists",
+   "id": "k8s.f5net.com|v1|F5BigFwPolicy|shop|shop-fw->k8s.f5net.com|v1|F5BigCneAddresslist|shop|trusted-nets#spec.rule[0].source.addressLists",
+   "inferred": false,
+   "label": "",
+   "reason": "Firewall rule matches traffic against this list.",
+   "source": "k8s.f5net.com|v1|F5BigFwPolicy|shop|shop-fw",
+   "status": "valid",
+   "target": "k8s.f5net.com|v1|F5BigCneAddresslist|shop|trusted-nets",
+   "type": "configuration"
+  },
+  {
+   "field": "spec.rule[0].destination.portLists",
+   "id": "k8s.f5net.com|v1|F5BigFwPolicy|shop|shop-fw->k8s.f5net.com|v1|F5BigCnePortlist|shop|web-ports#spec.rule[0].destination.portLists",
+   "inferred": false,
+   "label": "",
+   "reason": "Firewall rule matches traffic against this list.",
+   "source": "k8s.f5net.com|v1|F5BigFwPolicy|shop|shop-fw",
+   "status": "valid",
+   "target": "k8s.f5net.com|v1|F5BigCnePortlist|shop|web-ports",
+   "type": "configuration"
+  },
+  {
+   "field": "spec.egressSnatpool",
+   "id": "k8s.f5net.com|v3|F5SPKEgress|f5-bnk|legacy-egress->k8s.f5net.com|v1|F5SPKSnatpool|f5-bnk|legacy-snatpool#spec.egressSnatpool",
+   "inferred": false,
+   "label": "",
+   "reason": "F5SPKEgress translates egress traffic with this SNAT pool (F5SPKSnatpool spec.name).",
+   "source": "k8s.f5net.com|v3|F5SPKEgress|f5-bnk|legacy-egress",
+   "status": "valid",
+   "target": "k8s.f5net.com|v1|F5SPKSnatpool|f5-bnk|legacy-snatpool",
+   "type": "configuration"
+  },
+  {
+   "field": "spec.pseudoCNIConfig.vxlan.tmmInterfaceName",
+   "id": "k8s.f5net.com|v3|F5SPKEgress|f5-bnk|legacy-egress->k8s.f5net.com|v1|F5SPKVlan|f5-bnk|vlan-internal#spec.pseudoCNIConfig.vxlan.tmmInterfaceName",
+   "inferred": false,
+   "label": "",
+   "reason": "F5SPKEgress tunnels pod egress traffic to TMM over this VLAN.",
+   "source": "k8s.f5net.com|v3|F5SPKEgress|f5-bnk|legacy-egress",
+   "status": "valid",
+   "target": "k8s.f5net.com|v1|F5SPKVlan|f5-bnk|vlan-internal",
+   "type": "network"
+  },
+  {
+   "field": "spec.to[0]",
+   "id": "gateway.networking.k8s.io|v1beta1|ReferenceGrant|shop|allow-storefront->|v1|Service|shop|catalog-svc#spec.to[0]",
+   "inferred": true,
+   "label": "",
+   "reason": "ReferenceGrant permits references toward this object from the declared source group, kind, and namespace.",
+   "source": "gateway.networking.k8s.io|v1beta1|ReferenceGrant|shop|allow-storefront",
+   "status": "valid",
+   "target": "|v1|Service|shop|catalog-svc",
+   "type": "grant"
+  }
+ ],
+ "findings": [
+  {
+   "evidence": "db-pool",
+   "explanation": "GatewaySettings names an IPAM, network or VRF entry that the Infra does not define.",
+   "field": "spec (ipamRefs, networkRefs, vrfRefs)",
+   "remediation": "Add the entry to the Infra, or correct the reference.",
+   "resource": "gateway.k8s.f5.com|v1alpha1|GatewaySettings|payments|payments-settings",
+   "rule": "infra-entry-not-found",
+   "severity": "error"
+  },
+  {
+   "evidence": "admin HTTPS:8443",
+   "explanation": "No route attaches to listener admin.",
+   "field": "spec.listeners[2]",
+   "remediation": "Attach a route, or remove the listener if it is unused.",
+   "resource": "gateway.networking.k8s.io|v1|Gateway|shop|edge-gw",
+   "rule": "listener-no-routes",
+   "severity": "info"
+  },
+  {
+   "evidence": "shop/reviews-svc",
+   "explanation": "Cross-namespace reference is not authorized by a ReferenceGrant.",
+   "field": "spec.rules[1].backendRefs[0]",
+   "remediation": "Add a ReferenceGrant in the target namespace.",
+   "resource": "gateway.networking.k8s.io|v1|HTTPRoute|storefront|catalog",
+   "rule": "missing-reference-grant",
+   "severity": "error"
+  },
+  {
+   "evidence": "sectionName api; listeners: http, https, admin",
+   "explanation": "The parentRef selects no listener on Gateway shop/edge-gw, so the route is not attached.",
+   "field": "spec.parentRefs[0]",
+   "remediation": "Set sectionName (and port) to an existing listener, or remove them to attach to every compatible listener.",
+   "resource": "gateway.networking.k8s.io|v1|HTTPRoute|shop|legacy-api",
+   "rule": "parent-listener-not-found",
+   "severity": "error"
+  },
+  {
+   "evidence": "bnk-ca-issuer",
+   "explanation": "Forge does not read ClusterIssuer resources in this view, so this reference is not checked.",
+   "field": "spec.certificate.clusterIssuer",
+   "remediation": "Verify the referenced resource in the cluster.",
+   "resource": "k8s.f5.com|v1|CNEInstance|f5-bnk|bnk",
+   "rule": "reference-not-inspected",
+   "severity": "info"
+  },
+  {
+   "evidence": "payments/retired-gw",
+   "explanation": "Referenced Gateway was not found.",
+   "field": "spec.targetRefs[0]",
+   "remediation": "Create the resource or correct the reference.",
+   "resource": "gateway.k8s.f5.com|v1alpha1|NetPolicy|payments|stray-net",
+   "rule": "unresolved-reference",
+   "severity": "error"
+  },
+  {
+   "evidence": "shop/shop-log",
+   "explanation": "Referenced F5BigLogProfile was not found.",
+   "field": "spec.extensionRefs[1]",
+   "remediation": "Create the resource or correct the reference.",
+   "resource": "gateway.k8s.f5.com|v1alpha1|SecPolicy|shop|shop-sec",
+   "rule": "unresolved-reference",
+   "severity": "error"
+  },
+  {
+   "evidence": "payments/ledger-replica",
+   "explanation": "Referenced Service was not found.",
+   "field": "spec.rules[0].backendRefs[1]",
+   "remediation": "Create the resource or correct the reference.",
+   "resource": "gateway.k8s.f5.com|v1|L4Route|payments|ledger-db",
+   "rule": "unresolved-reference",
+   "severity": "error"
+  },
+  {
+   "evidence": "models/inference-params",
+   "explanation": "Referenced F5BnkGateway was not found.",
+   "field": "spec.infrastructure.parametersRef",
+   "remediation": "Create the resource or correct the reference.",
+   "resource": "gateway.networking.k8s.io|v1|Gateway|models|inference-gw",
+   "rule": "unresolved-reference",
+   "severity": "error"
+  }
+ ],
+ "resources": [
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "selection",
+     "value": "NamespaceSelector"
+    },
+    {
+     "label": "namespaces",
+     "value": "egress-apps"
+    }
+   ],
+   "group": "gateway.k8s.f5.com",
+   "id": "gateway.k8s.f5.com|v1alpha1|EgressGateway|egress-apps|apps-egress",
+   "kind": "EgressGateway",
+   "name": "apps-egress",
+   "namespace": "egress-apps",
+   "placeholder": false,
+   "resourceType": "egressgateway",
+   "version": "v1alpha1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "SNAT pools",
+     "value": "egress-snat"
+    },
+    {
+     "label": "egress configs",
+     "value": "egress-default"
+    }
+   ],
+   "group": "gateway.k8s.f5.com",
+   "id": "gateway.k8s.f5.com|v1alpha1|GatewaySettings|egress-apps|egress-settings",
+   "kind": "GatewaySettings",
+   "name": "egress-settings",
+   "namespace": "egress-apps",
+   "placeholder": false,
+   "resourceType": "gatewaysettings",
+   "version": "v1alpha1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "listener IPAM",
+     "value": "db-pool"
+    }
+   ],
+   "group": "gateway.k8s.f5.com",
+   "id": "gateway.k8s.f5.com|v1alpha1|GatewaySettings|payments|payments-settings",
+   "kind": "GatewaySettings",
+   "name": "payments-settings",
+   "namespace": "payments",
+   "placeholder": false,
+   "resourceType": "gatewaysettings",
+   "version": "v1alpha1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "listener IPAM",
+     "value": "ext-pool"
+    },
+    {
+     "label": "listener networks",
+     "value": "external"
+    },
+    {
+     "label": "SNAT pools",
+     "value": "shop-snat"
+    }
+   ],
+   "group": "gateway.k8s.f5.com",
+   "id": "gateway.k8s.f5.com|v1alpha1|GatewaySettings|shop|shop-settings",
+   "kind": "GatewaySettings",
+   "name": "shop-settings",
+   "namespace": "shop",
+   "placeholder": false,
+   "resourceType": "gatewaysettings",
+   "version": "v1alpha1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "network",
+     "value": "external vlan tag 100"
+    },
+    {
+     "label": "IPAM",
+     "value": "ext-pool, snat-pool"
+    },
+    {
+     "label": "attachment",
+     "value": "ext-attach \u2192 sriov-external"
+    },
+    {
+     "label": "route",
+     "value": "0.0.0.0/0 via 192.0.2.1"
+    }
+   ],
+   "group": "gateway.k8s.f5.com",
+   "id": "gateway.k8s.f5.com|v1alpha1|Infra|f5-utils|infra",
+   "kind": "Infra",
+   "name": "infra",
+   "namespace": "f5-utils",
+   "placeholder": false,
+   "resourceType": "infra",
+   "version": "v1alpha1"
+  },
+  {
+   "conditions": {},
+   "facts": [],
+   "group": "gateway.k8s.f5.com",
+   "id": "gateway.k8s.f5.com|v1alpha1|NetPolicy|payments|payments-net",
+   "kind": "NetPolicy",
+   "name": "payments-net",
+   "namespace": "payments",
+   "placeholder": false,
+   "resourceType": "netpolicy",
+   "version": "v1alpha1"
+  },
+  {
+   "conditions": {},
+   "facts": [],
+   "group": "gateway.k8s.f5.com",
+   "id": "gateway.k8s.f5.com|v1alpha1|NetPolicy|payments|stray-net",
+   "kind": "NetPolicy",
+   "name": "stray-net",
+   "namespace": "payments",
+   "placeholder": false,
+   "resourceType": "netpolicy",
+   "version": "v1alpha1"
+  },
+  {
+   "conditions": {},
+   "facts": [],
+   "group": "gateway.k8s.f5.com",
+   "id": "gateway.k8s.f5.com|v1alpha1|NetPolicy|shop|shop-net",
+   "kind": "NetPolicy",
+   "name": "shop-net",
+   "namespace": "shop",
+   "placeholder": false,
+   "resourceType": "netpolicy",
+   "version": "v1alpha1"
+  },
+  {
+   "conditions": {},
+   "facts": [],
+   "group": "gateway.k8s.f5.com",
+   "id": "gateway.k8s.f5.com|v1alpha1|SecPolicy|egress-apps|egress-sec",
+   "kind": "SecPolicy",
+   "name": "egress-sec",
+   "namespace": "egress-apps",
+   "placeholder": false,
+   "resourceType": "secpolicy",
+   "version": "v1alpha1"
+  },
+  {
+   "conditions": {},
+   "facts": [],
+   "group": "gateway.k8s.f5.com",
+   "id": "gateway.k8s.f5.com|v1alpha1|SecPolicy|shop|shop-sec",
+   "kind": "SecPolicy",
+   "name": "shop-sec",
+   "namespace": "shop",
+   "placeholder": false,
+   "resourceType": "secpolicy",
+   "version": "v1alpha1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "protocol",
+     "value": "TCP"
+    }
+   ],
+   "group": "gateway.k8s.f5.com",
+   "id": "gateway.k8s.f5.com|v1|L4Route|payments|ledger-db",
+   "kind": "L4Route",
+   "name": "ledger-db",
+   "namespace": "payments",
+   "placeholder": false,
+   "resourceType": "l4route_24",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [],
+   "group": "gateway.networking.k8s.io",
+   "id": "gateway.networking.k8s.io|v1beta1|ReferenceGrant|shop|allow-storefront",
+   "kind": "ReferenceGrant",
+   "name": "allow-storefront",
+   "namespace": "shop",
+   "placeholder": false,
+   "resourceType": "referencegrant",
+   "version": "v1beta1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "controller",
+     "value": "example.com/other-controller"
+    }
+   ],
+   "group": "gateway.networking.k8s.io",
+   "id": "gateway.networking.k8s.io|v1|GatewayClass||example-other",
+   "kind": "GatewayClass",
+   "name": "example-other",
+   "namespace": "",
+   "placeholder": false,
+   "resourceType": "gatewayclass",
+   "version": "v1"
+  },
+  {
+   "conditions": {
+    "Accepted": "True"
+   },
+   "facts": [
+    {
+     "label": "controller",
+     "value": "f5.com/f5-bnk-f5-cne-controller"
+    }
+   ],
+   "group": "gateway.networking.k8s.io",
+   "id": "gateway.networking.k8s.io|v1|GatewayClass||f5-gateway-class",
+   "kind": "GatewayClass",
+   "name": "f5-gateway-class",
+   "namespace": "",
+   "placeholder": false,
+   "resourceType": "gatewayclass",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "listener",
+     "value": "http HTTP:80"
+    }
+   ],
+   "group": "gateway.networking.k8s.io",
+   "id": "gateway.networking.k8s.io|v1|Gateway|models|inference-gw",
+   "kind": "Gateway",
+   "name": "inference-gw",
+   "namespace": "models",
+   "placeholder": false,
+   "resourceType": "gateway",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "listener",
+     "value": "http HTTP:80"
+    }
+   ],
+   "group": "gateway.networking.k8s.io",
+   "id": "gateway.networking.k8s.io|v1|Gateway|other-team|other-gw",
+   "kind": "Gateway",
+   "name": "other-gw",
+   "namespace": "other-team",
+   "placeholder": false,
+   "resourceType": "gateway",
+   "version": "v1"
+  },
+  {
+   "conditions": {
+    "Accepted": "True",
+    "Programmed": "False"
+   },
+   "facts": [
+    {
+     "label": "address",
+     "value": "192.0.2.20"
+    },
+    {
+     "label": "listener",
+     "value": "tcp TCP:5432"
+    }
+   ],
+   "group": "gateway.networking.k8s.io",
+   "id": "gateway.networking.k8s.io|v1|Gateway|payments|edge-gw",
+   "kind": "Gateway",
+   "name": "edge-gw",
+   "namespace": "payments",
+   "placeholder": false,
+   "resourceType": "gateway",
+   "version": "v1"
+  },
+  {
+   "conditions": {
+    "Accepted": "True",
+    "Programmed": "True"
+   },
+   "facts": [
+    {
+     "label": "address",
+     "value": "192.0.2.10"
+    },
+    {
+     "label": "listener",
+     "value": "http HTTP:80"
+    },
+    {
+     "label": "listener",
+     "value": "https HTTPS:443 *.shop.example.com"
+    },
+    {
+     "label": "listener",
+     "value": "admin HTTPS:8443 admin.shop.example.com"
+    }
+   ],
+   "group": "gateway.networking.k8s.io",
+   "id": "gateway.networking.k8s.io|v1|Gateway|shop|edge-gw",
+   "kind": "Gateway",
+   "name": "edge-gw",
+   "namespace": "shop",
+   "placeholder": false,
+   "resourceType": "gateway",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [],
+   "group": "gateway.networking.k8s.io",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|models|chat-route",
+   "kind": "HTTPRoute",
+   "name": "chat-route",
+   "namespace": "models",
+   "placeholder": false,
+   "resourceType": "httproute",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [],
+   "group": "gateway.networking.k8s.io",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|other-team|other-route",
+   "kind": "HTTPRoute",
+   "name": "other-route",
+   "namespace": "other-team",
+   "placeholder": false,
+   "resourceType": "httproute",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "hosts",
+     "value": "pay.shop.example.com"
+    }
+   ],
+   "group": "gateway.networking.k8s.io",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|shop|checkout",
+   "kind": "HTTPRoute",
+   "name": "checkout",
+   "namespace": "shop",
+   "placeholder": false,
+   "resourceType": "httproute",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [],
+   "group": "gateway.networking.k8s.io",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|shop|legacy-api",
+   "kind": "HTTPRoute",
+   "name": "legacy-api",
+   "namespace": "shop",
+   "placeholder": false,
+   "resourceType": "httproute",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "hosts",
+     "value": "www.shop.example.com"
+    }
+   ],
+   "group": "gateway.networking.k8s.io",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|shop|web",
+   "kind": "HTTPRoute",
+   "name": "web",
+   "namespace": "shop",
+   "placeholder": false,
+   "resourceType": "httproute",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "hosts",
+     "value": "catalog.shop.example.com"
+    }
+   ],
+   "group": "gateway.networking.k8s.io",
+   "id": "gateway.networking.k8s.io|v1|HTTPRoute|storefront|catalog",
+   "kind": "HTTPRoute",
+   "name": "catalog",
+   "namespace": "storefront",
+   "placeholder": false,
+   "resourceType": "httproute",
+   "version": "v1"
+  },
+  {
+   "conditions": {
+    "Available": "True"
+   },
+   "facts": [
+    {
+     "label": "engine",
+     "value": "vllm"
+    },
+    {
+     "label": "mode",
+     "value": "aggregated"
+    },
+    {
+     "label": "replicas",
+     "value": "1"
+    }
+   ],
+   "group": "inference.k8s.f5.com",
+   "id": "inference.k8s.f5.com|v1alpha1|F5EPP|models|chat-epp",
+   "kind": "F5EPP",
+   "name": "chat-epp",
+   "namespace": "models",
+   "placeholder": false,
+   "resourceType": "f5epp",
+   "version": "v1alpha1"
+  },
+  {
+   "conditions": {
+    "Accepted": "True",
+    "ResolvedRefs": "True"
+   },
+   "facts": [
+    {
+     "label": "selector",
+     "value": "app=model-sim"
+    },
+    {
+     "label": "target ports",
+     "value": "8000"
+    },
+    {
+     "label": "protocol",
+     "value": "http"
+    },
+    {
+     "label": "failure mode",
+     "value": "FailClose"
+    }
+   ],
+   "group": "inference.networking.k8s.io",
+   "id": "inference.networking.k8s.io|v1|InferencePool|models|chat-pool",
+   "kind": "InferencePool",
+   "name": "chat-pool",
+   "namespace": "models",
+   "placeholder": false,
+   "resourceType": "inferencepool",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "version",
+     "value": "2.4.0"
+    },
+    {
+     "label": "size",
+     "value": "Small"
+    },
+    {
+     "label": "attachments",
+     "value": "ext-attach, int-attach"
+    }
+   ],
+   "group": "k8s.f5.com",
+   "id": "k8s.f5.com|v1|CNEInstance|f5-bnk|bnk",
+   "kind": "CNEInstance",
+   "name": "bnk",
+   "namespace": "f5-bnk",
+   "placeholder": false,
+   "resourceType": "cneinstance",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "addresses",
+     "value": "198.51.100.0/24"
+    }
+   ],
+   "group": "k8s.f5net.com",
+   "id": "k8s.f5net.com|v1|F5BigCneAddresslist|shop|trusted-nets",
+   "kind": "F5BigCneAddresslist",
+   "name": "trusted-nets",
+   "namespace": "shop",
+   "placeholder": false,
+   "resourceType": "f5bigcneaddresslist",
+   "version": "v1"
+  },
+  {
+   "conditions": {
+    "Accepted": "True",
+    "Programmed": "True"
+   },
+   "facts": [],
+   "group": "k8s.f5net.com",
+   "id": "k8s.f5net.com|v1|F5BigCneIrule|shop|xff-header",
+   "kind": "F5BigCneIrule",
+   "name": "xff-header",
+   "namespace": "shop",
+   "placeholder": false,
+   "resourceType": "f5bigcneirule",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "ports",
+     "value": "80, 443"
+    }
+   ],
+   "group": "k8s.f5net.com",
+   "id": "k8s.f5net.com|v1|F5BigCnePortlist|shop|web-ports",
+   "kind": "F5BigCnePortlist",
+   "name": "web-ports",
+   "namespace": "shop",
+   "placeholder": false,
+   "resourceType": "f5bigcneportlist",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "rules",
+     "value": "allow-https-out accept"
+    }
+   ],
+   "group": "k8s.f5net.com",
+   "id": "k8s.f5net.com|v1|F5BigFwPolicy|egress-apps|egress-fw",
+   "kind": "F5BigFwPolicy",
+   "name": "egress-fw",
+   "namespace": "egress-apps",
+   "placeholder": false,
+   "resourceType": "f5bigfwpolicy",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "rules",
+     "value": "allow-trusted-web accept, deny-rest drop"
+    }
+   ],
+   "group": "k8s.f5net.com",
+   "id": "k8s.f5net.com|v1|F5BigFwPolicy|shop|shop-fw",
+   "kind": "F5BigFwPolicy",
+   "name": "shop-fw",
+   "namespace": "shop",
+   "placeholder": false,
+   "resourceType": "f5bigfwpolicy",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [],
+   "group": "k8s.f5net.com",
+   "id": "k8s.f5net.com|v1|F5BigPersistenceProfile|payments|ledger-persist",
+   "kind": "F5BigPersistenceProfile",
+   "name": "ledger-persist",
+   "namespace": "payments",
+   "placeholder": false,
+   "resourceType": "f5bigpersistenceprofile",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "pool",
+     "value": "legacy-snat"
+    },
+    {
+     "label": "addresses",
+     "value": "203.0.113.20, 203.0.113.21"
+    }
+   ],
+   "group": "k8s.f5net.com",
+   "id": "k8s.f5net.com|v1|F5SPKSnatpool|f5-bnk|legacy-snatpool",
+   "kind": "F5SPKSnatpool",
+   "name": "legacy-snatpool",
+   "namespace": "f5-bnk",
+   "placeholder": false,
+   "resourceType": "f5spksnatpool",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "route",
+     "value": "0.0.0.0/0 via 192.0.2.1"
+    }
+   ],
+   "group": "k8s.f5net.com",
+   "id": "k8s.f5net.com|v1|F5SPKStaticRoute|f5-bnk|default-gw",
+   "kind": "F5SPKStaticRoute",
+   "name": "default-gw",
+   "namespace": "f5-bnk",
+   "placeholder": false,
+   "resourceType": "f5spkstaticroute",
+   "version": "v1"
+  },
+  {
+   "conditions": {
+    "Accepted": "True",
+    "Programmed": "True"
+   },
+   "facts": [
+    {
+     "label": "VLAN",
+     "value": "external-vlan tag 100"
+    },
+    {
+     "label": "self IPs",
+     "value": "192.0.2.11, 192.0.2.12"
+    },
+    {
+     "label": "MTU",
+     "value": "1500"
+    },
+    {
+     "label": "interfaces",
+     "value": "1.1"
+    },
+    {
+     "label": "side",
+     "value": "external"
+    }
+   ],
+   "group": "k8s.f5net.com",
+   "id": "k8s.f5net.com|v1|F5SPKVlan|f5-bnk|vlan-external",
+   "kind": "F5SPKVlan",
+   "name": "vlan-external",
+   "namespace": "f5-bnk",
+   "placeholder": false,
+   "resourceType": "f5spkvlan",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "VLAN",
+     "value": "internal-vlan tag 0"
+    },
+    {
+     "label": "self IPs",
+     "value": "198.51.100.11, 198.51.100.12"
+    },
+    {
+     "label": "MTU",
+     "value": "1500"
+    },
+    {
+     "label": "interfaces",
+     "value": "1.2"
+    },
+    {
+     "label": "side",
+     "value": "internal"
+    }
+   ],
+   "group": "k8s.f5net.com",
+   "id": "k8s.f5net.com|v1|F5SPKVlan|f5-bnk|vlan-internal",
+   "kind": "F5SPKVlan",
+   "name": "vlan-internal",
+   "namespace": "f5-bnk",
+   "placeholder": false,
+   "resourceType": "f5spkvlan",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "SNAT",
+     "value": "SRC_TRANS_SNATPOOL legacy-snat"
+    },
+    {
+     "label": "namespaces",
+     "value": "egress-apps"
+    }
+   ],
+   "group": "k8s.f5net.com",
+   "id": "k8s.f5net.com|v3|F5SPKEgress|f5-bnk|legacy-egress",
+   "kind": "F5SPKEgress",
+   "name": "legacy-egress",
+   "namespace": "f5-bnk",
+   "placeholder": false,
+   "resourceType": "f5spkegress",
+   "version": "v3"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "port",
+     "value": "grpc-ext-proc 9002"
+    }
+   ],
+   "group": "",
+   "id": "|v1|Service|models|chat-pool-epp",
+   "kind": "Service",
+   "name": "chat-pool-epp",
+   "namespace": "models",
+   "placeholder": false,
+   "resourceType": "service",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "port",
+     "value": "80"
+    }
+   ],
+   "group": "",
+   "id": "|v1|Service|other-team|other-svc",
+   "kind": "Service",
+   "name": "other-svc",
+   "namespace": "other-team",
+   "placeholder": false,
+   "resourceType": "service",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "port",
+     "value": "postgres 5432"
+    }
+   ],
+   "group": "",
+   "id": "|v1|Service|payments|ledger-svc",
+   "kind": "Service",
+   "name": "ledger-svc",
+   "namespace": "payments",
+   "placeholder": false,
+   "resourceType": "service",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "port",
+     "value": "http 9000"
+    }
+   ],
+   "group": "",
+   "id": "|v1|Service|shop|catalog-svc",
+   "kind": "Service",
+   "name": "catalog-svc",
+   "namespace": "shop",
+   "placeholder": false,
+   "resourceType": "service",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "port",
+     "value": "https 8443"
+    }
+   ],
+   "group": "",
+   "id": "|v1|Service|shop|checkout-svc",
+   "kind": "Service",
+   "name": "checkout-svc",
+   "namespace": "shop",
+   "placeholder": false,
+   "resourceType": "service",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "port",
+     "value": "http 9100"
+    }
+   ],
+   "group": "",
+   "id": "|v1|Service|shop|reviews-svc",
+   "kind": "Service",
+   "name": "reviews-svc",
+   "namespace": "shop",
+   "placeholder": false,
+   "resourceType": "service",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "port",
+     "value": "http 8080"
+    }
+   ],
+   "group": "",
+   "id": "|v1|Service|shop|web-canary",
+   "kind": "Service",
+   "name": "web-canary",
+   "namespace": "shop",
+   "placeholder": false,
+   "resourceType": "service",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [
+    {
+     "label": "port",
+     "value": "http 8080"
+    }
+   ],
+   "group": "",
+   "id": "|v1|Service|shop|web-svc",
+   "kind": "Service",
+   "name": "web-svc",
+   "namespace": "shop",
+   "placeholder": false,
+   "resourceType": "service",
+   "version": "v1"
+  },
+  {
+   "conditions": {},
+   "facts": [],
+   "group": "cert-manager.io",
+   "id": "cert-manager.io||ClusterIssuer||bnk-ca-issuer",
+   "kind": "ClusterIssuer",
+   "name": "bnk-ca-issuer",
+   "namespace": "",
+   "placeholder": true,
+   "resourceType": null,
+   "version": ""
+  },
+  {
+   "conditions": {},
+   "facts": [],
+   "group": "gateway.networking.k8s.io",
+   "id": "gateway.networking.k8s.io||Gateway|payments|retired-gw",
+   "kind": "Gateway",
+   "name": "retired-gw",
+   "namespace": "payments",
+   "placeholder": true,
+   "resourceType": null,
+   "version": ""
+  },
+  {
+   "conditions": {},
+   "facts": [],
+   "group": "k8s.f5net.com",
+   "id": "k8s.f5net.com||F5BigLogProfile|shop|shop-log",
+   "kind": "F5BigLogProfile",
+   "name": "shop-log",
+   "namespace": "shop",
+   "placeholder": true,
+   "resourceType": null,
+   "version": ""
+  },
+  {
+   "conditions": {},
+   "facts": [],
+   "group": "k8s.f5net.com",
+   "id": "k8s.f5net.com||F5BnkGateway|models|inference-params",
+   "kind": "F5BnkGateway",
+   "name": "inference-params",
+   "namespace": "models",
+   "placeholder": true,
+   "resourceType": null,
+   "version": ""
+  },
+  {
+   "conditions": {},
+   "facts": [],
+   "group": "",
+   "id": "||Secret|f5-bnk|registry-pull",
+   "kind": "Secret",
+   "name": "registry-pull",
+   "namespace": "f5-bnk",
+   "placeholder": true,
+   "resourceType": null,
+   "version": ""
+  },
+  {
+   "conditions": {},
+   "facts": [],
+   "group": "",
+   "id": "||Secret|shop|shop-tls",
+   "kind": "Secret",
+   "name": "shop-tls",
+   "namespace": "shop",
+   "placeholder": true,
+   "resourceType": null,
+   "version": ""
+  },
+  {
+   "conditions": {},
+   "facts": [],
+   "group": "",
+   "id": "||Service|payments|ledger-replica",
+   "kind": "Service",
+   "name": "ledger-replica",
+   "namespace": "payments",
+   "placeholder": true,
+   "resourceType": null,
+   "version": ""
+  }
+ ],
+ "warnings": []
+}

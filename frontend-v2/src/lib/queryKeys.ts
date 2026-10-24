@@ -139,6 +139,10 @@ export const queryKeys = {
         clusterId: number,
         params?: Record<string, string | undefined>,
       ) => ["k8s", "clusters", clusterId, "f5bnk", "data", params] as const,
+      bnkCanvas: (
+        clusterId: number,
+        params?: Record<string, string | undefined>,
+      ) => ["k8s", "clusters", clusterId, "f5bnk", "canvas", params] as const,
       // A2A agent discovery
       a2aAgents: (
         clusterId: number,

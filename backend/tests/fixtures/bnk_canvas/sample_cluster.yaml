@@ -1,0 +1,543 @@
+# Anonymized BIG-IP Next for Kubernetes 2.4 sample for the Topology Canvas.
+#
+# Invented names, example.com hosts and RFC 5737 documentation addresses only. It exercises every
+# relationship rule in services/bnk/canvas_graph.py and seeds a local kind cluster (docs/atlas-canvas/
+# seed-kind.sh). `status` blocks are applied separately through the status subresource.
+#
+# Deliberate faults, each covered by a finding:
+#   - storefront/catalog -> shop/reviews-svc: cross-namespace backend without a ReferenceGrant
+#   - shop/legacy-api: parentRef sectionName names no listener
+#   - shop/shop-sec: extensionRef to a missing F5BigLogProfile
+#   - payments/ledger-db: backendRef to a missing Service
+#   - payments/stray-net: targetRef to a missing Gateway
+#   - payments/payments-settings: ipamRef to an IPAM entry the Infra does not define
+# Two Gateways share the name edge-gw (shop and payments); each keeps its own policies.
+apiVersion: v1
+kind: List
+items:
+  # --- Namespaces -------------------------------------------------------------------------------
+  - {apiVersion: v1, kind: Namespace, metadata: {name: f5-utils}}
+  - {apiVersion: v1, kind: Namespace, metadata: {name: f5-bnk}}
+  - {apiVersion: v1, kind: Namespace, metadata: {name: shop}}
+  - {apiVersion: v1, kind: Namespace, metadata: {name: storefront}}
+  - {apiVersion: v1, kind: Namespace, metadata: {name: payments}}
+  - {apiVersion: v1, kind: Namespace, metadata: {name: egress-apps}}
+  - {apiVersion: v1, kind: Namespace, metadata: {name: models}}
+  - {apiVersion: v1, kind: Namespace, metadata: {name: other-team}}
+
+  # --- Gateway classes --------------------------------------------------------------------------
+  - apiVersion: gateway.networking.k8s.io/v1
+    kind: GatewayClass
+    metadata: {name: f5-gateway-class}
+    spec:
+      controllerName: f5.com/f5-bnk-f5-cne-controller
+      description: F5 BIG-IP Next for Kubernetes
+    status:
+      conditions:
+        - {type: Accepted, status: "True", reason: Accepted, message: Accepted, lastTransitionTime: "2026-01-01T00:00:00Z"}
+  # Not BIG-IP Next: drawn in its own band, or left out with controllers=bnk.
+  - apiVersion: gateway.networking.k8s.io/v1
+    kind: GatewayClass
+    metadata: {name: example-other}
+    spec: {controllerName: example.com/other-controller}
+
+  # --- shop: HTTP(S) Gateway, routes, policies --------------------------------------------------
+  - apiVersion: gateway.networking.k8s.io/v1
+    kind: Gateway
+    metadata: {name: edge-gw, namespace: shop}
+    spec:
+      gatewayClassName: f5-gateway-class
+      infrastructure:
+        parametersRef: {group: gateway.k8s.f5.com, kind: GatewaySettings, name: shop-settings}
+      addresses:
+        - {type: IPAddress, value: 192.0.2.10}
+      listeners:
+        - name: http
+          port: 80
+          protocol: HTTP
+          allowedRoutes:
+            namespaces: {from: All}
+        - name: https
+          port: 443
+          protocol: HTTPS
+          hostname: "*.shop.example.com"
+          tls:
+            mode: Terminate
+            certificateRefs:
+              - {kind: Secret, name: shop-tls}
+          allowedRoutes:
+            namespaces: {from: Same}
+        - name: admin
+          port: 8443
+          protocol: HTTPS
+          hostname: admin.shop.example.com
+          tls:
+            mode: Terminate
+            certificateRefs:
+              - {kind: Secret, name: shop-tls}
+    status:
+      addresses:
+        - {type: IPAddress, value: 192.0.2.10}
+      conditions:
+        - {type: Accepted, status: "True", reason: Accepted, message: Accepted, lastTransitionTime: "2026-01-01T00:00:00Z"}
+        - {type: Programmed, status: "True", reason: Programmed, message: Programmed, lastTransitionTime: "2026-01-01T00:00:00Z"}
+  - apiVersion: gateway.networking.k8s.io/v1
+    kind: HTTPRoute
+    metadata: {name: web, namespace: shop}
+    spec:
+      parentRefs:
+        - {name: edge-gw, sectionName: http}
+      hostnames: [www.shop.example.com]
+      rules:
+        - matches:
+            - path: {type: PathPrefix, value: /}
+          backendRefs:
+            - {name: web-svc, port: 8080, weight: 90}
+            - {name: web-canary, port: 8080, weight: 10}
+  - apiVersion: gateway.networking.k8s.io/v1
+    kind: HTTPRoute
+    metadata: {name: checkout, namespace: shop}
+    spec:
+      parentRefs:
+        - {name: edge-gw, sectionName: https}
+      hostnames: [pay.shop.example.com]
+      rules:
+        - matches:
+            - path: {type: PathPrefix, value: /checkout}
+          backendRefs:
+            - {name: checkout-svc, port: 8443}
+  - apiVersion: gateway.networking.k8s.io/v1
+    kind: HTTPRoute
+    metadata: {name: legacy-api, namespace: shop}
+    spec:
+      parentRefs:
+        - {name: edge-gw, sectionName: api}
+      rules:
+        - backendRefs:
+            - {name: web-svc, port: 8080}
+  - apiVersion: gateway.k8s.f5.com/v1alpha1
+    kind: NetPolicy
+    metadata: {name: shop-net, namespace: shop}
+    spec:
+      targetRefs:
+        - {group: gateway.networking.k8s.io, kind: Gateway, name: edge-gw, sectionName: http}
+      extensionRefs:
+        - {group: k8s.f5net.com, kind: F5BigCneIrule, name: xff-header}
+  - apiVersion: k8s.f5net.com/v1
+    kind: F5BigCneIrule
+    metadata: {name: xff-header, namespace: shop}
+    spec:
+      iRule: |
+        when HTTP_REQUEST {
+          HTTP::header insert X-Forwarded-For [IP::remote_addr]
+        }
+    status:
+      conditions:
+        - {type: Accepted, status: "True", reason: Accepted, message: Accepted, lastTransitionTime: "2026-01-01T00:00:00Z"}
+        - {type: Programmed, status: "True", reason: Programmed, message: Programmed, lastTransitionTime: "2026-01-01T00:00:00Z"}
+  - apiVersion: gateway.k8s.f5.com/v1alpha1
+    kind: SecPolicy
+    metadata: {name: shop-sec, namespace: shop}
+    spec:
+      targetRefs:
+        - {group: gateway.networking.k8s.io, kind: Gateway, name: edge-gw}
+      extensionRefs:
+        - {group: k8s.f5net.com, kind: F5BigFwPolicy, name: shop-fw}
+        - {group: k8s.f5net.com, kind: F5BigLogProfile, name: shop-log}
+  - apiVersion: k8s.f5net.com/v1
+    kind: F5BigFwPolicy
+    metadata: {name: shop-fw, namespace: shop}
+    spec:
+      rule:
+        - name: allow-trusted-web
+          action: accept
+          ipProtocol: tcp
+          logging: true
+          source:
+            addressLists: [trusted-nets]
+          destination:
+            portLists: [web-ports]
+        - name: deny-rest
+          action: drop
+          ipProtocol: any
+  - apiVersion: k8s.f5net.com/v1
+    kind: F5BigCneAddresslist
+    metadata: {name: trusted-nets, namespace: shop}
+    spec:
+      addresses: [198.51.100.0/24]
+  - apiVersion: k8s.f5net.com/v1
+    kind: F5BigCnePortlist
+    metadata: {name: web-ports, namespace: shop}
+    spec:
+      ports: ["80", "443"]
+  - apiVersion: gateway.k8s.f5.com/v1alpha1
+    kind: GatewaySettings
+    metadata: {name: shop-settings, namespace: shop}
+    spec:
+      ingressConfig:
+        defaultListenerNetwork:
+          ipamRefs:
+            - {name: ext-pool}
+          networkRefs:
+            - {name: external}
+      sourceNATPools:
+        - name: shop-snat
+          ipamRefs:
+            - {name: snat-pool}
+  - apiVersion: gateway.networking.k8s.io/v1beta1
+    kind: ReferenceGrant
+    metadata: {name: allow-storefront, namespace: shop}
+    spec:
+      from:
+        - {group: gateway.networking.k8s.io, kind: HTTPRoute, namespace: storefront}
+      to:
+        - {group: "", kind: Service, name: catalog-svc}
+  - apiVersion: v1
+    kind: Service
+    metadata: {name: web-svc, namespace: shop, labels: {app: web}}
+    spec:
+      selector: {app: web}
+      ports:
+        - {name: http, port: 8080, targetPort: 8080}
+  - apiVersion: v1
+    kind: Service
+    metadata: {name: web-canary, namespace: shop, labels: {app: web-canary}}
+    spec:
+      selector: {app: web-canary}
+      ports:
+        - {name: http, port: 8080, targetPort: 8080}
+  - apiVersion: v1
+    kind: Service
+    metadata: {name: checkout-svc, namespace: shop}
+    spec:
+      selector: {app: checkout}
+      ports:
+        - {name: https, port: 8443, targetPort: 8443}
+  - apiVersion: v1
+    kind: Service
+    metadata: {name: catalog-svc, namespace: shop}
+    spec:
+      selector: {app: catalog}
+      ports:
+        - {name: http, port: 9000, targetPort: 9000}
+  - apiVersion: v1
+    kind: Service
+    metadata: {name: reviews-svc, namespace: shop}
+    spec:
+      selector: {app: reviews}
+      ports:
+        - {name: http, port: 9100, targetPort: 9100}
+
+  # --- storefront: a route attached to shop/edge-gw from another namespace ----------------------
+  - apiVersion: gateway.networking.k8s.io/v1
+    kind: HTTPRoute
+    metadata: {name: catalog, namespace: storefront}
+    spec:
+      parentRefs:
+        - {name: edge-gw, namespace: shop, sectionName: http}
+      hostnames: [catalog.shop.example.com]
+      rules:
+        - matches:
+            - path: {type: PathPrefix, value: /catalog}
+          backendRefs:
+            - {name: catalog-svc, namespace: shop, port: 9000}
+        - matches:
+            - path: {type: PathPrefix, value: /reviews}
+          backendRefs:
+            - {name: reviews-svc, namespace: shop, port: 9100}
+
+  # --- payments: an L4 Gateway with the same name as shop's -------------------------------------
+  - apiVersion: gateway.networking.k8s.io/v1
+    kind: Gateway
+    metadata: {name: edge-gw, namespace: payments}
+    spec:
+      gatewayClassName: f5-gateway-class
+      infrastructure:
+        parametersRef: {group: gateway.k8s.f5.com, kind: GatewaySettings, name: payments-settings}
+      addresses:
+        - {type: IPAddress, value: 192.0.2.20}
+      listeners:
+        - name: tcp
+          port: 5432
+          protocol: TCP
+          allowedRoutes:
+            kinds:
+              - {group: gateway.k8s.f5.com, kind: L4Route}
+            namespaces: {from: Same}
+    status:
+      addresses:
+        - {type: IPAddress, value: 192.0.2.20}
+      conditions:
+        - {type: Accepted, status: "True", reason: Accepted, message: Accepted, lastTransitionTime: "2026-01-01T00:00:00Z"}
+        - {type: Programmed, status: "False", reason: Pending, message: Waiting for an address, lastTransitionTime: "2026-01-01T00:00:00Z"}
+  - apiVersion: gateway.k8s.f5.com/v1
+    kind: L4Route
+    metadata: {name: ledger-db, namespace: payments}
+    spec:
+      protocol: TCP
+      parentRefs:
+        - {group: gateway.networking.k8s.io, kind: Gateway, name: edge-gw, sectionName: tcp}
+      rules:
+        - backendRefs:
+            - {group: "", kind: Service, name: ledger-svc, port: 5432, weight: 3}
+            - {group: "", kind: Service, name: ledger-replica, port: 5432, weight: 1}
+  - apiVersion: gateway.k8s.f5.com/v1alpha1
+    kind: NetPolicy
+    metadata: {name: payments-net, namespace: payments}
+    spec:
+      targetRefs:
+        - {group: gateway.networking.k8s.io, kind: Gateway, name: edge-gw}
+      extensionRefs:
+        - {group: k8s.f5net.com, kind: F5BigPersistenceProfile, name: ledger-persist}
+  - apiVersion: gateway.k8s.f5.com/v1alpha1
+    kind: NetPolicy
+    metadata: {name: stray-net, namespace: payments}
+    spec:
+      targetRefs:
+        - {group: gateway.networking.k8s.io, kind: Gateway, name: retired-gw}
+      extensionRefs:
+        - {group: k8s.f5net.com, kind: F5BigPersistenceProfile, name: ledger-persist}
+  - apiVersion: k8s.f5net.com/v1
+    kind: F5BigPersistenceProfile
+    metadata: {name: ledger-persist, namespace: payments}
+    spec:
+      persistenceType: SRC_ADDR
+      timeout: 180
+  - apiVersion: gateway.k8s.f5.com/v1alpha1
+    kind: GatewaySettings
+    metadata: {name: payments-settings, namespace: payments}
+    spec:
+      ingressConfig:
+        defaultListenerNetwork:
+          ipamRefs:
+            - {name: db-pool}
+  - apiVersion: v1
+    kind: Service
+    metadata: {name: ledger-svc, namespace: payments}
+    spec:
+      selector: {app: ledger}
+      ports:
+        - {name: postgres, port: 5432, targetPort: 5432}
+
+  # --- egress-apps: BNK 2.4 EgressGateway ---------------------------------------------------------
+  - apiVersion: gateway.k8s.f5.com/v1alpha1
+    kind: EgressGateway
+    metadata: {name: apps-egress, namespace: egress-apps}
+    spec:
+      gatewayClassName: f5-gateway-class
+      infrastructure:
+        parametersRef: {name: egress-settings, sectionName: egress-default}
+      sourceSelector:
+        selectionMode: NamespaceSelector
+        namespaces:
+          matchNames: [egress-apps]
+  - apiVersion: gateway.k8s.f5.com/v1alpha1
+    kind: GatewaySettings
+    metadata: {name: egress-settings, namespace: egress-apps}
+    spec:
+      egressConfigs:
+        - name: egress-default
+          networkRef: {name: external}
+          sourceNATConfig:
+            type: Pool
+            sourceNATPoolRef: {name: egress-snat}
+      sourceNATPools:
+        - name: egress-snat
+          ipamRefs:
+            - {name: snat-pool}
+  - apiVersion: gateway.k8s.f5.com/v1alpha1
+    kind: SecPolicy
+    metadata: {name: egress-sec, namespace: egress-apps}
+    spec:
+      targetRefs:
+        - {group: gateway.k8s.f5.com, kind: EgressGateway, name: apps-egress}
+      extensionRefs:
+        - {group: k8s.f5net.com, kind: F5BigFwPolicy, name: egress-fw}
+  - apiVersion: k8s.f5net.com/v1
+    kind: F5BigFwPolicy
+    metadata: {name: egress-fw, namespace: egress-apps}
+    spec:
+      rule:
+        - {name: allow-https-out, action: accept, ipProtocol: tcp}
+
+  # --- f5-utils: the BNK 2.4 underlay -----------------------------------------------------------
+  - apiVersion: gateway.k8s.f5.com/v1alpha1
+    kind: Infra
+    metadata: {name: infra, namespace: f5-utils}
+    spec:
+      ipams:
+        - name: ext-pool
+          ipPools:
+            - {rangeStart: 192.0.2.10, rangeEnd: 192.0.2.99}
+        - name: snat-pool
+          ipPools:
+            - {cidr: 203.0.113.0/24}
+      networkAttachments:
+        - name: ext-attach
+          networkAttachmentDefinitions:
+            - {name: sriov-external}
+      networks:
+        - name: external
+          type: vlan
+          vlan:
+            tag: 100
+            mtu: 1500
+            networkAttachmentRef: {name: ext-attach}
+            ipamRefs:
+              - {name: ext-pool}
+      staticRoutes:
+        - name: default-route
+          destinations: [0.0.0.0/0]
+          nextHop: 192.0.2.1
+
+  # --- f5-bnk: CNE instance and the data plane --------------------------------------------------
+  - apiVersion: k8s.f5.com/v1
+    kind: CNEInstance
+    metadata: {name: bnk, namespace: f5-bnk}
+    spec:
+      product: {type: BNK, gatewayAPI: true}
+      wholeCluster: true
+      manifestVersion: 2.4.0
+      deploymentSize: Small
+      certificate: {clusterIssuer: bnk-ca-issuer}
+      registry:
+        uri: registry.example.com/f5
+        imagePullSecrets:
+          - {name: registry-pull}
+      networkAttachments: [ext-attach, int-attach]
+      dynamicRouting: {enabled: true}
+  - apiVersion: k8s.f5net.com/v1
+    kind: F5SPKVlan
+    metadata: {name: vlan-external, namespace: f5-bnk}
+    spec:
+      name: external-vlan
+      tag: 100
+      mtu: 1500
+      interfaces: ["1.1"]
+      internal: false
+      selfip_v4s: [192.0.2.11, 192.0.2.12]
+      prefixlen_v4: 24
+    status:
+      conditions:
+        - {type: Accepted, status: "True", reason: Accepted, message: Accepted, lastTransitionTime: "2026-01-01T00:00:00Z"}
+        - {type: Programmed, status: "True", reason: Programmed, message: Programmed, lastTransitionTime: "2026-01-01T00:00:00Z"}
+  - apiVersion: k8s.f5net.com/v1
+    kind: F5SPKVlan
+    metadata: {name: vlan-internal, namespace: f5-bnk}
+    spec:
+      name: internal-vlan
+      tag: 0
+      mtu: 1500
+      interfaces: ["1.2"]
+      internal: true
+      selfip_v4s: [198.51.100.11, 198.51.100.12]
+      prefixlen_v4: 24
+  - apiVersion: k8s.f5net.com/v1
+    kind: F5SPKSnatpool
+    metadata: {name: legacy-snatpool, namespace: f5-bnk}
+    spec:
+      name: legacy-snat
+      addressList:
+        - [203.0.113.20, 203.0.113.21]
+  - apiVersion: k8s.f5net.com/v3
+    kind: F5SPKEgress
+    metadata: {name: legacy-egress, namespace: f5-bnk}
+    spec:
+      egressSnatpool: legacy-snat
+      snatType: SRC_TRANS_SNATPOOL
+      pseudoCNIConfig:
+        namespaces: [egress-apps]
+        vxlan: {create: true, key: 100, port: 4789, tmmInterfaceName: internal-vlan}
+  - apiVersion: k8s.f5net.com/v1
+    kind: F5SPKStaticRoute
+    metadata: {name: default-gw, namespace: f5-bnk}
+    spec:
+      destination: 0.0.0.0
+      prefixLen: 0
+      gateway: 192.0.2.1
+      type: gateway
+
+  # --- models: an inference Gateway, InferencePool and F5 Endpoint Picker ------------------------
+  # Its infrastructure names an F5BnkGateway that does not exist: a broken reference.
+  - apiVersion: gateway.networking.k8s.io/v1
+    kind: Gateway
+    metadata: {name: inference-gw, namespace: models}
+    spec:
+      gatewayClassName: f5-gateway-class
+      infrastructure:
+        parametersRef: {group: k8s.f5net.com, kind: F5BnkGateway, name: inference-params}
+      listeners:
+        - {name: http, port: 80, protocol: HTTP}
+  - apiVersion: gateway.networking.k8s.io/v1
+    kind: HTTPRoute
+    metadata: {name: chat-route, namespace: models}
+    spec:
+      parentRefs:
+        - {name: inference-gw, sectionName: http}
+      rules:
+        - matches:
+            - path: {type: PathPrefix, value: /v1}
+          backendRefs:
+            - {group: inference.networking.k8s.io, kind: InferencePool, name: chat-pool}
+  - apiVersion: inference.networking.k8s.io/v1
+    kind: InferencePool
+    metadata: {name: chat-pool, namespace: models}
+    spec:
+      appProtocol: http
+      selector:
+        matchLabels: {app: model-sim}
+      targetPorts:
+        - {number: 8000}
+      endpointPickerRef:
+        group: ""
+        kind: Service
+        name: chat-pool-epp
+        port: {number: 9002}
+        failureMode: FailClose
+    status:
+      parents:
+        - parentRef: {group: gateway.networking.k8s.io, kind: Gateway, name: inference-gw, namespace: models}
+          conditions:
+            - {type: Accepted, status: "True", reason: Accepted, message: Accepted, lastTransitionTime: "2026-01-01T00:00:00Z"}
+            - {type: ResolvedRefs, status: "True", reason: ResolvedRefs, message: Resolved, lastTransitionTime: "2026-01-01T00:00:00Z"}
+  - apiVersion: v1
+    kind: Service
+    metadata: {name: chat-pool-epp, namespace: models}
+    spec:
+      ports:
+        - {name: grpc-ext-proc, port: 9002, protocol: TCP}
+  - apiVersion: inference.k8s.f5.com/v1alpha1
+    kind: F5EPP
+    metadata: {name: chat-epp, namespace: models}
+    spec:
+      engine: vllm
+      mode: aggregated
+      replicas: 1
+      poolRef: {group: inference.networking.k8s.io, kind: InferencePool, name: chat-pool}
+    status:
+      conditions:
+        - {type: Available, status: "True", reason: Available, message: Available, lastTransitionTime: "2026-01-01T00:00:00Z"}
+
+  # --- other-team: another controller, drawn beside BIG-IP Next (controllers=all) ----------------
+  - apiVersion: gateway.networking.k8s.io/v1
+    kind: Gateway
+    metadata: {name: other-gw, namespace: other-team}
+    spec:
+      gatewayClassName: example-other
+      listeners:
+        - {name: http, port: 80, protocol: HTTP}
+  - apiVersion: gateway.networking.k8s.io/v1
+    kind: HTTPRoute
+    metadata: {name: other-route, namespace: other-team}
+    spec:
+      parentRefs:
+        - {name: other-gw}
+      rules:
+        - backendRefs:
+            - {name: other-svc, port: 80}
+  - apiVersion: v1
+    kind: Service
+    metadata: {name: other-svc, namespace: other-team}
+    spec:
+      ports:
+        - {port: 80}

@@ -30,6 +30,8 @@ import type {
   BatchConnectivityResponse,
   F5PolicyGatewayAssociationsResponse,
   BnkDataResponse,
+  BnkCanvasControllers,
+  BnkCanvasResponse,
   GatewayTopologyResponse,
   BnkHealthEndpointResponse,
   BnkUpgradeVersionsResponse,
@@ -293,6 +295,21 @@ export const kubernetesApi = {
   ) =>
     apiClient
       .get<BnkDataResponse>(`/api/k8s/clusters/${clusterId}/f5bnk/data`, {
+        params,
+      })
+      .then((res) => res.data),
+
+  // Topology Canvas — typed relationship graph of BNK resources (read-only)
+  getBnkCanvas: (
+    clusterId: number,
+    params?: {
+      namespace?: string;
+      force?: boolean;
+      controllers?: BnkCanvasControllers;
+    },
+  ) =>
+    apiClient
+      .get<BnkCanvasResponse>(`/api/k8s/clusters/${clusterId}/f5bnk/canvas`, {
         params,
       })
       .then((res) => res.data),

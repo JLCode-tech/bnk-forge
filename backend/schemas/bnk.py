@@ -338,3 +338,67 @@ class BnkDataResponse(BaseModel):
 
     class Config:
         extra = "allow"
+
+
+# ---------------------------------------------------------------------------
+# Topology Canvas (/f5bnk/canvas) — services/bnk/canvas_graph.py
+# ---------------------------------------------------------------------------
+
+CanvasEdgeStatusV1 = Literal["valid", "broken", "unresolved"]
+CanvasFindingSeverityV1 = Literal["error", "warning", "info"]
+
+
+class BnkCanvasFact(BaseModel):
+    label: str
+    value: str
+
+
+class BnkCanvasResource(BaseModel):
+    """A card. ``id`` is the exact identity ``group|version|kind|namespace|name``; placeholders (missing or
+    unread targets, such as a Secret, which is never read) have an empty version and no ``resourceType``."""
+
+    id: str
+    group: str
+    version: str
+    kind: str
+    namespace: str
+    name: str
+    resourceType: str | None = None
+    placeholder: bool = False
+    conditions: dict[str, str] = Field(default_factory=dict)
+    facts: list[BnkCanvasFact] = Field(default_factory=list)
+
+
+class BnkCanvasEdge(BaseModel):
+    """A reference from ``source`` to ``target``, with the field it was read from."""
+
+    id: str
+    source: str
+    target: str
+    type: str
+    field: str
+    reason: str
+    status: CanvasEdgeStatusV1
+    inferred: bool = False
+    label: str = ""
+
+
+class BnkCanvasFinding(BaseModel):
+    severity: CanvasFindingSeverityV1
+    rule: str
+    resource: str
+    field: str
+    explanation: str
+    evidence: str
+    remediation: str
+
+
+class BnkCanvasResponse(BaseModel):
+    resources: list[BnkCanvasResource]
+    edges: list[BnkCanvasEdge]
+    findings: list[BnkCanvasFinding]
+    warnings: list[str] = Field(default_factory=list)
+    generatedAt: str
+    partial: bool = False
+    cluster_id: int
+    namespace: str | None = None

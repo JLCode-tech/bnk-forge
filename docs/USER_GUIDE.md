@@ -416,13 +416,14 @@ A comprehensive sidebar + content layout for managing F5 BIG-IP Next for Kuberne
 
 ### Sidebar (7 sections, 38 items)
 
-#### Insights (7 views)
+#### Insights (8 views)
 
 | View | Description |
 |------|-------------|
 | **Traffic Flow** | Visual diagram of how traffic flows through BNK — clickable resource nodes |
 | **Health Dashboard** | Real-time health for all BNK platform components. Auto-refreshes every 30 seconds. |
 | **Gateway Topology** | Interactive graph visualization of gateways → routes → backends |
+| **Topology Canvas** | Every BIG-IP Next resource and how it connects: Gateway families, policies, TLS, configuration and data plane, with broken references, attachment findings, traffic counters, path tracing and SVG export. See [TOPOLOGY_CANVAS.md](TOPOLOGY_CANVAS.md). |
 | **Policy Gateway Map** | Security policies mapped to gateway listeners |
 | **AI Analyzers** | AI load balancing and telemetry analyzers for LLM inference |
 | **Upgrade** | BNK version upgrade panel with pre-flight checks, rolling execution, and rollback |

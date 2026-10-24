@@ -26,6 +26,7 @@ import {
   Layers,
   Cpu,
   Database,
+  Share2,
 } from "lucide-react";
 
 // Special view identifiers (not actual K8s resource types)
@@ -33,6 +34,7 @@ export const VIEW_HEALTH = "view-health";
 export const VIEW_POLICY_MAP = "view-policy-map";
 export const VIEW_AI_ANALYZERS = "view-ai-analyzers";
 export const VIEW_TOPOLOGY = "view-topology";
+export const VIEW_CANVAS = "view-canvas";
 export const VIEW_UPGRADE = "view-upgrade";
 export const VIEW_DIAGNOSTICS = "view-diagnostics";
 export const VIEW_BACKENDS = "view-backends";
@@ -52,6 +54,7 @@ export const SPECIAL_VIEWS = [
   VIEW_POLICY_MAP,
   VIEW_AI_ANALYZERS,
   VIEW_TOPOLOGY,
+  VIEW_CANVAS,
   VIEW_TRAFFIC_FLOW,
   VIEW_UPGRADE,
   VIEW_DIAGNOSTICS,
@@ -147,6 +150,7 @@ export const bnkResourceCategories = [
     icon: GitBranch,
     items: [
       { key: VIEW_TOPOLOGY, label: "Object Topology Graph", icon: GitBranch },
+      { key: VIEW_CANVAS, label: "Topology Canvas", icon: Share2 },
       {
         key: VIEW_TRAFFIC_FLOW,
         label: "Traffic Flow Pipeline",
