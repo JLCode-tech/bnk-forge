@@ -12,6 +12,8 @@ The Canvas exercise is visualization only, so **none of these are fixed on this 
 
 Evidence comes from the local kind cluster seeded with [seed-kind.sh](seed-kind.sh) and the anonymized fixture `backend/tests/fixtures/bnk_canvas/sample_cluster.yaml`. It was gathered on 2026-10-25.
 
+None of this has been checked yet against a cluster with BIG-IP Next controllers and a TMM running. That testing is still to do.
+
 | # | Finding | Area | Severity | Status |
 |---|---------|------|----------|--------|
 | 1 | Gateway topology attaches policies by Gateway name only | backend | Bug: wrong data shown | Fix on a side branch, not merged |
@@ -20,6 +22,8 @@ Evidence comes from the local kind cluster seeded with [seed-kind.sh](seed-kind.
 | 4 | Six existing ESLint warnings | frontend | Hygiene | Open |
 | 5 | pytest configuration and deprecation warnings | backend tooling | Hygiene | Open |
 | 6 | Some F5 CRDs fail to install on recent Kubernetes | lab seeding (upstream F5) | Environment | Not a Forge issue |
+| 7 | License status answers 502 when CWC is not installed, and the failure is not cached | backend | Noise | Open |
+| 8 | Opening BNK views can write to the cluster and read Secret data (CWC client pod, TMM exec) | backend | Safety: read-only and second-Forge setups | Open |
 
 The canvas's own limitations and its deviations from Gateway Atlas are listed separately at the end.
 
@@ -135,6 +139,51 @@ This is in F5's published CRDs, not in Forge. It matters only for lab and CI see
 
 **Status:** the rejected CRDs were left out of the local cluster. [seed-kind.sh](seed-kind.sh) expects the CRDs to be installed already. Nothing to fix in Forge.
 
+## 7. License status answers 502 when CWC is not installed
+
+**Where:** `backend/routes/licensing.py`, `get_license_status_endpoint` (around line 241). It calls the legacy path `services/qkview_service.py` `get_license_status`.
+
+**Evidence:** on the kind cluster, with no CWC service, every load of the F5 BNK overview requests `GET /api/licensing/1/status` and gets `502 Bad Gateway`. Two such requests appear in the browser console on each load, and the backend logs "CWC service 'f5-spk-cwc' not found in any namespace". Only success is cached (120 seconds), so the lookup repeats on every load.
+
+**Impact:**
+
+- **Wrong signal:** a 502 means an upstream failed, but here licensing is simply not installed.
+- **Noise:** red console errors on every load.
+- **Wasted calls:** the CWC namespace and Service lookups rerun on each request.
+
+**Suggested fix:** return 200 with `{"installed": false}`, or 404, when no CWC Service exists, and cache that answer like a success.
+
+**Status:** open.
+
+## 8. Opening BNK views can write to the cluster and read Secret data
+
+**Where:** `backend/services/qkview_service.py`, `_cwc_request` (around line 698), reached from the license status that the F5 BNK overview loads. Also `backend/services/bnk/traffic_stats.py`, reached from `/f5bnk/data`, which every BNK view prefetches.
+
+On a cluster with CWC installed, a license status request:
+
+1. reads the CWC admin-token Secret's data (`_get_admin_token`);
+2. finds a pod labelled `bnk-forge-agent` in the CWC namespace, or **creates one** (`_create_client_pod`, image `alpine/curl:latest`) and leaves it running for reuse;
+3. runs `curl` inside it with `kubectl exec`.
+
+Traffic stats also `exec` into the TMM debug sidecar (`tmctl`, `configview`).
+
+**Evidence:** found while checking whether a second Forge could safely connect to a cluster another Forge already manages. This is from reading the code; it has not been reproduced on a CWC cluster yet.
+
+**Impact:**
+
+- **Browsing writes to the cluster.** Opening a read-only page creates a pod, and nothing in the UI says so.
+- **Secret data is read** for an overview tile.
+- **Shared state between Forges.** Two Forges managing one cluster find the same `bnk-forge-agent` pod by label and reuse it, so they share state rather than clash.
+- **Read-only credentials break these paths.** With get/list only, they fail with 403: the license tile shows an error, and traffic counters stay unavailable.
+
+**Suggested fix:**
+
+- Create the client pod only on an explicit licensing or QKView action.
+- Treat a 403 as "read-only access" rather than an error.
+- Document the RBAC each feature needs, so a read-only (viewer) Forge is a supported setup.
+
+**Status:** open. For testing on a cluster another Forge already manages, use a kubeconfig bound to a get/list-only role. The Kubernetes `view` ClusterRole excludes Secrets and `pods/exec`. Grant `pods/exec` on the TMM pods only if real traffic counters are needed.
+
 ---
 
 ## Canvas limitations and deviations from Gateway Atlas
@@ -149,8 +198,12 @@ These describe the new view itself, not existing Forge code. They are listed for
 - **Not ported from Atlas:**
   - the Classic layout;
   - the compact mode and folded columns;
-  - image export;
   - the hover popover;
   - camera persistence.
+- **Forge additions not in Atlas:**
+  - TMM traffic counters on cards and listener edges (`trafficOverlay.ts`);
+  - full-path tracing on selection, where Atlas highlights only neighbours (`tracePath.ts`);
+  - a vector SVG export drawn from the layout; Atlas rasterises the page instead (`exportSvg.ts`).
+- **Disabled switches are hard to see:** Forge's shared `Switch` component renders the disabled state at half opacity on a muted track, so the disabled **Traffic** switch almost disappears in light mode. Its tooltip still explains why it is off.
 - **Selection after closing the panel:** when the detail panel closes, the card stays highlighted until Escape or a click on the background.
 - **Secrets:** Secret references are placeholders built from the referencing object. Secret objects are never read, so these cards show "not read" rather than a real status.

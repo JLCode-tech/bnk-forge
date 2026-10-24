@@ -45,6 +45,15 @@ The side project brings that Canvas into Forge.
 
 **Not ported:** Classic layout and ELK, Migration, the CRD explorer, YAML import, snapshots.
 
+## Status (2026-10-25)
+
+- **Phases 0–4 are done locally**, on the fork's `feat/bnk-topology-canvas` branch. Nothing is pushed yet.
+- **User guide:** [docs/TOPOLOGY_CANVAS.md](../TOPOLOGY_CANVAS.md). Forge has no `docs/guides/` folder, so the guide follows its top-level docs and `docs/images/` convention.
+- **Verified** on the anonymized kind lab only. Still to do:
+  - test against a cluster with BIG-IP Next controllers and a TMM, using a get/list-only kubeconfig (see [FORGE-FINDINGS.md](FORGE-FINDINGS.md), finding 8);
+  - derive more anonymized fixtures and tests from that cluster.
+- **Issues found in existing Forge code** are listed, not fixed, in [FORGE-FINDINGS.md](FORGE-FINDINGS.md).
+
 ## Approach
 
 ### Phase 0 — prepare the fork (done 2026-10-24: steps 1–4)
