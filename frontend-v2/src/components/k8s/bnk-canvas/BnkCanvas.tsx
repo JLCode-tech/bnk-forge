@@ -69,6 +69,9 @@ type CardData = {
   namespace: string;
   errors: number;
   warnings: number;
+  // Placeholder state: "missing" = a reference that should resolve and does
+  // not; "unread" = a kind the Canvas does not read (Secrets, ClusterIssuers).
+  absent?: "missing" | "unread";
 };
 type FrameData = { label: string };
 type CanvasEdgeData = {
@@ -108,7 +111,7 @@ function readiness(conditions: Record<string, string> | undefined) {
 }
 
 const CanvasCard = memo(function CanvasCard({ data }: NodeProps<CardData>) {
-  const { resource, errors, warnings } = data;
+  const { resource, errors, warnings, absent } = data;
   const ready = readiness(resource.conditions);
   const fact = resource.facts?.[0];
   return (
@@ -137,7 +140,8 @@ const CanvasCard = memo(function CanvasCard({ data }: NodeProps<CardData>) {
           />
         )}
         {resource.kind}
-        {resource.placeholder && " · not found"}
+        {absent === "missing" && " · not found"}
+        {absent === "unread" && " · not read"}
         {errors > 0 ? (
           <span className="bnk-card-badge" title={`${errors} error findings`}>
             {errors}
@@ -489,15 +493,17 @@ function CanvasInner({
         .every((edge) => edge.status === "unresolved");
     const cards: Node<CardData>[] = resources.map((resource) => {
       const counts = findingCounts.get(resource.id);
+      const absent = resource.placeholder
+        ? quiet(resource.id)
+          ? "unread"
+          : "missing"
+        : undefined;
       const classes = [
         "bnk-card",
         category(resource.kind),
         isEntry(resource) ? "entry" : "",
-        resource.placeholder
-          ? quiet(resource.id)
-            ? "expected-absent"
-            : "broken"
-          : "",
+        absent === "unread" ? "expected-absent" : "",
+        absent === "missing" ? "broken" : "",
         related && !related.has(resource.id) ? "canvas-muted" : "",
         resource.id === focusId ? "canvas-selected" : "",
       ];
@@ -511,6 +517,7 @@ function CanvasInner({
           namespace: namespaceLabel(resource),
           errors: counts?.errors ?? 0,
           warnings: counts?.warnings ?? 0,
+          absent,
         },
         className: classes.filter(Boolean).join(" "),
         style: { width: cardWidth, height: cardHeight },
