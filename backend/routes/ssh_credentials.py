@@ -9,7 +9,7 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from core.errors import handle_route_errors
@@ -26,6 +26,7 @@ router = APIRouter(prefix="/api/ssh-credentials", tags=["ssh-credentials"])
 # Pydantic Schemas
 # ============================================================================
 
+
 class SSHCredentialCreate(BaseModel):
     name: str
     description: str | None = None
@@ -41,6 +42,7 @@ class SSHCredentialCreate(BaseModel):
 
 class SSHCredentialSetup(BaseModel):
     """Auto-setup: provide host/user/password, we generate a key and install it."""
+
     name: str
     description: str | None = None
     host: str
@@ -85,13 +87,13 @@ class SSHCredentialResponse(BaseModel):
     last_test_at: datetime | None = None
     last_test_message: str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
 # Auto-Setup Endpoint (must be before /{credential_id} routes)
 # ============================================================================
+
 
 @router.post("/setup", response_model=SSHCredentialResponse, status_code=201, dependencies=[Depends(require_operator)])
 @handle_route_errors("setup SSH credential")
@@ -115,6 +117,7 @@ def setup_ssh_credential(data: SSHCredentialSetup, db: Session = Depends(get_db)
 # ============================================================================
 # CRUD Endpoints
 # ============================================================================
+
 
 @router.get("", response_model=list[SSHCredentialResponse], dependencies=[Depends(require_viewer)])
 def list_ssh_credentials(db: Session = Depends(get_db)):
@@ -159,6 +162,7 @@ def delete_ssh_credential(credential_id: int, db: Session = Depends(get_db)):
 # Testing Endpoint
 # ============================================================================
 
+
 @router.post("/{credential_id}/test", dependencies=[Depends(require_operator)])
 def test_ssh_credential(credential_id: int, db: Session = Depends(get_db)):
     """Test SSH connectivity using this credential.
@@ -178,6 +182,7 @@ def test_all_ssh_credentials(db: Session = Depends(get_db)):
 # ============================================================================
 # K8s Probe — retrieve kubeconfig from remote host via SSH
 # ============================================================================
+
 
 @router.post("/{credential_id}/probe-kubeconfig", dependencies=[Depends(require_operator)])
 @handle_route_errors("probe kubeconfig via SSH")

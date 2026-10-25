@@ -733,10 +733,20 @@ def _cwc_request(
         cwc_ns, cert_secret, cwc_port = cached_meta
     else:
         cwc_ns = _detect_cwc_namespace(api_client)
-        cert_secret = _find_cert_secret(api_client, cwc_ns)
         cwc_port = _get_cwc_rest_port(api_client, cwc_ns)
+        cert_secret = _find_cert_secret(api_client, cwc_ns)
         cache.set(meta_key, [cwc_ns, cert_secret, cwc_port], ttl_seconds=_CWC_META_TTL_SEC)
     cwc_url = f"https://{CWC_SERVICE}.{cwc_ns}:{cwc_port}{path}"
+
+    pod_name: str | None = None
+    if not allow_create_pod:
+        pod_name = _find_running_client_pod(api_client, cert_secret["name"], cwc_ns)
+        if not pod_name:
+            raise QKViewError(
+                "CWC client pod is not running (passive status check does not create pods in cluster)",
+                status_code=503,
+            )
+
     _sweep_cwc_token_cache()
     token_entry = _cwc_token_cache.get(meta_key)
     if token_entry and token_entry[0] > time.monotonic():
@@ -746,15 +756,8 @@ def _cwc_request(
         if bearer_token:
             _cwc_token_cache[meta_key] = (time.monotonic() + _CWC_META_TTL_SEC, bearer_token)
 
-    if allow_create_pod:
+    if pod_name is None:
         pod_name = _get_or_create_client_pod(api_client, cert_secret, cwc_ns)
-    else:
-        pod_name = _find_running_client_pod(api_client, cert_secret["name"], cwc_ns)
-        if not pod_name:
-            raise QKViewError(
-                "CWC client pod is not running (passive status check does not create pods in cluster)",
-                status_code=503,
-            )
 
     try:
         if stream:
@@ -1672,7 +1675,7 @@ def get_license_status(
     cache_key = f"license:status:{cluster_id}"
     if not force:
         cached = cache.get(cache_key)
-        if cached is not None:
+        if cached is not None and not (allow_create_pod and cached.get("client_pod_running") is False):
             return cached
 
     cluster = k8s_service.get_cluster(cluster_id)

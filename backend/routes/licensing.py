@@ -236,6 +236,7 @@ async def _try_operator_dispatch(
 async def get_license_status_endpoint(
     cluster_id: int,
     force: bool = False,
+    create_client_pod: bool = False,
     db: Session = Depends(get_db),
 ):
     """Get CWC license and telemetry status for a cluster."""
@@ -244,7 +245,7 @@ async def get_license_status_endpoint(
     cache_key = f"license:status:{cluster_id}"
     if not force:
         cached = cache.get(cache_key)
-        if cached is not None:
+        if cached is not None and not (create_client_pod and cached.get("client_pod_running") is False):
             return cached
 
     # Try operator path
@@ -266,7 +267,13 @@ async def get_license_status_endpoint(
     # Legacy fallback
     try:
         k8s_service = KubernetesService(db)
-        return await asyncio.to_thread(legacy_get_license_status, k8s_service, cluster_id, force=force)
+        return await asyncio.to_thread(
+            legacy_get_license_status,
+            k8s_service,
+            cluster_id,
+            force=force,
+            allow_create_pod=create_client_pod or force,
+        )
     except QKViewError as e:
         raise HTTPException(
             status_code=e.status_code or 502,

@@ -16,7 +16,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from core.errors import handle_route_errors
@@ -71,6 +71,7 @@ router = APIRouter(prefix="/api/qkview", tags=["qkview"])
 # Request schemas
 # ---------------------------------------------------------------------------
 
+
 class QKViewCreateRequest(BaseModel):
     cluster_id: int
     namespace: str | None = None
@@ -93,8 +94,7 @@ class QKViewCheckResponse(BaseModel):
     message: str
     operator_dispatch: bool | None = None
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 class QKViewListResponse(BaseModel):
@@ -113,8 +113,7 @@ class QKViewCreateResponse(BaseModel):
     status: str | None = None
     operator_dispatch: bool | None = None
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 class QKViewDeleteResponse(BaseModel):
@@ -124,8 +123,7 @@ class QKViewDeleteResponse(BaseModel):
     success: bool | None = None
     operator_dispatch: bool | None = None
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 class QKViewCancelResponse(BaseModel):
@@ -135,8 +133,7 @@ class QKViewCancelResponse(BaseModel):
     success: bool | None = None
     operator_dispatch: bool | None = None
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 class QKViewCleanupResponse(BaseModel):
@@ -145,8 +142,7 @@ class QKViewCleanupResponse(BaseModel):
     cleaned: bool
     operator_dispatch: bool | None = None
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 class QKViewGetResponse(BaseModel):
@@ -157,8 +153,7 @@ class QKViewGetResponse(BaseModel):
     filename: str | None = None
     operator_dispatch: bool | None = None
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 class QKViewStatusResponse(BaseModel):
@@ -168,13 +163,13 @@ class QKViewStatusResponse(BaseModel):
     progress: int | None = None
     operator_dispatch: bool | None = None
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 # ---------------------------------------------------------------------------
 # Operator dispatch helper
 # ---------------------------------------------------------------------------
+
 
 async def _try_operator_dispatch(
     db: Session,
@@ -209,8 +204,7 @@ async def _try_operator_dispatch(
         # Operator was connected but command failed — don't silently fall back,
         # log the error but return None so legacy path can be tried
         logger.warning(
-            f"Operator dispatch failed for {action} on cluster {cluster_id}: {e}. "
-            "Falling back to legacy QKView path."
+            f"Operator dispatch failed for {action} on cluster {cluster_id}: {e}. Falling back to legacy QKView path."
         )
         return None
 
@@ -235,7 +229,9 @@ async def check_cwc(
     if result is not None:
         return {
             "available": result.get("cwc_reachable", False),
-            "message": "CWC is available (via operator)" if result.get("cwc_reachable") else "CWC not reachable via operator",
+            "message": "CWC is available (via operator)"
+            if result.get("cwc_reachable")
+            else "CWC not reachable via operator",
             "operator_dispatch": True,
             **{k: v for k, v in result.items() if k not in ("type", "command_id", "output_lines")},
         }
@@ -313,7 +309,10 @@ async def create_qkview_endpoint(
 
     # Try operator path
     result = await _try_operator_dispatch(
-        db, request.cluster_id, "cwc_qkview_create", payload=payload,
+        db,
+        request.cluster_id,
+        "cwc_qkview_create",
+        payload=payload,
     )
     if result is not None:
         if not result.get("success"):
@@ -355,7 +354,10 @@ async def get_qkview_endpoint(
     """Get details of a specific QKView."""
     # Try operator path
     result = await _try_operator_dispatch(
-        db, cluster_id, "cwc_qkview_get", payload={"qkview_id": qkview_id},
+        db,
+        cluster_id,
+        "cwc_qkview_get",
+        payload={"qkview_id": qkview_id},
     )
     if result is not None:
         if not result.get("success"):
@@ -383,7 +385,10 @@ async def get_qkview_status_endpoint(
     """Get the status of a specific QKView job."""
     # Try operator path — reuse get details
     result = await _try_operator_dispatch(
-        db, cluster_id, "cwc_qkview_get", payload={"qkview_id": qkview_id},
+        db,
+        cluster_id,
+        "cwc_qkview_get",
+        payload={"qkview_id": qkview_id},
     )
     if result is not None:
         if not result.get("success"):
@@ -407,7 +412,9 @@ async def download_qkview_endpoint(
     """Download the QKView tarball."""
     # Try operator path
     result = await _try_operator_dispatch(
-        db, cluster_id, "cwc_qkview_download",
+        db,
+        cluster_id,
+        "cwc_qkview_download",
         payload={"qkview_id": qkview_id},
         timeout=120.0,  # downloads can be large
     )
@@ -459,7 +466,10 @@ async def delete_qkview_endpoint(
     """Delete a specific QKView."""
     # Try operator path
     result = await _try_operator_dispatch(
-        db, cluster_id, "cwc_qkview_delete", payload={"qkview_id": qkview_id},
+        db,
+        cluster_id,
+        "cwc_qkview_delete",
+        payload={"qkview_id": qkview_id},
     )
     if result is not None:
         if not result.get("success"):
@@ -491,7 +501,10 @@ async def cancel_qkview_endpoint(
     """Cancel a running QKView job."""
     # Try operator path
     result = await _try_operator_dispatch(
-        db, cluster_id, "cwc_qkview_cancel", payload={"qkview_id": qkview_id},
+        db,
+        cluster_id,
+        "cwc_qkview_cancel",
+        payload={"qkview_id": qkview_id},
     )
     if result is not None:
         if not result.get("success"):

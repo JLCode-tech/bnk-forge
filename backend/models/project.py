@@ -17,7 +17,7 @@ class Project(Base):
     description = Column(Text)
     color = Column(String(20), default="blue")  # UI color theme
     icon = Column(String(50), default="cloud")  # UI icon
-    is_active = Column(Boolean, default=True)  # Project is active (not archived)
+    is_active = Column(Boolean, default=False)  # Whether this is the currently selected project
     module_count = Column(Integer, default=0)
     deployed_count = Column(Integer, default=0)
     failed_count = Column(Integer, default=0)

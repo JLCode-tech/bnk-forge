@@ -3,13 +3,14 @@ API routes for managing cloud credential templates.
 
 Thin HTTP handlers delegating to CredentialTemplateService.
 """
+
 import logging
 from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 from sqlalchemy.orm import Session
 
 from core.errors import handle_route_errors
@@ -26,6 +27,7 @@ router = APIRouter(prefix="/api/credential-templates", tags=["credential-templat
 # ============================================================================
 # Pydantic Schemas
 # ============================================================================
+
 
 class CredentialTemplateBase(BaseModel):
     name: str
@@ -185,8 +187,7 @@ class CredentialTemplateResponse(BaseModel):
     last_error_code: str | None = None
     last_error_message: str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SSOPollRequest(BaseModel):
@@ -196,6 +197,7 @@ class SSOPollRequest(BaseModel):
 # ============================================================================
 # CRUD Endpoints
 # ============================================================================
+
 
 @router.get("", response_model=list[CredentialTemplateResponse], dependencies=[Depends(require_viewer)])
 def list_credential_templates(provider: str | None = None, db: Session = Depends(get_db)):
@@ -220,7 +222,9 @@ def create_credential_template(template_data: CredentialTemplateCreate, db: Sess
 
 @router.put("/{template_id}", response_model=CredentialTemplateResponse, dependencies=[Depends(require_operator)])
 @handle_route_errors("update credential template")
-def update_credential_template(template_id: int, template_data: CredentialTemplateUpdate, db: Session = Depends(get_db)):
+def update_credential_template(
+    template_id: int, template_data: CredentialTemplateUpdate, db: Session = Depends(get_db)
+):
     """Update a credential template."""
     result = CredentialTemplateService(db).update_template(template_id, template_data)
     db.commit()
@@ -239,6 +243,7 @@ def delete_credential_template(template_id: int, db: Session = Depends(get_db)):
 # ============================================================================
 # Testing & SSO Endpoints
 # ============================================================================
+
 
 @router.post("/{template_id}/test", dependencies=[Depends(require_operator)])
 def test_credential_template(template_id: int, db: Session = Depends(get_db)):

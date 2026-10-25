@@ -562,8 +562,8 @@ class ProjectService(BaseService):
             target_platform_profile=target_platform_profile,
             platform_provider=getattr(project_data, "platform_provider", None),
             management_boundary=getattr(project_data, "management_boundary", None),
+            is_active=False,
             user_id=user_id,  # MU-001: Set project owner
-            is_active=True,
         )
 
         self.db.add(project)

@@ -12,14 +12,16 @@ Covers:
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 # =============================================================================
 # Drift Settings Schemas
 # =============================================================================
 
+
 class DriftSettingsRequest(BaseModel):
     """Request model for drift settings."""
+
     enabled: bool = False
     schedule_type: str = "cron"
     schedule_value: str = "0 2 * * *"
@@ -34,6 +36,7 @@ class DriftSettingsRequest(BaseModel):
 
 class DriftSettingsResponse(BaseModel):
     """Response model for drift settings."""
+
     id: int
     project_id: int
     enabled: bool
@@ -49,16 +52,17 @@ class DriftSettingsResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # =============================================================================
 # Drift Check Schemas
 # =============================================================================
 
+
 class DriftCheckResponse(BaseModel):
     """Response model for drift check."""
+
     id: int
     project_id: int
     module_id: int | None
@@ -76,16 +80,17 @@ class DriftCheckResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # =============================================================================
 # Drift Summary / Trigger Schemas
 # =============================================================================
 
+
 class DriftSummaryResponse(BaseModel):
     """Response model for drift summary."""
+
     total_checks: int
     drift_detected_count: int
     no_drift_count: int
@@ -97,12 +102,14 @@ class DriftSummaryResponse(BaseModel):
 
 class TriggerDriftCheckRequest(BaseModel):
     """Request model for triggering drift check."""
+
     module_ids: list[int] | None = None
 
 
 # =============================================================================
 # Cluster Drift Status (module drift + release-line drift)
 # =============================================================================
+
 
 class ReleaseDrift(BaseModel):
     """
@@ -121,6 +128,7 @@ class ReleaseDrift(BaseModel):
       deployed_unresolved — cluster is Forge-deployed but the deployed release's FLO version
                             could not be resolved to a known release line
     """
+
     status: Literal["in_sync", "drifted", "not_forge_deployed", "undiscovered", "deployed_unresolved"]
     deployed_release_id: int | None = None
     running_release_id: int | None = None
@@ -128,6 +136,7 @@ class ReleaseDrift(BaseModel):
 
 class ModuleDriftStatus(BaseModel):
     """Per-module drift status entry within a cluster drift status response."""
+
     module_id: int
     module_name: str | None = None
     module_path: str | None = None
@@ -142,6 +151,7 @@ class ModuleDriftStatus(BaseModel):
 
 class ClusterDriftStatusResponse(BaseModel):
     """Response for GET /api/clusters/{cluster_id}/drift/status."""
+
     cluster_id: int
     project_id: int | None = None
     drift_enabled: bool

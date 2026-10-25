@@ -21,7 +21,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from core.auth_context import effective_role
@@ -76,8 +76,7 @@ class FleetMemberOut(BaseModel):
     lifecycle_state: str | None
     last_reconciled_at: str | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class FleetMembersResponse(BaseModel):
@@ -445,8 +444,7 @@ class TargetOut(BaseModel):
     created_by: str | None
     created_at: str | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DecisionOut(BaseModel):
@@ -462,8 +460,7 @@ class DecisionOut(BaseModel):
     # Blast-radius preview: enriched member list
     members: list[FleetMemberOut] | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BulkRunResultOut(BaseModel):
@@ -477,8 +474,7 @@ class BulkRunResultOut(BaseModel):
     started_at: str | None
     completed_at: str | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BulkRunOut(BaseModel):
@@ -504,8 +500,7 @@ class BulkRunOut(BaseModel):
     completed_at: str | None
     results: list[BulkRunResultOut] | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ---------------------------------------------------------------------------
@@ -527,8 +522,7 @@ class StrategyOut(BaseModel):
     created_at: str | None
     updated_at: str | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CreateStrategyRequest(BaseModel):
@@ -1972,8 +1966,7 @@ class PolicyOut(BaseModel):
     created_by: str | None
     created_at: str | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MemberComplianceResultOut(BaseModel):
@@ -1999,8 +1992,7 @@ class PolicyEvaluationOut(BaseModel):
     mode: str
     detail: str | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PolicyComplianceRollupOut(BaseModel):

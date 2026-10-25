@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Any, TypeAlias
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from core.errors import handle_route_errors
@@ -30,6 +30,7 @@ JSONMetadata: TypeAlias = dict[str, JSONValue]
 # ============================================================================
 # Pydantic Schemas
 # ============================================================================
+
 
 class ModuleSourceCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
@@ -114,8 +115,7 @@ class ModuleSourceResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ModuleSourceCredentialValidationResponse(BaseModel):
@@ -134,9 +134,9 @@ class ModuleSourceCredentialValidationResponse(BaseModel):
 # Endpoints
 # ============================================================================
 
+
 @router.get("", response_model=list[ModuleSourceResponse], dependencies=[Depends(require_viewer)])
-def list_module_sources(source_type: str | None = None, is_active: bool | None = None,
-                        db: Session = Depends(get_db)):
+def list_module_sources(source_type: str | None = None, is_active: bool | None = None, db: Session = Depends(get_db)):
     """List all module sources."""
     return ModuleSourceService(db).list_sources(source_type=source_type, is_active=is_active)
 
@@ -209,9 +209,7 @@ def validate_module_source_credentials(
     dependencies=[Depends(require_operator)],
 )
 @handle_route_errors("prune module source")
-def prune_module_source_versions(
-    source_id: int, request: PruneRequest, db: Session = Depends(get_db)
-):
+def prune_module_source_versions(source_id: int, request: PruneRequest, db: Session = Depends(get_db)):
     """Retire superseded module versions for this source.
 
     D-033 adds an immutable row per (source, path, version) and never removes

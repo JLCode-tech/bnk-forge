@@ -131,8 +131,7 @@ class BenchmarkConfigResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # =============================================================================
@@ -198,8 +197,7 @@ class BenchmarkRunResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BenchmarkRunDetailResponse(BenchmarkRunResponse):
@@ -280,8 +278,7 @@ class BenchmarkAgentResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BenchmarkAgentTokenResponse(BaseModel):
@@ -416,8 +413,7 @@ class BenchmarkTrendPoint(BaseModel):
     tokens_per_sec: float | None
     total_output_tokens: int | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BenchmarkTrendsResponse(BaseModel):
@@ -502,8 +498,7 @@ class ProxyDeploymentResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BenchmarkTargetResponse(BaseModel):
@@ -527,8 +522,7 @@ class BenchmarkTargetResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BenchmarkTargetDetailResponse(BenchmarkTargetResponse):
@@ -729,8 +723,7 @@ class RunGroupSummary(BaseModel):
     failed_runs: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RunGroupResponse(RunGroupSummary):
@@ -1002,8 +995,7 @@ class BenchmarkAgentHostResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # =============================================================================

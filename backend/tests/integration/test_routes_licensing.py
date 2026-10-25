@@ -38,6 +38,63 @@ class TestLicensingStatusContracts:
         assert data["success"] is True
         assert data["extra_field"] == "preserved"
 
+    @patch("routes.licensing.legacy_get_license_status")
+    @patch("routes.licensing._try_operator_dispatch")
+    def test_status_create_client_pod_bypasses_passive_cache(
+        self,
+        mock_dispatch,
+        mock_legacy_status,
+        client,
+        viewer_headers,
+        all_test_users,
+    ):
+        mock_dispatch.return_value = None
+        mock_legacy_status.side_effect = [
+            {
+                "success": True,
+                "installed": True,
+                "client_pod_running": False,
+                "Status": {},
+            },
+            {
+                "success": True,
+                "installed": True,
+                "client_pod_running": True,
+                "Status": {"LicenseStatus": {"State": "Active"}},
+            },
+        ]
+
+        from unittest.mock import ANY
+
+        # Passive call caches client_pod_running: False
+        resp_passive = client.get(
+            "/api/licensing/999/status",
+            headers=viewer_headers,
+        )
+        assert resp_passive.status_code == 200
+        assert resp_passive.json()["client_pod_running"] is False
+        mock_legacy_status.assert_called_with(
+            ANY,
+            999,
+            force=False,
+            allow_create_pod=False,
+        )
+
+        # Active call with create_client_pod=true bypasses passive cache and sets allow_create_pod=True
+        resp_active = client.get(
+            "/api/licensing/999/status?create_client_pod=true",
+            headers=viewer_headers,
+        )
+        assert resp_active.status_code == 200
+        assert resp_active.json()["client_pod_running"] is True
+        mock_legacy_status.assert_called_with(
+            ANY,
+            999,
+            force=False,
+            allow_create_pod=True,
+        )
+        assert mock_legacy_status.call_count == 2
+
     @patch("routes.licensing._try_operator_dispatch")
     def test_cwc_status_returns_typed_contract_keys(
         self,

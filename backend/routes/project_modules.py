@@ -7,10 +7,11 @@ Execution (init/plan/apply/destroy) -> routes/project_execution.py
 Deployment history & state          -> routes/project_deployments.py
 Variable mappings & templates       -> routes/project_variable_mappings.py
 """
+
 import re
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from core.errors import BadRequestError, NotFoundError, handle_route_errors
@@ -26,49 +27,45 @@ router = APIRouter(prefix="/api/project-modules", tags=["project-modules"])
 # Pydantic Schemas
 # ============================================================================
 
+
 class AddModuleRequest(BaseModel):
     """Schema for adding a module to a project"""
+
     module_library_id: int = Field(..., gt=0, description="ID of module from library")
     path_in_project: str = Field(
-        ...,
-        min_length=1,
-        max_length=1000,
-        description="Path where module will be created (e.g., 'infra/vpc')"
+        ..., min_length=1, max_length=1000, description="Path where module will be created (e.g., 'infra/vpc')"
     )
     variable_overrides: dict | None = Field(default_factory=dict)
     deployment_order: int = Field(default=0, ge=0, le=9999)
 
-    @validator('path_in_project')
+    @field_validator("path_in_project")
     @classmethod
     def validate_path(cls, v):
         """Validate path doesn't contain dangerous characters"""
-        if '..' in v or v.startswith('/'):
+        if ".." in v or v.startswith("/"):
             raise ValueError('Path cannot contain ".." or start with "/"')
-        if not re.match(r'^[a-zA-Z0-9/_-]+$', v):
-            raise ValueError('Path can only contain alphanumeric, /, _, and - characters')
+        if not re.match(r"^[a-zA-Z0-9/_-]+$", v):
+            raise ValueError("Path can only contain alphanumeric, /, _, and - characters")
         return v
 
-    @validator('variable_overrides')
+    @field_validator("variable_overrides")
     @classmethod
     def validate_variables(cls, v):
         """Validate variable names and values"""
         if v:
             for key, value in v.items():
-                if not re.match(r'^[a-z_][a-z0-9_]*$', key):
-                    raise ValueError(
-                        f'Invalid variable name "{key}". Must be lowercase, start with letter/underscore'
-                    )
+                if not re.match(r"^[a-z_][a-z0-9_]*$", key):
+                    raise ValueError(f'Invalid variable name "{key}". Must be lowercase, start with letter/underscore')
                 value_str = str(value)
-                dangerous_chars = [';', '|', '&', '`', '$', '(', ')']
+                dangerous_chars = [";", "|", "&", "`", "$", "(", ")"]
                 if any(char in value_str for char in dangerous_chars):
-                    raise ValueError(
-                        f'Variable value contains potentially dangerous characters: {value_str[:50]}'
-                    )
+                    raise ValueError(f"Variable value contains potentially dangerous characters: {value_str[:50]}")
         return v
 
 
 class UpdateModuleRequest(BaseModel):
     """Schema for updating module configuration"""
+
     variable_overrides: dict | None = None
     deployment_order: int | None = None
     enabled: bool | None = None
@@ -76,37 +73,35 @@ class UpdateModuleRequest(BaseModel):
 
 class ValidateVariablesRequest(BaseModel):
     """Schema for validating variable values"""
+
     module_library_id: int = Field(..., gt=0)
     variables: dict = Field(..., description="Variable name -> value mapping")
 
-    @validator('variables')
+    @field_validator("variables")
     @classmethod
     def validate_variable_names(cls, v):
         for key in v.keys():
-            if not re.match(r'^[a-z_][a-z0-9_]*$', key):
-                raise ValueError(
-                    f'Invalid variable name "{key}". Must be lowercase, start with letter/underscore'
-                )
+            if not re.match(r"^[a-z_][a-z0-9_]*$", key):
+                raise ValueError(f'Invalid variable name "{key}". Must be lowercase, start with letter/underscore')
         return v
 
 
 class SetDependenciesRequest(BaseModel):
     """Schema for setting module dependencies"""
-    dependencies: list[int] = Field(
-        default_factory=list,
-        description="List of module IDs this module depends on"
-    )
 
-    @validator('dependencies')
+    dependencies: list[int] = Field(default_factory=list, description="List of module IDs this module depends on")
+
+    @field_validator("dependencies")
     @classmethod
     def validate_dependencies(cls, v):
         if len(v) != len(set(v)):
-            raise ValueError('Dependencies list contains duplicates')
+            raise ValueError("Dependencies list contains duplicates")
         return v
 
 
 class ModuleStateTransitionEntry(BaseModel):
     """One row of a module's state-transition audit log (Phase 2)."""
+
     id: int
     from_status: str
     to_status: str
@@ -120,6 +115,7 @@ class ModuleStateTransitionEntry(BaseModel):
 
 class ModuleStateHistoryResponse(BaseModel):
     """Response schema for GET /api/project-modules/{module_id}/state-history."""
+
     module_id: int
     count: int
     transitions: list[ModuleStateTransitionEntry]
@@ -128,6 +124,7 @@ class ModuleStateHistoryResponse(BaseModel):
 # ============================================================================
 # Variable Validation
 # ============================================================================
+
 
 @router.post("/validate-variables", dependencies=[Depends(require_viewer)])
 def validate_variables(request: ValidateVariablesRequest, db: Session = Depends(get_db)):
@@ -139,6 +136,7 @@ def validate_variables(request: ValidateVariablesRequest, db: Session = Depends(
 # ============================================================================
 # Module CRUD
 # ============================================================================
+
 
 @router.get("/project/{project_id}", dependencies=[Depends(require_viewer)])
 def list_project_modules(project_id: int, db: Session = Depends(get_db)):
@@ -190,6 +188,7 @@ def update_project_module(
 
 class ChangeModuleVersionRequest(BaseModel):
     """Schema for re-pinning a project module to a different catalog version (D-033)."""
+
     target_version: str = Field(..., min_length=1, max_length=100, description="Catalog version to pin, e.g. '1.20.0'")
 
 
@@ -214,7 +213,9 @@ def change_project_module_version(
 
 @router.delete("/{module_id}")
 @handle_route_errors("remove module from project")
-def remove_module_from_project(module_id: int, user: User = Depends(require_module_owner), db: Session = Depends(get_db)):
+def remove_module_from_project(
+    module_id: int, user: User = Depends(require_module_owner), db: Session = Depends(get_db)
+):
     """Remove a module from a project"""
     svc = ProjectModuleService(db)
     result = svc.remove_module(module_id)
@@ -225,6 +226,7 @@ def remove_module_from_project(module_id: int, user: User = Depends(require_modu
 # ============================================================================
 # Status & Variables
 # ============================================================================
+
 
 @router.get("/{module_id}/status", dependencies=[Depends(require_viewer)])
 def get_module_status(module_id: int, db: Session = Depends(get_db)):
@@ -294,6 +296,7 @@ def get_module_variables(module_id: int, db: Session = Depends(get_db)):
 # Dependency Management
 # ============================================================================
 
+
 @router.put("/{module_id}/dependencies")
 @handle_route_errors("set module dependencies")
 def set_module_dependencies(
@@ -325,7 +328,9 @@ def get_module_dependents(module_id: int, db: Session = Depends(get_db)):
 
 @router.post("/project/{project_id}/calculate-order")
 @handle_route_errors("calculate deployment order")
-def calculate_module_deployment_order(project_id: int, user: User = Depends(require_project_owner), db: Session = Depends(get_db)):
+def calculate_module_deployment_order(
+    project_id: int, user: User = Depends(require_project_owner), db: Session = Depends(get_db)
+):
     """Auto-calculate deployment order for all modules based on dependencies"""
     svc = ProjectModuleService(db)
     result = svc.calculate_deployment_order(project_id)
@@ -343,6 +348,7 @@ def get_project_dependency_graph(project_id: int, db: Session = Depends(get_db))
 # ============================================================================
 # Re-run (SSH modules only)
 # ============================================================================
+
 
 @router.post("/{module_id}/rerun")
 @handle_route_errors("rerun module")
@@ -371,9 +377,7 @@ def rerun_module(module_id: int, user: User = Depends(require_module_owner), db:
     # and commits, so a rejection at dispatch time would already have destroyed
     # an applied module's outputs on a request that never ran.
     if not module.enabled:
-        raise BadRequestError(
-            "Module is disabled — enable it before rerunning", code="MODULE_DISABLED"
-        )
+        raise BadRequestError("Module is disabled — enable it before rerunning", code="MODULE_DISABLED")
 
     # Reset module state
     module.status = "not_initialized"
@@ -388,9 +392,7 @@ def rerun_module(module_id: int, user: User = Depends(require_module_owner), db:
     if module.stack_instance_id:
         from models import StackInstance, StackInstanceStatus
 
-        stack = db.query(StackInstance).filter(
-            StackInstance.id == module.stack_instance_id
-        ).first()
+        stack = db.query(StackInstance).filter(StackInstance.id == module.stack_instance_id).first()
         if stack and stack.status == StackInstanceStatus.FAILED:
             stack.status = StackInstanceStatus.DEPLOYING
             stack.error_message = None

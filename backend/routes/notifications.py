@@ -1,12 +1,13 @@
 """
 Notifications API for user notifications and alerts
 """
+
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Request, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
@@ -65,8 +66,7 @@ class NotificationResponse(BaseModel):
     dedupe_key: str | None
     extra_metadata: dict | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UnreadCountResponse(BaseModel):
@@ -88,7 +88,7 @@ def get_notifications(
     before_id: int | None = None,
     category: str | None = None,
     severity: str | None = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Get notifications for a user.
@@ -107,9 +107,7 @@ def get_notifications(
         severity: Optional severity filter
     """
     effective_user = user or get_username_from_request(request)
-    query = db.query(Notification).filter(
-        (Notification.user == effective_user) | (Notification.user == "all")
-    )
+    query = db.query(Notification).filter((Notification.user == effective_user) | (Notification.user == "all"))
 
     if unread_only:
         query = query.filter(Notification.is_read == False)  # noqa: E712
@@ -131,21 +129,21 @@ def get_notifications(
 def get_unread_count(request: Request, user: str | None = None, db: Session = Depends(get_db)):
     """Get count of unread notifications for a user."""
     user = user or get_username_from_request(request)
-    count = db.query(Notification).filter(
-        ((Notification.user == user) | (Notification.user == "all")),
-        Notification.is_read == False  # noqa: E712
-    ).count()
+    count = (
+        db.query(Notification)
+        .filter(
+            ((Notification.user == user) | (Notification.user == "all")),
+            Notification.is_read == False,  # noqa: E712
+        )
+        .count()
+    )
 
     return {"count": count}
 
 
 @router.patch("/{notification_id}/read", response_model=NotificationActionResponse)
 @handle_route_errors("mark notification read")
-def mark_notification_read(
-    notification_id: int,
-    request: Request,
-    db: Session = Depends(get_db)
-):
+def mark_notification_read(notification_id: int, request: Request, db: Session = Depends(get_db)):
     """Mark a notification as read. Only the owning user may mark their own."""
     notification = db.query(Notification).filter(Notification.id == notification_id).first()
 
@@ -169,10 +167,14 @@ def mark_notification_read(
 def mark_all_read(request: Request, user: str | None = None, db: Session = Depends(get_db)):
     """Mark all notifications as read for a user."""
     user = user or get_username_from_request(request)
-    notifications = db.query(Notification).filter(
-        ((Notification.user == user) | (Notification.user == "all")),
-        Notification.is_read == False  # noqa: E712
-    ).all()
+    notifications = (
+        db.query(Notification)
+        .filter(
+            ((Notification.user == user) | (Notification.user == "all")),
+            Notification.is_read == False,  # noqa: E712
+        )
+        .all()
+    )
 
     for notification in notifications:
         notification.is_read = True
@@ -185,11 +187,7 @@ def mark_all_read(request: Request, user: str | None = None, db: Session = Depen
 
 @router.delete("/{notification_id}", response_model=NotificationActionResponse)
 @handle_route_errors("delete notification")
-def delete_notification(
-    notification_id: int,
-    request: Request,
-    db: Session = Depends(get_db)
-):
+def delete_notification(notification_id: int, request: Request, db: Session = Depends(get_db)):
     """Delete a notification. Only the owning user may delete their own."""
     notification = db.query(Notification).filter(Notification.id == notification_id).first()
 
@@ -208,11 +206,7 @@ def delete_notification(
 
 @router.post("", response_model=NotificationResponse)
 @handle_route_errors("create notification")
-def create_notification(
-    notification: NotificationCreate,
-    request: Request,
-    db: Session = Depends(get_db)
-):
+def create_notification(notification: NotificationCreate, request: Request, db: Session = Depends(get_db)):
     """Create a new notification (for system use). Applies dedupe if dedupe_key is set."""
     data = notification.model_dump()
     if not data.get("user"):
@@ -340,7 +334,7 @@ async def send_deployment_notification(
     status: str,
     duration: float | None = None,
     error_message: str | None = None,
-    resource_changes: dict | None = None
+    resource_changes: dict | None = None,
 ):
     """
     Send a deployment notification to all connected WebSocket clients.

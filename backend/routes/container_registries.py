@@ -14,7 +14,7 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from core.errors import handle_route_errors
@@ -31,6 +31,7 @@ router = APIRouter(prefix="/api/container-registries", tags=["container-registri
 # ============================================================================
 # Pydantic Schemas
 # ============================================================================
+
 
 class ContainerRegistryCreate(BaseModel):
     name: str
@@ -74,8 +75,7 @@ class ContainerRegistryResponse(BaseModel):
     last_test_at: datetime | None = None
     last_test_message: str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ContainerRegistryTestResponse(BaseModel):
@@ -86,6 +86,7 @@ class ContainerRegistryTestResponse(BaseModel):
     so the route carries a response_model like its siblings (#79) and the
     shape is visible in OpenAPI instead of only in the service body.
     """
+
     success: bool
     message: str | None = None
     error: str | None = None
@@ -98,6 +99,7 @@ class ContainerRegistryTestResponse(BaseModel):
 # ============================================================================
 # CRUD Endpoints
 # ============================================================================
+
 
 @router.get("", response_model=list[ContainerRegistryResponse], dependencies=[Depends(require_viewer)])
 @handle_route_errors("list container registries")
@@ -147,6 +149,7 @@ def delete_container_registry(registry_id: int, db: Session = Depends(get_db)):
 # ============================================================================
 # Testing Endpoint
 # ============================================================================
+
 
 @router.post(
     "/{registry_id}/test",

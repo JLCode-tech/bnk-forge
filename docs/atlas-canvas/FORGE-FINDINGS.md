@@ -51,12 +51,7 @@ The legacy BNKNetPolicy and BNKSecPolicy paths go through the same functions.
 - an explicit `targetRef.namespace`;
 - the legacy kinds.
 
-**Status:** a fix with tests exists as commit `3e49489` on the local branch `claude/bold-allen-53d637`:
-
-- `topology.py`: +25 / −13
-- `test_bnk_topology.py`: +87
-
-It was left unmerged by choice, because this exercise does not change Forge behavior. Keep the branch.
+**Status:** Resolved (`backend/services/bnk/topology.py`, `backend/services/bnk/policy_associations.py`, and `backend/tests/unit/test_bnk_topology.py`).
 
 ## 2. A missing optional CRD marks every BNK fetch partial and disables the cache
 
@@ -78,7 +73,7 @@ The backend has logged "Skipped caching BNK data for cluster 1 due to partial fe
 
 **Suggested fix:** treat a 404 from listing a custom resource (CRD not installed) as an empty list, not an error. Optionally, record those types in an `absent_types` field so views can say "not installed" instead of "could not be read". Keep `partial` for real failures: 403, 5xx and timeouts.
 
-**Status:** open.
+**Status:** Resolved (`backend/services/bnk/fetch.py` treats 404 / missing CRDs as `absent_types` without setting `partial: True` or skipping the 60s cache).
 
 ## 3. Prettier drift in BNK frontend files, with no Prettier gate in CI
 
@@ -88,7 +83,7 @@ The backend has logged "Skipped caching BNK data for cluster 1 due to partial fe
 
 **Suggested fix:** run `prettier --write` across `frontend-v2/src` in one dedicated formatting commit. Then add `prettier --check` (or `eslint-plugin-prettier`) to CI.
 
-**Status:** open. The Canvas commits keep existing files' formatting as it is.
+**Status:** Resolved (`types/f5bnk.ts` and `pages/f5bnk-parts/index.ts` formatted; `format:check` script added to `frontend-v2/package.json`).
 
 ## 4. Six existing ESLint warnings
 
@@ -111,7 +106,7 @@ The backend has logged "Skipped caching BNK data for cluster 1 due to partial fe
 - move the non-component exports to separate files;
 - switch `Stacks.tsx` to the shadcn Table.
 
-**Status:** open.
+**Status:** Resolved (0 ESLint warnings across `frontend-v2/src`).
 
 ## 5. pytest configuration and deprecation warnings
 
@@ -130,7 +125,7 @@ Running any backend test file prints these warnings:
 
 **Impact:** low today. The `collect_ignore_glob` one means test collection may scan directories it was meant to skip. The `crypt` one blocks a Python 3.13 upgrade.
 
-**Status:** open.
+**Status:** Resolved (`asyncio_default_fixture_loop_scope = "function"` set in `backend/pyproject.toml`, `collect_ignore_glob` moved to `backend/tests/conftest.py`, and all Pydantic v2 `class Config:` / `@validator` deprecations migrated to `ConfigDict` / `SettingsConfigDict` / `@field_validator`).
 
 ## 6. Some F5 CRDs fail to install on recent Kubernetes
 
@@ -154,7 +149,7 @@ This is in F5's published CRDs, not in Forge. It matters only for lab and CI see
 
 **Suggested fix:** return 200 with `{"installed": false}`, or 404, when no CWC Service exists, and cache that answer like a success.
 
-**Status:** open.
+**Status:** Resolved (`GET /api/licensing/{cluster_id}/status` returns `200 OK` with `{"success": true, "installed": false, "Status": {}}` and caches for 120 seconds when CWC is not installed).
 
 ## 8. Opening BNK views can write to the cluster and read Secret data
 
@@ -183,7 +178,7 @@ Traffic stats also `exec` into the TMM debug sidecar (`tmctl`, `configview`).
 - Treat a 403 as "read-only access" rather than an error.
 - Document the RBAC each feature needs, so a read-only (viewer) Forge is a supported setup.
 
-**Status:** open. For testing on a cluster another Forge already manages, use a kubeconfig bound to a get/list-only role. The Kubernetes `view` ClusterRole excludes Secrets and `pods/exec`. Grant `pods/exec` on the TMM pods only if real traffic counters are needed.
+**Status:** Resolved (passive status calls default to `create_client_pod=false` / `allow_create_pod=False`, check CWC Service and running client pod before reading Secret data, never create `bnk-forge-agent`, and handle 403 read-only credentials cleanly in both licensing and TMM `traffic_stats.py`; explicit Licensing tab / refresh requests pass `create_client_pod=true` or `force=true`).
 
 ## 9. F5BnkGateway is not in Forge's resource registry
 
@@ -195,7 +190,7 @@ Traffic stats also `exec` into the TMM debug sidecar (`tmctl`, `configview`).
 
 **Suggested fix:** register `f5bnkgateway` (group `k8s.f5net.com`, version `v1`, plural `f5-bnkgateways`) and add it to `BNK_RESOURCE_TYPES`, treating a missing CRD as absent (see finding 2).
 
-**Status:** the Canvas lists F5BnkGateways itself (`backend/services/bnk/canvas_fetch.py`, get/list only) and reports the missing one as a broken reference. The registry and the shared fetch are unchanged.
+**Status:** Resolved (`f5bnkgateway` registered in `backend/core/k8s_resource_registry.py` and added to `BNK_RESOURCE_TYPES` in `backend/services/bnk/helpers.py`).
 
 ---
 

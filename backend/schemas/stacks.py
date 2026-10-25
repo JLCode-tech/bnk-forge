@@ -20,8 +20,10 @@ from utils.validators import validate_cidr_fields
 # Stack Template Schemas
 # =============================================================================
 
+
 class StackTemplateResponse(BaseModel):
     """Schema for stack template response"""
+
     id: int
     name: str
     slug: str
@@ -56,12 +58,12 @@ class StackTemplateResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class StackTemplateListResponse(BaseModel):
     """Simplified schema for stack template list"""
+
     id: int
     name: str
     slug: str
@@ -90,16 +92,17 @@ class StackTemplateListResponse(BaseModel):
     validation_state: str | None = None
     source_path: str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # =============================================================================
 # Stack Preview Schema
 # =============================================================================
 
+
 class StackPreviewResponse(BaseModel):
     """Preview of what will be deployed"""
+
     modules: list["StackTemplateModuleResponse"]
     prerequisites: list | None
     estimated_cost: str | None
@@ -141,8 +144,10 @@ class ImportedBlueprintAddToProjectRequest(BaseModel):
 # Stack Instance Schemas
 # =============================================================================
 
+
 class StackInstanceCreate(BaseModel):
     """Schema for creating a stack instance"""
+
     template_id: int
     name: str = Field(..., min_length=1, max_length=255)
     variables: dict | None = Field(default=None)
@@ -155,6 +160,7 @@ class StackInstanceCreate(BaseModel):
 
 class StackInstanceResponse(BaseModel):
     """Schema for stack instance response"""
+
     id: int
     project_id: int
     template_id: int | None
@@ -172,12 +178,12 @@ class StackInstanceResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class StackStatusResponse(BaseModel):
     """Stack deployment status"""
+
     current_step: int
     total_steps: int
     status: str
@@ -210,8 +216,10 @@ class StackInstanceDetailResponse(StackInstanceResponse):
 # Custom Stack Operation Schemas
 # =============================================================================
 
+
 class SaveAsTemplateRequest(BaseModel):
     """Schema for saving a project as a stack template"""
+
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
     category: str = "custom"
@@ -224,6 +232,7 @@ class SaveAsTemplateRequest(BaseModel):
 
 class DuplicateTemplateRequest(BaseModel):
     """Schema for duplicating a stack template"""
+
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
     version: str = "1.0.0"
@@ -231,11 +240,13 @@ class DuplicateTemplateRequest(BaseModel):
 
 class ImportTemplateRequest(BaseModel):
     """Schema for importing a stack template from JSON"""
+
     template_json: dict
 
 
 class PublishTemplateRequest(BaseModel):
     """Schema for publishing/unpublishing a template"""
+
     is_public: bool
 
 

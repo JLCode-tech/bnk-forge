@@ -12,11 +12,12 @@ Endpoints:
 Note: Registration token and install-command endpoints were removed in D3-CLEANUP.
 The kubeconfig-first fleet architecture (Decision D3) made them obsolete.
 """
+
 import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from services.operator_registry import is_operator_live_connected, operator_connections
 
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Schemas (shared across sub-modules)
 # ---------------------------------------------------------------------------
+
 
 class OperatorResponse(BaseModel):
     id: int
@@ -51,8 +53,7 @@ class OperatorResponse(BaseModel):
     uptime_seconds: int
     created_at: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OperatorDetailResponse(OperatorResponse):
@@ -77,6 +78,7 @@ class SendCommandRequest(BaseModel):
 
 class FanOutCommandRequest(BaseModel):
     """Send a command to multiple operators at once."""
+
     action: str
     payload: dict | None = None
     timeout: float = 300.0
@@ -92,6 +94,7 @@ class CommandResultResponse(BaseModel):
 
 class FleetOperatorHealth(BaseModel):
     """Health summary for a single operator/cluster in the fleet view."""
+
     operator_id: int
     operator_uuid: str
     cluster_id: int  # KubernetesCluster ID — for linking to cluster detail page
@@ -128,6 +131,7 @@ class FleetOperatorHealth(BaseModel):
 
 class FleetHealthResponse(BaseModel):
     """Aggregate fleet health response."""
+
     total_clusters: int
     healthy: int
     warning: int
@@ -140,6 +144,7 @@ class FleetHealthResponse(BaseModel):
 
 class FleetCompareRequest(BaseModel):
     """Request to compare configs between two operators."""
+
     operator_a_id: int
     operator_b_id: int
 
@@ -224,6 +229,7 @@ class FleetCompareClusterResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Helpers (shared across sub-modules)
 # ---------------------------------------------------------------------------
+
 
 def _get_user(request: Request) -> str:
     """Extract username from request (set by auth middleware)."""

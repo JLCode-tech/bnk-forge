@@ -44,12 +44,8 @@ def analyze_policy_associations(data: dict[str, Any]) -> dict[str, Any]:
     gs_map = make_resource_map(resources.get("gatewaysettings", []))
 
     # Pre-index gateways and firewall policies by (namespace, name) for O(1) lookups
-    gw_index: dict[tuple[str, str], dict] = {
-        (resource_ns(gw), resource_name(gw)): gw for gw in gateways
-    }
-    fw_index: dict[tuple[str, str], dict] = {
-        (resource_ns(fw), resource_name(fw)): fw for fw in firewallpolicies
-    }
+    gw_index: dict[tuple[str, str], dict] = {(resource_ns(gw), resource_name(gw)): gw for gw in gateways}
+    fw_index: dict[tuple[str, str], dict] = {(resource_ns(fw), resource_name(fw)): fw for fw in firewallpolicies}
 
     addr_map = make_resource_map(resources.get("f5bigcneaddresslist", []))
     port_map = make_resource_map(resources.get("f5bigcneportlist", []))
@@ -59,8 +55,9 @@ def analyze_policy_associations(data: dict[str, Any]) -> dict[str, Any]:
         bnk_ns = resource_ns(bnk)
 
         for target in bnk.get("spec", {}).get("targetRefs", []):
+            target_ns = target.get("namespace") or bnk_ns
             if target.get("kind") == "EgressGateway":
-                egress_gw = egress_gw_index.get((bnk_ns, target.get("name")))
+                egress_gw = egress_gw_index.get((target_ns, target.get("name")))
                 if egress_gw:
                     associations.extend(
                         _build_egress_gateway_associations(bnk, egress_gw, gs_map, fw_index, addr_map, port_map)
@@ -71,18 +68,26 @@ def analyze_policy_associations(data: dict[str, Any]) -> dict[str, Any]:
 
             gateway_name = target.get("name")
             listener_name = target.get("sectionName")
-            gateway = gw_index.get((bnk_ns, gateway_name))
+            gateway = gw_index.get((target_ns, gateway_name))
 
             for ext in bnk.get("spec", {}).get("extensionRefs", []):
                 if ext.get("kind") != "F5BigFwPolicy":
                     continue
 
                 policy_name = ext.get("name")
-                policy = fw_index.get((bnk_ns, policy_name))
+                ext_ns = ext.get("namespace") or bnk_ns
+                policy = fw_index.get((ext_ns, policy_name)) or fw_index.get((target_ns, policy_name))
 
                 association = _build_association(
-                    bnk, bnk_ns, gateway_name, listener_name,
-                    policy_name, gateway, policy, addr_map, port_map,
+                    bnk,
+                    bnk_ns,
+                    gateway_name,
+                    listener_name,
+                    policy_name,
+                    gateway,
+                    policy,
+                    addr_map,
+                    port_map,
                 )
                 associations.append(association)
 
@@ -94,9 +99,7 @@ def analyze_policy_associations(data: dict[str, Any]) -> dict[str, Any]:
             continue
 
         policy = fw_index.get((egress_ns, policy_name))
-        associations.append(
-            _build_egress_association(egress, egress_ns, policy_name, policy, addr_map, port_map)
-        )
+        associations.append(_build_egress_association(egress, egress_ns, policy_name, policy, addr_map, port_map))
 
     return {
         "associations": associations,
@@ -140,7 +143,10 @@ def _build_association(
 
     if policy:
         association["rules_count"], association["rules"] = _extract_fw_rules(
-            policy, addr_map or {}, port_map or {}, bnk_ns,
+            policy,
+            addr_map or {},
+            port_map or {},
+            bnk_ns,
         )
 
     association["bnk_policy_status"] = _policy_status(bnk)
@@ -189,14 +195,14 @@ def _resolve_rule_direction(
 
     addresses = list(dir_dict.get("addresses") or [])
     for resolved in resolve_list_refs(address_lists, addr_map, policy_ns, "addresses"):
-        for addr in (resolved.get("addresses") or []):
+        for addr in resolved.get("addresses") or []:
             if addr and addr not in addresses:
                 addresses.append(addr)
 
     raw_ports = dir_dict.get("ports") or []
     ports = [str(p) for p in raw_ports if p is not None]
     for resolved in resolve_list_refs(port_lists, port_map, policy_ns, "ports"):
-        for port in (resolved.get("ports") or []):
+        for port in resolved.get("ports") or []:
             if port is not None:
                 str_port = str(port)
                 if str_port not in ports:
@@ -233,7 +239,10 @@ def _build_egress_association(
 
     if policy:
         association["rules_count"], association["rules"] = _extract_fw_rules(
-            policy, addr_map or {}, port_map or {}, egress_ns,
+            policy,
+            addr_map or {},
+            port_map or {},
+            egress_ns,
         )
 
     association["egress_status"] = _policy_status(egress)
@@ -254,11 +263,13 @@ def _build_egress_gateway_associations(
     selector = (egress_gw.get("spec") or {}).get("sourceSelector") or {}
     snat_config = (resolve_egress_config(egress_gw, gs_map) or {}).get("sourceNATConfig") or {}
 
+    sec_ns = resource_ns(sec_policy)
     associations: list[dict[str, Any]] = []
     for ext in (sec_policy.get("spec") or {}).get("extensionRefs") or []:
         if ext.get("kind") != "F5BigFwPolicy":
             continue
         policy_name = ext.get("name")
+        ext_ns = ext.get("namespace") or sec_ns
         association: dict[str, Any] = {
             "kind": "egress",
             "egress_name": resource_name(egress_gw),
@@ -268,9 +279,11 @@ def _build_egress_gateway_associations(
             "firewall_policy_name": policy_name,
             "bnk_policy_name": resource_name(sec_policy),
         }
-        policy = fw_index.get((ns, policy_name))
+        policy = fw_index.get((ext_ns, policy_name)) or fw_index.get((ns, policy_name))
         if policy:
-            association["rules_count"], association["rules"] = _extract_fw_rules(policy, addr_map, port_map, ns)
+            association["rules_count"], association["rules"] = _extract_fw_rules(
+                policy, addr_map, port_map, resource_ns(policy) or ns
+            )
         association["egress_status"] = _policy_status(sec_policy)
         associations.append(association)
     return associations

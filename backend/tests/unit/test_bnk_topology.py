@@ -1290,6 +1290,72 @@ class TestCrossNamespacePolicyIsolation:
         assert [ap["name"] for ap in shop_route["appPolicies"]] == ["shop-app-pol"]
         assert payments_route["appPolicies"] == []
 
+    def test_policy_associations_resolves_cross_namespace_gateway_and_egress_gateway_targets(self):
+        from services.bnk.policy_associations import analyze_policy_associations
+
+        resources = _empty_resources()
+        gw = _gateway("edge-gw", namespace="payments", listeners=[{"name": "http", "port": 8080, "protocol": "HTTP"}])
+        gw["status"] = {"addresses": [{"value": "10.10.0.50"}]}
+        resources["gateway"] = [gw]
+        eg = _egress_gateway_24()
+        eg["metadata"]["namespace"] = "payments"
+        resources["egressgateway"] = [eg]
+        resources["gatewaysettings"] = [
+            {**_egress_settings_24(), "metadata": {"name": "egress-demo", "namespace": "payments"}}
+        ]
+        resources["f5bigfwpolicy"] = [
+            _resource(
+                "fw-cross",
+                namespace="sec-ops",
+                spec={"rule": [{"name": "allow-http", "action": "accept", "ipProtocol": "tcp"}]},
+            )
+        ]
+
+        sp_gw = _resource(
+            "cross-ns-gw-sec",
+            namespace="sec-ops",
+            spec={
+                "targetRefs": [
+                    {
+                        "group": "gateway.networking.k8s.io",
+                        "kind": "Gateway",
+                        "name": "edge-gw",
+                        "namespace": "payments",
+                        "sectionName": "http",
+                    }
+                ],
+                "extensionRefs": [{"kind": "F5BigFwPolicy", "name": "fw-cross"}],
+            },
+        )
+        sp_eg = _resource(
+            "cross-ns-eg-sec",
+            namespace="sec-ops",
+            spec={
+                "targetRefs": [
+                    {
+                        "group": "gateway.k8s.f5.com",
+                        "kind": "EgressGateway",
+                        "name": "egress-demo",
+                        "namespace": "payments",
+                    }
+                ],
+                "extensionRefs": [{"kind": "F5BigFwPolicy", "name": "fw-cross"}],
+            },
+        )
+        resources["secpolicy"] = [sp_gw, sp_eg]
+
+        result = analyze_policy_associations({"resources": resources})
+        assert result["count"] == 2
+        gw_assoc = next(a for a in result["associations"] if a["kind"] == "gateway")
+        assert gw_assoc["gateway_ip"] == "10.10.0.50"
+        assert gw_assoc["port"] == 8080
+        assert gw_assoc["rules_count"] == 1
+
+        eg_assoc = next(a for a in result["associations"] if a["kind"] == "egress")
+        assert eg_assoc["egress_name"] == "egress-demo"
+        assert eg_assoc["namespace"] == "payments"
+        assert eg_assoc["rules_count"] == 1
+
 
 class TestForgeFindingsFixes:
     """Findings 2, 7, 8, 9 unit tests."""
@@ -1334,8 +1400,10 @@ class TestForgeFindingsFixes:
         mock_cache.set.assert_called_once()
 
     def test_cwc_license_status_not_installed_and_passive_no_pod_creation(self):
+        import asyncio
         from unittest.mock import MagicMock, patch
 
+        from routes import licensing as licensing_routes
         from services import qkview_service
         from services.qkview_service import QKViewError
 
@@ -1343,25 +1411,35 @@ class TestForgeFindingsFixes:
         mock_cache = MagicMock()
         mock_cache.get.return_value = None
 
+        # 1) When CWC service is absent (404 in _get_cwc_rest_port), _find_cert_secret
+        #    and _get_admin_token are never called (zero Secret reads).
         with (
             patch.object(qkview_service, "cache", mock_cache),
+            patch.object(qkview_service, "_detect_cwc_namespace", return_value="f5-utils"),
             patch.object(
                 qkview_service,
-                "_cwc_request",
-                side_effect=QKViewError("CWC service 'f5-spk-cwc' not found in any namespace", status_code=404),
+                "_get_cwc_rest_port",
+                side_effect=QKViewError("CWC service 'f5-spk-cwc' not found in 'f5-utils': Not Found", 404),
             ),
+            patch.object(qkview_service, "_find_cert_secret") as mock_find_cert,
+            patch.object(qkview_service, "_get_admin_token") as mock_admin_token,
         ):
             res_uninstalled = qkview_service.get_license_status(mock_k8s, cluster_id=1)
         assert res_uninstalled["success"] is False
         assert res_uninstalled["installed"] is False
+        mock_find_cert.assert_not_called()
+        mock_admin_token.assert_not_called()
         mock_cache.set.assert_called_once()
 
+        # 2) Passive check (allow_create_pod=False) does not create a client pod or read cwc-auth-token
+        #    when no running pod exists.
         mock_cache.reset_mock()
         with (
             patch.object(qkview_service, "cache", mock_cache),
             patch.object(qkview_service, "_detect_cwc_namespace", return_value="f5-utils"),
+            patch.object(qkview_service, "_get_cwc_rest_port", return_value=8081),
             patch.object(qkview_service, "_find_cert_secret", return_value={"name": "cert"}),
-            patch.object(qkview_service, "_get_admin_token", return_value="token"),
+            patch.object(qkview_service, "_get_admin_token") as mock_admin_token,
             patch.object(qkview_service, "_find_running_client_pod", return_value=None),
             patch.object(qkview_service, "_create_client_pod") as mock_create_pod,
         ):
@@ -1370,6 +1448,37 @@ class TestForgeFindingsFixes:
         assert res_passive["installed"] is True
         assert res_passive["client_pod_running"] is False
         mock_create_pod.assert_not_called()
+        mock_admin_token.assert_not_called()
+
+        # 3) Explicit Licensing tab request (create_client_pod=True) bypasses cached passive
+        #    client_pod_running=False stub and forwards allow_create_pod=True.
+        mock_cache.get.return_value = res_passive
+        with (
+            patch("core.cache.cache", mock_cache),
+            patch.object(licensing_routes, "_try_operator_dispatch", return_value=None),
+            patch.object(licensing_routes, "KubernetesService", return_value=mock_k8s),
+            patch.object(
+                licensing_routes,
+                "legacy_get_license_status",
+                return_value={"success": True, "installed": True, "license_state": "Licensed"},
+            ) as mock_legacy_status,
+        ):
+            res_active = asyncio.run(
+                licensing_routes.get_license_status_endpoint(
+                    cluster_id=1,
+                    force=False,
+                    create_client_pod=True,
+                    db=MagicMock(),
+                )
+            )
+        assert res_active["success"] is True
+        assert res_active["license_state"] == "Licensed"
+        mock_legacy_status.assert_called_once_with(
+            mock_k8s,
+            1,
+            force=False,
+            allow_create_pod=True,
+        )
 
     def test_fetch_tmm_traffic_stats_short_circuits_on_403(self):
         from unittest.mock import MagicMock, patch
@@ -1400,7 +1509,7 @@ class TestForgeFindingsFixes:
         assert "Forbidden" in (res["error"] or "")
         assert mock_exec.call_count == 1
 
-    def test_create_project_sets_is_active_true(self):
+    def test_create_project_defaults_is_active_false_and_allows_deletion(self):
         from types import SimpleNamespace
         from unittest.mock import MagicMock, patch
 
@@ -1432,4 +1541,4 @@ class TestForgeFindingsFixes:
             svc.create_project(project_data)
 
         created_project = mock_db.add.call_args[0][0]
-        assert created_project.is_active is True
+        assert created_project.is_active is False
