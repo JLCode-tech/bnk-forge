@@ -9,6 +9,7 @@ from database import Base
 
 class Project(Base):
     """Project configuration for OpenTofu module deployments."""
+
     __tablename__ = "projects"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -16,7 +17,7 @@ class Project(Base):
     description = Column(Text)
     color = Column(String(20), default="blue")  # UI color theme
     icon = Column(String(50), default="cloud")  # UI icon
-    is_active = Column(Boolean, default=False)  # Currently active project
+    is_active = Column(Boolean, default=True)  # Project is active (not archived)
     module_count = Column(Integer, default=0)
     deployed_count = Column(Integer, default=0)
     failed_count = Column(Integer, default=0)
@@ -125,18 +126,25 @@ class Project(Base):
     discovery_jobs = relationship("DiscoveryJob", back_populates="project", cascade="all, delete-orphan")
 
     # 1:1 extracted config tables (IMP-014 through IMP-019)
-    backend_config = relationship("ProjectBackendConfig", back_populates="project", uselist=False, cascade="all, delete-orphan")
-    encryption_config = relationship("ProjectEncryptionConfig", back_populates="project", uselist=False, cascade="all, delete-orphan")
-    infra_config = relationship("ProjectInfraConfig", back_populates="project", uselist=False, cascade="all, delete-orphan")
-    cloud_config = relationship("ProjectCloudConfig", back_populates="project", uselist=False, cascade="all, delete-orphan")
-
-    __table_args__ = (
-        Index("idx_project_active", "is_active"),
+    backend_config = relationship(
+        "ProjectBackendConfig", back_populates="project", uselist=False, cascade="all, delete-orphan"
     )
+    encryption_config = relationship(
+        "ProjectEncryptionConfig", back_populates="project", uselist=False, cascade="all, delete-orphan"
+    )
+    infra_config = relationship(
+        "ProjectInfraConfig", back_populates="project", uselist=False, cascade="all, delete-orphan"
+    )
+    cloud_config = relationship(
+        "ProjectCloudConfig", back_populates="project", uselist=False, cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (Index("idx_project_active", "is_active"),)
 
 
 class ProjectModule(Base):
     """User's selected modules from the library for a specific project."""
+
     __tablename__ = "project_modules"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -154,7 +162,9 @@ class ProjectModule(Base):
     dependencies = Column(JSON, default=list)
 
     # Stack association (optional)
-    stack_instance_id = Column(Integer, ForeignKey("stack_instances.id", ondelete="SET NULL"), nullable=True, index=True)
+    stack_instance_id = Column(
+        Integer, ForeignKey("stack_instances.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     # Captured outputs after successful apply
     outputs = Column(JSON)
@@ -191,7 +201,9 @@ class ProjectModule(Base):
     drift_checks = relationship("DriftCheck", back_populates="module", cascade="all, delete-orphan")
     deployments = relationship("Deployment", back_populates="module", cascade="all, delete-orphan")
     state_transitions = relationship(
-        "ModuleStateTransition", back_populates="module", cascade="all, delete-orphan",
+        "ModuleStateTransition",
+        back_populates="module",
+        cascade="all, delete-orphan",
     )
 
     __table_args__ = (
@@ -211,6 +223,7 @@ class ModuleStateTransition(Base):
 
     See memory: rfc_robust_module_locking.md (Phase 2).
     """
+
     __tablename__ = "module_state_transitions"
 
     # SQLite needs INTEGER (not BIGINT) for autoincrement to work on the
@@ -243,9 +256,7 @@ class ModuleStateTransition(Base):
 
     module = relationship("ProjectModule", back_populates="state_transitions")
 
-    __table_args__ = (
-        Index("idx_module_state_transitions_module_at", "module_id", "at"),
-    )
+    __table_args__ = (Index("idx_module_state_transitions_module_at", "module_id", "at"),)
 
 
 class ProjectSecret(Base):
@@ -253,6 +264,7 @@ class ProjectSecret(Base):
     Project-level secrets for module inputs.
     Supports file secrets and value secrets.
     """
+
     __tablename__ = "project_secrets"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -294,6 +306,7 @@ class ProjectSecret(Base):
 
 class Environment(Base):
     """Environment configuration for multi-environment deployments."""
+
     __tablename__ = "environments"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -330,6 +343,7 @@ class Environment(Base):
 
 class Deployment(Base):
     """Track Terragrunt/Terraform deployments and executions."""
+
     __tablename__ = "deployments"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -372,6 +386,7 @@ class Deployment(Base):
 
 class DeploymentLog(Base):
     """Deployment log entries for historical tracking and real-time streaming."""
+
     __tablename__ = "deployment_logs"
 
     id = Column(Integer, primary_key=True, index=True)

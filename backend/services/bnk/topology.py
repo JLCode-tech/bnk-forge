@@ -225,6 +225,7 @@ def _build_gateway_node(
         addr_map,
         port_map,
         gw_name,
+        gw_ns=gw_ns,
     )
     app_policies_data = _match_app_policies(
         app_policies or [],
@@ -232,6 +233,7 @@ def _build_gateway_node(
         ai_maps or {},
         target_name=gw_name,
         target_kind="Gateway",
+        target_ns=gw_ns,
     )
 
     # Resolve 2.4 GatewaySettings (a Gateway parametersRef is local to its namespace)
@@ -306,6 +308,7 @@ def _build_listener_node(
             irule_map,
             gw_name,
             listener_name,
+            gw_ns=gw_ns,
         ),
         "appPolicies": _match_app_policies(
             app_policies or [],
@@ -314,6 +317,7 @@ def _build_listener_node(
             target_name=gw_name,
             target_kind="Gateway",
             section_name=listener_name,
+            target_ns=gw_ns,
         ),
     }
 
@@ -400,6 +404,7 @@ def _match_routes_to_listener(
                 ai_maps or {},
                 target_name=route_name,
                 target_kind=route_kind,
+                target_ns=route_ns,
             )
 
             routes_data.append(
@@ -474,6 +479,7 @@ def _match_net_policies(
     irule_map: dict[str, dict],
     gw_name: str,
     listener_name: str,
+    gw_ns: str = "",
 ) -> list[dict]:
     """Find BNKNetPolicies targeting a specific gateway/listener."""
     result: list[dict] = []
@@ -482,10 +488,12 @@ def _match_net_policies(
         np_ns = resource_ns(np_item)
 
         for target in np_spec.get("targetRefs", []):
+            target_ns = target.get("namespace") or np_ns
             if not (
                 target.get("name") == gw_name
                 and target.get("sectionName") == listener_name
                 and target.get("kind") == "Gateway"
+                and (not gw_ns or target_ns == gw_ns)
             ):
                 continue
 
@@ -608,6 +616,7 @@ def _match_app_policies(
     target_name: str,
     target_kind: str,
     section_name: str | None = None,
+    target_ns: str = "",
 ) -> list[dict[str, Any]]:
     """Find BNK 2.4.1 AppPolicies targeting a Gateway, Listener, or Route and resolve extensionRefs -> AIGatewayProfile."""
     result: list[dict[str, Any]] = []
@@ -616,7 +625,12 @@ def _match_app_policies(
         ap_spec = ap.get("spec") or {}
         ap_ns = resource_ns(ap)
         for target in ap_spec.get("targetRefs") or []:
-            if target.get("name") != target_name or target.get("kind") != target_kind:
+            ref_ns = target.get("namespace") or ap_ns
+            if (
+                target.get("name") != target_name
+                or target.get("kind") != target_kind
+                or (target_ns and ref_ns != target_ns)
+            ):
                 continue
             target_sec = target.get("sectionName")
             if section_name is not None and target_sec != section_name:
@@ -769,6 +783,7 @@ def _match_sec_policies(
     addr_map: dict[str, dict],
     port_map: dict[str, dict],
     gw_name: str,
+    gw_ns: str = "",
 ) -> list[dict]:
     """Find BNKSecPolicies targeting a specific gateway."""
     result: list[dict] = []
@@ -777,7 +792,10 @@ def _match_sec_policies(
         sp_ns = resource_ns(sp)
 
         for target in sp_spec.get("targetRefs", []):
-            if not (target.get("name") == gw_name and target.get("kind") == "Gateway"):
+            target_ns = target.get("namespace") or sp_ns
+            if not (
+                target.get("name") == gw_name and target.get("kind") == "Gateway" and (not gw_ns or target_ns == gw_ns)
+            ):
                 continue
 
             fw_refs = _build_firewall_refs(

@@ -1,20 +1,7 @@
-import React, { createContext, useContext, useState } from "react";
+import React, { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-interface InnerSidebarContextValue {
-  collapsed: boolean;
-  setCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
-}
-
-const InnerSidebarContext = createContext<InnerSidebarContextValue>({
-  collapsed: true,
-  setCollapsed: () => {},
-});
-
-export function useInnerSidebar() {
-  return useContext(InnerSidebarContext);
-}
+import { InnerSidebarContext } from "./inner-sidebar-context";
 
 interface CollapsibleInnerSidebarProps extends React.HTMLAttributes<HTMLElement> {
   defaultCollapsed?: boolean;

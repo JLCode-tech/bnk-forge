@@ -171,28 +171,32 @@ def fetch_tmm_traffic_stats(
             cluster_id=cluster_id,
             force=force,
         )
-        fw_result = exec_tmctl(
-            api_client,
-            pod_name,
-            namespace,
-            _FW_RULE_STAT_TABLE,
-            _FW_RULE_COLUMNS,
-            directory=_TMCTL_DIRECTORY,
-            timeout=timeout,
-            cluster_id=cluster_id,
-            force=force,
-        )
         result["virtualServerStat"] = vs_result
-        result["fwRuleStat"] = fw_result
-
-        # Only probe configview if tmctl succeeded and there are virtual servers
-        # to map. Skipping the uuid probes when vs_rows is empty avoids ~50
-        # sequential kubectl exec calls (each ~2s) on clusters with no traffic.
-        if vs_result.get("exit_code") == 0 and _tmctl_rows_as_dicts(vs_result):
-            mappings = _fetch_configview_mappings(
-                api_client, pod_name, namespace, timeout, cluster_id=cluster_id, force=force
+        vs_stderr = vs_result.get("stderr") or ""
+        if vs_result.get("exit_code") != 0 and "forbidden" in vs_stderr.lower():
+            result["error"] = vs_stderr
+        else:
+            fw_result = exec_tmctl(
+                api_client,
+                pod_name,
+                namespace,
+                _FW_RULE_STAT_TABLE,
+                _FW_RULE_COLUMNS,
+                directory=_TMCTL_DIRECTORY,
+                timeout=timeout,
+                cluster_id=cluster_id,
+                force=force,
             )
-            result["configviewMappings"] = mappings
+            result["fwRuleStat"] = fw_result
+
+            # Only probe configview if tmctl succeeded and there are virtual servers
+            # to map. Skipping the uuid probes when vs_rows is empty avoids ~50
+            # sequential kubectl exec calls (each ~2s) on clusters with no traffic.
+            if vs_result.get("exit_code") == 0 and _tmctl_rows_as_dicts(vs_result):
+                mappings = _fetch_configview_mappings(
+                    api_client, pod_name, namespace, timeout, cluster_id=cluster_id, force=force
+                )
+                result["configviewMappings"] = mappings
     except Exception as exc:  # pragma: no cover - defensive catch-all
         logger.exception("Failed to fetch TMM traffic stats")
         result["error"] = f"TMM exec failed: {exc}"

@@ -322,7 +322,10 @@ export default function LlmDashboard() {
   const queryClient = useQueryClient();
   const f = useObservabilityFilters("overview");
   const { data: clustersData } = useAllClusters();
-  const clusters = clustersData?.clusters ?? [];
+  const clusters = useMemo(
+    () => clustersData?.clusters ?? [],
+    [clustersData?.clusters],
+  );
   const [namespace, setNamespace] = useState<string>("all");
   const { data: filterData } = useLlmFilterData(f.clusterId, f.range);
   const { refresh, isRefreshing } = usePageRefresh(LLM_REFRESH_KEYS);
@@ -980,11 +983,7 @@ export default function LlmDashboard() {
                   All Namespaces
                 </SelectItem>
                 {discoveredNamespaces.map((ns) => (
-                  <SelectItem
-                    key={ns}
-                    value={ns}
-                    className="text-xs font-mono"
-                  >
+                  <SelectItem key={ns} value={ns} className="text-xs font-mono">
                     {ns}
                   </SelectItem>
                 ))}
@@ -1421,10 +1420,18 @@ export default function LlmDashboard() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="text-xs">AITenant / Organization</TableHead>
-                    <TableHead className="text-xs">Teams &amp; Principals</TableHead>
-                    <TableHead className="text-xs w-[240px]">Monthly Budget Utilization</TableHead>
-                    <TableHead className="text-xs text-right">RPM / TPM Quota</TableHead>
+                    <TableHead className="text-xs">
+                      AITenant / Organization
+                    </TableHead>
+                    <TableHead className="text-xs">
+                      Teams &amp; Principals
+                    </TableHead>
+                    <TableHead className="text-xs w-[240px]">
+                      Monthly Budget Utilization
+                    </TableHead>
+                    <TableHead className="text-xs text-right">
+                      RPM / TPM Quota
+                    </TableHead>
                     <TableHead className="text-xs">Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1443,13 +1450,16 @@ export default function LlmDashboard() {
                       const orgPct =
                         o.monthly_budget_usd > 0
                           ? Math.round(
-                              (o.current_spend_usd / o.monthly_budget_usd) * 100,
+                              (o.current_spend_usd / o.monthly_budget_usd) *
+                                100,
                             )
                           : 0;
                       const orgTeams = (govOverview?.teams ?? []).filter(
                         (t) => t.org_id === o.id || t.org_name === o.name,
                       );
-                      const orgPrincipals = (govOverview?.principals ?? []).filter(
+                      const orgPrincipals = (
+                        govOverview?.principals ?? []
+                      ).filter(
                         (p) => p.org_id === o.id || p.org_name === o.name,
                       );
                       return (
@@ -1468,7 +1478,8 @@ export default function LlmDashboard() {
                                   variant="secondary"
                                   className="text-2xs font-mono"
                                 >
-                                  {t.name}: ${t.current_spend_usd.toFixed(0)}/${t.monthly_budget_usd.toFixed(0)}
+                                  {t.name}: ${t.current_spend_usd.toFixed(0)}/$
+                                  {t.monthly_budget_usd.toFixed(0)}
                                 </Badge>
                               ))}
                               {orgPrincipals.length > 0 && (
@@ -2440,7 +2451,10 @@ export default function LlmDashboard() {
                             500;
                           const pSpend =
                             p.current_spend_usd ||
-                            pVks.reduce((acc, k) => acc + (k.spend_usd || 0), 0);
+                            pVks.reduce(
+                              (acc, k) => acc + (k.spend_usd || 0),
+                              0,
+                            );
                           const pPct =
                             pBudget > 0
                               ? Math.round((pSpend / pBudget) * 100)
@@ -2847,7 +2861,7 @@ function HistogramCard({
     active,
   );
 
-  const lokiSeries = data?.series ?? [];
+  const lokiSeries = useMemo(() => data?.series ?? [], [data?.series]);
   const auditSeries = useMemo(
     () => buildHistogramSeriesFromAuditLogs(auditLogs, metric),
     [auditLogs, metric],

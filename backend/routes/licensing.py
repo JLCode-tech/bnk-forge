@@ -18,7 +18,7 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -115,36 +115,35 @@ class LicenseRenewRequest(BaseModel):
 class LicenseActionResponse(BaseModel):
     """Response for license mutation endpoints (activate/receipt)."""
 
+    model_config = ConfigDict(extra="allow")
+
     success: bool
     operator_dispatch: bool | None = None
-
-    class Config:
-        extra = "allow"
 
 
 class LicenseReportResponse(BaseModel):
     """Response for GET /api/licensing/{cluster_id}/report."""
 
+    model_config = ConfigDict(extra="allow")
+
     success: bool
     raw: str | None = None
     operator_dispatch: bool | None = None
-
-    class Config:
-        extra = "allow"
 
 
 class LicenseStatusResponse(BaseModel):
     """Response for GET /api/licensing/{cluster_id}/status."""
 
+    model_config = ConfigDict(extra="allow")
+
     success: bool
     operator_dispatch: bool | None = None
-
-    class Config:
-        extra = "allow"
 
 
 class CWCStatusResponse(BaseModel):
     """Response for GET /api/licensing/{cluster_id}/cwc-status."""
+
+    model_config = ConfigDict(extra="allow")
 
     cwc_service_found: bool
     cwc_reachable: bool
@@ -156,9 +155,6 @@ class CWCStatusResponse(BaseModel):
     success: bool | None = None
     server_cert_exists: bool | None = None
     client_cert_exists: bool | None = None
-
-    class Config:
-        extra = "allow"
 
 
 class CWCAPISetupStatusResponse(BaseModel):
@@ -176,13 +172,12 @@ class CWCAPISetupStatusResponse(BaseModel):
 class CWCAPISetupResponse(BaseModel):
     """Response for POST /api/licensing/{cluster_id}/cwc-setup."""
 
+    model_config = ConfigDict(extra="allow")
+
     success: bool
     message: str | None = None
     steps: list[dict[str, object]] | None = None
     operator_dispatch: bool | None = None
-
-    class Config:
-        extra = "allow"
 
 
 # ---------------------------------------------------------------------------
@@ -667,18 +662,19 @@ async def get_cwc_status_endpoint(
 
         # Also check if the CWC licensing cert (cwc-license-certs) exists.
         cwc_license_certs_ok = False
-        try:
-            from services.qkview_service import (
-                CWC_LICENSE_CERTS_SECRET,
-                _detect_cwc_namespace,
-                _secret_exists,
-            )
+        avail_msg = available.get("message", "")
+        if api_client is not None and (cwc_found or "not found in any namespace" not in avail_msg):
+            try:
+                from services.qkview_service import (
+                    CWC_LICENSE_CERTS_SECRET,
+                    _detect_cwc_namespace,
+                    _secret_exists,
+                )
 
-            if api_client is not None:
                 cwc_ns = _detect_cwc_namespace(api_client)
                 cwc_license_certs_ok = _secret_exists(api_client, CWC_LICENSE_CERTS_SECRET, cwc_ns)
-        except Exception:
-            pass
+            except Exception:
+                pass
 
         resp = {
             "cwc_service_found": cwc_found,
@@ -686,7 +682,7 @@ async def get_cwc_status_endpoint(
             "certs_mounted": cwc_found or cwc_license_certs_ok,
             "setup_complete": cwc_found,
             "cert_manager_available": cert_manager_ok,
-            "message": available.get("message", ""),
+            "message": avail_msg,
         }
 
         status_ok = True
@@ -700,8 +696,8 @@ async def get_cwc_status_endpoint(
         return resp, cwc_found, status_ok
 
     try:
-        response, cwc_found, status_ok = await asyncio.to_thread(_legacy_cwc_status)
-        if cwc_found and status_ok:
+        response, _cwc_found, status_ok = await asyncio.to_thread(_legacy_cwc_status)
+        if status_ok:
             cache.set(cache_key, response, ttl_seconds=120)
         return response
     except QKViewError as e:

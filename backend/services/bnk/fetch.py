@@ -14,7 +14,10 @@ from kubernetes import client as k8s_client
 
 logger = logging.getLogger(__name__)
 
+from kubernetes.client.rest import ApiException
+
 from core.cache import cache
+from core.errors import NotFoundError
 from services.bnk.helpers import BNK_RESOURCE_TYPES
 from services.bnk_pod_discovery import (
     classify_f5_pods,
@@ -170,6 +173,7 @@ def fetch_all_bnk_data(
     persisted_namespaces: list[str] = list(getattr(cluster, "discovered_namespaces", None) or [])
 
     had_error = False
+    absent_types: set[str] = set()
 
     # Pre-resolve resource types on the calling thread to prevent concurrent
     # multi-threaded access to k8s_service.db (SQLAlchemy Session is not thread-safe).
@@ -177,12 +181,18 @@ def fetch_all_bnk_data(
     for rt_key in BNK_RESOURCE_TYPES:
         try:
             resolved_types[rt_key] = resolve_resource_type(k8s_service.db, cluster_id, rt_key)
+        except NotFoundError:
+            logger.debug("Optional CRD %s not registered/installed on cluster %s", rt_key, cluster_id)
+            absent_types.add(rt_key)
+            resolved_types[rt_key] = None
         except Exception as e:
             logger.warning("Failed to resolve resource type %s for cluster %s: %s", rt_key, cluster_id, e)
             resolved_types[rt_key] = None
             had_error = True
 
     def safe_fetch(resource_type_key: str) -> tuple[list[dict], bool]:
+        if resource_type_key in absent_types:
+            return [], False
         rt = resolved_types.get(resource_type_key)
         if rt is None:
             return [], True
@@ -190,6 +200,10 @@ def fetch_all_bnk_data(
             items = k8s_service._fetch_from_k8s(api_client, rt, namespace, None)
             return [i for i in items if isinstance(i, dict)], False
         except Exception as e:
+            if isinstance(e, NotFoundError) or (isinstance(e, ApiException) and getattr(e, "status", None) == 404):
+                logger.debug("Optional CRD %s not installed on cluster %s (404)", resource_type_key, cluster_id)
+                absent_types.add(resource_type_key)
+                return [], False
             logger.warning("Failed to fetch %s for cluster %s: %s", resource_type_key, cluster_id, e)
             return [], True
 
@@ -244,7 +258,8 @@ def fetch_all_bnk_data(
     for fut in not_done:
         fut.cancel()
 
-    had_error = bool(not_done)
+    if not_done:
+        had_error = True
 
     resources = {}
     for rt, fut in crd_futures.items():
@@ -301,6 +316,7 @@ def fetch_all_bnk_data(
 
     result = {
         "resources": resources,
+        "absent_types": sorted(absent_types),
         "pods": {"tenant": tenant_pods, "utils": utils_pods},
         "classified_pods": classified,
         "crd_installer_job": crd_installer_job,

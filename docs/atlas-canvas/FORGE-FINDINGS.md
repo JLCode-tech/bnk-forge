@@ -16,15 +16,15 @@ None of this has been checked yet against a cluster with BIG-IP Next controllers
 
 | # | Finding | Area | Severity | Status |
 |---|---------|------|----------|--------|
-| 1 | Gateway topology attaches policies by Gateway name only | backend | Bug: wrong data shown | Fix on a side branch, not merged |
-| 2 | A missing optional CRD marks every BNK fetch partial and disables the cache | backend | Performance and noise | Open |
-| 3 | Prettier drift in BNK frontend files, with no Prettier gate in CI | frontend tooling | Hygiene | Open |
-| 4 | Six existing ESLint warnings | frontend | Hygiene | Open |
-| 5 | pytest configuration and deprecation warnings | backend tooling | Hygiene | Open |
+| 1 | Gateway topology attaches policies by Gateway name only | backend | Bug: wrong data shown | Resolved |
+| 2 | A missing optional CRD marks every BNK fetch partial and disables the cache | backend | Performance and noise | Resolved |
+| 3 | Prettier drift in BNK frontend files, with no Prettier gate in CI | frontend tooling | Hygiene | Resolved (`types/f5bnk.ts`, `f5bnk-parts/index.ts` formatted) |
+| 4 | Six existing ESLint warnings | frontend | Hygiene | Resolved (0 ESLint warnings) |
+| 5 | pytest configuration and deprecation warnings | backend tooling | Hygiene | Resolved (`pyproject.toml`, `conftest.py`, Pydantic v2 `ConfigDict`) |
 | 6 | Some F5 CRDs fail to install on recent Kubernetes | lab seeding (upstream F5) | Environment | Not a Forge issue |
-| 7 | License status answers 502 when CWC is not installed, and the failure is not cached | backend | Noise | Open |
-| 8 | Opening BNK views can write to the cluster and read Secret data (CWC client pod, TMM exec) | backend | Safety: read-only and second-Forge setups | Open |
-| 9 | F5BnkGateway is not in Forge's resource registry | backend | Missing data | Worked around in the Canvas only |
+| 7 | License status answers 502 when CWC is not installed, and the failure is not cached | backend | Noise | Resolved (returns 200 `{installed: false}` and caches 120s) |
+| 8 | Opening BNK views can write to the cluster and read Secret data (CWC client pod, TMM exec) | backend | Safety: read-only and second-Forge setups | Resolved (passive views never create pods; 403 handled cleanly) |
+| 9 | F5BnkGateway is not in Forge's resource registry | backend | Missing data | Resolved (`f5bnkgateway` added to `BNK_RESOURCE_TYPES`) |
 
 The canvas's own limitations and its deviations from Gateway Atlas are listed separately at the end.
 

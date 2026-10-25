@@ -23,7 +23,7 @@ interface ResourceCreateDialogProps {
   namespace?: string;
 }
 
-export const getDefaultYaml = (
+const getDefaultYaml = (
   resourceType: string = "pod",
   namespace: string = "default",
 ) => {

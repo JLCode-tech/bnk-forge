@@ -1,8 +1,8 @@
 // F5 BNK & Upgrade types
 
-import type { JsonValue } from './common';
-import type { OperatorConnectivityMode } from './operators';
-import type { components } from './api-generated';
+import type { JsonValue } from "./common";
+import type { OperatorConnectivityMode } from "./operators";
+import type { components } from "./api-generated";
 
 export interface F5FirewallRule {
   name: string;
@@ -24,7 +24,7 @@ export interface F5FirewallRule {
 }
 
 export interface F5GatewayPolicyAssociation {
-  kind?: 'gateway';
+  kind?: "gateway";
   bnk_policy_name?: string;
   namespace: string;
   gateway_name?: string;
@@ -42,7 +42,7 @@ export interface F5GatewayPolicyAssociation {
 }
 
 export interface F5EgressPolicyAssociation {
-  kind: 'egress';
+  kind: "egress";
   namespace: string;
   egress_name?: string;
   firewall_policy_name: string;
@@ -56,7 +56,9 @@ export interface F5EgressPolicyAssociation {
   listener_name?: string;
 }
 
-export type F5PolicyGatewayAssociation = F5GatewayPolicyAssociation | F5EgressPolicyAssociation;
+export type F5PolicyGatewayAssociation =
+  | F5GatewayPolicyAssociation
+  | F5EgressPolicyAssociation;
 
 export interface F5PolicyGatewayAssociationsResponse {
   associations: F5PolicyGatewayAssociation[];
@@ -75,12 +77,16 @@ export interface F5PolicyGatewayAssociationsResponse {
  * until fleet/BNK endpoints migrate to canonical vocabulary.
  */
 export type HealthSeverity =
-  | 'healthy' | 'degraded' | 'unhealthy' | 'unknown'  // Canonical (PLAT-REL-001)
-  | 'warning' | 'critical';                            // Legacy (BNK health API)
+  | "healthy"
+  | "degraded"
+  | "unhealthy"
+  | "unknown" // Canonical (PLAT-REL-001)
+  | "warning"
+  | "critical"; // Legacy (BNK health API)
 
 export interface HealthRemediationAction {
   label: string;
-  action: 'view_logs' | 'restart_pod' | 'describe' | 'diagnostics';
+  action: "view_logs" | "restart_pod" | "describe" | "diagnostics";
   target: string;
   namespace: string;
 }
@@ -255,7 +261,7 @@ export interface BnkHealthResponse {
 }
 
 export interface HealthConnectivityStatus {
-  status: 'connected' | 'reachable' | 'partial' | 'unreachable' | 'unknown';
+  status: "connected" | "reachable" | "partial" | "unreachable" | "unknown";
   message: string;
   checkedAt: string | null;
 }
@@ -263,7 +269,7 @@ export interface HealthConnectivityStatus {
 export interface HealthIntegrationStatus {
   status: HealthSeverity;
   operatorConnected: boolean;
-  operatorMode: OperatorConnectivityMode | 'kubeconfig';
+  operatorMode: OperatorConnectivityMode | "kubeconfig";
   operatorVersion: string | null;
   lastSeen: string | null;
   message: string;
@@ -273,7 +279,7 @@ export interface HealthIntegrationStatus {
 export interface BnkUpgradePreCheck {
   name: string;
   label: string;
-  status: 'pass' | 'fail' | 'warn';
+  status: "pass" | "fail" | "warn";
   detail: string;
   critical?: boolean;
 }
@@ -293,7 +299,16 @@ export interface BnkUpgrade {
   project_id?: number;
   from_version?: string;
   to_version: string;
-  status: 'planning' | 'ready' | 'in_progress' | 'health_check' | 'completed' | 'failed' | 'rolling_back' | 'rolled_back' | 'cancelled';
+  status:
+    | "planning"
+    | "ready"
+    | "in_progress"
+    | "health_check"
+    | "completed"
+    | "failed"
+    | "rolling_back"
+    | "rolled_back"
+    | "cancelled";
   pre_check_passed: boolean;
   pre_checks?: BnkUpgradePreCheck[];
   plan?: BnkUpgradePlanStep[];
@@ -344,7 +359,7 @@ export interface BnkReleaseRegistryItem {
   flo_version_max: string | null;
   min_k8s: string | null;
   max_k8s: string | null;
-  source_type: 'clouddocs' | 'oci' | 'observed' | 'manual';
+  source_type: "clouddocs" | "oci" | "observed" | "manual";
   source_url: string | null;
   notes: string | null;
   is_active: boolean;
@@ -356,8 +371,8 @@ export interface BnkReleaseRegistryResponse {
 }
 
 export interface BnkCurrentVersion {
-  status: 'installed' | 'partial' | 'not_installed';
-  health: 'healthy' | 'degraded' | null;
+  status: "installed" | "partial" | "not_installed";
+  health: "healthy" | "degraded" | null;
   flo_version: string | null;
   ga_label?: string | null;
   min_k8s?: string | null;
@@ -389,7 +404,7 @@ export interface BnkCurrentVersion {
 // BNK Upgrade Versions Response
 export interface BnkUpgradeVersionsResponse {
   current_version: string | null;
-  available_versions: Array<BnkVersionInfo & { source?: 'registry' | null }>;
+  available_versions: Array<BnkVersionInfo & { source?: "registry" | null }>;
   registry_available: boolean;
   registry_error: string | null;
 }
@@ -405,7 +420,7 @@ export interface BnkUpgradeExecuteResponse {
   message: string;
   upgrade_id: number;
   celery_task_id: string;
-  status: 'in_progress';
+  status: "in_progress";
 }
 
 // BNK Upgrade Rollback Response
@@ -413,7 +428,7 @@ export interface BnkUpgradeRollbackResponse {
   message: string;
   upgrade_id: number;
   celery_task_id: string;
-  status: 'rolling_back';
+  status: "rolling_back";
 }
 
 // ─── BNK Gateway Topology Types ──────────────────────────────────────
@@ -437,8 +452,8 @@ export interface TopologyRouteBackend {
   namespace?: string | null;
   port: number | null;
   weight: number | null;
-  kind?: string;   // "Service" (default), "ServiceImport", etc.
-  group?: string;   // "" = core API group
+  kind?: string; // "Service" (default), "ServiceImport", etc.
+  group?: string; // "" = core API group
 }
 
 export interface TopologyAnalyzer {
@@ -452,8 +467,8 @@ export interface TopologyAnalyzer {
 export interface TopologyRoute {
   name: string;
   namespace: string;
-  kind: string;   // "HTTPRoute", "TCPRoute", "UDPRoute", "TLSRoute", "GRPCRoute", "L4Route"
-  resourceType?: string;  // registry key to fetch it by; L4Route has two (l4route, l4route_24)
+  kind: string; // "HTTPRoute", "TCPRoute", "UDPRoute", "TLSRoute", "GRPCRoute", "L4Route"
+  resourceType?: string; // registry key to fetch it by; L4Route has two (l4route, l4route_24)
   hostnames: string[];
   backends: TopologyRouteBackend[];
   analyzers: TopologyAnalyzer[];
@@ -472,7 +487,7 @@ export interface TopologyNetworkPolicyExtension {
 
 export interface TopologyNetworkPolicy {
   name: string;
-  kind?: string;  // "NetPolicy" (2.4) or "BNKNetPolicy"
+  kind?: string; // "NetPolicy" (2.4) or "BNKNetPolicy"
   namespace: string;
   extensions: TopologyNetworkPolicyExtension[];
   resolvedCount: number;
@@ -502,7 +517,7 @@ export interface TopologyFirewallPolicy {
 
 export interface TopologySecurityPolicy {
   name: string;
-  kind?: string;  // "SecPolicy" (2.4) or "BNKSecPolicy"
+  kind?: string; // "SecPolicy" (2.4) or "BNKSecPolicy"
   namespace: string;
   targetListener: string;
   firewallPolicies: TopologyFirewallPolicy[];
@@ -537,7 +552,7 @@ export interface TopologyVlan {
   name: string;
   namespace: string;
   kind?: string;
-  infraName?: string;  // parent Infra when projected from a 2.4 Infra network
+  infraName?: string; // parent Infra when projected from a 2.4 Infra network
   interfaces: unknown[];
   selfipV4s: string[];
   prefixLen: number | null;
@@ -652,7 +667,7 @@ export interface GatewayTopologyResponse {
 
 // Backend entry — a K8s Service cross-referenced with route backendRefs
 export interface BnkBackendRouteRef {
-  kind: string;            // "HTTPRoute", "TCPRoute", etc.
+  kind: string; // "HTTPRoute", "TCPRoute", etc.
   name: string;
   namespace: string;
   gatewayName: string;
@@ -664,7 +679,7 @@ export interface BnkBackendRouteRef {
 export interface BnkBackendEntry {
   name: string;
   namespace: string;
-  type: string;            // "ClusterIP" | "NodePort" | "LoadBalancer" | "ExternalName"
+  type: string; // "ClusterIP" | "NodePort" | "LoadBalancer" | "ExternalName"
   clusterIP?: string | null;
   ports: Array<{
     port: number | null;
@@ -752,15 +767,15 @@ export interface BnkHealthEndpointResponse extends BnkHealthResponse {
 
 /** A firewall rule being composed in the builder */
 export interface PolicyBuilderRule {
-  id: string;                     // client-side UUID for React keys
+  id: string; // client-side UUID for React keys
   name: string;
-  action: 'accept' | 'drop' | 'reject';
-  ipProtocol: 'tcp' | 'udp' | 'any';
+  action: "accept" | "drop" | "reject";
+  ipProtocol: "tcp" | "udp" | "any";
   source: {
-    addresses: string[];          // inline CIDRs
-    addressLists: string[];       // refs to F5BigCneAddresslist names
-    ports: string[];              // inline ports (strings per CRD spec)
-    portLists: string[];          // refs to F5BigCnePortlist names
+    addresses: string[]; // inline CIDRs
+    addressLists: string[]; // refs to F5BigCneAddresslist names
+    ports: string[]; // inline ports (strings per CRD spec)
+    portLists: string[]; // refs to F5BigCnePortlist names
   };
   destination: {
     addresses: string[];
@@ -773,17 +788,17 @@ export interface PolicyBuilderRule {
 
 // ─── Configuration Builder (Wizard) Types ────────────────────────────
 
-export type ConfigBuilderStep = 'gateway' | 'routes' | 'security' | 'review';
+export type ConfigBuilderStep = "gateway" | "routes" | "security" | "review";
 
 export interface ConfigBuilderRoute {
-  id: string;                     // client-side UUID
-  kind: 'HTTPRoute' | 'TCPRoute' | 'UDPRoute' | 'TLSRoute' | 'GRPCRoute';
+  id: string; // client-side UUID
+  kind: "HTTPRoute" | "TCPRoute" | "UDPRoute" | "TLSRoute" | "GRPCRoute";
   name: string;
-  listenerName: string;           // parentRef sectionName
-  hostnames: string[];            // HTTPRoute/TLSRoute/GRPCRoute only
+  listenerName: string; // parentRef sectionName
+  hostnames: string[]; // HTTPRoute/TLSRoute/GRPCRoute only
   // For HTTPRoute matches
   matches: Array<{
-    pathType: 'PathPrefix' | 'Exact';
+    pathType: "PathPrefix" | "Exact";
     pathValue: string;
   }>;
   // Backend refs
@@ -801,7 +816,7 @@ export interface ConfigBuilderState {
   namespace: string;
   listeners: Array<{
     name: string;
-    protocol: 'HTTP' | 'HTTPS' | 'TCP' | 'UDP' | 'TLS';
+    protocol: "HTTP" | "HTTPS" | "TCP" | "UDP" | "TLS";
     port: number;
     hostname?: string;
     tls_certificate_ref?: string;
@@ -813,7 +828,7 @@ export interface ConfigBuilderState {
   securityPolicyName: string;
   firewallPolicyName: string;
   firewallRules: PolicyBuilderRule[];
-  targetListener: string;         // which listener to attach security policy to
+  targetListener: string; // which listener to attach security policy to
   // Step 3: Network policy (optional)
   networkEnabled: boolean;
   networkPolicyName: string;
@@ -827,21 +842,21 @@ export interface ConfigBuilderState {
 
 /** The complete state of a policy being built */
 export interface PolicyBuilderState {
-  mode: 'create' | 'edit';
-  policyType: 'security' | 'network';
+  mode: "create" | "edit";
+  policyType: "security" | "network";
   name: string;
   namespace: string;
   // Target gateway/listener
   targetGateway: string;
-  targetListener: string;         // sectionName, empty = all listeners
+  targetListener: string; // sectionName, empty = all listeners
   // For security policies (BNKSecPolicy → F5BigFwPolicy)
   firewallPolicyName: string;
   firewallRules: PolicyBuilderRule[];
   // For network policies (BNKNetPolicy → extensionRefs)
   extensionRefs: Array<{
-    kind: string;                 // 'F5BigCneIrule', etc.
+    kind: string; // 'F5BigCneIrule', etc.
     name: string;
-    group: string;                // 'k8s.f5net.com'
+    group: string; // 'k8s.f5net.com'
   }>;
 }
 
@@ -912,7 +927,7 @@ export interface A2AAgentCandidate {
   routeRefs: BnkBackendRouteRef[];
   gateways: string[];
   agentCard: A2AAgentCard | null;
-  probeStatus: 'pending' | 'success' | 'error' | 'skipped';
+  probeStatus: "pending" | "success" | "error" | "skipped";
 }
 
 /** Response from GET /api/k8s/clusters/{id}/f5bnk/a2a/agents */
@@ -925,9 +940,9 @@ export interface A2AAgentsResponse {
 }
 
 // Topology Canvas (GET /f5bnk/canvas) — generated from the backend schema.
-export type BnkCanvasResponse = components['schemas']['BnkCanvasResponse'];
+export type BnkCanvasResponse = components["schemas"]["BnkCanvasResponse"];
 /** Which Gateways the Canvas draws: every controller, or BIG-IP Next only. */
-export type BnkCanvasControllers = 'all' | 'bnk';
-export type BnkCanvasResource = components['schemas']['BnkCanvasResource'];
-export type BnkCanvasEdge = components['schemas']['BnkCanvasEdge'];
-export type BnkCanvasFinding = components['schemas']['BnkCanvasFinding'];
+export type BnkCanvasControllers = "all" | "bnk";
+export type BnkCanvasResource = components["schemas"]["BnkCanvasResource"];
+export type BnkCanvasEdge = components["schemas"]["BnkCanvasEdge"];
+export type BnkCanvasFinding = components["schemas"]["BnkCanvasFinding"];

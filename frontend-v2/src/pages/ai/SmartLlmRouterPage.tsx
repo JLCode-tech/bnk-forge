@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -108,7 +108,10 @@ export default function SmartLlmRouterPage() {
     refetch,
     error: clustersError,
   } = useAllClusters();
-  const clusters = clustersData?.clusters ?? [];
+  const clusters = useMemo(
+    () => clustersData?.clusters ?? [],
+    [clustersData?.clusters],
+  );
 
   const [selectedClusterId, setSelectedClusterId] = useClusterScope();
   const [selectedSubView, setSelectedSubView] = useState<InferenceViewKey>(
@@ -221,7 +224,12 @@ export default function SmartLlmRouterPage() {
   });
 
   const { data: modelData } = useQuery({
-    queryKey: ["bnk-resources", scopedClusterId, "inferencemodelrewrite", "all"],
+    queryKey: [
+      "bnk-resources",
+      scopedClusterId,
+      "inferencemodelrewrite",
+      "all",
+    ],
     queryFn: () =>
       api.getClusterResources(scopedClusterId, "inferencemodelrewrite"),
     enabled: activeViewKey === "pools" && Boolean(scopedClusterId),

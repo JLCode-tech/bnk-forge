@@ -6,13 +6,14 @@ NOTE: Configurable settings (like cloud regions) should NOT have defaults here.
 They should come from the database via services.defaults_service.get_default().
 This file is for infrastructure/bootstrap settings only.
 """
+
 import logging
 import os
 import secrets
 from collections.abc import Callable
 from typing import Any, Literal
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -326,9 +327,10 @@ class Settings(BaseSettings):
     _jwt_key_auto_generated: bool = False
     _encryption_key_auto_generated: bool = False
 
-    class Config:
-        case_sensitive = True
-        extra = "ignore"  # Allow extra env vars (e.g. INFRACOST_API_KEY, HOST_REPO_PATH) without crashing
+    model_config = SettingsConfigDict(
+        case_sensitive=True,
+        extra="ignore",  # Allow extra env vars (e.g. INFRACOST_API_KEY, HOST_REPO_PATH) without crashing
+    )
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -340,9 +342,7 @@ class Settings(BaseSettings):
         # explicitly-provided key (auto_generated=False), so validate_production would
         # pass on an empty secret. `not` routes "" through generation instead.
         if not self.JWT_SECRET_KEY:
-            key, auto = _persist_or_load_key(
-                os.path.join(_KEYS_DIR, "jwt_secret.key"), lambda: secrets.token_hex(32)
-            )
+            key, auto = _persist_or_load_key(os.path.join(_KEYS_DIR, "jwt_secret.key"), lambda: secrets.token_hex(32))
             self.JWT_SECRET_KEY = key
             self._jwt_key_auto_generated = auto
             if self.ENVIRONMENT == "development":
@@ -364,6 +364,7 @@ class Settings(BaseSettings):
         enc_path = _encryption_key_path()
         if not self.ENCRYPTION_KEY:
             from cryptography.fernet import Fernet
+
             key, auto = _persist_or_load_key(enc_path, lambda: Fernet.generate_key().decode())
             self.ENCRYPTION_KEY = key
             self._encryption_key_auto_generated = auto
@@ -378,12 +379,10 @@ class Settings(BaseSettings):
                 logger.error("=" * 60)
                 logger.error("FATAL: ENCRYPTION_KEY is not a valid Fernet key")
                 logger.error("=" * 60)
+                logger.error("It must be a 32-byte url-safe base64 Fernet key. Generate one with:")
                 logger.error(
-                    "It must be a 32-byte url-safe base64 Fernet key. Generate one with:"
-                )
-                logger.error(
-                    "  ENCRYPTION_KEY=$(python3 -c \"from cryptography.fernet import "
-                    "Fernet; print(Fernet.generate_key().decode())\")"
+                    '  ENCRYPTION_KEY=$(python3 -c "from cryptography.fernet import '
+                    'Fernet; print(Fernet.generate_key().decode())")'
                 )
                 logger.error("=" * 60)
                 raise SystemExit(1)
@@ -406,14 +405,10 @@ class Settings(BaseSettings):
 
         # SEC-006: Auto-generated keys are not acceptable in production
         if self._jwt_key_auto_generated:
-            issues.append(
-                "JWT_SECRET_KEY was not explicitly set — set it as an environment variable"
-            )
+            issues.append("JWT_SECRET_KEY was not explicitly set — set it as an environment variable")
 
         if self._encryption_key_auto_generated:
-            issues.append(
-                "ENCRYPTION_KEY was not explicitly set — set it as an environment variable"
-            )
+            issues.append("ENCRYPTION_KEY was not explicitly set — set it as an environment variable")
 
         # #187: the MCP service password is a shared secret and cannot be
         # auto-generated -- it must be set explicitly and identically on the
@@ -432,16 +427,10 @@ class Settings(BaseSettings):
         # rejected. Mean "a wildcard origin ENTRY": test the parsed origin list for
         # an exact `*`.
         if "*" in self.cors_origins:
-            issues.append(
-                "ALLOWED_ORIGINS contains '*' (wildcard) — set specific origins"
-            )
+            issues.append("ALLOWED_ORIGINS contains '*' (wildcard) — set specific origins")
 
-        if self.ENVIRONMENT == "production" and any(
-            "localhost" in origin for origin in self.cors_origins
-        ):
-            issues.append(
-                "ALLOWED_ORIGINS contains 'localhost' — use your actual domain/IP"
-            )
+        if self.ENVIRONMENT == "production" and any("localhost" in origin for origin in self.cors_origins):
+            issues.append("ALLOWED_ORIGINS contains 'localhost' — use your actual domain/IP")
 
         if issues:
             logger.error("=" * 60)
@@ -451,15 +440,17 @@ class Settings(BaseSettings):
                 logger.error(f"  ✗ {issue}")
             logger.error("")
             logger.error("To fix: set these as environment variables in docker-compose.yml.")
-            logger.error("  JWT_SECRET_KEY=$(python3 -c \"import secrets; print(secrets.token_hex(32))\")")
+            logger.error('  JWT_SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")')
             # bonnyr-f5 #193 B-3: ENCRYPTION_KEY is a Fernet key (consumed as the
             # at-rest key), NOT secrets.token_hex(16) — that old recipe printed an
             # invalid key that encrypted nothing. Match .env.example:42.
             logger.error(
-                "  ENCRYPTION_KEY=$(python3 -c \"from cryptography.fernet import "
-                "Fernet; print(Fernet.generate_key().decode())\")"
+                '  ENCRYPTION_KEY=$(python3 -c "from cryptography.fernet import '
+                'Fernet; print(Fernet.generate_key().decode())")'
             )
-            logger.error("  MCP_SERVICE_PASSWORD=<strong shared secret; the SAME value the MCP server gets as BNK_FORGE_PASSWORD>")
+            logger.error(
+                "  MCP_SERVICE_PASSWORD=<strong shared secret; the SAME value the MCP server gets as BNK_FORGE_PASSWORD>"
+            )
             logger.error("See: docs/DEPLOYMENT.md")
             logger.error("=" * 60)
             raise SystemExit(1)

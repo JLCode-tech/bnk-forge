@@ -38,57 +38,107 @@ def _resource(name: str, namespace: str = "f5-bnk", **kw) -> dict:
     }
 
 
-def _gateway(name: str = "gw-prod", namespace: str = "f5-bnk", listeners=None, addresses=None,
-             conditions=None, listener_status=None) -> dict:
+def _gateway(
+    name: str = "gw-prod",
+    namespace: str = "f5-bnk",
+    listeners=None,
+    addresses=None,
+    conditions=None,
+    listener_status=None,
+) -> dict:
     listeners = listeners or [{"name": "http", "protocol": "HTTP", "port": 80}]
     status: dict = {
         "addresses": [{"value": a} for a in (addresses or ["10.0.0.1"])],
-        "conditions": conditions or [
+        "conditions": conditions
+        or [
             {"type": "Programmed", "status": "True"},
             {"type": "Accepted", "status": "True"},
         ],
     }
     if listener_status:
         status["listeners"] = listener_status
-    return _resource(name, namespace, spec={
-        "gatewayClassName": "f5-bnk",
-        "listeners": listeners,
-    }, status=status)
+    return _resource(
+        name,
+        namespace,
+        spec={
+            "gatewayClassName": "f5-bnk",
+            "listeners": listeners,
+        },
+        status=status,
+    )
 
 
-def _httproute(name: str, gw_name: str, gw_ns: str = "f5-bnk",
-               namespace: str = "f5-bnk", backends=None, section_name=None,
-               parent_conditions=None) -> dict:
+def _httproute(
+    name: str,
+    gw_name: str,
+    gw_ns: str = "f5-bnk",
+    namespace: str = "f5-bnk",
+    backends=None,
+    section_name=None,
+    parent_conditions=None,
+) -> dict:
     parent_ref: dict = {"name": gw_name, "namespace": gw_ns}
     if section_name:
         parent_ref["sectionName"] = section_name
     status: dict = {}
     if parent_conditions is not None:
-        status["parents"] = [{
-            "parentRef": {"name": gw_name, "namespace": gw_ns, "sectionName": section_name} if section_name else {"name": gw_name, "namespace": gw_ns},
-            "conditions": parent_conditions,
-        }]
-    return _resource(name, namespace, spec={
-        "parentRefs": [parent_ref],
-        "hostnames": ["example.com"],
-        "rules": [{
-            "backendRefs": backends or [
-                {"name": "svc-1", "port": 8080, "kind": "Service", "group": ""},
+        status["parents"] = [
+            {
+                "parentRef": {"name": gw_name, "namespace": gw_ns, "sectionName": section_name}
+                if section_name
+                else {"name": gw_name, "namespace": gw_ns},
+                "conditions": parent_conditions,
+            }
+        ]
+    return _resource(
+        name,
+        namespace,
+        spec={
+            "parentRefs": [parent_ref],
+            "hostnames": ["example.com"],
+            "rules": [
+                {
+                    "backendRefs": backends
+                    or [
+                        {"name": "svc-1", "port": 8080, "kind": "Service", "group": ""},
+                    ],
+                }
             ],
-        }],
-    }, status=status)
+        },
+        status=status,
+    )
 
 
 def _empty_resources() -> dict:
-    return {k: [] for k in [
-        "gatewayclass", "gateway", "httproute", "grpcroute", "tcproute", "udproute",
-        "tlsroute", "l4route", "referencegrant", "bnksecpolicy", "bnknetpolicy",
-        "f5bigfwpolicy", "f5bigcneirule", "f5biganalyzer",
-        "f5bigcneaddresslist", "f5bigcneportlist",
-        "f5spkvlan", "cneinstance", "f5spkstaticroute",
-        "f5spksnatpool", "f5spkegress", "f5bigloghslpub", "f5biglogprofile",
-        "service",
-    ]}
+    return {
+        k: []
+        for k in [
+            "gatewayclass",
+            "gateway",
+            "httproute",
+            "grpcroute",
+            "tcproute",
+            "udproute",
+            "tlsroute",
+            "l4route",
+            "referencegrant",
+            "bnksecpolicy",
+            "bnknetpolicy",
+            "f5bigfwpolicy",
+            "f5bigcneirule",
+            "f5biganalyzer",
+            "f5bigcneaddresslist",
+            "f5bigcneportlist",
+            "f5spkvlan",
+            "cneinstance",
+            "f5spkstaticroute",
+            "f5spksnatpool",
+            "f5spkegress",
+            "f5bigloghslpub",
+            "f5biglogprofile",
+            "service",
+        ]
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -147,10 +197,14 @@ class TestAnalyzeTopology:
     def test_route_matches_by_section_name(self):
         """Route with sectionName only attaches to the matching listener."""
         resources = _empty_resources()
-        resources["gateway"] = [_gateway(listeners=[
-            {"name": "http", "protocol": "HTTP", "port": 80},
-            {"name": "https", "protocol": "HTTPS", "port": 443},
-        ])]
+        resources["gateway"] = [
+            _gateway(
+                listeners=[
+                    {"name": "http", "protocol": "HTTP", "port": 80},
+                    {"name": "https", "protocol": "HTTPS", "port": 443},
+                ]
+            )
+        ]
         resources["httproute"] = [
             _httproute("http-route", "gw-prod", section_name="http"),
             _httproute("https-route", "gw-prod", section_name="https"),
@@ -170,10 +224,14 @@ class TestAnalyzeTopology:
     def test_route_without_section_attaches_to_all_listeners(self):
         """Route with no sectionName attaches to every listener on the gateway."""
         resources = _empty_resources()
-        resources["gateway"] = [_gateway(listeners=[
-            {"name": "http", "protocol": "HTTP", "port": 80},
-            {"name": "https", "protocol": "HTTPS", "port": 443},
-        ])]
+        resources["gateway"] = [
+            _gateway(
+                listeners=[
+                    {"name": "http", "protocol": "HTTP", "port": 80},
+                    {"name": "https", "protocol": "HTTPS", "port": 443},
+                ]
+            )
+        ]
         resources["httproute"] = [_httproute("catch-all", "gw-prod")]
 
         result = analyze_topology({"resources": resources})
@@ -187,10 +245,15 @@ class TestAnalyzeTopology:
         resources = _empty_resources()
         resources["gateway"] = [_gateway()]
         resources["httproute"] = [_httproute("r1", "gw-prod")]
-        resources["tcproute"] = [_resource("r2", spec={
-            "parentRefs": [{"name": "gw-prod", "namespace": "f5-bnk"}],
-            "rules": [{"backendRefs": [{"name": "tcp-svc", "port": 9090}]}],
-        })]
+        resources["tcproute"] = [
+            _resource(
+                "r2",
+                spec={
+                    "parentRefs": [{"name": "gw-prod", "namespace": "f5-bnk"}],
+                    "rules": [{"backendRefs": [{"name": "tcp-svc", "port": 9090}]}],
+                },
+            )
+        ]
 
         result = analyze_topology({"resources": resources})
         routes = result["topology"][0]["listeners"][0]["routes"]
@@ -229,10 +292,15 @@ class TestAnalyzeTopology:
 
     def test_reference_grants_included(self):
         resources = _empty_resources()
-        resources["referencegrant"] = [_resource("rg-1", spec={
-            "from": [{"group": "gateway.networking.k8s.io", "kind": "HTTPRoute", "namespace": "app"}],
-            "to": [{"group": "", "kind": "Service"}],
-        })]
+        resources["referencegrant"] = [
+            _resource(
+                "rg-1",
+                spec={
+                    "from": [{"group": "gateway.networking.k8s.io", "kind": "HTTPRoute", "namespace": "app"}],
+                    "to": [{"group": "", "kind": "Service"}],
+                },
+            )
+        ]
 
         result = analyze_topology({"resources": resources})
         assert len(result["referenceGrants"]) == 1
@@ -240,12 +308,14 @@ class TestAnalyzeTopology:
 
     def test_gateway_operational_state(self):
         resources = _empty_resources()
-        resources["gateway"] = [_gateway(
-            conditions=[
-                {"type": "Accepted", "status": "True"},
-                {"type": "Programmed", "status": "False", "message": "address conflict"},
-            ],
-        )]
+        resources["gateway"] = [
+            _gateway(
+                conditions=[
+                    {"type": "Accepted", "status": "True"},
+                    {"type": "Programmed", "status": "False", "message": "address conflict"},
+                ],
+            )
+        ]
 
         result = analyze_topology({"resources": resources})
         gw = result["topology"][0]
@@ -255,11 +325,17 @@ class TestAnalyzeTopology:
 
     def test_listener_operational_state(self):
         resources = _empty_resources()
-        resources["gateway"] = [_gateway(listener_status=[{
-            "name": "http",
-            "attachedRoutes": 3,
-            "conditions": [{"type": "Accepted", "status": "True"}],
-        }])]
+        resources["gateway"] = [
+            _gateway(
+                listener_status=[
+                    {
+                        "name": "http",
+                        "attachedRoutes": 3,
+                        "conditions": [{"type": "Accepted", "status": "True"}],
+                    }
+                ]
+            )
+        ]
 
         result = analyze_topology({"resources": resources})
         listener = result["topology"][0]["listeners"][0]
@@ -269,9 +345,15 @@ class TestAnalyzeTopology:
     def test_route_operational_state(self):
         resources = _empty_resources()
         resources["gateway"] = [_gateway()]
-        resources["httproute"] = [_httproute("web-route", "gw-prod", parent_conditions=[
-            {"type": "Accepted", "status": "False", "message": "no matching listener"},
-        ])]
+        resources["httproute"] = [
+            _httproute(
+                "web-route",
+                "gw-prod",
+                parent_conditions=[
+                    {"type": "Accepted", "status": "False", "message": "no matching listener"},
+                ],
+            )
+        ]
 
         result = analyze_topology({"resources": resources})
         route = result["topology"][0]["listeners"][0]["routes"][0]
@@ -309,29 +391,38 @@ class TestMatchRoutesToListener:
 
 class TestMatchAnalyzers:
     def test_analyzer_matching_route(self):
-        analyzer = _resource("analyzer-1", spec={
-            "applications": [{"name": "web-route", "kind": "HTTPRoute", "namespace": "f5-bnk"}],
-            "schedule": "5m",
-            "script": {"type": "custom", "custom": {"parameters": []}},
-            "dataSources": [],
-        })
+        analyzer = _resource(
+            "analyzer-1",
+            spec={
+                "applications": [{"name": "web-route", "kind": "HTTPRoute", "namespace": "f5-bnk"}],
+                "schedule": "5m",
+                "script": {"type": "custom", "custom": {"parameters": []}},
+                "dataSources": [],
+            },
+        )
         result = _match_analyzers([analyzer], "web-route", "HTTPRoute", "f5-bnk", "f5-bnk")
         assert len(result) == 1
         assert result[0]["name"] == "analyzer-1"
 
     def test_object_schedule_is_normalised(self):
-        analyzer = _resource("analyzer-1", spec={
-            "applications": [{"name": "web-route", "kind": "HTTPRoute", "namespace": "f5-bnk"}],
-            "schedule": {"every": "5m"},
-        })
+        analyzer = _resource(
+            "analyzer-1",
+            spec={
+                "applications": [{"name": "web-route", "kind": "HTTPRoute", "namespace": "f5-bnk"}],
+                "schedule": {"every": "5m"},
+            },
+        )
         result = _match_analyzers([analyzer], "web-route", "HTTPRoute", "f5-bnk", "f5-bnk")
         assert result[0]["schedule"] == "5m"
         TopologyAnalyzer(**result[0])
 
     def test_no_match(self):
-        analyzer = _resource("analyzer-1", spec={
-            "applications": [{"name": "other-route", "kind": "HTTPRoute", "namespace": "f5-bnk"}],
-        })
+        analyzer = _resource(
+            "analyzer-1",
+            spec={
+                "applications": [{"name": "other-route", "kind": "HTTPRoute", "namespace": "f5-bnk"}],
+            },
+        )
         result = _match_analyzers([analyzer], "web-route", "HTTPRoute", "f5-bnk", "f5-bnk")
         assert result == []
 
@@ -343,33 +434,45 @@ class TestMatchAnalyzers:
 
 class TestMatchNetPolicies:
     def test_policy_targeting_gateway_listener(self):
-        np = _resource("np-1", spec={
-            "targetRefs": [{"name": "gw-prod", "sectionName": "http", "kind": "Gateway"}],
-            "extensionRefs": [{"kind": "F5BigCneIrule", "name": "ir-1", "group": ""}],
-        }, status={"descendants": []})
+        np = _resource(
+            "np-1",
+            spec={
+                "targetRefs": [{"name": "gw-prod", "sectionName": "http", "kind": "Gateway"}],
+                "extensionRefs": [{"kind": "F5BigCneIrule", "name": "ir-1", "group": ""}],
+            },
+            status={"descendants": []},
+        )
         result = _match_net_policies([np], {}, "gw-prod", "http")
         assert len(result) == 1
         assert result[0]["name"] == "np-1"
 
     def test_policy_different_listener_not_matched(self):
-        np = _resource("np-1", spec={
-            "targetRefs": [{"name": "gw-prod", "sectionName": "https", "kind": "Gateway"}],
-            "extensionRefs": [],
-        }, status={"descendants": []})
+        np = _resource(
+            "np-1",
+            spec={
+                "targetRefs": [{"name": "gw-prod", "sectionName": "https", "kind": "Gateway"}],
+                "extensionRefs": [],
+            },
+            status={"descendants": []},
+        )
         result = _match_net_policies([np], {}, "gw-prod", "http")
         assert result == []
 
     def test_net_policy_operational_state(self):
-        np = _resource("np-1", spec={
-            "targetRefs": [{"name": "gw-prod", "sectionName": "http", "kind": "Gateway"}],
-            "extensionRefs": [],
-        }, status={
-            "descendants": [],
-            "conditions": [
-                {"type": "Resolved", "status": "True", "message": "resolved"},
-                {"type": "Programmed", "status": "False", "message": "not programmed"},
-            ],
-        })
+        np = _resource(
+            "np-1",
+            spec={
+                "targetRefs": [{"name": "gw-prod", "sectionName": "http", "kind": "Gateway"}],
+                "extensionRefs": [],
+            },
+            status={
+                "descendants": [],
+                "conditions": [
+                    {"type": "Resolved", "status": "True", "message": "resolved"},
+                    {"type": "Programmed", "status": "False", "message": "not programmed"},
+                ],
+            },
+        )
         result = _match_net_policies([np], {}, "gw-prod", "http")
         assert result[0]["resolved"] is True
         assert result[0]["programmed"] is False
@@ -378,14 +481,21 @@ class TestMatchNetPolicies:
 
 class TestMatchSecPolicies:
     def test_sec_policy_with_firewall(self):
-        sp = _resource("sp-1", spec={
-            "targetRefs": [{"name": "gw-prod", "kind": "Gateway", "sectionName": "http"}],
-            "extensionRefs": [{"kind": "F5BigFwPolicy", "name": "fw-1"}],
-        })
-        fw = _resource("fw-1", spec={
-            "rule": [{"name": "allow-all", "action": "accept", "ipProtocol": "any", "logging": False}],
-        })
+        sp = _resource(
+            "sp-1",
+            spec={
+                "targetRefs": [{"name": "gw-prod", "kind": "Gateway", "sectionName": "http"}],
+                "extensionRefs": [{"kind": "F5BigFwPolicy", "name": "fw-1"}],
+            },
+        )
+        fw = _resource(
+            "fw-1",
+            spec={
+                "rule": [{"name": "allow-all", "action": "accept", "ipProtocol": "any", "logging": False}],
+            },
+        )
         from services.bnk.helpers import make_resource_map
+
         fw_map = make_resource_map([fw])
         result = _match_sec_policies([sp], fw_map, {}, {}, "gw-prod")
         assert len(result) == 1
@@ -394,16 +504,21 @@ class TestMatchSecPolicies:
         assert result[0]["firewallPolicies"][0]["rules"][0]["action"] == "accept"
 
     def test_sec_policy_operational_state(self):
-        sp = _resource("sp-1", spec={
-            "targetRefs": [{"name": "gw-prod", "kind": "Gateway", "sectionName": "http"}],
-            "extensionRefs": [{"kind": "F5BigFwPolicy", "name": "fw-1"}],
-        }, status={
-            "conditions": [
-                {"type": "Resolved", "status": "True", "message": "resolved"},
-                {"type": "Programmed", "status": "True"},
-            ],
-        })
+        sp = _resource(
+            "sp-1",
+            spec={
+                "targetRefs": [{"name": "gw-prod", "kind": "Gateway", "sectionName": "http"}],
+                "extensionRefs": [{"kind": "F5BigFwPolicy", "name": "fw-1"}],
+            },
+            status={
+                "conditions": [
+                    {"type": "Resolved", "status": "True", "message": "resolved"},
+                    {"type": "Programmed", "status": "True"},
+                ],
+            },
+        )
         from services.bnk.helpers import make_resource_map
+
         fw_map = make_resource_map([_resource("fw-1", spec={"rule": []})])
         result = _match_sec_policies([sp], fw_map, {}, {}, "gw-prod")
         assert result[0]["resolved"] is True
@@ -420,6 +535,7 @@ class TestResolveListRefs:
     def test_resolves_address_list(self):
         al = _resource("allow-list", spec={"addresses": ["10.0.0.0/8", "192.168.0.0/16"]})
         from services.bnk.helpers import make_resource_map
+
         addr_map = make_resource_map([al])
         result = resolve_list_refs({"allow-list"}, addr_map, "f5-bnk", "addresses")
         assert len(result) == 1
@@ -438,11 +554,17 @@ class TestResolveListRefs:
 
 class TestBuildVlan:
     def test_vlan_with_programmed_condition(self):
-        v = _resource("int-vlan", spec={
-            "interfaces": ["1.1"], "selfip_v4s": ["10.1.1.1"], "mtu": 1500,
-        }, status={
-            "conditions": [{"type": "Programmed", "status": "True"}],
-        })
+        v = _resource(
+            "int-vlan",
+            spec={
+                "interfaces": ["1.1"],
+                "selfip_v4s": ["10.1.1.1"],
+                "mtu": 1500,
+            },
+            status={
+                "conditions": [{"type": "Programmed", "status": "True"}],
+            },
+        )
         result = _build_vlan(v)
         assert result["name"] == "int-vlan"
         assert result["ready"] is True
@@ -456,14 +578,18 @@ class TestBuildVlan:
 
 class TestBuildCneInstance:
     def test_cne_with_features(self):
-        cne = _resource("cne-1", spec={
-            "firewallACL": {"enabled": True},
-            "intelligentLB": {"enabled": False},
-            "coreCollection": {"enabled": True},
-            "envDiscovery": {"enabled": False},
-            "containerPlatform": "k8s",
-            "networkAttachments": ["net-1"],
-        }, status={"phase": "Running"})
+        cne = _resource(
+            "cne-1",
+            spec={
+                "firewallACL": {"enabled": True},
+                "intelligentLB": {"enabled": False},
+                "coreCollection": {"enabled": True},
+                "envDiscovery": {"enabled": False},
+                "containerPlatform": "k8s",
+                "networkAttachments": ["net-1"],
+            },
+            status={"phase": "Running"},
+        )
         result = _build_cne_instance(cne)
         assert result["name"] == "cne-1"
         assert result["features"]["firewallACL"] is True
@@ -475,39 +601,52 @@ class TestBuildCneInstance:
         assert result["ready"] is False
 
     def test_cne_ready_when_programmed(self):
-        cne = _resource("cne-1", spec={"containerPlatform": "k8s"}, status={
-            "phase": "Running",
-            "conditions": [{"type": "Programmed", "status": "True"}],
-        })
+        cne = _resource(
+            "cne-1",
+            spec={"containerPlatform": "k8s"},
+            status={
+                "phase": "Running",
+                "conditions": [{"type": "Programmed", "status": "True"}],
+            },
+        )
         result = _build_cne_instance(cne)
         assert result["ready"] is True
 
 
 class TestBuildEgress:
     def test_egress_with_full_spec(self):
-        eg = _resource("bnk-egress-demo", namespace="f5-cne-system", spec={
-            "snatType": "SRC_TRANS_AUTOMAP",
-            "egressSnatpool": "my-snatpool",
-            "firewallEnforcedPolicy": "egress-demo-fw",
-            "logProfile": "egress-log-profile",
-            "pseudoCNIConfig": {
-                "namespaces": ["bnk-egress-demo"],
-                "appPodInterface": "eth0",
-                "vxlan": {
-                    "create": True,
-                    "tmmInterfaceName": "ext-vlan",
-                    "nodeInterfaceName": "ens5",
-                    "ipv4Subnet": "192.168.0.0",
-                    "ipv4PrefixLen": 16,
+        eg = _resource(
+            "bnk-egress-demo",
+            namespace="f5-cne-system",
+            spec={
+                "snatType": "SRC_TRANS_AUTOMAP",
+                "egressSnatpool": "my-snatpool",
+                "firewallEnforcedPolicy": "egress-demo-fw",
+                "logProfile": "egress-log-profile",
+                "pseudoCNIConfig": {
+                    "namespaces": ["bnk-egress-demo"],
+                    "appPodInterface": "eth0",
+                    "vxlan": {
+                        "create": True,
+                        "tmmInterfaceName": "ext-vlan",
+                        "nodeInterfaceName": "ens5",
+                        "ipv4Subnet": "192.168.0.0",
+                        "ipv4PrefixLen": 16,
+                    },
                 },
             },
-        }, status={
-            "conditions": [
-                {"type": "Accepted", "status": "True", "reason": "Accepted"},
-                {"type": "Programmed", "status": "True", "reason": "Programmed",
-                 "message": "CR config sent to all grpc endpoints"},
-            ],
-        })
+            status={
+                "conditions": [
+                    {"type": "Accepted", "status": "True", "reason": "Accepted"},
+                    {
+                        "type": "Programmed",
+                        "status": "True",
+                        "reason": "Programmed",
+                        "message": "CR config sent to all grpc endpoints",
+                    },
+                ],
+            },
+        )
         result = _build_egress(eg)
         assert result["name"] == "bnk-egress-demo"
         assert result["namespace"] == "f5-cne-system"
@@ -531,41 +670,57 @@ class TestBuildEgress:
         assert result["ready"] is False
 
     def test_egress_with_cni_config_but_no_vxlan_returns_none(self):
-        eg = _resource("egress-no-vxlan", namespace="f5-cne-system", spec={
-            "snatType": "SRC_TRANS_AUTOMAP",
-            "pseudoCNIConfig": {
-                "namespaces": ["bnk-egress-demo"],
-                "appPodInterface": "eth0",
+        eg = _resource(
+            "egress-no-vxlan",
+            namespace="f5-cne-system",
+            spec={
+                "snatType": "SRC_TRANS_AUTOMAP",
+                "pseudoCNIConfig": {
+                    "namespaces": ["bnk-egress-demo"],
+                    "appPodInterface": "eth0",
+                },
             },
-        })
+        )
         result = _build_egress(eg)
         assert result["capturedNamespaces"] == ["bnk-egress-demo"]
         assert result["vxlan"] is None
 
     def test_egress_with_null_namespaces_returns_empty_list(self):
-        eg = _resource("egress-null-ns", namespace="f5-cne-system", spec={
-            "pseudoCNIConfig": {
-                "namespaces": None,
+        eg = _resource(
+            "egress-null-ns",
+            namespace="f5-cne-system",
+            spec={
+                "pseudoCNIConfig": {
+                    "namespaces": None,
+                },
             },
-        })
+        )
         result = _build_egress(eg)
         assert result["capturedNamespaces"] == []
 
     def test_egress_with_null_or_empty_vxlan_returns_none(self):
-        eg_null = _resource("egress-null-vxlan", namespace="f5-cne-system", spec={
-            "pseudoCNIConfig": {
-                "namespaces": ["demo"],
-                "vxlan": None,
+        eg_null = _resource(
+            "egress-null-vxlan",
+            namespace="f5-cne-system",
+            spec={
+                "pseudoCNIConfig": {
+                    "namespaces": ["demo"],
+                    "vxlan": None,
+                },
             },
-        })
+        )
         assert _build_egress(eg_null)["vxlan"] is None
 
-        eg_empty = _resource("egress-empty-vxlan", namespace="f5-cne-system", spec={
-            "pseudoCNIConfig": {
-                "namespaces": ["demo"],
-                "vxlan": {},
+        eg_empty = _resource(
+            "egress-empty-vxlan",
+            namespace="f5-cne-system",
+            spec={
+                "pseudoCNIConfig": {
+                    "namespaces": ["demo"],
+                    "vxlan": {},
+                },
             },
-        })
+        )
         assert _build_egress(eg_empty)["vxlan"] is None
 
 
@@ -635,8 +790,12 @@ class TestBuildDataPlane:
         assert vlan["selfipV4s"] == []
         route = dp["staticRoutes"][0]
         assert route == {
-            "name": "egress-vpc", "namespace": "f5-cne-system", "kind": "Infra",
-            "infraName": "infra", "destination": "10.0.0.0/16", "gateway": "10.0.20.1",
+            "name": "egress-vpc",
+            "namespace": "f5-cne-system",
+            "kind": "Infra",
+            "infraName": "infra",
+            "destination": "10.0.0.0/16",
+            "gateway": "10.0.20.1",
         }
 
     def test_counts_include_infra_projected_items(self):
@@ -650,9 +809,14 @@ class TestBuildDataPlane:
     def test_egress_gateway_honours_section_name(self):
         resources = _empty_resources()
         settings = _egress_settings_24()
-        settings["spec"]["egressConfigs"].insert(0, {
-            "name": "other", "networkRef": {"name": "int-vlan"}, "sourceNATConfig": {"type": "Automap"},
-        })
+        settings["spec"]["egressConfigs"].insert(
+            0,
+            {
+                "name": "other",
+                "networkRef": {"name": "int-vlan"},
+                "sourceNATConfig": {"type": "Automap"},
+            },
+        )
         resources["gatewaysettings"] = [settings]
         resources["egressgateway"] = [_egress_gateway_24()]
 
@@ -705,61 +869,98 @@ class TestBuildDataPlane:
 
 def _infra_24() -> dict:
     """Infra shape from the awsbnkctl migrate golden (BNK 2.4 live)."""
-    return _resource("infra", "f5-cne-system", spec={
-        "egressDefaults": {"networkRef": {"name": "int-vlan"}, "subnet": "192.168.0.0/16"},
-        "ipams": [
-            {"name": "ext-vlan-selfip", "ipPools": [
-                {"availabilityZone": "ap-southeast-2a", "rangeStart": "10.0.10.224", "rangeEnd": "10.0.10.254"},
-            ]},
-            {"name": "int-vlan-selfip", "ipPools": [
-                {"availabilityZone": "ap-southeast-2a", "rangeStart": "10.0.20.224", "rangeEnd": "10.0.20.254"},
-            ]},
-        ],
-        "networkAttachments": [
-            {"name": "ext-vlan-attach", "networkAttachmentDefinitions": [{"name": "external-netdevice"}]},
-            {"name": "int-vlan-attach", "networkAttachmentDefinitions": [{"name": "internal-netdevice"}]},
-        ],
-        "networks": [
-            {"name": "ext-vlan", "type": "vlan", "vlan": {
-                "ipamRefs": [{"name": "ext-vlan-selfip"}], "networkAttachmentRef": {"name": "ext-vlan-attach"},
-                "tag": 0,
-            }},
-            {"name": "int-vlan", "type": "vlan", "vlan": {
-                "ipamRefs": [{"name": "int-vlan-selfip"}], "mtu": 9000,
-                "networkAttachmentRef": {"name": "int-vlan-attach"}, "tag": 0,
-            }},
-        ],
-        "staticRoutes": [
-            {"name": "egress-vpc", "destinations": ["10.0.0.0/16"], "nextHop": "10.0.20.1"},
-            {"name": "egress-default", "destinations": ["0.0.0.0/0"], "nextHop": "10.0.10.1"},
-        ],
-    }, status={"conditions": [{"type": "Programmed", "status": "True"}]})
+    return _resource(
+        "infra",
+        "f5-cne-system",
+        spec={
+            "egressDefaults": {"networkRef": {"name": "int-vlan"}, "subnet": "192.168.0.0/16"},
+            "ipams": [
+                {
+                    "name": "ext-vlan-selfip",
+                    "ipPools": [
+                        {"availabilityZone": "ap-southeast-2a", "rangeStart": "10.0.10.224", "rangeEnd": "10.0.10.254"},
+                    ],
+                },
+                {
+                    "name": "int-vlan-selfip",
+                    "ipPools": [
+                        {"availabilityZone": "ap-southeast-2a", "rangeStart": "10.0.20.224", "rangeEnd": "10.0.20.254"},
+                    ],
+                },
+            ],
+            "networkAttachments": [
+                {"name": "ext-vlan-attach", "networkAttachmentDefinitions": [{"name": "external-netdevice"}]},
+                {"name": "int-vlan-attach", "networkAttachmentDefinitions": [{"name": "internal-netdevice"}]},
+            ],
+            "networks": [
+                {
+                    "name": "ext-vlan",
+                    "type": "vlan",
+                    "vlan": {
+                        "ipamRefs": [{"name": "ext-vlan-selfip"}],
+                        "networkAttachmentRef": {"name": "ext-vlan-attach"},
+                        "tag": 0,
+                    },
+                },
+                {
+                    "name": "int-vlan",
+                    "type": "vlan",
+                    "vlan": {
+                        "ipamRefs": [{"name": "int-vlan-selfip"}],
+                        "mtu": 9000,
+                        "networkAttachmentRef": {"name": "int-vlan-attach"},
+                        "tag": 0,
+                    },
+                },
+            ],
+            "staticRoutes": [
+                {"name": "egress-vpc", "destinations": ["10.0.0.0/16"], "nextHop": "10.0.20.1"},
+                {"name": "egress-default", "destinations": ["0.0.0.0/0"], "nextHop": "10.0.10.1"},
+            ],
+        },
+        status={"conditions": [{"type": "Programmed", "status": "True"}]},
+    )
 
 
 def _egress_settings_24() -> dict:
-    return _resource("egress-demo", "egress-demo", spec={
-        "egressConfigs": [{
-            "name": "egress-demo",
-            "networkRef": {"name": "int-vlan"},
-            "sourceNATConfig": {"type": "Pool", "sourceNATPoolRef": {"name": "egress-snat"}},
-        }],
-        "sourceNATPools": [{"name": "egress-snat", "ipamRefs": [{"name": "egress-snat-snat"}]}],
-    })
+    return _resource(
+        "egress-demo",
+        "egress-demo",
+        spec={
+            "egressConfigs": [
+                {
+                    "name": "egress-demo",
+                    "networkRef": {"name": "int-vlan"},
+                    "sourceNATConfig": {"type": "Pool", "sourceNATPoolRef": {"name": "egress-snat"}},
+                }
+            ],
+            "sourceNATPools": [{"name": "egress-snat", "ipamRefs": [{"name": "egress-snat-snat"}]}],
+        },
+    )
 
 
 def _egress_gateway_24() -> dict:
-    return _resource("egress-demo", "egress-demo", spec={
-        "gatewayClassName": "lab-gatewayclass",
-        "infrastructure": {"parametersRef": {"name": "egress-demo", "sectionName": "egress-demo"}},
-        "sourceSelector": {"selectionMode": "NamespaceSelector", "namespaces": {"matchNames": ["egress-demo"]}},
-    })
+    return _resource(
+        "egress-demo",
+        "egress-demo",
+        spec={
+            "gatewayClassName": "lab-gatewayclass",
+            "infrastructure": {"parametersRef": {"name": "egress-demo", "sectionName": "egress-demo"}},
+            "sourceSelector": {"selectionMode": "NamespaceSelector", "namespaces": {"matchNames": ["egress-demo"]}},
+        },
+    )
 
 
 def _secpolicy_24(name: str, target_kind: str, target_name: str, fw_name: str, namespace: str = "egress-demo") -> dict:
-    sp = _resource(name, namespace, spec={
-        "targetRefs": [{"group": "gateway.k8s.f5.com", "kind": target_kind, "name": target_name}],
-        "extensionRefs": [{"group": "k8s.f5net.com", "kind": "F5BigFwPolicy", "name": fw_name}],
-    }, status={"conditions": [{"type": "Programmed", "status": "True"}]})
+    sp = _resource(
+        name,
+        namespace,
+        spec={
+            "targetRefs": [{"group": "gateway.k8s.f5.com", "kind": target_kind, "name": target_name}],
+            "extensionRefs": [{"group": "k8s.f5net.com", "kind": "F5BigFwPolicy", "name": fw_name}],
+        },
+        status={"conditions": [{"type": "Programmed", "status": "True"}]},
+    )
     sp["kind"] = "SecPolicy"
     return sp
 
@@ -767,25 +968,46 @@ def _secpolicy_24(name: str, target_kind: str, target_name: str, fw_name: str, n
 class TestBNK24Topology:
     def test_gateway_enriches_gateway_settings(self):
         resources = _empty_resources()
-        resources["gateway"] = [_resource("gw-prod", spec={
-            "gatewayClassName": "f5-gateway",
-            "infrastructure": {"parametersRef": {
-                "group": "gateway.k8s.f5.com", "kind": "GatewaySettings", "name": "prod-settings",
-            }},
-            "listeners": [{"name": "http", "port": 80, "protocol": "HTTP"}],
-        })]
-        resources["gatewaysettings"] = [_resource("prod-settings", spec={
-            "ingressConfig": {"defaultListenerNetwork": {
-                "ipamRefs": [{"name": "listener-pool"}],
-                "networkRefs": [{"name": "ext-vlan"}],
-                "sourceNATConfig": {"type": "Automap"},
-            }},
-            "sourceNATPools": [{"name": "snat-pool-1", "ipamRefs": [{"name": "snat-ipam"}]}],
-        })]
+        resources["gateway"] = [
+            _resource(
+                "gw-prod",
+                spec={
+                    "gatewayClassName": "f5-gateway",
+                    "infrastructure": {
+                        "parametersRef": {
+                            "group": "gateway.k8s.f5.com",
+                            "kind": "GatewaySettings",
+                            "name": "prod-settings",
+                        }
+                    },
+                    "listeners": [{"name": "http", "port": 80, "protocol": "HTTP"}],
+                },
+            )
+        ]
+        resources["gatewaysettings"] = [
+            _resource(
+                "prod-settings",
+                spec={
+                    "ingressConfig": {
+                        "defaultListenerNetwork": {
+                            "ipamRefs": [{"name": "listener-pool"}],
+                            "networkRefs": [{"name": "ext-vlan"}],
+                            "sourceNATConfig": {"type": "Automap"},
+                        }
+                    },
+                    "sourceNATPools": [{"name": "snat-pool-1", "ipamRefs": [{"name": "snat-ipam"}]}],
+                },
+            )
+        ]
         resources["secpolicy"] = [_secpolicy_24("sec-1", "Gateway", "gw-prod", "fw-edge", namespace="f5-bnk")]
-        resources["f5bigfwpolicy"] = [_resource("fw-edge", spec={
-            "rule": [{"name": "drop-bad", "action": "drop", "ipProtocol": "tcp", "logging": True}],
-        })]
+        resources["f5bigfwpolicy"] = [
+            _resource(
+                "fw-edge",
+                spec={
+                    "rule": [{"name": "drop-bad", "action": "drop", "ipProtocol": "tcp", "logging": True}],
+                },
+            )
+        ]
 
         result = analyze_topology({"resources": resources})
         gw_node = result["topology"][0]
@@ -823,10 +1045,13 @@ class TestBNK24Topology:
     def test_netpolicy_carries_kind(self):
         resources = _empty_resources()
         resources["gateway"] = [_gateway()]
-        np = _resource("np-24", spec={
-            "targetRefs": [{"kind": "Gateway", "name": "gw-prod", "sectionName": "http"}],
-            "extensionRefs": [{"group": "k8s.f5net.com", "kind": "F5BigCneIrule", "name": "pp-prepend"}],
-        })
+        np = _resource(
+            "np-24",
+            spec={
+                "targetRefs": [{"kind": "Gateway", "name": "gw-prod", "sectionName": "http"}],
+                "extensionRefs": [{"group": "k8s.f5net.com", "kind": "F5BigCneIrule", "name": "pp-prepend"}],
+            },
+        )
         np["kind"] = "NetPolicy"
         resources["netpolicy"] = [np]
 
@@ -836,11 +1061,16 @@ class TestBNK24Topology:
     def test_24_l4route_matched_with_resource_type(self):
         resources = _empty_resources()
         resources["gateway"] = [_gateway(listeners=[{"name": "tcp-listener", "protocol": "TCP", "port": 9000}])]
-        resources["l4route_24"] = [_resource("l4", spec={
-            "parentRefs": [{"name": "gw-prod", "sectionName": "tcp-listener"}],
-            "protocol": "TCP",
-            "rules": [{"backendRefs": [{"name": "grpcbin-l4-svc", "port": 9000}]}],
-        })]
+        resources["l4route_24"] = [
+            _resource(
+                "l4",
+                spec={
+                    "parentRefs": [{"name": "gw-prod", "sectionName": "tcp-listener"}],
+                    "protocol": "TCP",
+                    "rules": [{"backendRefs": [{"name": "grpcbin-l4-svc", "port": 9000}]}],
+                },
+            )
+        ]
 
         result = analyze_topology({"resources": resources})
         route = result["topology"][0]["listeners"][0]["routes"][0]
@@ -850,32 +1080,51 @@ class TestBNK24Topology:
 
     def test_mcp_route_detection(self):
         resources = _empty_resources()
-        resources["gateway"] = [_resource("gw-mcp", spec={
-            "listeners": [{"name": "https", "port": 443, "protocol": "HTTPS"}],
-        })]
+        resources["gateway"] = [
+            _resource(
+                "gw-mcp",
+                spec={
+                    "listeners": [{"name": "https", "port": 443, "protocol": "HTTPS"}],
+                },
+            )
+        ]
         resources["httproute"] = [
-            _resource("route-mcp-annotated", spec={
-                "parentRefs": [{"name": "gw-mcp", "sectionName": "https"}],
-                "rules": [{"backendRefs": [{"name": "mcp-server", "port": 8080}]}],
-            }, annotations={
-                "bnk.f5.com/protocol": "mcp",
-                "bnk.f5.com/auth": "bearer",
-                "bnk.f5.com/mcp-tools": "read_doc, query_db",
-            }),
-            _resource("route-mcp-path", spec={
-                "parentRefs": [{"name": "gw-mcp", "sectionName": "https"}],
-                "rules": [{
-                    "matches": [{"path": {"type": "PathPrefix", "value": "/mcp"}}],
-                    "backendRefs": [{"name": "mcp-server-2", "port": 8080}],
-                }],
-            }),
-            _resource("route-standard", spec={
-                "parentRefs": [{"name": "gw-mcp", "sectionName": "https"}],
-                "rules": [{
-                    "matches": [{"path": {"type": "PathPrefix", "value": "/api"}}],
-                    "backendRefs": [{"name": "api-server", "port": 8080}],
-                }],
-            }),
+            _resource(
+                "route-mcp-annotated",
+                spec={
+                    "parentRefs": [{"name": "gw-mcp", "sectionName": "https"}],
+                    "rules": [{"backendRefs": [{"name": "mcp-server", "port": 8080}]}],
+                },
+                annotations={
+                    "bnk.f5.com/protocol": "mcp",
+                    "bnk.f5.com/auth": "bearer",
+                    "bnk.f5.com/mcp-tools": "read_doc, query_db",
+                },
+            ),
+            _resource(
+                "route-mcp-path",
+                spec={
+                    "parentRefs": [{"name": "gw-mcp", "sectionName": "https"}],
+                    "rules": [
+                        {
+                            "matches": [{"path": {"type": "PathPrefix", "value": "/mcp"}}],
+                            "backendRefs": [{"name": "mcp-server-2", "port": 8080}],
+                        }
+                    ],
+                },
+            ),
+            _resource(
+                "route-standard",
+                spec={
+                    "parentRefs": [{"name": "gw-mcp", "sectionName": "https"}],
+                    "rules": [
+                        {
+                            "matches": [{"path": {"type": "PathPrefix", "value": "/api"}}],
+                            "backendRefs": [{"name": "api-server", "port": 8080}],
+                        }
+                    ],
+                },
+            ),
         ]
 
         result = analyze_topology({"resources": resources})
@@ -901,22 +1150,34 @@ class TestBNK24Topology:
         assert r2["mcpInfo"] is None
 
 
-
 def test_24_fields_survive_gateway_topology_schema():
     from schemas.f5bnk import GatewayTopologyResponse
 
     resources = _empty_resources()
     resources["infra"] = [_infra_24()]
-    resources["gatewaysettings"] = [_egress_settings_24(), _resource("gs-gw", spec={
-        "ingressConfig": {"defaultListenerNetwork": {"networkRefs": [{"name": "ext-vlan"}]}},
-    })]
+    resources["gatewaysettings"] = [
+        _egress_settings_24(),
+        _resource(
+            "gs-gw",
+            spec={
+                "ingressConfig": {"defaultListenerNetwork": {"networkRefs": [{"name": "ext-vlan"}]}},
+            },
+        ),
+    ]
     resources["egressgateway"] = [_egress_gateway_24()]
     resources["secpolicy"] = [_secpolicy_24("sp", "Gateway", "gw-prod", "fw", namespace="f5-bnk")]
-    resources["gateway"] = [_resource("gw-prod", spec={
-        "gatewayClassName": "f5-gateway",
-        "infrastructure": {"parametersRef": {"group": "gateway.k8s.f5.com", "kind": "GatewaySettings", "name": "gs-gw"}},
-        "listeners": [{"name": "tcp", "port": 9000, "protocol": "TCP"}],
-    })]
+    resources["gateway"] = [
+        _resource(
+            "gw-prod",
+            spec={
+                "gatewayClassName": "f5-gateway",
+                "infrastructure": {
+                    "parametersRef": {"group": "gateway.k8s.f5.com", "kind": "GatewaySettings", "name": "gs-gw"}
+                },
+                "listeners": [{"name": "tcp", "port": 9000, "protocol": "TCP"}],
+            },
+        )
+    ]
     resources["l4route_24"] = [_resource("l4", spec={"parentRefs": [{"name": "gw-prod", "sectionName": "tcp"}]})]
 
     result = analyze_topology({"resources": resources})
@@ -936,3 +1197,239 @@ def test_24_fields_survive_gateway_topology_schema():
     assert dp["egresses"][0]["kind"] == "EgressGateway"
     assert dumped["counts"]["infra"] == 1
     assert dumped["counts"]["egressGateways"] == 1
+
+
+class TestCrossNamespacePolicyIsolation:
+    """Finding 1: Policies must match (namespace, name), never name alone."""
+
+    def test_same_gateway_name_in_two_namespaces_isolates_policies(self):
+        resources = _empty_resources()
+        resources["gateway"] = [
+            _gateway("edge-gw", namespace="shop"),
+            _gateway("edge-gw", namespace="payments"),
+        ]
+        resources["secpolicy"] = [
+            _secpolicy_24("shop-sec", "Gateway", "edge-gw", "shop-fw", namespace="shop"),
+        ]
+        resources["netpolicy"] = [
+            _resource(
+                "shop-net",
+                namespace="shop",
+                spec={
+                    "targetRefs": [{"kind": "Gateway", "name": "edge-gw", "sectionName": "http"}],
+                    "extensionRefs": [],
+                },
+            ),
+        ]
+
+        result = analyze_topology({"resources": resources})
+        by_ns = {gw["namespace"]: gw for gw in result["topology"]}
+
+        assert [sp["name"] for sp in by_ns["shop"]["securityPolicies"]] == ["shop-sec"]
+        assert by_ns["payments"]["securityPolicies"] == []
+
+        shop_listener = by_ns["shop"]["listeners"][0]
+        payments_listener = by_ns["payments"]["listeners"][0]
+        assert [np["name"] for np in shop_listener["networkPolicies"]] == ["shop-net"]
+        assert payments_listener["networkPolicies"] == []
+
+    def test_explicit_target_ref_namespace_matches_target_gateway_only(self):
+        resources = _empty_resources()
+        resources["gateway"] = [
+            _gateway("edge-gw", namespace="shop"),
+            _gateway("edge-gw", namespace="payments"),
+        ]
+        sp = _resource(
+            "cross-ns-sec",
+            namespace="sec-ops",
+            spec={
+                "targetRefs": [
+                    {
+                        "group": "gateway.networking.k8s.io",
+                        "kind": "Gateway",
+                        "name": "edge-gw",
+                        "namespace": "payments",
+                    }
+                ],
+                "extensionRefs": [],
+            },
+        )
+        sp["kind"] = "SecPolicy"
+        resources["secpolicy"] = [sp]
+
+        result = analyze_topology({"resources": resources})
+        by_ns = {gw["namespace"]: gw for gw in result["topology"]}
+        assert by_ns["shop"]["securityPolicies"] == []
+        assert [p["name"] for p in by_ns["payments"]["securityPolicies"]] == ["cross-ns-sec"]
+
+    def test_app_policy_matches_route_in_same_namespace_only(self):
+        resources = _empty_resources()
+        resources["gateway"] = [
+            _gateway("edge-gw", namespace="shop"),
+            _gateway("edge-gw", namespace="payments"),
+        ]
+        resources["httproute"] = [
+            _httproute("api-route", "edge-gw", gw_ns="shop", namespace="shop"),
+            _httproute("api-route", "edge-gw", gw_ns="payments", namespace="payments"),
+        ]
+        resources["apppolicy"] = [
+            _resource(
+                "shop-app-pol",
+                namespace="shop",
+                spec={
+                    "targetRefs": [{"kind": "HTTPRoute", "name": "api-route"}],
+                    "extensionRefs": [{"kind": "AIGatewayProfile", "name": "shop-prof"}],
+                },
+            ),
+        ]
+
+        result = analyze_topology({"resources": resources})
+        by_ns = {gw["namespace"]: gw for gw in result["topology"]}
+        shop_route = by_ns["shop"]["listeners"][0]["routes"][0]
+        payments_route = by_ns["payments"]["listeners"][0]["routes"][0]
+        assert [ap["name"] for ap in shop_route["appPolicies"]] == ["shop-app-pol"]
+        assert payments_route["appPolicies"] == []
+
+
+class TestForgeFindingsFixes:
+    """Findings 2, 7, 8, 9 unit tests."""
+
+    def test_f5bnkgateway_registered_in_bnk_resource_types(self):
+        from services.bnk.helpers import BNK_RESOURCE_TYPES
+
+        assert "f5bnkgateway" in BNK_RESOURCE_TYPES
+
+    def test_missing_optional_crd_404_records_absent_types_and_caches(self):
+        from unittest.mock import MagicMock, patch
+
+        from kubernetes.client.rest import ApiException
+
+        from services.bnk import fetch as bnk_fetch
+
+        mock_k8s = MagicMock()
+        mock_k8s.get_cluster.return_value = MagicMock(discovered_namespaces=["f5-bnk"])
+
+        def fake_fetch_from_k8s(api_client, rt, ns, label_sel):
+            if rt == "aicredential":
+                raise ApiException(status=404, reason="Not Found")
+            return []
+
+        mock_k8s._fetch_from_k8s.side_effect = fake_fetch_from_k8s
+
+        mock_cache = MagicMock()
+        mock_cache.get.return_value = None
+
+        with (
+            patch.object(bnk_fetch, "resolve_resource_type", side_effect=lambda db, cid, rtype: rtype),
+            patch.object(bnk_fetch, "_cached_discover_f5_pods", return_value=([], [])),
+            patch.object(bnk_fetch, "classify_f5_pods", return_value={}),
+            patch.object(bnk_fetch, "cache", mock_cache),
+            patch("kubernetes.client.BatchV1Api") as mock_batch_cls,
+        ):
+            mock_batch_cls.return_value.list_namespaced_job.return_value.items = []
+            data = bnk_fetch.fetch_all_bnk_data(mock_k8s, cluster_id=99, force=True)
+
+        assert not data.get("partial")
+        assert "aicredential" in data.get("absent_types", [])
+        mock_cache.set.assert_called_once()
+
+    def test_cwc_license_status_not_installed_and_passive_no_pod_creation(self):
+        from unittest.mock import MagicMock, patch
+
+        from services import qkview_service
+        from services.qkview_service import QKViewError
+
+        mock_k8s = MagicMock()
+        mock_cache = MagicMock()
+        mock_cache.get.return_value = None
+
+        with (
+            patch.object(qkview_service, "cache", mock_cache),
+            patch.object(
+                qkview_service,
+                "_cwc_request",
+                side_effect=QKViewError("CWC service 'f5-spk-cwc' not found in any namespace", status_code=404),
+            ),
+        ):
+            res_uninstalled = qkview_service.get_license_status(mock_k8s, cluster_id=1)
+        assert res_uninstalled["success"] is False
+        assert res_uninstalled["installed"] is False
+        mock_cache.set.assert_called_once()
+
+        mock_cache.reset_mock()
+        with (
+            patch.object(qkview_service, "cache", mock_cache),
+            patch.object(qkview_service, "_detect_cwc_namespace", return_value="f5-utils"),
+            patch.object(qkview_service, "_find_cert_secret", return_value={"name": "cert"}),
+            patch.object(qkview_service, "_get_admin_token", return_value="token"),
+            patch.object(qkview_service, "_find_running_client_pod", return_value=None),
+            patch.object(qkview_service, "_create_client_pod") as mock_create_pod,
+        ):
+            res_passive = qkview_service.get_license_status(mock_k8s, cluster_id=1, force=False)
+        assert res_passive["success"] is False
+        assert res_passive["installed"] is True
+        assert res_passive["client_pod_running"] is False
+        mock_create_pod.assert_not_called()
+
+    def test_fetch_tmm_traffic_stats_short_circuits_on_403(self):
+        from unittest.mock import MagicMock, patch
+
+        from services.bnk import traffic_stats
+
+        classified_pods = {
+            "tmm": [
+                {
+                    "name": "f5-tmm-abc",
+                    "namespace": "f5-bnk",
+                    "phase": "Running",
+                    "containers": [{"name": "debug", "ready": True}],
+                }
+            ]
+        }
+        with patch.object(
+            traffic_stats,
+            "exec_tmctl",
+            return_value={
+                "exit_code": 403,
+                "stdout": "",
+                "stderr": "Forbidden: kubeconfig does not have pods/exec permission in namespace 'f5-bnk' (read-only access)",
+            },
+        ) as mock_exec:
+            res = traffic_stats.fetch_tmm_traffic_stats(MagicMock(), classified_pods, force=True)
+
+        assert "Forbidden" in (res["error"] or "")
+        assert mock_exec.call_count == 1
+
+    def test_create_project_sets_is_active_true(self):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock, patch
+
+        from services.project_service import ProjectService
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        project_data = SimpleNamespace(
+            name="test-k8s-project",
+            description="test",
+            project_type="kubernetes",
+            cloud_provider=None,
+            environment="dev",
+            backend_type="local",
+            region=None,
+            color="#a8337a",
+            icon="",
+            credential_template_id=None,
+            ssh_credential_id=None,
+            target_platform_profile=None,
+            platform_provider=None,
+            management_boundary=None,
+            state_config=None,
+        )
+
+        with patch("services.project_service.invalidate_cache"):
+            svc = ProjectService(mock_db)
+            svc.create_project(project_data)
+
+        created_project = mock_db.add.call_args[0][0]
+        assert created_project.is_active is True

@@ -8,7 +8,7 @@ frontend generated types stay in sync and OpenAPI captures the shape.
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 HealthSeverityV1 = Literal["healthy", "warning", "critical", "unknown"]
 ConnectivityStatusV1 = Literal["connected", "reachable", "partial", "unreachable", "unknown"]
@@ -127,8 +127,7 @@ class HealthIRulesComponent(BaseModel):
 class HealthCneInstance(BaseModel):
     name: str
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 class HealthAnalyzerDetail(BaseModel):
@@ -257,8 +256,7 @@ class BnkHealthResponse(BaseModel):
     ai: BnkHealthAISection
     counts: HealthCounts
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 class BnkHealthEndpointResponse(BnkHealthResponse):
@@ -336,8 +334,7 @@ class BnkDataResponse(BaseModel):
     cluster_id: int
     namespace: str | None = None
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 # ---------------------------------------------------------------------------

@@ -224,10 +224,23 @@ def exec_debug_command(
 
     except ApiException as e:
         duration_ms = int((time.monotonic() - start) * 1000)
+        reason = e.reason or str(e)
+        if e.status == 403 or "forbidden" in reason.lower():
+            logger.info(f"Exec forbidden (403) in {pod_name}: read-only kubeconfig lacks pods/exec permission")
+            return {
+                "stdout": "",
+                "stderr": (
+                    "Kubernetes API forbidden (403): pods/exec permission on TMM pods "
+                    "is required to read traffic counters (read-only kubeconfig)"
+                ),
+                "exit_code": -1,
+                "duration_ms": duration_ms,
+                "command": " ".join(command),
+            }
         logger.error(f"Exec failed in {pod_name}: {e}")
         return {
             "stdout": "",
-            "stderr": f"Kubernetes API error: {e.reason or str(e)}",
+            "stderr": f"Kubernetes API error: {reason}",
             "exit_code": -1,
             "duration_ms": duration_ms,
             "command": " ".join(command),

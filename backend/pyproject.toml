@@ -103,6 +103,7 @@ ignore_errors = true
 testpaths = ["tests", "backend/tests"]
 pythonpath = ["backend"]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 # Markers for test categorization
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
@@ -117,8 +118,6 @@ markers = [
 # Exclude full-mode tests by default (they require running Docker Compose stack)
 # Run full-mode: pytest -m full
 addopts = "-v --tb=short -m 'not full'"
-# Ignore operator/proxy dirs mounted in dev mode (they have their own test suites)
-collect_ignore_glob = ["bnk-operator/*", "proxy/*"]
 
 [tool.coverage.run]
 source = ["."]

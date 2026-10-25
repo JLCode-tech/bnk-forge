@@ -13,7 +13,7 @@ import { type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { useInnerSidebar } from "@/components/layout/InnerSidebar";
+import { useInnerSidebar } from "@/components/layout/inner-sidebar-context";
 
 export interface ResourceCategoryItem {
   key: string;

@@ -329,6 +329,7 @@ BNK_RESOURCE_TYPES: list[str] = [
     "gatewaysettings",
     "egressgateway",
     "infra",
+    "f5bnkgateway",
     # Policies (2.4.1 + 2.4 + legacy)
     "apppolicy",
     "secpolicy",

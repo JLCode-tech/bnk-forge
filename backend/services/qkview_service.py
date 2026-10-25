@@ -289,14 +289,23 @@ def _find_cert_secret(api_client: k8s_client.ApiClient, cwc_namespace: str) -> d
     Returns the matching candidate dict with the secret name + key mappings.
     """
     core_v1 = k8s_client.CoreV1Api(api_client)
+    forbidden = False
     for candidate in CWC_CERT_SECRET_CANDIDATES:
         try:
             secret = core_v1.read_namespaced_secret(candidate["name"], cwc_namespace)
             if secret.data and candidate["cert"] in secret.data and candidate["key"] in secret.data:
                 logger.info(f"Using cert secret: {candidate['name']}")
                 return candidate
-        except k8s_client.rest.ApiException:
+        except k8s_client.rest.ApiException as e:
+            if e.status == 403 or "forbidden" in (e.reason or str(e)).lower():
+                forbidden = True
             continue
+    if forbidden:
+        raise QKViewError(
+            f"No CWC mTLS certificates found: insufficient permissions (403 Forbidden) to read secrets in '{cwc_namespace}'. "
+            "Tried: " + ", ".join(c["name"] for c in CWC_CERT_SECRET_CANDIDATES),
+            status_code=403,
+        )
     raise QKViewError(
         "No CWC mTLS certificates found. Tried: " + ", ".join(c["name"] for c in CWC_CERT_SECRET_CANDIDATES)
     )
@@ -702,6 +711,7 @@ def _cwc_request(
     body: dict | None = None,
     raw_body: str | None = None,
     stream: bool = False,
+    allow_create_pod: bool = True,
 ) -> dict | bytes:
     """
     Make a request to the CWC REST API by:
@@ -714,6 +724,8 @@ def _cwc_request(
         body: JSON body (sent as application/json)
         raw_body: Raw string body (sent as-is, for /reactivate and /receipt)
         stream: If True, return raw bytes (for binary downloads)
+        allow_create_pod: If False, only reuse an already-running client pod
+            and do not create a new pod in the cluster.
     """
     meta_key = _cwc_meta_key(api_client)
     cached_meta = cache.get(meta_key)
@@ -734,7 +746,15 @@ def _cwc_request(
         if bearer_token:
             _cwc_token_cache[meta_key] = (time.monotonic() + _CWC_META_TTL_SEC, bearer_token)
 
-    pod_name = _get_or_create_client_pod(api_client, cert_secret, cwc_ns)
+    if allow_create_pod:
+        pod_name = _get_or_create_client_pod(api_client, cert_secret, cwc_ns)
+    else:
+        pod_name = _find_running_client_pod(api_client, cert_secret["name"], cwc_ns)
+        if not pod_name:
+            raise QKViewError(
+                "CWC client pod is not running (passive status check does not create pods in cluster)",
+                status_code=503,
+            )
 
     try:
         if stream:
@@ -1629,7 +1649,12 @@ def invalidate_license_status(cluster_id: int) -> None:
     cache.delete(f"cwc:status:{cluster_id}")
 
 
-def get_license_status(k8s_service: KubernetesService, cluster_id: int, force: bool = False) -> dict[str, Any]:
+def get_license_status(
+    k8s_service: KubernetesService,
+    cluster_id: int,
+    force: bool = False,
+    allow_create_pod: bool | None = None,
+) -> dict[str, Any]:
     """
     Get CWC license and telemetry status for a cluster.
 
@@ -1639,8 +1664,11 @@ def get_license_status(k8s_service: KubernetesService, cluster_id: int, force: b
     for debugging.
 
     Results are cached for 120 seconds per cluster; pass ``force=True`` to
-    bypass the cache.
+    bypass the cache. By default ``allow_create_pod`` follows ``force`` so
+    passive overview loads never create a ``bnk-forge-agent`` pod in the cluster.
     """
+    if allow_create_pod is None:
+        allow_create_pod = bool(force)
     cache_key = f"license:status:{cluster_id}"
     if not force:
         cached = cache.get(cache_key)
@@ -1649,9 +1677,33 @@ def get_license_status(k8s_service: KubernetesService, cluster_id: int, force: b
 
     cluster = k8s_service.get_cluster(cluster_id)
     api_client = k8s_service.load_kubeconfig(cluster)
-    result = _cwc_request(api_client, "GET", "/status")
+    try:
+        result = _cwc_request(api_client, "GET", "/status", allow_create_pod=allow_create_pod)
+    except QKViewError as e:
+        err_msg = str(e)
+        if e.status_code == 404 or "not found" in err_msg.lower():
+            response = {
+                "success": False,
+                "installed": False,
+                "license_state": "Unavailable",
+                "error": err_msg,
+            }
+            cache.set(cache_key, response, ttl_seconds=120)
+            return response
+        if e.status_code in (403, 503):
+            response = {
+                "success": False,
+                "installed": True,
+                "read_only": e.status_code == 403,
+                "client_pod_running": e.status_code != 503,
+                "license_state": "Unavailable",
+                "error": err_msg,
+            }
+            cache.set(cache_key, response, ttl_seconds=120)
+            return response
+        raise
     normalized = _normalize_cwc_status(result if isinstance(result, dict) else {})
-    response = {"success": True, **normalized}
+    response = {"success": True, "installed": True, **normalized}
     cache.set(cache_key, response, ttl_seconds=120)
     return response
 

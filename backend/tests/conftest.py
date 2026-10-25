@@ -27,6 +27,11 @@ os.environ["REQUIRE_AUTH"] = "true"
 os.environ["ENVIRONMENT"] = "development"
 # Force inline (single-threaded) discovery so tests run synchronously against the test session.
 os.environ["DISCOVERY_MAX_PARALLEL"] = "1"
+# Ensure tests do not connect to a live Redis instance when run inside Docker
+os.environ["REDIS_URL"] = "redis://127.0.0.1:63999/0"
+
+# Ignore operator/proxy dirs mounted in dev mode (valid conftest.py hook variable)
+collect_ignore_glob = ["bnk-operator/*", "proxy/*"]
 
 # Create a temporary encryption key file so core.encryption doesn't fail
 _tmp_key_dir = tempfile.mkdtemp()
@@ -61,6 +66,7 @@ from services.registry import ServiceRegistry
 # Database fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session")
 def engine():
     """Create a shared SQLite in-memory engine for the entire test session."""
@@ -69,6 +75,7 @@ def engine():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+
     # Enable WAL-like behaviour: allow nested transactions
     @event.listens_for(eng, "connect")
     def _set_sqlite_pragma(dbapi_conn, _connection_record):
@@ -127,6 +134,7 @@ def db(engine):
     # token). Point that factory at the test connection so it sees this test's
     # data instead of trying to reach the real database.
     import database
+
     real_session_local = database.SessionLocal
     database.SessionLocal = TestingSessionLocal
 
@@ -141,6 +149,7 @@ def db(engine):
 # ---------------------------------------------------------------------------
 # Mock heavy services that aren't needed for route-level tests
 # ---------------------------------------------------------------------------
+
 
 def _noop_cache():
     """Return a mock CacheService that always misses."""
@@ -184,6 +193,7 @@ def client(db):
 # Auth token helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_token(username: str, role: str) -> str:
     """Create a valid JWT for the given user/role."""
     return create_access_token(data={"sub": username, "role": role})
@@ -215,6 +225,7 @@ def viewer_headers() -> dict:
 # ---------------------------------------------------------------------------
 # Sample data fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def sample_user(db) -> User:
@@ -314,6 +325,7 @@ def all_test_users(db):
 # Factory-based fixtures (use these for new tests — more composable)
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def make_user(db):
     """Factory fixture: returns a callable that creates users.
@@ -324,6 +336,7 @@ def make_user(db):
             operator = make_user(role="operator")
     """
     from tests.factories import UserFactory
+
     return lambda **kwargs: UserFactory(db, **kwargs)
 
 
@@ -331,6 +344,7 @@ def make_user(db):
 def make_project(db):
     """Factory fixture: returns a callable that creates projects."""
     from tests.factories import ProjectFactory
+
     return lambda **kwargs: ProjectFactory(db, **kwargs)
 
 
@@ -338,6 +352,7 @@ def make_project(db):
 def make_module_library(db):
     """Factory fixture: returns a callable that creates module library entries."""
     from tests.factories import ModuleLibraryFactory
+
     return lambda **kwargs: ModuleLibraryFactory(db, **kwargs)
 
 
@@ -345,6 +360,7 @@ def make_module_library(db):
 def make_project_module(db):
     """Factory fixture: returns a callable that creates project modules."""
     from tests.factories import ProjectModuleFactory
+
     return lambda **kwargs: ProjectModuleFactory(db, **kwargs)
 
 
@@ -352,6 +368,7 @@ def make_project_module(db):
 def make_task(db):
     """Factory fixture: returns a callable that creates tasks."""
     from tests.factories import TaskFactory
+
     return lambda **kwargs: TaskFactory(db, **kwargs)
 
 
@@ -359,6 +376,7 @@ def make_task(db):
 def make_stack_template(db):
     """Factory fixture: returns a callable that creates stack templates."""
     from tests.factories import StackTemplateFactory
+
     return lambda **kwargs: StackTemplateFactory(db, **kwargs)
 
 
@@ -366,6 +384,7 @@ def make_stack_template(db):
 def make_stack_instance(db):
     """Factory fixture: returns a callable that creates stack instances."""
     from tests.factories import StackInstanceFactory
+
     return lambda **kwargs: StackInstanceFactory(db, **kwargs)
 
 
@@ -373,6 +392,7 @@ def make_stack_instance(db):
 def make_k8s_cluster(db):
     """Factory fixture: returns a callable that creates K8s clusters."""
     from tests.factories import KubernetesClusterFactory
+
     return lambda **kwargs: KubernetesClusterFactory(db, **kwargs)
 
 
@@ -380,6 +400,7 @@ def make_k8s_cluster(db):
 def make_proxy_deployment(db):
     """Factory fixture: returns a callable that creates ProxyDeployment rows."""
     from tests.factories import ProxyDeploymentFactory
+
     return lambda **kwargs: ProxyDeploymentFactory(db, **kwargs)
 
 
@@ -387,6 +408,7 @@ def make_proxy_deployment(db):
 def make_bnk_upgrade(db):
     """Factory fixture: returns a callable that creates BnkUpgrade rows."""
     from tests.factories import BnkUpgradeFactory
+
     return lambda **kwargs: BnkUpgradeFactory(db, **kwargs)
 
 
@@ -394,10 +416,12 @@ def make_bnk_upgrade(db):
 # Mock service fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def mock_cache():
     """Provide a standalone MockCacheService for tests that need explicit cache control."""
     from tests.mocks.redis_mock import MockCacheService
+
     return MockCacheService()
 
 
@@ -410,6 +434,7 @@ def mock_tofu(monkeypatch):
             mock_tofu(command="apply", success=True, apply_added=5)
     """
     from tests.mocks.subprocess_mock import mock_tofu_subprocess
+
     results = []
 
     def _configure(**kwargs):
