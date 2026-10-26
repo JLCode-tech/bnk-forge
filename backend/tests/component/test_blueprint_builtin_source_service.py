@@ -209,19 +209,19 @@ def test_blueprint_manifest_optional_defaults_to_false():
 
 
 # ---------------------------------------------------------------------------
-# sync_builtin_source — all 12 bundled manifests load
+# sync_builtin_source — all 15 bundled manifests load
 # ---------------------------------------------------------------------------
 
-def test_sync_builtin_source_loads_all_13_manifests(db):
-    """sync_builtin_source finds and creates releases for all 13 bundled blueprints."""
+def test_sync_builtin_source_loads_all_15_manifests(db):
+    """sync_builtin_source finds and creates releases for all 15 bundled blueprints."""
     source = ensure_default_builtin_blueprint_source(db)
     db.commit()
 
     result = sync_builtin_source(db, source)
     db.commit()
 
-    assert result["blueprints_found"] == 13, (
-        f"Expected 13 bundled blueprints, found {result['blueprints_found']}. "
+    assert result["blueprints_found"] == 15, (
+        f"Expected 15 bundled blueprints, found {result['blueprints_found']}. "
         f"Errors: {result['errors']}"
     )
     assert result["releases_invalid"] == 0, f"Validation failures: {result['errors']}"
@@ -232,7 +232,7 @@ def test_sync_builtin_source_loads_all_13_manifests(db):
         .filter(BlueprintRelease.blueprint_source_id == source.id)
         .count()
     )
-    assert total_releases == 13
+    assert total_releases == 15
 
 
 # ---------------------------------------------------------------------------

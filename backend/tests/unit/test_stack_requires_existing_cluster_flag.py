@@ -41,7 +41,7 @@ class TestJsonFlag:
         assert not t.get("requires_existing_cluster", False)
 
     def test_no_template_has_flag_except_expected_slugs(self):
-        expected_slugs = {"bnk-on-k8s"}
+        expected_slugs = {"bnk-on-k8s", "bnk-241-on-k8s"}
         flagged = [t["slug"] for t in _load_templates() if t.get("requires_existing_cluster")]
         assert set(flagged) == expected_slugs
 
