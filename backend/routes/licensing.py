@@ -670,8 +670,13 @@ async def get_cwc_status_endpoint(
         # Also check if the CWC licensing cert (cwc-license-certs) exists.
         cwc_license_certs_ok = False
         avail_msg = available.get("message", "")
+        is_read_only = bool(available.get("read_only")) or "403" in avail_msg or "forbidden" in avail_msg.lower()
         cwc_service_found = cwc_found or "No CWC mTLS certificates found" in avail_msg
-        if api_client is not None and (cwc_service_found or "not found in any namespace" not in avail_msg):
+        if (
+            api_client is not None
+            and not is_read_only
+            and (cwc_service_found or "not found in any namespace" not in avail_msg)
+        ):
             try:
                 from services.qkview_service import (
                     CWC_LICENSE_CERTS_SECRET,
@@ -696,7 +701,10 @@ async def get_cwc_status_endpoint(
         status_ok = True
         if cwc_found:
             try:
-                resp["status"] = legacy_get_license_status(k8s_service, cluster_id, force=force)
+                status_payload = legacy_get_license_status(k8s_service, cluster_id, force=force)
+                resp["status"] = status_payload
+                if status_payload.get("client_pod_running") is False or status_payload.get("read_only") is True:
+                    resp["cwc_reachable"] = False
             except Exception as status_err:
                 status_ok = False
                 logger.debug("Could not fetch CWC /status payload: %s", status_err)

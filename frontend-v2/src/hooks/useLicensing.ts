@@ -155,6 +155,13 @@ function parseLicenseStatus(
 
 // Hashes of licensing queries whose next fetch must bypass the backend cache.
 const forceNextLicensingFetch = new Set<string>();
+// Hashes of licensing status queries whose latest cached response was fetched
+// passively (without create_client_pod=true), so a caller with createClientPod=true
+// can upgrade the passive stub once without looping if an active fetch also
+// returns client_pod_running: false.
+const passiveFetchedLicensingStatus = new Set<string>();
+// Hashes of licensing status queries whose next fetch must pass create_client_pod=true.
+const createClientPodNextFetch = new Set<string>();
 
 /** Refetch license status and CWC status past the backend cache (explicit Refresh). */
 export function refreshLicensing(
@@ -198,13 +205,24 @@ export function useLicenseStatus(
     queryFn: async ({ queryKey }) => {
       const qHash = hashKey(queryKey);
       const force = forceNextLicensingFetch.has(qHash) || undefined;
+      const shouldCreatePod =
+        createClientPod ||
+        Boolean(force) ||
+        createClientPodNextFetch.has(qHash) ||
+        undefined;
+      if (shouldCreatePod) {
+        passiveFetchedLicensingStatus.delete(qHash);
+      } else {
+        passiveFetchedLicensingStatus.add(qHash);
+      }
       try {
         return await licensingApi.getStatus(clusterId, {
           force,
-          createClientPod: createClientPod || Boolean(force) || undefined,
+          createClientPod: shouldCreatePod,
         });
       } finally {
         forceNextLicensingFetch.delete(qHash);
+        createClientPodNextFetch.delete(qHash);
       }
     },
     enabled: enabled && clusterId > 0,
@@ -217,13 +235,17 @@ export function useLicenseStatus(
   // refetch once so the backend upgrades the passive stub to an active CWC query.
   const refetch = query.refetch;
   useEffect(() => {
+    const qHash = hashKey(LICENSING_KEYS.status(clusterId));
     if (
       enabled &&
       clusterId > 0 &&
       createClientPod &&
       query.data?.client_pod_running === false &&
+      passiveFetchedLicensingStatus.has(qHash) &&
       !query.isFetching
     ) {
+      passiveFetchedLicensingStatus.delete(qHash);
+      createClientPodNextFetch.add(qHash);
       void refetch();
     }
   }, [

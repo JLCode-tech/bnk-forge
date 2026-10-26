@@ -47,7 +47,6 @@ logger = logging.getLogger(__name__)
 # Encryption passphrase safety
 # ============================================================
 
-
 def _freeze_encryption_passphrase_before_rename(db: Session, project: "Project") -> None:
     """Persist the auto-derived encryption passphrase before a project rename.
 
@@ -73,11 +72,14 @@ def _freeze_encryption_passphrase_before_rename(db: Session, project: "Project")
 
     from core.encryption import encrypt_value
 
-    passphrase = hashlib.sha256(f"bnk-forge-{project.id}-{project.name}".encode()).hexdigest()[:32]
+    passphrase = hashlib.sha256(
+        f"bnk-forge-{project.id}-{project.name}".encode()
+    ).hexdigest()[:32]
     enc.encryption_passphrase_encrypted = encrypt_value(passphrase)
     db.flush()  # flush within the same transaction; caller will commit
     logger.info(
-        "Froze encryption passphrase for project %s before rename (was derived from name '%s')",
+        "Froze encryption passphrase for project %s before rename "
+        "(was derived from name '%s')",
         project.id,
         project.name,
     )
@@ -92,13 +94,11 @@ from tasks.parallel_tasks import NO_INFRA_STATUSES  # noqa: E402  (module status
 # A module that still owns infrastructure AND has failed. Kept separate from
 # NO_INFRA_STATUSES because init_failed/plan_failed are failures that own
 # nothing -- they belong to "clean", not to "failed".
-INFRA_FAILED_STATUSES = frozenset(
-    {
-        "failed",
-        "apply_failed",
-        "destroy_failed",
-    }
-)
+INFRA_FAILED_STATUSES = frozenset({
+    "failed",
+    "apply_failed",
+    "destroy_failed",
+})
 
 
 def summarize_module_state(module_statuses: Iterable[str | None]) -> str:
@@ -120,7 +120,8 @@ def summarize_module_state(module_statuses: Iterable[str | None]) -> str:
 
     Callers should treat anything other than "clean" as "not finished".
     """
-    owning = [(status or "") for status in module_statuses if (status or "") not in NO_INFRA_STATUSES]
+    owning = [(status or "") for status in module_statuses
+              if (status or "") not in NO_INFRA_STATUSES]
     if not owning:
         return "clean"
     if any(status in INFRA_FAILED_STATUSES for status in owning):
@@ -210,9 +211,7 @@ class ProjectService(BaseService):
                 "provider": project.credential_template.provider,
                 "has_ibmcloud_api_key": bool(project.credential_template.ibmcloud_api_key_encrypted),
                 "ibmcloud_resource_group": project.credential_template.ibmcloud_resource_group,
-            }
-            if project.credential_template
-            else None,
+            } if project.credential_template else None,
             # First-class SSH credential
             "ssh_credential_id": project.ssh_credential_id,
             "ssh_credential": {
@@ -220,9 +219,7 @@ class ProjectService(BaseService):
                 "name": project.ssh_credential.name,
                 "host": project.ssh_credential.host,
                 "username": project.ssh_credential.username,
-            }
-            if project.ssh_credential
-            else None,
+            } if project.ssh_credential else None,
             # On-Prem Infrastructure Host settings
             "infra_enabled": project.infra_enabled,
             "infra_host": project.infra_host,
@@ -245,7 +242,9 @@ class ProjectService(BaseService):
         """Projects provision through the template, which an Entra ID SSO template cannot do."""
         if not template_id:
             return
-        template = self.db.query(CloudCredentialTemplate).filter(CloudCredentialTemplate.id == template_id).first()
+        template = self.db.query(CloudCredentialTemplate).filter(
+            CloudCredentialTemplate.id == template_id
+        ).first()
         if template and template.provider == "azure" and template.azure_auth_method == "sso":
             raise BadRequestError(
                 f"Credential template '{template.name}' uses Entra ID SSO and cannot provision. "
@@ -285,7 +284,10 @@ class ProjectService(BaseService):
 
         project_type = (getattr(project, "project_type", None) or "").strip().lower()
         cloud_provider = (getattr(project, "cloud_provider", None) or "").strip().lower()
-        if project_type == "kubernetes" or cloud_provider in {"on-prem", "onprem", "baremetal", "vmware", "vsphere"}:
+        if (
+            project_type == "kubernetes"
+            or cloud_provider in {"on-prem", "onprem", "baremetal", "vmware", "vsphere"}
+        ):
             return PlatformProfile.GENERIC_ONPREM.value
 
         return None
@@ -361,9 +363,7 @@ class ProjectService(BaseService):
                 "name": project.ssh_credential.name,
                 "host": project.ssh_credential.host,
                 "username": project.ssh_credential.username,
-            }
-            if project.ssh_credential
-            else None,
+            } if project.ssh_credential else None,
             # Infrastructure SSH settings
             "infra_enabled": project.infra_enabled,
             "infra_host": project.infra_host,
@@ -392,32 +392,27 @@ class ProjectService(BaseService):
                 return cached_result
 
         # BE-004: Fix N+1 query - eagerly load k8s_clusters, credential_template, ssh_credential, backend_config, and user
-        projects = (
-            self.db.query(Project)
-            .options(
-                joinedload(Project.credential_template).load_only(
-                    CloudCredentialTemplate.id,
-                    CloudCredentialTemplate.name,
-                    CloudCredentialTemplate.provider,
-                    CloudCredentialTemplate.ibmcloud_api_key_encrypted,
-                    CloudCredentialTemplate.ibmcloud_resource_group,
-                ),
-                joinedload(Project.ssh_credential).load_only(
-                    SSHCredential.id,
-                    SSHCredential.name,
-                    SSHCredential.host,
-                    SSHCredential.username,
-                ),
-                joinedload(Project.backend_config),
-                subqueryload(Project.k8s_clusters),
-                # module_state is derived from module statuses; without this the list
-                # endpoint would lazy-load modules once per project.
-                subqueryload(Project.project_modules).load_only(ProjectModule.status),
-                joinedload(Project.user).load_only(User.id, User.username),  # MU-001
-            )
-            .order_by(Project.name)
-            .all()
-        )
+        projects = self.db.query(Project).options(
+            joinedload(Project.credential_template).load_only(
+                CloudCredentialTemplate.id,
+                CloudCredentialTemplate.name,
+                CloudCredentialTemplate.provider,
+                CloudCredentialTemplate.ibmcloud_api_key_encrypted,
+                CloudCredentialTemplate.ibmcloud_resource_group,
+            ),
+            joinedload(Project.ssh_credential).load_only(
+                SSHCredential.id,
+                SSHCredential.name,
+                SSHCredential.host,
+                SSHCredential.username,
+            ),
+            joinedload(Project.backend_config),
+            subqueryload(Project.k8s_clusters),
+            # module_state is derived from module statuses; without this the list
+            # endpoint would lazy-load modules once per project.
+            subqueryload(Project.project_modules).load_only(ProjectModule.status),
+            joinedload(Project.user).load_only(User.id, User.username),  # MU-001
+        ).order_by(Project.name).all()
 
         project_list = [self._project_to_list_dict(p) for p in projects]
 
@@ -467,11 +462,9 @@ class ProjectService(BaseService):
 
         # If neither provided, try to infer from credential template
         if not project_type and project_data.credential_template_id:
-            template = (
-                self.db.query(CloudCredentialTemplate)
-                .filter(CloudCredentialTemplate.id == project_data.credential_template_id)
-                .first()
-            )
+            template = self.db.query(CloudCredentialTemplate).filter(
+                CloudCredentialTemplate.id == project_data.credential_template_id
+            ).first()
             if template:
                 provider_to_type = {
                     "aws": "cloud-aws",
@@ -499,16 +492,14 @@ class ProjectService(BaseService):
         target_platform_profile = getattr(project_data, "target_platform_profile", None)
         if not target_platform_profile:
             if project_type == "kubernetes" or cloud_provider in {
-                "on-prem",
-                "onprem",
-                "baremetal",
-                "vmware",
-                "vsphere",
+                "on-prem", "onprem", "baremetal", "vmware", "vsphere",
             }:
                 target_platform_profile = PlatformProfile.GENERIC_ONPREM.value
             elif cloud_provider:
                 # Auto-derive managed platform profile from cloud_provider
-                profile = PlatformContextService._MANAGED_CLOUD_PROFILE_MAP.get(cloud_provider.strip().lower())
+                profile = PlatformContextService._MANAGED_CLOUD_PROFILE_MAP.get(
+                    cloud_provider.strip().lower()
+                )
                 if profile:
                     target_platform_profile = profile
 
@@ -525,11 +516,9 @@ class ProjectService(BaseService):
                 region = default_region
 
             if credential_template_id:
-                template = (
-                    self.db.query(CloudCredentialTemplate)
-                    .filter(CloudCredentialTemplate.id == credential_template_id)
-                    .first()
-                )
+                template = self.db.query(CloudCredentialTemplate).filter(
+                    CloudCredentialTemplate.id == credential_template_id
+                ).first()
 
                 if template:
                     # If no region provided or region matches default, inherit from template
@@ -562,7 +551,6 @@ class ProjectService(BaseService):
             target_platform_profile=target_platform_profile,
             platform_provider=getattr(project_data, "platform_provider", None),
             management_boundary=getattr(project_data, "management_boundary", None),
-            is_active=False,
             user_id=user_id,  # MU-001: Set project owner
         )
 
@@ -606,9 +594,7 @@ class ProjectService(BaseService):
             if matched:
                 logger.info(
                     "Defaulting project credential_template_id to template '%s' (id=%s, provider=%s)",
-                    matched.name,
-                    matched.id,
-                    matched.provider,
+                    matched.name, matched.id, matched.provider,
                 )
                 return matched.id
         except Exception as e:
@@ -635,14 +621,10 @@ class ProjectService(BaseService):
         if project_data.name:
             # Check for duplicate name (skip if unchanged)
             if project_data.name != project.name:
-                existing = (
-                    self.db.query(Project)
-                    .filter(
-                        Project.name == project_data.name,
-                        Project.id != project_id,
-                    )
-                    .first()
-                )
+                existing = self.db.query(Project).filter(
+                    Project.name == project_data.name,
+                    Project.id != project_id,
+                ).first()
                 if existing:
                     raise ConflictError(
                         "project",
@@ -682,16 +664,15 @@ class ProjectService(BaseService):
             "target_platform_profile",
         )
         if not explicit_target_platform_profile and not project.target_platform_profile:
-            if project.project_type == "kubernetes" or project.cloud_provider in {
-                "on-prem",
-                "onprem",
-                "baremetal",
-                "vmware",
-                "vsphere",
-            }:
+            if (
+                project.project_type == "kubernetes"
+                or project.cloud_provider in {"on-prem", "onprem", "baremetal", "vmware", "vsphere"}
+            ):
                 project.target_platform_profile = PlatformProfile.GENERIC_ONPREM.value
             elif project.cloud_provider:
-                profile = PlatformContextService._MANAGED_CLOUD_PROFILE_MAP.get(project.cloud_provider.strip().lower())
+                profile = PlatformContextService._MANAGED_CLOUD_PROFILE_MAP.get(
+                    project.cloud_provider.strip().lower()
+                )
                 if profile:
                     project.target_platform_profile = profile
 
@@ -778,8 +759,8 @@ class ProjectService(BaseService):
         # project that still owns resources is recoverable and a deleted one is
         # not.
         undestroyed = [
-            m
-            for m in self.db.query(ProjectModule).filter(ProjectModule.project_id == project_id).all()
+            m for m in self.db.query(ProjectModule)
+            .filter(ProjectModule.project_id == project_id).all()
             if (m.status or "") not in NO_INFRA_STATUSES
         ]
         if undestroyed and not force:
@@ -825,7 +806,6 @@ class ProjectService(BaseService):
         # its row to ON DELETE CASCADE will fail its next under-lock UPDATE
         # via the fence-token guard.
         from services.module_lock import ModuleLockService
-
         svc = ModuleLockService(self.db)
         held = [lock for lock in svc.list_held() if lock.get("project_id") == project_id]
         live_held = [lock for lock in held if svc.is_held(lock["module_id"])]
@@ -839,7 +819,6 @@ class ProjectService(BaseService):
 
         # Clean up persistent workspaces for all modules in the project (WORK-006)
         from services.workspace_manager import WorkspaceManager
-
         workspace = WorkspaceManager(self.db)
         workspaces_cleaned = workspace.cleanup_project_workspaces(project_id)
         if workspaces_cleaned > 0:
@@ -920,10 +899,7 @@ class ProjectService(BaseService):
 
         logger.info(
             "Transferred project %d ('%s') from %s to %s",
-            project.id,
-            project.name,
-            previous_owner_name or "unowned",
-            new_owner.username,
+            project.id, project.name, previous_owner_name or "unowned", new_owner.username,
         )
 
         # MU-011: Explicit audit trail for ownership change
@@ -991,34 +967,40 @@ class ProjectService(BaseService):
 # Preferred path: module.json metadata (see detect_module_dependencies below).
 MODULE_DEPENDENCY_RULES = {
     # Network infrastructure (base layer - no dependencies)
-    "vpc": [],
-    "vnet": [],  # Azure
-    "network": [],
-    "networking": [],
+    'vpc': [],
+    'vnet': [],       # Azure
+    'network': [],
+    'networking': [],
+
     # Compute depends on networking
-    "eks": ["vpc", "network"],  # AWS
-    "aks": ["vnet", "network"],  # Azure
-    "gke": ["network"],  # GCP
-    "kubernetes": ["vpc", "vnet", "network"],
-    "k8s": ["vpc", "vnet", "network"],
+    'eks': ['vpc', 'network'],      # AWS
+    'aks': ['vnet', 'network'],     # Azure
+    'gke': ['network'],             # GCP
+    'kubernetes': ['vpc', 'vnet', 'network'],
+    'k8s': ['vpc', 'vnet', 'network'],
+
     # Database depends on networking
-    "database": ["vpc", "vnet", "network"],
-    "rds": ["vpc", "network"],
-    "aurora": ["vpc", "network"],
+    'database': ['vpc', 'vnet', 'network'],
+    'rds': ['vpc', 'network'],
+    'aurora': ['vpc', 'network'],
+
     # Storage — some types are global (S3, GCS), others need networking
-    "storage": ["vpc", "vnet", "network"],
+    'storage': ['vpc', 'vnet', 'network'],
+
     # Application services depend on compute
-    "bnk": ["eks", "aks", "gke", "kubernetes", "k8s"],
-    "f5": ["eks", "aks", "gke", "kubernetes", "k8s"],
-    "big-ip": ["eks", "aks", "gke", "kubernetes", "k8s"],
-    "ingress": ["eks", "aks", "gke", "kubernetes", "k8s"],
-    "load-balancer": ["vpc", "vnet", "network"],
+    'bnk': ['eks', 'aks', 'gke', 'kubernetes', 'k8s'],
+    'f5': ['eks', 'aks', 'gke', 'kubernetes', 'k8s'],
+    'big-ip': ['eks', 'aks', 'gke', 'kubernetes', 'k8s'],
+    'ingress': ['eks', 'aks', 'gke', 'kubernetes', 'k8s'],
+    'load-balancer': ['vpc', 'vnet', 'network'],
+
     # Security dependencies
-    "security": ["vpc", "vnet", "network"],
-    "firewall": ["vpc", "vnet", "network"],
+    'security': ['vpc', 'vnet', 'network'],
+    'firewall': ['vpc', 'vnet', 'network'],
+
     # Monitoring depends on resources being monitored
-    "monitoring": ["vpc", "vnet", "eks", "aks", "gke", "kubernetes"],
-    "prometheus": ["eks", "aks", "gke", "kubernetes"],
+    'monitoring': ['vpc', 'vnet', 'eks', 'aks', 'gke', 'kubernetes'],
+    'prometheus': ['eks', 'aks', 'gke', 'kubernetes'],
 }
 
 
@@ -1037,7 +1019,7 @@ def detect_module_dependencies(library_module, existing_modules: list) -> list:
     dependencies = []
 
     # Try to use module.json metadata first (preferred in v2)
-    if library_module and hasattr(library_module, "dependencies_metadata") and library_module.dependencies_metadata:
+    if library_module and hasattr(library_module, 'dependencies_metadata') and library_module.dependencies_metadata:
         required_deps = library_module.dependencies_metadata.get("required", [])
 
         # Build lookup: module_path -> ProjectModule.id (with flexible matching)
@@ -1065,19 +1047,15 @@ def detect_module_dependencies(library_module, existing_modules: list) -> list:
 
             if matched_id:
                 dependencies.append(matched_id)
-                logger.info(
-                    f"Resolved dependency from module.json: {library_module.name} depends on {dep_module_path} (ProjectModule {matched_id})"
-                )
+                logger.info(f"Resolved dependency from module.json: {library_module.name} depends on {dep_module_path} (ProjectModule {matched_id})")
             else:
-                logger.warning(
-                    f"Required dependency {dep_module_path} not found in project for module {library_module.name}"
-                )
+                logger.warning(f"Required dependency {dep_module_path} not found in project for module {library_module.name}")
 
         return dependencies
 
     # FALLBACK: Use hardcoded rules if no metadata available
     module_name = library_module.name if library_module else "unknown"
-    module_name_lower = module_name.lower().replace("-", "_").replace(" ", "_")
+    module_name_lower = module_name.lower().replace('-', '_').replace(' ', '_')
 
     # Find matching rule for this module type
     potential_deps = []
@@ -1093,20 +1071,15 @@ def detect_module_dependencies(library_module, existing_modules: list) -> list:
     # Find existing modules that match the dependency types
     for dep_type in potential_deps:
         for existing_module in existing_modules:
-            existing_name = (
-                existing_module.library_module.name
-                if existing_module.library_module
-                else existing_module.path_in_project.split("/")[-1]
-            ).lower()
-            existing_name = existing_name.replace("-", "_").replace(" ", "_")
+            existing_name = (existing_module.library_module.name if existing_module.library_module
+                           else existing_module.path_in_project.split('/')[-1]).lower()
+            existing_name = existing_name.replace('-', '_').replace(' ', '_')
 
             # Check if this existing module matches the dependency type
             if dep_type in existing_name or existing_name in dep_type:
                 if existing_module.id not in dependencies:
                     dependencies.append(existing_module.id)
-                    logger.info(
-                        f"  Detected dependency (fallback): {module_name} depends on {existing_module.library_module.name if existing_module.library_module else existing_module.path_in_project}"
-                    )
+                    logger.info(f"  Detected dependency (fallback): {module_name} depends on {existing_module.library_module.name if existing_module.library_module else existing_module.path_in_project}")
 
     return dependencies
 
@@ -1114,7 +1087,6 @@ def detect_module_dependencies(library_module, existing_modules: list) -> list:
 # ============================================================
 # Project Statistics
 # ============================================================
-
 
 def update_project_counts(db: Session, project_id: int):
     """
@@ -1138,24 +1110,13 @@ def update_project_counts(db: Session, project_id: int):
         return
 
     # Optimized: Get all counts in a single query
-    counts = (
-        db.query(
-            func.count(ProjectModule.id),
-            func.count(case((ProjectModule.status.in_(["applied"]), 1))),
-            func.count(
-                case(
-                    (
-                        ProjectModule.status.in_(
-                            ["failed", "apply_failed", "destroy_failed", "init_failed", "plan_failed"]
-                        ),
-                        1,
-                    )
-                )
-            ),
-        )
-        .filter(ProjectModule.project_id == project_id)
-        .first()
-    )
+    counts = db.query(
+        func.count(ProjectModule.id),
+        func.count(case((ProjectModule.status.in_(["applied"]), 1))),
+        func.count(case((ProjectModule.status.in_(["failed", "apply_failed", "destroy_failed", "init_failed", "plan_failed"]), 1)))
+    ).filter(
+        ProjectModule.project_id == project_id
+    ).first()
 
     project.module_count = counts[0] or 0
     project.deployed_count = counts[1] or 0
@@ -1189,6 +1150,4 @@ def recompute_all_project_counts(db: Session) -> dict:
     db.commit()
     return {"projects_scanned": len(project_ids), "projects_repaired": repaired}
 
-    logger.info(
-        f"Updated project {project_id} counts: modules={project.module_count}, deployed={project.deployed_count}, failed={project.failed_count}"
-    )
+    logger.info(f"Updated project {project_id} counts: modules={project.module_count}, deployed={project.deployed_count}, failed={project.failed_count}")

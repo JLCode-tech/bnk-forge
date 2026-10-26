@@ -112,7 +112,11 @@ def _build_bnk_context(cluster: KubernetesCluster, db: Session) -> dict[str, Any
         "checkedAt": _dt_to_str(cluster.last_synced_at),
     }
 
-    linked_op = db.query(ConnectedOperator).filter(ConnectedOperator.cluster_id == cluster.id).first()
+    linked_op = (
+        db.query(ConnectedOperator)
+        .filter(ConnectedOperator.cluster_id == cluster.id)
+        .first()
+    )
     if linked_op:
         operator_connected = is_operator_live_connected(linked_op)
         operator_mode = linked_op.connectivity_mode or "direct_ws"
@@ -156,7 +160,6 @@ def _build_bnk_context(cluster: KubernetesCluster, db: Session) -> dict[str, Any
 # Unified BNK Data Endpoint
 # ============================================================================
 
-
 @router.get(
     "/k8s/clusters/{cluster_id}/f5bnk/data",
     response_model=BnkDataResponse,
@@ -181,7 +184,9 @@ def get_bnk_data(
     """
     k8s_service = KubernetesService(db)
     cluster = k8s_service.get_cluster(cluster_id)
-    data = fetch_all_bnk_data(k8s_service, cluster_id, namespace, include_nodes=True, force=force)
+    data = fetch_all_bnk_data(
+        k8s_service, cluster_id, namespace, include_nodes=True, force=force
+    )
     data.update(_build_bnk_context(cluster, db))
 
     health = analyze_health(data)
@@ -227,7 +232,6 @@ def get_bnk_data(
 # Individual endpoints (kept for backward compatibility / direct access)
 # These now delegate to the shared data service.
 # ============================================================================
-
 
 @router.get(
     "/k8s/clusters/{cluster_id}/f5bnk/health",
@@ -334,7 +338,6 @@ def get_policy_gateway_associations(
 # F5BigAnalyzer runtime metrics (Prometheus proxy)
 # ============================================================================
 
-
 @router.get(
     "/k8s/clusters/{cluster_id}/analyzers/{namespace}/{name}/runtime-metrics",
     dependencies=[Depends(require_viewer)],
@@ -385,7 +388,6 @@ def get_backend_health_route(
 # A2A Protocol
 # ============================================================================
 
-
 @router.get("/k8s/clusters/{cluster_id}/f5bnk/a2a/agents", dependencies=[Depends(require_viewer)])
 @handle_route_errors("discover A2A agents")
 def get_a2a_agents(
@@ -413,8 +415,7 @@ def get_a2a_agents(
     topo = analyze_topology(data)
 
     agents = discover_a2a_agents(
-        data,
-        topo["topology"],
+        data, topo["topology"],
         api_client=api_client,
         probe=True,
     )
@@ -431,7 +432,6 @@ def get_a2a_agents(
 # ============================================================================
 # Proxy Translation (D-021 P2)
 # ============================================================================
-
 
 @router.post(
     "/k8s/clusters/{cluster_id}/proxies/translate",
@@ -465,11 +465,12 @@ def translate_proxy_to_bnk(
     # Filter to ingresses that match the requested class
     class_name = body.class_name
     source_ingresses = [
-        ing
-        for ing in raw_ingresses
+        ing for ing in raw_ingresses
         if (
             (ing.spec.ingress_class_name or "").lower() == class_name.lower()
-            or (ing.metadata.annotations or {}).get("kubernetes.io/ingress.class", "").lower() == class_name.lower()
+            or (ing.metadata.annotations or {}).get(
+                "kubernetes.io/ingress.class", ""
+            ).lower() == class_name.lower()
         )
     ]
 
@@ -513,15 +514,10 @@ def translate_proxy_to_bnk(
         ns = body.namespace or "default"
         try:
             dep = k8s_client.AppsV1Api(api_client).read_namespaced_deployment(
-                name=class_name,
-                namespace=ns,
-                _request_timeout=10,
+                name=class_name, namespace=ns, _request_timeout=10,
             )
             extracted = _extract_backends_from_configmaps(
-                core,
-                ns,
-                body.proxy_type,
-                _deployment_configmap_names(dep),
+                core, ns, body.proxy_type, _deployment_configmap_names(dep),
             )
         except ApiException as e:
             logger.info("translate: Deployment %s/%s not readable: %s", ns, class_name, e.reason)
@@ -542,23 +538,19 @@ def translate_proxy_to_bnk(
                 }
                 for b in extracted
             ]
-            source_ingresses = [
-                {
-                    "metadata": {
-                        "name": class_name,
-                        "namespace": primary_ns,
-                    },
-                    "spec": {
-                        "rules": [
-                            {
-                                "http": {
-                                    "paths": paths,
-                                }
-                            }
-                        ],
-                    },
-                }
-            ]
+            source_ingresses = [{
+                "metadata": {
+                    "name": class_name,
+                    "namespace": primary_ns,
+                },
+                "spec": {
+                    "rules": [{
+                        "http": {
+                            "paths": paths,
+                        }
+                    }],
+                },
+            }]
 
     # --- Call pure translator ---
     result = translate_to_bnk(
@@ -573,13 +565,10 @@ def translate_proxy_to_bnk(
     )
 
     logger.info(
-        "Proxy translation: cluster=%d proxy_type=%s class=%s ingresses=%d httproutes=%d unmapped=%d",
-        cluster_id,
-        body.proxy_type,
-        class_name,
-        len(source_ingresses),
-        len(source_httproutes),
-        len(result.unmapped),
+        "Proxy translation: cluster=%d proxy_type=%s class=%s "
+        "ingresses=%d httproutes=%d unmapped=%d",
+        cluster_id, body.proxy_type, class_name,
+        len(source_ingresses), len(source_httproutes), len(result.unmapped),
     )
 
     return ProxyTranslateResponse(
@@ -609,7 +598,6 @@ def translate_proxy_to_bnk(
 # ============================================================================
 # CIS Translation (D-023 P3) — preview CIS VirtualServer/TransportServer → BNK
 # ============================================================================
-
 
 @router.post(
     "/k8s/clusters/{cluster_id}/proxies/cis/translate",
@@ -686,7 +674,10 @@ def translate_cis_to_bnk_route(
         raw_configmaps = _fetch_cis_as3_configmaps(api_client)
         # Filter by namespace / name
         if body.configmap_namespace:
-            raw_configmaps = [cm for cm in raw_configmaps if cm.get("namespace") == body.configmap_namespace]
+            raw_configmaps = [
+                cm for cm in raw_configmaps
+                if cm.get("namespace") == body.configmap_namespace
+            ]
         if body.configmap_names:
             cm_name_set = set(body.configmap_names)
             raw_configmaps = [cm for cm in raw_configmaps if cm.get("name") in cm_name_set]
@@ -696,19 +687,17 @@ def translate_cis_to_bnk_route(
             if cm.get("template_parse_error") or cm.get("template") is None:
                 # Malformed template → emit a seed unmapped entry via AS3 parser
                 # by passing an invalid (empty) declaration; the parser handles it
-                src_name = f"{cm.get('namespace', '')}/{cm.get('name', '')}"
+                src_name = f"{cm.get('namespace','')}/{cm.get('name','')}"
                 parse_err = cm.get("template_parse_error") or "missing template key"
                 malformed_parse_errors[src_name] = parse_err
-                as3_declarations.append(
-                    {
-                        "_source_kind": "AS3ConfigMap",
-                        "_source_name": src_name,
-                        "_source_namespace": cm.get("namespace", ""),
-                        "_template_parse_error": parse_err,
-                        # Intentionally empty class to trigger parse-error path
-                        "class": None,
-                    }
-                )
+                as3_declarations.append({
+                    "_source_kind": "AS3ConfigMap",
+                    "_source_name": src_name,
+                    "_source_namespace": cm.get("namespace", ""),
+                    "_template_parse_error": parse_err,
+                    # Intentionally empty class to trigger parse-error path
+                    "class": None,
+                })
             else:
                 template = cm["template"]
                 # Detect legacy non-AS3 ConfigMap schema (frontend/backend keys, no class:AS3)
@@ -724,26 +713,24 @@ def translate_cis_to_bnk_route(
                     )
                 )
                 if is_legacy:
-                    src_name = f"{cm.get('namespace', '')}/{cm.get('name', '')}"
+                    src_name = f"{cm.get('namespace','')}/{cm.get('name','')}"
                     parse_err = (
                         "legacy non-AS3 F5 ConfigMap schema (frontend/backend) is not "
                         "auto-translated; migrate it to AS3 or recreate as a VirtualServer CR"
                     )
                     malformed_parse_errors[src_name] = parse_err
-                    as3_declarations.append(
-                        {
-                            "_source_kind": "AS3ConfigMap",
-                            "_source_name": src_name,
-                            "_source_namespace": cm.get("namespace", ""),
-                            "_template_parse_error": parse_err,
-                            # No-valid-class → triggers parse-error unmapped path
-                            "class": "legacy-non-as3",
-                        }
-                    )
+                    as3_declarations.append({
+                        "_source_kind": "AS3ConfigMap",
+                        "_source_name": src_name,
+                        "_source_namespace": cm.get("namespace", ""),
+                        "_template_parse_error": parse_err,
+                        # No-valid-class → triggers parse-error unmapped path
+                        "class": "legacy-non-as3",
+                    })
                 else:
                     decl = dict(template)
                     decl["_source_kind"] = "AS3ConfigMap"
-                    decl["_source_name"] = f"{cm.get('namespace', '')}/{cm.get('name', '')}"
+                    decl["_source_name"] = f"{cm.get('namespace','')}/{cm.get('name','')}"
                     decl["_source_namespace"] = cm.get("namespace", "")
                     as3_declarations.append(decl)
 
@@ -752,21 +739,31 @@ def translate_cis_to_bnk_route(
         # Filter by namespace / name
         if body.ingress_namespace:
             raw_ingresses = [
-                ing for ing in raw_ingresses if (ing.get("metadata") or {}).get("namespace") == body.ingress_namespace
+                ing for ing in raw_ingresses
+                if (ing.get("metadata") or {}).get("namespace") == body.ingress_namespace
             ]
         if body.ingress_names:
             ing_name_set = set(body.ingress_names)
-            raw_ingresses = [ing for ing in raw_ingresses if (ing.get("metadata") or {}).get("name") in ing_name_set]
+            raw_ingresses = [
+                ing for ing in raw_ingresses
+                if (ing.get("metadata") or {}).get("name") in ing_name_set
+            ]
         source_ingresses = raw_ingresses
 
     if source_mode in ("route", "both"):
         raw_routes = _fetch_openshift_routes(api_client)
         # Filter by namespace / name
         if body.route_namespace:
-            raw_routes = [r for r in raw_routes if (r.get("metadata") or {}).get("namespace") == body.route_namespace]
+            raw_routes = [
+                r for r in raw_routes
+                if (r.get("metadata") or {}).get("namespace") == body.route_namespace
+            ]
         if body.route_names:
             route_name_set = set(body.route_names)
-            raw_routes = [r for r in raw_routes if (r.get("metadata") or {}).get("name") in route_name_set]
+            raw_routes = [
+                r for r in raw_routes
+                if (r.get("metadata") or {}).get("name") in route_name_set
+            ]
         source_routes = raw_routes
 
     # Determine the honest source_kind for the response
@@ -806,31 +803,25 @@ def translate_cis_to_bnk_route(
 
     logger.info(
         "CIS translation: cluster=%d mode=%s vs=%d ts=%d as3=%d ing=%d routes=%d il=%d unmapped=%d",
-        cluster_id,
-        source_mode,
-        len(source_vs),
-        len(source_ts),
-        len(as3_declarations),
-        len(source_ingresses),
-        len(source_routes),
-        len(source_ingresslinks),
-        len(result.unmapped),
+        cluster_id, source_mode, len(source_vs), len(source_ts),
+        len(as3_declarations), len(source_ingresses), len(source_routes),
+        len(source_ingresslinks), len(result.unmapped),
     )
 
     # Derive a class_name for the response
     if source_vs:
-        first_vs_meta = source_vs[0].get("metadata") or {}
+        first_vs_meta = (source_vs[0].get("metadata") or {})
         class_name = first_vs_meta.get("name") or "cis-virtualserver"
     elif as3_declarations:
         class_name = as3_declarations[0].get("_source_name") or "cis-as3"
     elif source_ingresses:
-        ing_meta = source_ingresses[0].get("metadata") or {}
+        ing_meta = (source_ingresses[0].get("metadata") or {})
         class_name = ing_meta.get("name") or "cis-ingress"
     elif source_routes:
-        route_meta = source_routes[0].get("metadata") or {}
+        route_meta = (source_routes[0].get("metadata") or {})
         class_name = route_meta.get("name") or "cis-route"
     elif source_ingresslinks:
-        il_meta = source_ingresslinks[0].get("metadata") or {}
+        il_meta = (source_ingresslinks[0].get("metadata") or {})
         class_name = il_meta.get("name") or "cis-ingresslink"
     else:
         class_name = "cis-virtualserver"
@@ -862,7 +853,6 @@ def translate_cis_to_bnk_route(
 # ============================================================================
 # Proxy Migration (D-021 P3) — guided, gated, reversible proxy-to-BNK cutover
 # ============================================================================
-
 
 def _migration_to_response(m) -> ProxyMigrationResponse:  # type: ignore[return]
     """Convert a ProxyMigration ORM row to a ProxyMigrationResponse."""
@@ -982,7 +972,6 @@ def get_proxy_migration(
     m = svc.get_migration(migration_id)
     if m.cluster_id != cluster_id:
         from core.errors import NotFoundError
-
         raise NotFoundError("ProxyMigration", migration_id)
     return _migration_to_response(m)
 

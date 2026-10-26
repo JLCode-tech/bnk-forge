@@ -268,6 +268,11 @@ def _get_cwc_rest_port(api_client: k8s_client.ApiClient, cwc_namespace: str) -> 
     try:
         svc = core_v1.read_namespaced_service(CWC_SERVICE, cwc_namespace)
     except k8s_client.rest.ApiException as e:
+        if e.status == 403 or "forbidden" in (e.reason or str(e)).lower():
+            raise QKViewError(
+                f"Forbidden: cannot read CWC service '{CWC_SERVICE}' in '{cwc_namespace}' (read-only access)",
+                403,
+            )
         raise QKViewError(
             f"CWC service '{CWC_SERVICE}' not found in '{cwc_namespace}': {e.reason}",
             e.status,
@@ -760,6 +765,9 @@ def _cwc_request(
         cache.set(meta_key, [cwc_ns, cert_secret, cwc_port], ttl_seconds=_CWC_META_TTL_SEC)
     cwc_url = f"https://{CWC_SERVICE}.{cwc_ns}:{cwc_port}{path}"
 
+    if pod_name is None:
+        pod_name = _get_or_create_client_pod(api_client, cert_secret, cwc_ns)
+
     _sweep_cwc_token_cache()
     token_entry = _cwc_token_cache.get(meta_key)
     if token_entry and token_entry[0] > time.monotonic():
@@ -768,9 +776,6 @@ def _cwc_request(
         bearer_token = _get_admin_token(api_client, cwc_ns)
         if bearer_token:
             _cwc_token_cache[meta_key] = (time.monotonic() + _CWC_META_TTL_SEC, bearer_token)
-
-    if pod_name is None:
-        pod_name = _get_or_create_client_pod(api_client, cert_secret, cwc_ns)
 
     try:
         if stream:
@@ -1373,15 +1378,22 @@ def check_cwc_available(k8s_service: KubernetesService, cluster_id: int, force: 
 
         try:
             core_v1.read_namespace(cwc_ns)
-        except k8s_client.rest.ApiException:
-            return {
-                "available": False,
-                "message": f"Namespace '{cwc_ns}' not found",
-            }
+        except k8s_client.rest.ApiException as e:
+            if e.status != 403 and "forbidden" not in (e.reason or str(e)).lower():
+                return {
+                    "available": False,
+                    "message": f"Namespace '{cwc_ns}' not found",
+                }
 
         try:
             core_v1.read_namespaced_service(CWC_SERVICE, cwc_ns)
-        except k8s_client.rest.ApiException:
+        except k8s_client.rest.ApiException as e:
+            if e.status == 403 or "forbidden" in (e.reason or str(e)).lower():
+                return {
+                    "available": False,
+                    "read_only": True,
+                    "message": f"Forbidden: cannot read CWC service '{CWC_SERVICE}' in '{cwc_ns}' (read-only access)",
+                }
             return {
                 "available": False,
                 "message": f"CWC service '{CWC_SERVICE}' not found in '{cwc_ns}'",
@@ -1390,7 +1402,10 @@ def check_cwc_available(k8s_service: KubernetesService, cluster_id: int, force: 
         try:
             _find_cert_secret(api_client, cwc_ns)
         except QKViewError as e:
-            return {"available": False, "message": str(e)}
+            res_err: dict[str, Any] = {"available": False, "message": str(e)}
+            if e.status_code == 403:
+                res_err["read_only"] = True
+            return res_err
 
         res = {"available": True, "message": f"CWC is available in namespace '{cwc_ns}'"}
         cache.set(cache_key, res, ttl_seconds=60)
@@ -1700,21 +1715,21 @@ def get_license_status(
         result = _cwc_request(api_client, "GET", "/status", allow_create_pod=allow_create_pod)
     except QKViewError as e:
         err_msg = str(e)
-        if e.status_code == 404 or "not found" in err_msg.lower():
-            response = {
-                "success": False,
-                "installed": False,
-                "license_state": "Unavailable",
-                "error": err_msg,
-            }
-            cache.set(cache_key, response, ttl_seconds=120)
-            return response
         if e.status_code in (403, 503):
             response = {
                 "success": False,
                 "installed": True,
                 "read_only": e.status_code == 403,
                 "client_pod_running": e.status_code != 503,
+                "license_state": "Unavailable",
+                "error": err_msg,
+            }
+            cache.set(cache_key, response, ttl_seconds=120)
+            return response
+        if e.status_code == 404 or (e.status_code is None and "not found" in err_msg.lower()):
+            response = {
+                "success": False,
+                "installed": False,
                 "license_state": "Unavailable",
                 "error": err_msg,
             }

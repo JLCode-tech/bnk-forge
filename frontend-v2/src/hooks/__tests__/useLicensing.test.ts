@@ -240,6 +240,51 @@ describe("useLicenseStatus", () => {
     expect(capturedUrl).toContain("create_client_pod=true");
   });
 
+  it("upgrades cached passive client_pod_running=false once when createClientPod=true mounts without looping", async () => {
+    const requestedUrls: string[] = [];
+    server.use(
+      http.get("*/api/licensing/10/status", ({ request }) => {
+        requestedUrls.push(request.url);
+        const url = new URL(request.url);
+        if (url.searchParams.get("create_client_pod") === "true") {
+          return HttpResponse.json({
+            success: false,
+            installed: true,
+            client_pod_running: false,
+            license_state: "Unavailable",
+          });
+        }
+        return HttpResponse.json({
+          success: false,
+          installed: true,
+          client_pod_running: false,
+          license_state: "Unavailable",
+        });
+      }),
+    );
+
+    const wrapper = createWrapper();
+    const passiveHook = renderHook(() => useLicenseStatus(10), { wrapper });
+    await waitFor(() =>
+      expect(passiveHook.result.current.isSuccess).toBe(true),
+    );
+    expect(requestedUrls).toHaveLength(1);
+    expect(requestedUrls[0]).not.toContain("create_client_pod=true");
+
+    // Mounting an active caller on the same QueryClient should refetch once
+    // with create_client_pod=true, and must not loop if client_pod_running stays false.
+    const activeHook = renderHook(
+      () => useLicenseStatus(10, true, { createClientPod: true }),
+      { wrapper },
+    );
+    await waitFor(() => expect(requestedUrls.length).toBeGreaterThanOrEqual(2));
+    await waitFor(() =>
+      expect(activeHook.result.current.isFetching).toBe(false),
+    );
+    expect(requestedUrls).toHaveLength(2);
+    expect(requestedUrls[1]).toContain("create_client_pod=true");
+  });
+
   it("does not fetch when clusterId is 0", () => {
     const { result } = renderHook(() => useLicenseStatus(0), {
       wrapper: createWrapper(),
