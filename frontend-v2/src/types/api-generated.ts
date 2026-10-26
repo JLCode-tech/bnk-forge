@@ -46336,6 +46336,7 @@ export interface operations {
         parameters: {
             query?: {
                 force?: boolean;
+                create_client_pod?: boolean;
             };
             header?: never;
             path: {

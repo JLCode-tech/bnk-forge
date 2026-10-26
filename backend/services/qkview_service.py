@@ -334,7 +334,7 @@ def _client_pod_resources() -> tuple[dict[str, str], dict[str, str]]:
 
 def _find_running_client_pod(
     api_client: k8s_client.ApiClient,
-    cert_secret_name: str,
+    cert_secret_name: str | None,
     cwc_namespace: str,
 ) -> str | None:
     """
@@ -345,15 +345,21 @@ def _find_running_client_pod(
     try:
         # Try new label first, then legacy label for backward compat
         for label in [CLIENT_POD_LABEL, "bnk-forge-qkview-client"]:
+            selector = f"app={label},cert-secret={cert_secret_name}" if cert_secret_name else f"app={label}"
             pods = core_v1.list_namespaced_pod(
                 cwc_namespace,
-                label_selector=f"app={label},cert-secret={cert_secret_name}",
+                label_selector=selector,
             )
             for pod in pods.items:
                 if pod.status and pod.status.phase == "Running":
                     logger.debug(f"Reusing existing client pod: {pod.metadata.name}")
                     return pod.metadata.name
     except Exception as e:
+        if getattr(e, "status", None) == 403:
+            raise QKViewError(
+                f"Insufficient permissions (403 Forbidden) to list pods in '{cwc_namespace}'",
+                status_code=403,
+            )
         logger.warning(f"Failed to list client pods: {e}")
     return None
 
@@ -734,18 +740,25 @@ def _cwc_request(
     else:
         cwc_ns = _detect_cwc_namespace(api_client)
         cwc_port = _get_cwc_rest_port(api_client, cwc_ns)
-        cert_secret = _find_cert_secret(api_client, cwc_ns)
-        cache.set(meta_key, [cwc_ns, cert_secret, cwc_port], ttl_seconds=_CWC_META_TTL_SEC)
-    cwc_url = f"https://{CWC_SERVICE}.{cwc_ns}:{cwc_port}{path}"
+        cert_secret = None
 
     pod_name: str | None = None
     if not allow_create_pod:
-        pod_name = _find_running_client_pod(api_client, cert_secret["name"], cwc_ns)
+        pod_name = _find_running_client_pod(
+            api_client,
+            cert_secret["name"] if isinstance(cert_secret, dict) else None,
+            cwc_ns,
+        )
         if not pod_name:
             raise QKViewError(
                 "CWC client pod is not running (passive status check does not create pods in cluster)",
                 status_code=503,
             )
+
+    if cert_secret is None:
+        cert_secret = _find_cert_secret(api_client, cwc_ns)
+        cache.set(meta_key, [cwc_ns, cert_secret, cwc_port], ttl_seconds=_CWC_META_TTL_SEC)
+    cwc_url = f"https://{CWC_SERVICE}.{cwc_ns}:{cwc_port}{path}"
 
     _sweep_cwc_token_cache()
     token_entry = _cwc_token_cache.get(meta_key)
@@ -820,7 +833,10 @@ def _cwc_request(
         raise
     except Exception as e:
         logger.error(f"CWC request failed: {e}", exc_info=True)
-        raise QKViewError(f"Failed to communicate with CWC: {str(e)}")
+        status_code = getattr(e, "status", None)
+        if status_code is None and "forbidden" in str(e).lower():
+            status_code = 403
+        raise QKViewError(f"Failed to communicate with CWC: {str(e)}", status_code=status_code)
 
 
 def _check_curl_status(response: str, path: str):

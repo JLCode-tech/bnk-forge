@@ -4,7 +4,7 @@
  * K8S-UX-010: All licensing operations are dispatched through the operator
  * pod, which makes mTLS + Bearer token HTTPS calls to the CWC REST API.
  */
-import { apiClient } from './client';
+import { apiClient } from "./client";
 import type {
   LicenseStatusResponse,
   LicenseReportResponse,
@@ -14,16 +14,24 @@ import type {
   LicenseReceiptRequest,
   CWCStatusResponse,
   JwksValidationResponse,
-} from '@/types';
+} from "@/types";
 
 export const licensingApi = {
   /** Get CWC license and telemetry status for a cluster */
-  getStatus: (clusterId: number, force?: boolean) =>
-    apiClient
+  getStatus: (
+    clusterId: number,
+    options?: boolean | { force?: boolean; createClientPod?: boolean },
+  ) => {
+    const opts = typeof options === "boolean" ? { force: options } : options;
+    const params: Record<string, boolean> = {};
+    if (opts?.force) params.force = true;
+    if (opts?.createClientPod) params.create_client_pod = true;
+    return apiClient
       .get<LicenseStatusResponse>(`/api/licensing/${clusterId}/status`, {
-        params: force ? { force: true } : undefined,
+        params: Object.keys(params).length > 0 ? params : undefined,
       })
-      .then((res) => res.data),
+      .then((res) => res.data);
+  },
 
   /** Get CWC telemetry report for a cluster */
   getReport: (clusterId: number) =>

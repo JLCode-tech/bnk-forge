@@ -139,8 +139,12 @@ The Canvas follows Forge's light and dark themes:
 ## Data and safety
 
 - **Read-only.** The Canvas reads from `GET /api/k8s/clusters/{id}/f5bnk/canvas?controllers=all|bnk` (viewer role), which only gets and lists resources. It reuses the BNK data fetch and its cache. It also lists F5BnkGateways itself, because Forge's resource registry does not include them. If that CRD is not installed or the kubeconfig may not list it, references to F5BnkGateways stay "not read".
-- **Secrets.** Secrets are never read. Secret cards are built from the objects that reference them, so they carry only kind, namespace and name.
-- **Partial reads.** If some resource types could not be read, a banner says so, and references to those types may appear as missing. Optional CRDs that are not installed currently trigger this banner too; see [atlas-canvas/FORGE-FINDINGS.md](atlas-canvas/FORGE-FINDINGS.md), finding 2.
+- **Secrets.** Secrets are never read by the Canvas. Secret cards are built from the objects that reference them, so they carry only kind, namespace and name. Passive Overview and Canvas loads also avoid reading CWC mTLS or auth token Secrets unless a CWC client pod is already running or the user explicitly opens the Licensing tab or clicks Refresh.
+- **Partial reads.** If some resource types could not be read (for example due to RBAC `403 Forbidden`), a banner says so, and references to those types may appear as missing. Optional CRDs that are not installed on the cluster (`404 Not Found`) are treated as absent rather than failed reads.
+- **RBAC requirements.**
+  - *Topology & configuration viewing (read-only kubeconfig):* requires `get` and `list` on core `namespaces`, `pods`, `services`, `configmaps`, `events`, `nodes`, `persistentvolumeclaims`, `apps/v1` workloads, `networking.k8s.io/v1` `networkpolicies`, `gateway.networking.k8s.io` resources, `inference.networking.k8s.io` (`inferencepools`), `k8s.cni.cncf.io` (`network-attachment-definitions`), `cert-manager.io` (`certificates`, `issuers`, `clusterissuers`), and installed F5 BNK CRDs (`k8s.f5.com`, `k8s.f5net.com`, `gateway.k8s.f5net.com`, `ai.k8s.f5net.com`). No `secrets` read or write verbs are required.
+  - *TMM traffic counters (optional):* requires `get` and `list` on `pods` plus `create` on `pods/exec` for `f5-tmm` pods (container `debug`) in the BNK data-plane namespace. Without `pods/exec`, the **Traffic** toggle is disabled with a read-only tooltip and the Canvas continues to render normally.
+  - *CWC licensing & QKView (optional, on-demand):* requires `get` and `list` on `services`, `pods`, and `secrets`, plus `create` on `pods` and `pods/exec` in the CWC namespace (typically `f5-utils`). With a read-only kubeconfig, licensing views report read-only access without failing the page.
 
 ## Limitations
 

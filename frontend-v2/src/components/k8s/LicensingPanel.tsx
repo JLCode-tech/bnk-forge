@@ -11,6 +11,7 @@
  * Used in F5BNK.tsx > DiagnosticsView > Licensing tab.
  */
 import { useState, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import {
   useLicenseStatus,
@@ -20,6 +21,7 @@ import {
   useRenewLicense,
   useValidateJwks,
   usePostLicenseReceipt,
+  refreshLicensing,
 } from "@/hooks/useLicensing";
 import { useCWCAPISetup, useCWCAPISetupStatus } from "@/hooks/useQKView";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
@@ -125,14 +127,16 @@ function StatusDot({ ok, label }: { ok: boolean; label: string }) {
 }
 
 export function LicensingPanel({ clusterId }: LicensingPanelProps) {
-  // Data hooks
+  const queryClient = useQueryClient();
+
+  // Data hooks — opening the dedicated Licensing tab opts into creating the
+  // CWC client pod when one is not yet running.
   const {
     licenseInfo,
     isLoading: statusLoading,
     isError: statusError,
-    refetch: refetchStatus,
     isFetching: statusFetching,
-  } = useLicenseStatus(clusterId);
+  } = useLicenseStatus(clusterId, true, { createClientPod: true });
 
   const { data: cwcStatus, isLoading: cwcLoading } = useCWCStatus(clusterId);
   const { data: cwcApiSetupStatus } = useCWCAPISetupStatus(
@@ -346,44 +350,67 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
   // With the legacy fallback path, this now means CWC itself isn't reachable
   // (no certs, no CWC service, etc.) — not just "no operator connected".
   if (statusError || licenseInfo.state === "unavailable") {
-    const cwcNotFound = cwcStatus && !cwcStatus.cwc_service_found;
+    const cwcNotFound =
+      licenseInfo.installed === false ||
+      (cwcStatus && !cwcStatus.cwc_service_found);
     const certsNotMounted = cwcStatus && !cwcStatus.certs_mounted;
 
     // If CWC service doesn't exist on this cluster, hide the panel entirely
     if (cwcNotFound) return null;
 
+    const unavailableDetail = licenseInfo.readOnly
+      ? "Cluster credentials are read-only. Querying CWC license status requires permission to read CWC Secrets and create/exec the CWC client pod in the CWC namespace."
+      : licenseInfo.clientPodRunning === false
+        ? "No CWC client pod is running yet. Click Refresh to start the CWC client pod and query license status."
+        : certsNotMounted
+          ? "CWC certificates are not configured. Use the Recovery tab to re-sync certificates, or complete initial QKView mTLS setup from the QKView tab."
+          : "Unable to reach the CWC REST API. Ensure the cluster has a CWC service with valid mTLS certificates.";
+
     return (
       <Card>
         <CardContent className="pt-6">
-          <div className="flex items-start gap-3">
-            <ShieldQuestion className="h-6 w-6 text-muted-foreground shrink-0 mt-0.5" />
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-foreground">
-                License Status Unavailable
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {certsNotMounted
-                  ? "CWC certificates are not configured. Use the Recovery tab to re-sync certificates, or complete initial QKView mTLS setup from the QKView tab."
-                  : "Unable to reach the CWC REST API. Ensure the cluster has a CWC service with valid mTLS certificates."}
-              </p>
-              {cwcStatus && (
-                <div className="flex flex-wrap gap-4 pt-2">
-                  <StatusDot
-                    ok={cwcStatus.cwc_service_found}
-                    label="CWC Service"
-                  />
-                  <StatusDot ok={cwcStatus.certs_mounted} label="mTLS Certs" />
-                  <StatusDot
-                    ok={cwcStatus.cwc_reachable}
-                    label="API Reachable"
-                  />
-                  <StatusDot
-                    ok={cwcStatus.setup_complete}
-                    label="Setup Complete"
-                  />
-                </div>
-              )}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <ShieldQuestion className="h-6 w-6 text-muted-foreground shrink-0 mt-0.5" />
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-foreground">
+                  License Status Unavailable
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {unavailableDetail}
+                </p>
+                {cwcStatus && (
+                  <div className="flex flex-wrap gap-4 pt-2">
+                    <StatusDot
+                      ok={cwcStatus.cwc_service_found}
+                      label="CWC Service"
+                    />
+                    <StatusDot
+                      ok={cwcStatus.certs_mounted}
+                      label="mTLS Certs"
+                    />
+                    <StatusDot
+                      ok={cwcStatus.cwc_reachable}
+                      label="API Reachable"
+                    />
+                    <StatusDot
+                      ok={cwcStatus.setup_complete}
+                      label="Setup Complete"
+                    />
+                  </div>
+                )}
+              </div>
             </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void refreshLicensing(queryClient, clusterId)}
+              disabled={statusFetching}
+            >
+              <RefreshCw
+                className={cn("h-3.5 w-3.5", statusFetching && "animate-spin")}
+              />
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -498,7 +525,7 @@ export function LicensingPanel({ clusterId }: LicensingPanelProps) {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => refetchStatus()}
+              onClick={() => void refreshLicensing(queryClient, clusterId)}
               disabled={statusFetching}
             >
               <RefreshCw

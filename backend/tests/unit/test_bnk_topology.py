@@ -1431,14 +1431,14 @@ class TestForgeFindingsFixes:
         mock_admin_token.assert_not_called()
         mock_cache.set.assert_called_once()
 
-        # 2) Passive check (allow_create_pod=False) does not create a client pod or read cwc-auth-token
-        #    when no running pod exists.
+        # 2) Passive check (allow_create_pod=False) does not create a client pod or read any Secrets
+        #    (_find_cert_secret or _get_admin_token) when no running pod exists.
         mock_cache.reset_mock()
         with (
             patch.object(qkview_service, "cache", mock_cache),
             patch.object(qkview_service, "_detect_cwc_namespace", return_value="f5-utils"),
             patch.object(qkview_service, "_get_cwc_rest_port", return_value=8081),
-            patch.object(qkview_service, "_find_cert_secret", return_value={"name": "cert"}),
+            patch.object(qkview_service, "_find_cert_secret") as mock_find_cert,
             patch.object(qkview_service, "_get_admin_token") as mock_admin_token,
             patch.object(qkview_service, "_find_running_client_pod", return_value=None),
             patch.object(qkview_service, "_create_client_pod") as mock_create_pod,
@@ -1447,10 +1447,29 @@ class TestForgeFindingsFixes:
         assert res_passive["success"] is False
         assert res_passive["installed"] is True
         assert res_passive["client_pod_running"] is False
+        mock_find_cert.assert_not_called()
         mock_create_pod.assert_not_called()
         mock_admin_token.assert_not_called()
 
-        # 3) Explicit Licensing tab request (create_client_pod=True) bypasses cached passive
+        # 3) Read-only kubeconfig (403 Forbidden) returns read_only=True and caches the result.
+        mock_cache.reset_mock()
+        with (
+            patch.object(qkview_service, "cache", mock_cache),
+            patch.object(qkview_service, "_detect_cwc_namespace", return_value="f5-utils"),
+            patch.object(qkview_service, "_get_cwc_rest_port", return_value=8081),
+            patch.object(
+                qkview_service,
+                "_find_running_client_pod",
+                side_effect=QKViewError("Forbidden: cannot list pods in 'f5-utils'", 403),
+            ),
+        ):
+            res_readonly = qkview_service.get_license_status(mock_k8s, cluster_id=1, force=False)
+        assert res_readonly["success"] is False
+        assert res_readonly["installed"] is True
+        assert res_readonly["read_only"] is True
+        mock_cache.set.assert_called_once()
+
+        # 4) Explicit Licensing tab request (create_client_pod=True) bypasses cached passive
         #    client_pod_running=False stub and forwards allow_create_pod=True.
         mock_cache.get.return_value = res_passive
         with (

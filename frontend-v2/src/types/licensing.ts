@@ -9,6 +9,12 @@
 export interface LicenseStatusResponse {
   success: boolean;
   operator_dispatch?: boolean;
+  /** False when the CWC service is not installed on the cluster */
+  installed?: boolean;
+  /** True when the kubeconfig lacks permissions to read CWC certs/tokens or exec into the client pod */
+  read_only?: boolean;
+  /** False when passive status check found no running CWC client pod (no pod was created) */
+  client_pod_running?: boolean;
 
   /** Normalized license state — e.g. "Active", "Device Registration Failed" */
   license_state?: string;
@@ -81,7 +87,7 @@ export interface LicenseRenewRequest {
 /** JWKS validation response from POST /validate-jwks */
 export interface JwksValidationResponse {
   success: boolean;
-  status?: 'valid' | 'patched' | 'not_found';
+  status?: "valid" | "patched" | "not_found";
   namespace?: string;
   message?: string;
 }
@@ -103,7 +109,13 @@ export interface CWCStatusResponse {
 
 /** Parsed license info for UI display */
 export interface LicenseInfo {
-  state: 'active' | 'expired' | 'evaluation' | 'unknown' | 'unavailable';
+  state: "active" | "expired" | "evaluation" | "unknown" | "unavailable";
+  /** False when the CWC service is not installed on the cluster */
+  installed?: boolean;
+  /** True when the kubeconfig lacks permissions to read CWC certs/tokens or exec into the client pod */
+  readOnly?: boolean;
+  /** False when passive status check found no running CWC client pod */
+  clientPodRunning?: boolean;
   /** Raw license state string from CWC (e.g. "Active", "Device Registration Failed") */
   rawState?: string;
   entitlementType?: string;

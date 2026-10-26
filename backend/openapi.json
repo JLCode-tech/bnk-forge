@@ -28092,6 +28092,16 @@
               "default": false,
               "title": "Force"
             }
+          },
+          {
+            "name": "create_client_pod",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Create Client Pod"
+            }
           }
         ],
         "responses": {

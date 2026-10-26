@@ -670,7 +670,8 @@ async def get_cwc_status_endpoint(
         # Also check if the CWC licensing cert (cwc-license-certs) exists.
         cwc_license_certs_ok = False
         avail_msg = available.get("message", "")
-        if api_client is not None and (cwc_found or "not found in any namespace" not in avail_msg):
+        cwc_service_found = cwc_found or "No CWC mTLS certificates found" in avail_msg
+        if api_client is not None and (cwc_service_found or "not found in any namespace" not in avail_msg):
             try:
                 from services.qkview_service import (
                     CWC_LICENSE_CERTS_SECRET,
@@ -684,7 +685,7 @@ async def get_cwc_status_endpoint(
                 pass
 
         resp = {
-            "cwc_service_found": cwc_found,
+            "cwc_service_found": cwc_service_found,
             "cwc_reachable": cwc_found,
             "certs_mounted": cwc_found or cwc_license_certs_ok,
             "setup_complete": cwc_found,
@@ -700,7 +701,7 @@ async def get_cwc_status_endpoint(
                 status_ok = False
                 logger.debug("Could not fetch CWC /status payload: %s", status_err)
 
-        return resp, cwc_found, status_ok
+        return resp, cwc_service_found, status_ok
 
     try:
         response, _cwc_found, status_ok = await asyncio.to_thread(_legacy_cwc_status)
