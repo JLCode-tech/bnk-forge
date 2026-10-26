@@ -765,9 +765,6 @@ def _cwc_request(
         cache.set(meta_key, [cwc_ns, cert_secret, cwc_port], ttl_seconds=_CWC_META_TTL_SEC)
     cwc_url = f"https://{CWC_SERVICE}.{cwc_ns}:{cwc_port}{path}"
 
-    if pod_name is None:
-        pod_name = _get_or_create_client_pod(api_client, cert_secret, cwc_ns)
-
     _sweep_cwc_token_cache()
     token_entry = _cwc_token_cache.get(meta_key)
     if token_entry and token_entry[0] > time.monotonic():
@@ -776,6 +773,9 @@ def _cwc_request(
         bearer_token = _get_admin_token(api_client, cwc_ns)
         if bearer_token:
             _cwc_token_cache[meta_key] = (time.monotonic() + _CWC_META_TTL_SEC, bearer_token)
+
+    if pod_name is None:
+        pod_name = _get_or_create_client_pod(api_client, cert_secret, cwc_ns)
 
     try:
         if stream:
