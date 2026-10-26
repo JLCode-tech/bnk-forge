@@ -4,6 +4,11 @@ All notable changes to BNK-Forge.
 
 ---
 
+## v4.2.1 (2026-10-26) — patch bump
+
+- fix(release): emit SLSA v0.2 predicate JSON for cosign attest
+- fix(bnk): seed bnk-2.4.1 deployable release in v2_163 and set min_k8s=1.32
+
 ## v4.2.0 (2026-10-26) — minor bump
 
 - test(bnk): update expected template flag and builtin blueprint counts for BNK 2.4.1
