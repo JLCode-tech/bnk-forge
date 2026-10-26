@@ -151,7 +151,7 @@ write_provenance() {
   local out_file="$3"
 
   local git_sha
-  git_sha="$(git -C "$(dirname "$0")/.." rev-parse HEAD 2>/dev/null || echo "unknown")"
+  git_sha="${GIT_REVISION:-$(git -C "$(dirname "$0")/.." rev-parse HEAD 2>/dev/null || echo "unknown")}"
   # Provenance must name the remote this build actually came from. Prefer an
   # explicit SOURCE_URL (CI), fall back to the checkout's own origin.
   local repo_url="${SOURCE_URL:-}"
@@ -164,35 +164,27 @@ write_provenance() {
 
   cat > "$out_file" <<PROVENANCE
 {
-  "_type": "https://slsa.dev/provenance/v0.2",
-  "subject": [
-    {
-      "name": "${image_ref}",
-      "digest": { "sha256": "${digest#sha256:}" }
+  "builder": { "id": "manual-publish-script" },
+  "buildType": "${repo_url}/blob/main/scripts/publish-signed-images.sh",
+  "invocation": {
+    "configSource": {
+      "uri": "${repo_url}",
+      "digest": { "sha1": "${git_sha}" },
+      "entryPoint": "scripts/publish-signed-images.sh"
     }
-  ],
-  "predicateType": "https://slsa.dev/provenance/v0.2",
-  "predicate": {
-    "builder": { "id": "manual-publish-script" },
-    "buildType": "${repo_url}/blob/main/scripts/publish-signed-images.sh",
-    "invocation": {
-      "configSource": {
-        "uri": "${repo_url}",
-        "digest": { "sha1": "${git_sha}" },
-        "entryPoint": "scripts/publish-signed-images.sh"
-      }
+  },
+  "buildConfig": {
+    "version": "${VERSION}",
+    "image": "${image_ref}",
+    "digest": "${digest}"
+  },
+  "metadata": {
+    "completeness": {
+      "parameters": false,
+      "environment": false,
+      "materials": false
     },
-    "buildConfig": {
-      "version": "${VERSION}"
-    },
-    "metadata": {
-      "completeness": {
-        "parameters": false,
-        "environment": false,
-        "materials": false
-      },
-      "reproducible": false
-    }
+    "reproducible": false
   }
 }
 PROVENANCE
