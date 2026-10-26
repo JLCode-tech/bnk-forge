@@ -1565,7 +1565,8 @@ security-audit:
 	@cd mcp-server && pip-audit --progress-spinner=off $(PIP_AUDIT_DEFER) --ignore-vuln PYSEC-2026-196 --ignore-vuln PYSEC-2026-3721 --ignore-vuln PYSEC-2026-3447 --ignore-vuln GHSA-xmj3-9gf7-h52w
 	@echo ""
 	@echo "--- JavaScript: frontend-v2 (prod deps, HIGH+) ---"
-	@cd frontend-v2 && npm audit --omit=dev --audit-level=high
+	# GHSA-mrhx-c7xc-m3w5: zod <4.6.6 has no 3.x fix (zod 4.x is a breaking major upgrade).
+	@cd frontend-v2 && (npm audit --omit=dev --json || true) | node -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")); const ignore=new Set(["GHSA-mrhx-c7xc-m3w5"]); const bad=Object.entries(d.vulnerabilities||{}).filter(([,v])=>["high","critical"].includes(v.severity)&&!(v.via||[]).every(x=>typeof x==="object"&&x.url&&[...ignore].some(id=>x.url.endsWith(id)))); if(bad.length){console.error("Unignored HIGH/CRITICAL prod vulnerabilities:",bad.map(([k])=>k));process.exit(1);} console.log("0 unignored high/critical vulnerabilities (deferred: GHSA-mrhx-c7xc-m3w5)");'
 	@echo "--- JavaScript: frontend-v2 (dev deps, CRITICAL only) ---"
 	@cd frontend-v2 && npm audit --audit-level=critical
 	@echo ""
