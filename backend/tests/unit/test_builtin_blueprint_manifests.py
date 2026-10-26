@@ -8,7 +8,7 @@ import pytest
 from schemas.blueprints import BlueprintManifest
 
 _BLUEPRINTS_DIR = Path(__file__).parent.parent.parent / "data" / "blueprints"
-_EXPECTED_COUNT = 13
+_EXPECTED_COUNT = 15
 
 
 def _all_manifest_paths() -> list[Path]:
@@ -17,7 +17,7 @@ def _all_manifest_paths() -> list[Path]:
 
 @pytest.mark.unit
 def test_builtin_blueprint_manifest_count():
-    """Exactly 13 bundled manifests exist."""
+    """Exactly 15 bundled manifests exist."""
     paths = _all_manifest_paths()
     assert len(paths) == _EXPECTED_COUNT, (
         f"Expected {_EXPECTED_COUNT} bundled forge-blueprint.json files, found {len(paths)}:\n"

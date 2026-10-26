@@ -75,12 +75,7 @@
     ],
     "variable_templates": {},
     "prerequisites": [],
-    "tags": [
-      "kubernetes",
-      "aws",
-      "production",
-      "foundation"
-    ],
+    "tags": ["kubernetes", "aws", "production", "foundation"],
     "is_active": true,
     "is_featured": true,
     "version": "1.0.1",
@@ -151,12 +146,7 @@
       }
     },
     "prerequisites": [],
-    "tags": [
-      "kubernetes",
-      "aws",
-      "demo",
-      "production"
-    ],
+    "tags": ["kubernetes", "aws", "demo", "production"],
     "is_active": true,
     "is_featured": true,
     "version": "1.0.0",
@@ -257,12 +247,8 @@
         "variables": {
           "gateway_name": "demo-gw",
           "gateway_namespace": "bnk-gw",
-          "allowed_source_ranges": [
-            "10.0.0.0/8"
-          ],
-          "blocked_source_ranges": [
-            "198.51.100.0/24"
-          ]
+          "allowed_source_ranges": ["10.0.0.0/8"],
+          "blocked_source_ranges": ["198.51.100.0/24"]
         }
       },
       {
@@ -641,14 +627,7 @@
         "description": "Base64-encoded F5 FAR service account key JSON content (injected into k8s/bnk-prerequisites). Falls back to encrypted System Default if not set in project."
       }
     ],
-    "tags": [
-      "bnk",
-      "f5",
-      "gateway-api",
-      "2.2",
-      "aws",
-      "eks"
-    ],
+    "tags": ["bnk", "f5", "gateway-api", "2.2", "aws", "eks"],
     "is_active": true,
     "is_featured": true,
     "requires_existing_cluster": true,
@@ -830,6 +809,371 @@
     "forked_from": null
   },
   {
+    "name": "BNK 2.4.1 Platform (AWS)",
+    "slug": "bnk-241-on-k8s",
+    "description": "Deploys F5 BNK 2.4.1 on AWS EKS with optimized defaults — host-device CNI, gp3 storage, ENI secondary IP assignment. Battle-tested and production-ready. Requires jwt_token and cne_pull_secret.",
+    "category": "bnk",
+    "cloud_provider": "aws",
+    "icon": "shield-check",
+    "color": "purple",
+    "estimated_time": "10-15 minutes",
+    "estimated_cost": "License-dependent",
+    "difficulty": "intermediate",
+    "maturity": "production-ready",
+    "bnk_version": "2.4.1",
+    "outcomes": [
+      "F5 Lifecycle Operator (FLO) managing all BNK components",
+      "TMM data-plane with full BNK component suite",
+      "Jetstack cert-manager installed with BNK-compatible TLS prerequisites",
+      "Multus NADs configured for raw L2 data-plane attachment (no NAD IPAM)",
+      "F5SPKVlan CRs with custom self-IPs and subnets",
+      "GatewayClass ready for Gateway API routing"
+    ],
+    "platform_defaults": {
+      "eks": {
+        "container_platform": "AWS",
+        "storage_class_name": "gp3",
+        "cloud_provider": "aws",
+        "cni_type": "host-device"
+      },
+      "aks": {
+        "container_platform": "Azure",
+        "storage_class_name": "managed-csi",
+        "cloud_provider": "azure",
+        "cni_type": "sriov"
+      },
+      "gke": {
+        "container_platform": "Generic",
+        "storage_class_name": "standard-rwo",
+        "cloud_provider": "gcp",
+        "cni_type": "sriov"
+      },
+      "ocp": {
+        "container_platform": "Generic",
+        "storage_class_name": "ocs-storagecluster-ceph-rbd",
+        "cloud_provider": "",
+        "cni_type": "sriov"
+      },
+      "generic_onprem": {
+        "container_platform": "Generic",
+        "storage_class_name": "local-path",
+        "cloud_provider": "",
+        "cni_type": "sriov"
+      }
+    },
+    "modules": [
+      {
+        "path": "k8s/bnk-prerequisites",
+        "name": "BNK Prerequisites",
+        "required": true,
+        "description": "Creates namespaces (f5-operator, f5-utils, bnk-gw), FAR pull secrets",
+        "variables": {
+          "operator_namespace": "f5-operator",
+          "utils_namespace": "f5-utils",
+          "gateway_namespace": "bnk-gw",
+          "bnk_manifest_version": "2.4.1-3.2850.1-0.0.9"
+        }
+      },
+      {
+        "path": "k8s/network-setup",
+        "name": "Network Attachments",
+        "required": true,
+        "description": "Creates Multus NADs for TMM data-plane interfaces. Raw L2 NAD model only (no NAD IPAM). Set CNI type and SR-IOV resource names for your cluster.",
+        "variables": {
+          "namespace": "f5-operator",
+          "cni_type": "host-device",
+          "external_resource_name": "intel.com/external_netdevice",
+          "internal_resource_name": "intel.com/internal_netdevice",
+          "external_subnet_cidrs": [],
+          "internal_subnet_cidrs": []
+        }
+      },
+      {
+        "path": "k8s/cert-manager",
+        "name": "Cert Manager",
+        "required": true,
+        "description": "Installs Jetstack cert-manager for BNK TLS prerequisites only. Issuer/CA resources are managed by the dedicated Forge manifest module.",
+        "variables": {
+          "namespace": "cert-manager",
+          "cert_manager_version": "v1.16.2",
+          "release_name": "cert-manager",
+          "image_registry": "repo.f5.com/images"
+        }
+      },
+      {
+        "path": "k8s/bnk-cert-issuer",
+        "name": "BNK Cert Issuer",
+        "required": true,
+        "description": "Creates the Forge-managed cert-manager issuer chain (self-signed ClusterIssuer, BNK CA certificate/secret, and bnk-ca-cluster-issuer).",
+        "variables": {
+          "namespace": "cert-manager",
+          "self_signed_cluster_issuer_name": "bnk-selfsigned-cluster-issuer",
+          "ca_certificate_name": "bnk-ca",
+          "ca_secret_name": "bnk-ca-secret",
+          "cluster_issuer_name": "bnk-ca-cluster-issuer",
+          "ca_duration": "87600h",
+          "ca_renew_before": "720h"
+        }
+      },
+      {
+        "path": "bnk/flo",
+        "name": "F5 Lifecycle Operator",
+        "required": true,
+        "description": "Deploys FLO via Helm with CPCL key and license activation",
+        "variables": {
+          "license_mode": "connected",
+          "license_environment": "production"
+        }
+      },
+      {
+        "path": "bnk/cneinstance",
+        "name": "CNE Instance",
+        "required": true,
+        "description": "Creates CNEInstance CR — triggers FLO to deploy TMM and all BNK components",
+        "variables": {
+          "instance_name": "bnk-instance",
+          "namespace": "f5-operator",
+          "manifest_version": "2.4.1-3.2850.1-0.0.9",
+          "deployment_size": "Small",
+          "whole_cluster": true,
+          "dpu_enabled": false,
+          "dynamic_routing_enabled": true,
+          "firewall_acl_enabled": true,
+          "core_collection_enabled": false,
+          "pseudo_cni_enabled": true,
+          "intelligent_lb_enabled": true,
+          "metric_subsystem_enabled": true,
+          "logging_subsystem_enabled": true,
+          "env_discovery_enabled": false,
+          "env_discovery_stop_on_fail": false,
+          "tmm_default_mtu": 9000,
+          "tmm_ignore_gateways": true
+        }
+      },
+      {
+        "path": "bnk/bnk-vlans",
+        "name": "BNK VLANs",
+        "required": true,
+        "description": "Creates F5SPKVlan CRs — sets TMM self-IPs on data-plane interfaces. Prefix lengths are configured directly; NAD CIDR/IPAM is not used in this flow.",
+        "variables": {
+          "namespace": "f5-operator",
+          "external_selfip": "10.1.10.240",
+          "internal_selfip": "10.1.20.240",
+          "external_prefixlen": 24,
+          "internal_prefixlen": 24,
+          "mtu": 9000
+        }
+      },
+      {
+        "path": "bnk/bnk-gatewayclass",
+        "name": "BNK GatewayClass",
+        "required": true,
+        "description": "Creates GatewayClass for BNK (controllerName auto-constructed from FLO namespace)",
+        "variables": {
+          "gatewayclass_name": "bnk-gatewayclass",
+          "flo_namespace": "f5-cne-core"
+        }
+      }
+    ],
+    "variable_templates": {},
+    "prerequisites": [
+      {
+        "type": "kubernetes_cluster",
+        "description": "Kubernetes cluster with HugePages, SR-IOV, and Multus CNI configured. Existing-cluster differences (device plugin labels/resource names, CA issuer policy, storage classes) must be aligned for your environment."
+      },
+      {
+        "type": "project_secret",
+        "name": "jwt_token",
+        "description": "F5 license JWT token from MyF5 (injected into bnk/flo)"
+      },
+      {
+        "type": "project_secret",
+        "name": "cne_pull_secret",
+        "description": "Base64-encoded F5 FAR service account key JSON content (injected into k8s/bnk-prerequisites). Falls back to encrypted System Default if not set in project."
+      }
+    ],
+    "tags": ["bnk", "f5", "gateway-api", "2.4.1", "aws", "eks"],
+    "is_active": true,
+    "is_featured": true,
+    "requires_existing_cluster": true,
+    "version": "1.0.0",
+    "created_by": "system",
+    "is_public": true,
+    "forked_from": null
+  },
+  {
+    "name": "BNK 2.4.1 Platform (Multi-Platform)",
+    "slug": "bnk-241-on-k8s-generic",
+    "description": "Deploys F5 BNK 2.4.1 on any Kubernetes cluster — on-prem, AKS, GKE, or OpenShift. Uses generic defaults (SR-IOV CNI, no cloud-specific ENI management). Requires manual network and storage configuration for your environment.",
+    "category": "bnk",
+    "cloud_provider": "any",
+    "icon": "shield-check",
+    "color": "purple",
+    "estimated_time": "15-20 minutes",
+    "estimated_cost": "License-dependent",
+    "difficulty": "advanced",
+    "maturity": "alpha",
+    "bnk_version": "2.4.1",
+    "outcomes": [
+      "F5 Lifecycle Operator (FLO) managing all BNK components",
+      "TMM data-plane with full BNK component suite",
+      "Jetstack cert-manager installed with BNK-compatible TLS prerequisites",
+      "Multus NADs configured for SR-IOV data-plane attachment",
+      "F5SPKVlan CRs with custom self-IPs and subnets",
+      "GatewayClass ready for Gateway API routing"
+    ],
+    "platform_defaults": null,
+    "modules": [
+      {
+        "path": "k8s/bnk-prerequisites",
+        "name": "BNK Prerequisites",
+        "required": true,
+        "description": "Creates namespaces (f5-operator, f5-utils, bnk-gw), FAR pull secrets",
+        "variables": {
+          "operator_namespace": "f5-operator",
+          "utils_namespace": "f5-utils",
+          "gateway_namespace": "bnk-gw",
+          "bnk_manifest_version": "2.4.1-3.2850.1-0.0.9"
+        }
+      },
+      {
+        "path": "k8s/network-setup",
+        "name": "Network Attachments",
+        "required": true,
+        "description": "Creates Multus NADs for TMM data-plane interfaces. Configure CNI type and SR-IOV resource names for your platform.",
+        "variables": {
+          "namespace": "f5-operator",
+          "cni_type": "sriov",
+          "external_resource_name": "",
+          "internal_resource_name": "",
+          "external_subnet_cidrs": [],
+          "internal_subnet_cidrs": []
+        }
+      },
+      {
+        "path": "k8s/cert-manager",
+        "name": "Cert Manager",
+        "required": true,
+        "description": "Installs Jetstack cert-manager for BNK TLS prerequisites.",
+        "variables": {
+          "namespace": "cert-manager",
+          "cert_manager_version": "v1.16.2",
+          "release_name": "cert-manager",
+          "image_registry": "repo.f5.com/images"
+        }
+      },
+      {
+        "path": "k8s/bnk-cert-issuer",
+        "name": "BNK Cert Issuer",
+        "required": true,
+        "description": "Creates the cert-manager issuer chain for BNK TLS.",
+        "variables": {
+          "namespace": "cert-manager",
+          "self_signed_cluster_issuer_name": "bnk-selfsigned-cluster-issuer",
+          "ca_certificate_name": "bnk-ca",
+          "ca_secret_name": "bnk-ca-secret",
+          "cluster_issuer_name": "bnk-ca-cluster-issuer",
+          "ca_duration": "87600h",
+          "ca_renew_before": "720h"
+        }
+      },
+      {
+        "path": "bnk/flo",
+        "name": "F5 Lifecycle Operator",
+        "required": true,
+        "description": "Deploys FLO via Helm with CPCL key and license activation",
+        "variables": {
+          "license_mode": "connected",
+          "license_environment": "production"
+        }
+      },
+      {
+        "path": "bnk/cneinstance",
+        "name": "CNE Instance",
+        "required": true,
+        "description": "Creates CNEInstance CR — triggers FLO to deploy TMM and all BNK components. Configure storage class and PCI device names for your platform.",
+        "variables": {
+          "instance_name": "bnk-instance",
+          "namespace": "f5-operator",
+          "manifest_version": "2.4.1-3.2850.1-0.0.9",
+          "deployment_size": "Small",
+          "whole_cluster": true,
+          "dpu_enabled": false,
+          "dynamic_routing_enabled": true,
+          "firewall_acl_enabled": true,
+          "core_collection_enabled": false,
+          "pseudo_cni_enabled": true,
+          "intelligent_lb_enabled": true,
+          "metric_subsystem_enabled": false,
+          "logging_subsystem_enabled": false,
+          "env_discovery_enabled": false,
+          "env_discovery_stop_on_fail": false,
+          "tmm_default_mtu": 9000,
+          "tmm_ignore_gateways": true
+        }
+      },
+      {
+        "path": "bnk/bnk-vlans",
+        "name": "BNK VLANs",
+        "required": true,
+        "description": "Creates F5SPKVlan CRs — sets TMM self-IPs on data-plane interfaces. No cloud-specific ENI management (aws_region left empty).",
+        "variables": {
+          "namespace": "f5-operator",
+          "external_selfip": "10.1.10.240",
+          "internal_selfip": "10.1.20.240",
+          "external_prefixlen": 24,
+          "internal_prefixlen": 24,
+          "mtu": 9000,
+          "aws_region": ""
+        }
+      },
+      {
+        "path": "bnk/bnk-gatewayclass",
+        "name": "BNK GatewayClass",
+        "required": true,
+        "description": "Creates GatewayClass for BNK",
+        "variables": {
+          "gatewayclass_name": "bnk-gatewayclass",
+          "flo_namespace": "f5-cne-core"
+        }
+      }
+    ],
+    "variable_templates": {},
+    "prerequisites": [
+      {
+        "type": "kubernetes_cluster",
+        "description": "Kubernetes cluster with HugePages, SR-IOV operator, and Multus CNI configured. You must configure SR-IOV resource names, storage class, and network CIDRs for your specific platform."
+      },
+      {
+        "type": "project_secret",
+        "name": "jwt_token",
+        "description": "F5 license JWT token from MyF5 (injected into bnk/flo)"
+      },
+      {
+        "type": "project_secret",
+        "name": "cne_pull_secret",
+        "description": "Base64-encoded F5 FAR service account key JSON content"
+      }
+    ],
+    "tags": [
+      "bnk",
+      "f5",
+      "gateway-api",
+      "2.4.1",
+      "multi-platform",
+      "on-prem",
+      "aks",
+      "gke",
+      "openshift"
+    ],
+    "is_active": true,
+    "is_featured": true,
+    "version": "1.0.0",
+    "created_by": "system",
+    "is_public": true,
+    "forked_from": null
+  },
+  {
     "name": "Kind Dev Cluster (Ubuntu)",
     "slug": "ubuntu-kind-foundation",
     "description": "Provisions a kind Kubernetes cluster on Ubuntu for BNK development and testing. Ideal for local dev, CI pipelines, and quick demos.",
@@ -880,13 +1224,7 @@
         "description": "Ubuntu host with kind, kubectl, and Docker installed"
       }
     ],
-    "tags": [
-      "ubuntu",
-      "kind",
-      "development",
-      "on-prem",
-      "local"
-    ],
+    "tags": ["ubuntu", "kind", "development", "on-prem", "local"],
     "is_active": true,
     "is_featured": false,
     "version": "1.0.0",
@@ -940,12 +1278,7 @@
         "description": "Existing OpenShift/OKD cluster with admin access"
       }
     ],
-    "tags": [
-      "openshift",
-      "ocp",
-      "enterprise",
-      "on-prem"
-    ],
+    "tags": ["openshift", "ocp", "enterprise", "on-prem"],
     "is_active": true,
     "is_featured": false,
     "version": "1.0.0",
@@ -1016,12 +1349,7 @@
         "description": "Azure credentials with permissions to create AKS clusters"
       }
     ],
-    "tags": [
-      "azure",
-      "aks",
-      "cloud",
-      "infrastructure"
-    ],
+    "tags": ["azure", "aks", "cloud", "infrastructure"],
     "is_active": true,
     "is_featured": false,
     "version": "1.0.0",
@@ -1093,12 +1421,7 @@
         "description": "GCP credentials with permissions to create GKE clusters"
       }
     ],
-    "tags": [
-      "gcp",
-      "gke",
-      "cloud",
-      "infrastructure"
-    ],
+    "tags": ["gcp", "gke", "cloud", "infrastructure"],
     "is_active": true,
     "is_featured": false,
     "version": "1.0.0",
@@ -1283,13 +1606,7 @@
         "description": "Registered bare-metal host with SSH access, BlueField DPU, and completed discovery"
       }
     ],
-    "tags": [
-      "bare-metal",
-      "dpu",
-      "bluefield",
-      "k8s",
-      "infrastructure"
-    ],
+    "tags": ["bare-metal", "dpu", "bluefield", "k8s", "infrastructure"],
     "is_active": true,
     "is_featured": true,
     "version": "1.0.0",
@@ -1574,13 +1891,7 @@
         "description": "Base64-encoded F5 FAR service account key JSON content (injected into k8s/bnk-prerequisites). Falls back to encrypted System Default if not set in project."
       }
     ],
-    "tags": [
-      "bare-metal",
-      "dpu",
-      "bluefield",
-      "bnk",
-      "on-prem"
-    ],
+    "tags": ["bare-metal", "dpu", "bluefield", "bnk", "on-prem"],
     "is_active": true,
     "is_featured": false,
     "version": "1.0.0",
@@ -1873,13 +2184,7 @@
         "description": "Base64-encoded F5 FAR service account key JSON content (injected into k8s/bnk-prerequisites). Falls back to encrypted System Default if not set in project."
       }
     ],
-    "tags": [
-      "bare-metal",
-      "dpu",
-      "bluefield",
-      "bnk",
-      "on-prem"
-    ],
+    "tags": ["bare-metal", "dpu", "bluefield", "bnk", "on-prem"],
     "is_active": true,
     "is_featured": false,
     "version": "1.0.0",

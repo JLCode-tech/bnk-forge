@@ -16,6 +16,7 @@ from models.enums import ReleaseSourceType
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_release(db, ga_label="BNK 2.3 GA", flo_prefix="2.21", source=ReleaseSourceType.CLOUDDOCS):
     rel = BnkRelease(
         ga_label=ga_label,
@@ -31,6 +32,7 @@ def _make_release(db, ga_label="BNK 2.3 GA", flo_prefix="2.21", source=ReleaseSo
 # ---------------------------------------------------------------------------
 # ReleaseSourceType enum
 # ---------------------------------------------------------------------------
+
 
 class TestReleaseSourceType:
     def test_clouddocs_value(self):
@@ -49,6 +51,7 @@ class TestReleaseSourceType:
 # ---------------------------------------------------------------------------
 # ORM round-trip
 # ---------------------------------------------------------------------------
+
 
 class TestBnkReleaseModel:
     def test_create_and_read(self, db):
@@ -101,6 +104,7 @@ class TestBnkReleaseModel:
 # They use pure Python (no DB) to validate the seed data dict structure.
 # ---------------------------------------------------------------------------
 
+
 class TestSeedDataStructure:
     """Validate the grounded matrix seed rows from the migration file."""
 
@@ -108,9 +112,10 @@ class TestSeedDataStructure:
         # Import the migration module directly to access _SEED_ROWS
         import importlib.util
         import pathlib
-        migration_path = pathlib.Path(
-            __file__
-        ).parent.parent.parent / "alembic" / "versions" / "v2_132_add_bnk_release_registry.py"
+
+        migration_path = (
+            pathlib.Path(__file__).parent.parent.parent / "alembic" / "versions" / "v2_132_add_bnk_release_registry.py"
+        )
         spec = importlib.util.spec_from_file_location("v2_132", migration_path)
         assert spec and spec.loader
         mod = importlib.util.module_from_spec(spec)
@@ -152,3 +157,72 @@ class TestSeedDataStructure:
         rows = self._load_seed_rows()
         for row in rows:
             assert row["is_active"] is True
+
+
+class TestV2163SeedBnk241:
+    """Validate migration v2_163 seeds BNK 2.4.1 GA and links deployable releases."""
+
+    def _load_v2_163(self):
+        import importlib.util
+        import pathlib
+
+        migration_path = (
+            pathlib.Path(__file__).parent.parent.parent
+            / "alembic"
+            / "versions"
+            / "v2_163_seed_bnk_241_release_registry.py"
+        )
+        spec = importlib.util.spec_from_file_location("v2_163", migration_path)
+        assert spec and spec.loader
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_seed_row_values(self):
+        mod = self._load_v2_163()
+        row = mod._SEED_ROW
+        assert row["ga_label"] == "BNK 2.4.1 GA"
+        assert row["manifest_version"] == "2.4.1-3.2850.1-0.0.9"
+        assert row["flo_version_prefix"] == "2.30"
+        assert row["flo_version_min"] == "2.30.1"
+        assert row["flo_version_max"] == "3.0.0"
+        assert row["min_k8s"] == "1.30"
+        assert row["max_k8s"] == "1.35"
+        assert row["source_type"] == "clouddocs"
+        assert row["is_active"] is True
+
+    def test_upgrade_downgrade_roundtrip(self, db):
+        from alembic.operations import Operations
+        from alembic.runtime.migration import MigrationContext
+
+        from models.bnk_deployable_release import BnkDeployableRelease
+        from services.bare_metal.version_profiles import BNK_241_RELEASE
+
+        # Insert an unlinked bnk-2.4.1 deployable release row first
+        dep = BnkDeployableRelease(**BNK_241_RELEASE)
+        db.add(dep)
+        db.flush()
+        assert dep.bnk_release_id is None
+
+        mod = self._load_v2_163()
+        conn = db.connection()
+        ctx = MigrationContext.configure(conn)
+        mod.op = Operations(ctx)
+
+        # Upgrade: inserts BNK 2.4.1 GA and links bnk-2.4.1
+        mod.upgrade()
+        db.expire_all()
+        rel = db.query(BnkRelease).filter_by(ga_label="BNK 2.4.1 GA").one_or_none()
+        assert rel is not None
+        assert rel.flo_version_prefix == "2.30"
+        assert dep.bnk_release_id == rel.id
+
+        # Second upgrade is idempotent
+        mod.upgrade()
+        assert db.query(BnkRelease).filter_by(ga_label="BNK 2.4.1 GA").count() == 1
+
+        # Downgrade: unlinks bnk-2.4.1 and removes BNK 2.4.1 GA
+        mod.downgrade()
+        db.expire_all()
+        assert db.query(BnkRelease).filter_by(ga_label="BNK 2.4.1 GA").one_or_none() is None
+        assert dep.bnk_release_id is None

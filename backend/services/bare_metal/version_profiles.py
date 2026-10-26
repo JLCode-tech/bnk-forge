@@ -201,8 +201,9 @@ class BnkDeployableReleaseService:
 
     def seed_profiles(self) -> int:
         """Seed default deployable releases if they don't exist. Returns count seeded."""
-        # Resolve bnk_release_id for 2.3.1 if the bnk_releases table is populated
+        # Resolve bnk_release_id for 2.3.1 and 2.4.x if the bnk_releases table is populated
         bnk_release_id_231 = self._resolve_bnk_release_id("2.21")
+        bnk_release_id_241 = self._resolve_bnk_release_id("2.30")
 
         seeded = 0
         for release_data in SEED_RELEASES:
@@ -213,6 +214,8 @@ class BnkDeployableReleaseService:
                 row_data = dict(release_data)
                 if release_data["name"] == "bnk-2.3.1" and bnk_release_id_231 is not None:
                     row_data["bnk_release_id"] = bnk_release_id_231
+                elif release_data["name"] in ("bnk-2.4", "bnk-2.4.1") and bnk_release_id_241 is not None:
+                    row_data["bnk_release_id"] = bnk_release_id_241
                 self.db.add(BnkDeployableRelease(**row_data))
                 seeded += 1
                 logger.info("Seeded BNK deployable release: %s", release_data["name"])
