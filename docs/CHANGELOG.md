@@ -4,6 +4,27 @@ All notable changes to BNK-Forge.
 
 ---
 
+## v4.2.0 (2026-10-26) — minor bump
+
+- test(bnk): update expected template flag and builtin blueprint counts for BNK 2.4.1
+- ci: defer GHSA-mrhx-c7xc-m3w5 (zod <4.6.6) in frontend-v2 prod audit
+- feat(bnk): add BNK 2.4.1 bundled blueprints, stack templates, and release registry migration
+- fix(ci): ignore build-env setuptools GHSA-xmj3-9gf7-h52w in mcp-server security-audit
+- fix(licensing): resolve CWC admin token before client pod creation in _cwc_request
+- fix(licensing,bnk): harden read-only/passive CWC checks and drop formatting churn
+- fix(licensing,docs): complete passive/read-only CWC licensing flow and RBAC docs
+- fix(bnk,k8s,licensing): fix AddClusterFlowDialog project listing, licensing pod creation & cache, cross-ns SecPolicy, and Pydantic v2 deprecations
+- fix(bnk,k8s,ci): resolve Forge findings, CWC/read-only kubeconfig handling, and Add Cluster project active default
+- feat(bnk): inference pools, F5BnkGateway and other controllers on the topology canvas
+- docs(bnk): topology canvas guide, screenshots and findings
+- feat(bnk): traffic counters, path tracing and SVG export on the topology canvas
+- docs(atlas-canvas): record Forge issues found while building the canvas
+- style(bnk): keep the kubernetes API client formatting unchanged
+- fix(bnk): label unread canvas placeholders as not read
+- feat(bnk): topology canvas view
+- feat(bnk): topology canvas graph builder and endpoint
+- docs(atlas-canvas): plan for a topology canvas view
+
 ## v4.1.1 (2026-10-23) — patch bump
 
 - chore(repo): consolidate root directories and config files into subdirectories
