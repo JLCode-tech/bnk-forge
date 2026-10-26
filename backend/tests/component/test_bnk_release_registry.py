@@ -186,12 +186,55 @@ class TestV2163SeedBnk241:
         assert row["flo_version_prefix"] == "2.30"
         assert row["flo_version_min"] == "2.30.1"
         assert row["flo_version_max"] == "3.0.0"
-        assert row["min_k8s"] == "1.30"
+        assert row["min_k8s"] == "1.32"
         assert row["max_k8s"] == "1.35"
         assert row["source_type"] == "clouddocs"
         assert row["is_active"] is True
 
-    def test_upgrade_downgrade_roundtrip(self, db):
+        dep_row = mod._DEPLOYABLE_SEED_ROW
+        assert dep_row["name"] == "bnk-2.4.1"
+        assert dep_row["display_name"] == "BNK 2.4.1 (GA)"
+        assert dep_row["bnk_manifest_version"] == "2.4.1-3.2850.1-0.0.9"
+        assert dep_row["flo_version"] == "v2.30.1-0.0.8"
+        assert dep_row["k8s_version"] == "1.35.0"
+        assert dep_row["cert_manager_version"] == "v1.16.2"
+        assert dep_row["gateway_api_version"] == "1.2.0"
+
+    def test_upgrade_inserts_deployable_release_when_absent(self, db):
+        from alembic.operations import Operations
+        from alembic.runtime.migration import MigrationContext
+
+        from models.bnk_deployable_release import BnkDeployableRelease
+
+        assert db.query(BnkDeployableRelease).filter_by(name="bnk-2.4.1").one_or_none() is None
+
+        mod = self._load_v2_163()
+        conn = db.connection()
+        ctx = MigrationContext.configure(conn)
+        mod.op = Operations(ctx)
+
+        # Upgrade: inserts BNK 2.4.1 GA into bnk_releases AND inserts bnk-2.4.1 into bnk_deployable_release
+        mod.upgrade()
+        db.expire_all()
+        rel = db.query(BnkRelease).filter_by(ga_label="BNK 2.4.1 GA").one_or_none()
+        assert rel is not None
+        assert rel.flo_version_prefix == "2.30"
+        assert rel.min_k8s == "1.32"
+        assert rel.max_k8s == "1.35"
+
+        dep = db.query(BnkDeployableRelease).filter_by(name="bnk-2.4.1").one_or_none()
+        assert dep is not None
+        assert dep.bnk_release_id == rel.id
+        assert dep.bnk_manifest_version == "2.4.1-3.2850.1-0.0.9"
+        assert dep.flo_version == "v2.30.1-0.0.8"
+        assert dep.k8s_version == "1.35.0"
+
+        # Second upgrade is idempotent
+        mod.upgrade()
+        assert db.query(BnkRelease).filter_by(ga_label="BNK 2.4.1 GA").count() == 1
+        assert db.query(BnkDeployableRelease).filter_by(name="bnk-2.4.1").count() == 1
+
+    def test_upgrade_links_existing_deployable_release_and_downgrade_roundtrip(self, db):
         from alembic.operations import Operations
         from alembic.runtime.migration import MigrationContext
 
@@ -209,13 +252,14 @@ class TestV2163SeedBnk241:
         ctx = MigrationContext.configure(conn)
         mod.op = Operations(ctx)
 
-        # Upgrade: inserts BNK 2.4.1 GA and links bnk-2.4.1
+        # Upgrade: inserts BNK 2.4.1 GA and links existing bnk-2.4.1
         mod.upgrade()
         db.expire_all()
         rel = db.query(BnkRelease).filter_by(ga_label="BNK 2.4.1 GA").one_or_none()
         assert rel is not None
         assert rel.flo_version_prefix == "2.30"
         assert dep.bnk_release_id == rel.id
+        assert db.query(BnkDeployableRelease).filter_by(name="bnk-2.4.1").count() == 1
 
         # Second upgrade is idempotent
         mod.upgrade()
