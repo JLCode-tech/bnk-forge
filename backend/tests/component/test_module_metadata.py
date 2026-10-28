@@ -48,12 +48,8 @@ VALID_METADATA = {
         "supported_platforms": ["aws"],
     },
     "dependencies": {
-        "required": [
-            {"module": "infra/aws/base", "reason": "Needs base networking"}
-        ],
-        "optional": [
-            {"module": "infra/aws/transit-gw"}
-        ],
+        "required": [{"module": "infra/aws/base", "reason": "Needs base networking"}],
+        "optional": [{"module": "infra/aws/transit-gw"}],
     },
     "inputs": {
         "required": [
@@ -61,8 +57,14 @@ VALID_METADATA = {
             {"name": "region", "type": "string", "description": "AWS Region", "source": "auto"},
         ],
         "optional": [
-            {"name": "base_vpc_id", "type": "string", "description": "From base module",
-             "source": "module", "from_module": "infra/aws/base", "from_output": "vpc_id"},
+            {
+                "name": "base_vpc_id",
+                "type": "string",
+                "description": "From base module",
+                "source": "module",
+                "from_module": "infra/aws/base",
+                "from_output": "vpc_id",
+            },
         ],
     },
     "outputs": {
@@ -332,8 +334,12 @@ class TestModuleMetadataValidator:
         validator = ModuleMetadataValidator()
         bad = {
             "module": {
-                "name": "x", "path": "x", "version": "1",
-                "layer": "invalid-layer", "category": "net", "description": "desc"
+                "name": "x",
+                "path": "x",
+                "version": "1",
+                "layer": "invalid-layer",
+                "category": "net",
+                "description": "desc",
             }
         }
         with pytest.raises(InvalidMetadataSchemaError, match="Invalid layer"):
@@ -343,8 +349,12 @@ class TestModuleMetadataValidator:
         validator = ModuleMetadataValidator()
         bad = {
             "module": {
-                "name": "x", "path": "x", "version": "1",
-                "layer": "infrastructure", "category": "net", "description": "d",
+                "name": "x",
+                "path": "x",
+                "version": "1",
+                "layer": "infrastructure",
+                "category": "net",
+                "description": "d",
                 "supported_platforms": ["invalid-cloud"],
             }
         }
@@ -371,14 +381,14 @@ class TestModuleMetadataValidator:
         validator = ModuleMetadataValidator()
         bad = {
             "module": {
-                "name": "x", "path": "x", "version": "1",
-                "layer": "infrastructure", "category": "net", "description": "d"
+                "name": "x",
+                "path": "x",
+                "version": "1",
+                "layer": "infrastructure",
+                "category": "net",
+                "description": "d",
             },
-            "inputs": {
-                "required": [
-                    {"name": "v", "type": "string", "description": "d", "source": "invalid"}
-                ]
-            },
+            "inputs": {"required": [{"name": "v", "type": "string", "description": "d", "source": "invalid"}]},
         }
         with pytest.raises(InvalidMetadataSchemaError, match="Invalid input source"):
             validator.validate(bad)
@@ -387,14 +397,14 @@ class TestModuleMetadataValidator:
         validator = ModuleMetadataValidator()
         bad = {
             "module": {
-                "name": "x", "path": "x", "version": "1",
-                "layer": "infrastructure", "category": "net", "description": "d"
+                "name": "x",
+                "path": "x",
+                "version": "1",
+                "layer": "infrastructure",
+                "category": "net",
+                "description": "d",
             },
-            "inputs": {
-                "required": [
-                    {"name": "v", "type": "string", "description": "d", "source": "module"}
-                ]
-            },
+            "inputs": {"required": [{"name": "v", "type": "string", "description": "d", "source": "module"}]},
         }
         with pytest.raises(InvalidMetadataSchemaError, match="must have 'from_module'"):
             validator.validate(bad)
@@ -645,3 +655,55 @@ class TestPackManifestNormalization:
         assert normalized["outputs_metadata"][0]["name"] == "service_url"
         assert normalized["dependencies_metadata"]["required"][0]["module"] == "infra/aws/vpc"
         assert normalized["dependencies"] == ["infra/aws/vpc"]
+
+    def test_normalizes_cloud_credential_inputs_to_credential_template_source(self):
+        manifest = {
+            **VALID_PACK_MANIFEST,
+            "inputs": {
+                "required": [
+                    {
+                        "name": "aws_access_key_id",
+                        "type": "string",
+                        "description": "AWS Access Key ID",
+                        "source": "user",
+                        "sensitive": True,
+                    },
+                    {
+                        "name": "custom_cloud_key",
+                        "type": "string",
+                        "description": "Custom cloud key",
+                        "source": "user",
+                        "sensitive": True,
+                    },
+                ],
+                "optional": [
+                    {
+                        "name": "aws_session_token",
+                        "type": "string",
+                        "description": "AWS Session Token",
+                        "source": "credential_template",
+                        "default": "",
+                        "sensitive": True,
+                    },
+                ],
+            },
+            "credentials": {
+                "required": [
+                    {
+                        "name": "custom_cloud_key",
+                        "type": "cloud",
+                        "description": "Custom cloud key",
+                    }
+                ]
+            },
+        }
+        validator = ModuleMetadataValidator()
+        validator.validate_pack_manifest(manifest)
+
+        normalized = normalize_pack_manifest_for_catalog(manifest)
+        req_sources = {inp["name"]: inp["source"] for inp in normalized["inputs_metadata"]["required"]}
+        opt_sources = {inp["name"]: inp["source"] for inp in normalized["inputs_metadata"]["optional"]}
+
+        assert req_sources["aws_access_key_id"] == "credential_template"
+        assert req_sources["custom_cloud_key"] == "credential_template"
+        assert opt_sources["aws_session_token"] == "credential_template"

@@ -145,7 +145,7 @@
         "logging_subsystem_enabled": true,
         "env_discovery_enabled": false,
         "env_discovery_stop_on_fail": false,
-        "tmm_default_mtu": 9000,
+        "tmm_default_mtu": 1500,
         "tmm_ignore_gateways": true
       },
       "optional": false,
@@ -163,7 +163,7 @@
         "internal_selfip": "10.1.20.240",
         "external_prefixlen": 24,
         "internal_prefixlen": 24,
-        "mtu": 9000
+        "mtu": 1500
       },
       "optional": false,
       "depends_on": [],

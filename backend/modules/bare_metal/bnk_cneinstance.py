@@ -167,6 +167,7 @@ class BnkCneInstanceSSHModule(BnkSSHModule):
         tmm_env: list[dict[str, str]] = [
             {"name": "TMM_DEFAULT_MTU", "value": f"{mtu}"},
             {"name": "TMM_IGNORE_GATEWAYS", "value": "TRUE"},
+            {"name": "TMM_SOCAT_DISABLE", "value": "1"},
         ]
         if is_kernel:
             tmm_env += [

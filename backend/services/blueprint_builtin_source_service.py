@@ -120,6 +120,17 @@ def sync_builtin_source(db: Session, source: BlueprintSource) -> dict[str, Any]:
                 )
                 continue
 
+            prior_release = (
+                db.query(BlueprintRelease)
+                .filter(BlueprintRelease.blueprint_source_id == source.id)
+                .filter(BlueprintRelease.blueprint_id == blueprint_id)
+                .order_by(BlueprintRelease.id.desc())
+                .first()
+            )
+            inherited_is_active = (
+                prior_release.is_active if prior_release is not None else bool(manifest_dict.get("is_active", True))
+            )
+
             catalog_service.create_release(
                 SimpleNamespace(
                     blueprint_source_id=source.id,
@@ -128,7 +139,7 @@ def sync_builtin_source(db: Session, source: BlueprintSource) -> dict[str, Any]:
                     source_ref=None,
                     release_state=BlueprintReleaseState.IMPORTED.value,
                     state_reason="bundled builtin",
-                    is_active=True,
+                    is_active=inherited_is_active,
                 )
             )
             results["releases_created"] += 1
@@ -180,6 +191,4 @@ def _discover_builtin_manifests() -> list[tuple[str, dict[str, Any]]]:
 
 
 def _content_sha256(manifest: dict[str, Any]) -> str:
-    return hashlib.sha256(
-        json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
+    return hashlib.sha256(json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()

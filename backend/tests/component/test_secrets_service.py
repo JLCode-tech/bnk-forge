@@ -15,11 +15,18 @@ from services.secrets_service import SecretsService
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
+
 def _make_project(db, name="Secret Project"):
     from models import Project
+
     project = Project(
-        name=name, project_type="kubernetes", cloud_provider="on-prem",
-        environment="dev", backend_type="local", color="#000", icon="lock",
+        name=name,
+        project_type="kubernetes",
+        cloud_provider="on-prem",
+        environment="dev",
+        backend_type="local",
+        color="#000",
+        icon="lock",
         is_active=True,
     )
     db.add(project)
@@ -28,6 +35,7 @@ def _make_project(db, name="Secret Project"):
 
 
 # ── Create Value Secret ──────────────────────────────────────────────
+
 
 class TestCreateValueSecret:
     @patch("services.secrets_service.encrypt_value", return_value="encrypted_val")
@@ -62,7 +70,9 @@ class TestCreateValueSecret:
         project = _make_project(db)
         svc = SecretsService(db)
         secret = svc.create_value_secret(
-            project.id, "api_key", "key123",
+            project.id,
+            "api_key",
+            "key123",
             target_module_path="modules/vpc",
             target_variable_name="api_key_var",
         )
@@ -71,6 +81,7 @@ class TestCreateValueSecret:
 
 
 # ── List Secrets ─────────────────────────────────────────────────────
+
 
 class TestListSecrets:
     @patch("services.secrets_service.encrypt_value", return_value="enc")
@@ -109,6 +120,7 @@ class TestListSecrets:
 
 # ── Get Secret ───────────────────────────────────────────────────────
 
+
 class TestGetSecret:
     @patch("services.secrets_service.encrypt_value", return_value="enc")
     def test_get_by_id(self, mock_enc, db):
@@ -138,6 +150,7 @@ class TestGetSecret:
 
 # ── Delete Secret ────────────────────────────────────────────────────
 
+
 class TestDeleteSecret:
     @patch("services.secrets_service.encrypt_value", return_value="enc")
     def test_soft_delete(self, mock_enc, db):
@@ -160,6 +173,7 @@ class TestDeleteSecret:
 
 
 # ── Update Value Secret ──────────────────────────────────────────────
+
 
 class TestUpdateValueSecret:
     @patch("services.secrets_service.encrypt_value", return_value="enc_updated")
@@ -187,7 +201,9 @@ class TestUpdateValueSecret:
         svc = SecretsService(db)
         # Create a file-type secret directly
         secret = ProjectSecret(
-            project_id=project.id, name="file_secret", secret_type="file",
+            project_id=project.id,
+            name="file_secret",
+            secret_type="file",
             is_active=True,
         )
         db.add(secret)
@@ -199,14 +215,18 @@ class TestUpdateValueSecret:
 
 # ── Decrypt Helpers ──────────────────────────────────────────────────
 
+
 class TestDecryptHelpers:
     def test_get_decrypted_value(self, db):
         project = _make_project(db)
         svc = SecretsService(db)
 
         secret = ProjectSecret(
-            project_id=project.id, name="dec_val", secret_type="value",
-            value_encrypted="encrypted_data", is_active=True,
+            project_id=project.id,
+            name="dec_val",
+            secret_type="value",
+            value_encrypted="encrypted_data",
+            is_active=True,
         )
         db.add(secret)
         db.flush()
@@ -220,7 +240,10 @@ class TestDecryptHelpers:
         svc = SecretsService(db)
 
         secret = ProjectSecret(
-            project_id=project.id, name="file_s", secret_type="file", is_active=True,
+            project_id=project.id,
+            name="file_s",
+            secret_type="file",
+            is_active=True,
         )
         db.add(secret)
         db.flush()
@@ -233,7 +256,10 @@ class TestDecryptHelpers:
         svc = SecretsService(db)
 
         secret = ProjectSecret(
-            project_id=project.id, name="val_s", secret_type="value", is_active=True,
+            project_id=project.id,
+            name="val_s",
+            secret_type="value",
+            is_active=True,
         )
         db.add(secret)
         db.flush()
@@ -244,39 +270,49 @@ class TestDecryptHelpers:
 
 # ── Required Secrets Analysis ────────────────────────────────────────
 
+
 class TestRequiredSecrets:
     def test_detects_file_path_inputs(self, db):
         svc = SecretsService(db)
-        result = svc.get_required_secrets_for_module("modules/vpc", {
-            "required": [
-                {"name": "ssh_key", "description": "SSH key file", "validation": {"type": "file_path"}},
-            ],
-            "optional": [],
-        })
+        result = svc.get_required_secrets_for_module(
+            "modules/vpc",
+            {
+                "required": [
+                    {"name": "ssh_key", "description": "SSH key file", "validation": {"type": "file_path"}},
+                ],
+                "optional": [],
+            },
+        )
         assert len(result) == 1
         assert result[0]["type"] == "file"
         assert result[0]["name"] == "ssh_key"
 
     def test_detects_sensitive_inputs(self, db):
         svc = SecretsService(db)
-        result = svc.get_required_secrets_for_module("modules/rds", {
-            "required": [
-                {"name": "db_pass", "description": "DB Password", "sensitive": True, "validation": {}},
-            ],
-            "optional": [],
-        })
+        result = svc.get_required_secrets_for_module(
+            "modules/rds",
+            {
+                "required": [
+                    {"name": "db_pass", "description": "DB Password", "sensitive": True, "validation": {}},
+                ],
+                "optional": [],
+            },
+        )
         assert len(result) == 1
         assert result[0]["type"] == "value"
 
     def test_detects_bnk_existing_cluster_secrets_as_required(self, db):
         svc = SecretsService(db)
-        result = svc.get_required_secrets_for_module("bnk/flo", {
-            "required": [
-                {"name": "jwt_token", "description": "License JWT", "sensitive": True, "validation": {}},
-                {"name": "cne_pull_secret", "description": "FAR pull secret", "sensitive": True, "validation": {}},
-            ],
-            "optional": [],
-        })
+        result = svc.get_required_secrets_for_module(
+            "bnk/flo",
+            {
+                "required": [
+                    {"name": "jwt_token", "description": "License JWT", "sensitive": True, "validation": {}},
+                    {"name": "cne_pull_secret", "description": "FAR pull secret", "sensitive": True, "validation": {}},
+                ],
+                "optional": [],
+            },
+        )
         names = {secret["name"] for secret in result}
         assert names == {"jwt_token", "cne_pull_secret"}
         assert all(secret["required"] is True for secret in result)
@@ -294,78 +330,151 @@ class TestRequiredSecrets:
         - cne_pull_secret     (source: project_secret, sensitive) → KEEP
         """
         svc = SecretsService(db)
-        result = svc.get_required_secrets_for_module("bnk/far-setup", {
-            "required": [
-                {
-                    "name": "aws_access_key_id",
-                    "description": "AWS access key",
-                    "sensitive": True,
-                    "source": "credential_template",
-                    "validation": {},
-                },
-                {
-                    "name": "aws_secret_access_key",
-                    "description": "AWS secret key",
-                    "sensitive": True,
-                    "source": "credential_template",
-                    "validation": {},
-                },
-                {
-                    "name": "aws_session_token",
-                    "description": "AWS session token",
-                    "sensitive": True,
-                    "source": "credential_template",
-                    "validation": {},
-                },
-                {
-                    "name": "forge_kubeconfig_content",
-                    "description": "Cluster kubeconfig injected by forge",
-                    "sensitive": True,
-                    "source": "auto",
-                    "validation": {},
-                },
-                {
-                    "name": "jwt_token",
-                    "description": "License JWT",
-                    "sensitive": True,
-                    "source": "project_secret",
-                    "validation": {},
-                },
-                {
-                    "name": "cne_pull_secret",
-                    "description": "FAR pull secret",
-                    "sensitive": True,
-                    "source": "project_secret",
-                    "validation": {},
-                },
-            ],
-            "optional": [],
-        })
-        names = {secret["name"] for secret in result}
-        assert names == {"jwt_token", "cne_pull_secret"}, (
-            f"Expected only jwt_token and cne_pull_secret, got: {names}"
+        result = svc.get_required_secrets_for_module(
+            "bnk/far-setup",
+            {
+                "required": [
+                    {
+                        "name": "aws_access_key_id",
+                        "description": "AWS access key",
+                        "sensitive": True,
+                        "source": "credential_template",
+                        "validation": {},
+                    },
+                    {
+                        "name": "aws_secret_access_key",
+                        "description": "AWS secret key",
+                        "sensitive": True,
+                        "source": "credential_template",
+                        "validation": {},
+                    },
+                    {
+                        "name": "aws_session_token",
+                        "description": "AWS session token",
+                        "sensitive": True,
+                        "source": "credential_template",
+                        "validation": {},
+                    },
+                    {
+                        "name": "forge_kubeconfig_content",
+                        "description": "Cluster kubeconfig injected by forge",
+                        "sensitive": True,
+                        "source": "auto",
+                        "validation": {},
+                    },
+                    {
+                        "name": "jwt_token",
+                        "description": "License JWT",
+                        "sensitive": True,
+                        "source": "project_secret",
+                        "validation": {},
+                    },
+                    {
+                        "name": "cne_pull_secret",
+                        "description": "FAR pull secret",
+                        "sensitive": True,
+                        "source": "project_secret",
+                        "validation": {},
+                    },
+                ],
+                "optional": [],
+            },
         )
+        names = {secret["name"] for secret in result}
+        assert names == {"jwt_token", "cne_pull_secret"}, f"Expected only jwt_token and cne_pull_secret, got: {names}"
 
     def test_skips_context_resolved_file_path_inputs(self, db):
         """file_path inputs with a context-resolved source must also be skipped."""
         svc = SecretsService(db)
-        result = svc.get_required_secrets_for_module("bnk/infra", {
-            "required": [
-                {
-                    "name": "kubeconfig_file",
-                    "description": "Auto-mounted kubeconfig",
-                    "source": "auto",
-                    "validation": {"type": "file_path"},
-                },
-                {
-                    "name": "user_cert",
-                    "description": "User-supplied certificate",
-                    "validation": {"type": "file_path"},
-                },
-            ],
-            "optional": [],
-        })
-        names = {secret["name"] for secret in result}
-        assert names == {"user_cert"}, (
-            f"Expected only user_cert, got: {names}"
+        result = svc.get_required_secrets_for_module(
+            "bnk/infra",
+            {
+                "required": [
+                    {
+                        "name": "kubeconfig_file",
+                        "description": "Auto-mounted kubeconfig",
+                        "source": "auto",
+                        "validation": {"type": "file_path"},
+                    },
+                    {
+                        "name": "user_cert",
+                        "description": "User-supplied certificate",
+                        "validation": {"type": "file_path"},
+                    },
+                ],
+                "optional": [],
+            },
         )
+        names = {secret["name"] for secret in result}
+        assert names == {"user_cert"}, f"Expected only user_cert, got: {names}"
+
+    def test_skips_cloud_credential_vars_even_when_source_is_user(self, db):
+        """
+        Cloud credential variables (aws_access_key_id, aws_secret_access_key,
+        aws_session_token) and pack_manifest.credentials entries with type='cloud'
+        must never be reported as required user-provided project secrets, even if
+        legacy module metadata declares them with source='user' and sensitive=True.
+        """
+        svc = SecretsService(db)
+        result = svc.get_required_secrets_for_module(
+            "aws/eks-cluster-create",
+            {
+                "required": [
+                    {
+                        "name": "aws_access_key_id",
+                        "description": "AWS access key",
+                        "sensitive": True,
+                        "source": "user",
+                        "validation": {},
+                    },
+                    {
+                        "name": "aws_secret_access_key",
+                        "description": "AWS secret key",
+                        "sensitive": True,
+                        "source": "user",
+                        "validation": {},
+                    },
+                    {
+                        "name": "custom_cloud_token",
+                        "description": "Cloud provider token",
+                        "sensitive": True,
+                        "source": "user",
+                        "validation": {},
+                    },
+                    {
+                        "name": "jwt_token",
+                        "description": "License JWT",
+                        "sensitive": True,
+                        "source": "user",
+                        "validation": {},
+                    },
+                ],
+                "optional": [
+                    {
+                        "name": "aws_session_token",
+                        "description": "AWS session token",
+                        "sensitive": True,
+                        "source": "user",
+                        "validation": {},
+                    },
+                ],
+            },
+            pack_manifest={
+                "credentials": {
+                    "required": [
+                        {
+                            "name": "custom_cloud_token",
+                            "type": "cloud",
+                            "description": "Custom cloud credential resolved from template",
+                        },
+                        {
+                            "name": "jwt_token",
+                            "type": "license",
+                            "description": "F5 BNK license JWT",
+                        },
+                    ],
+                },
+            },
+        )
+        names = {secret["name"] for secret in result}
+        assert names == {"jwt_token"}, f"Expected only jwt_token, got: {names}"

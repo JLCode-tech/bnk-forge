@@ -19,22 +19,26 @@ logger = logging.getLogger(__name__)
 
 class ModuleMetadataError(Exception):
     """Base exception for module metadata errors"""
+
     pass
 
 
 class MissingMetadataError(ModuleMetadataError):
     """Raised when module.json file is not found"""
+
     pass
 
 
 class InvalidMetadataSchemaError(ModuleMetadataError):
     """Raised when module.json doesn't conform to schema"""
+
     pass
 
 
 @dataclass
 class ModuleInfo:
     """Module information from metadata"""
+
     name: str
     path: str
     version: str
@@ -104,10 +108,9 @@ def validate_workspace_relative_path(value: str, *, field: str) -> str:
         raise InvalidMetadataSchemaError(f"{field} contains a null byte")
     normalized = os.path.normpath(candidate)
     if normalized == ".." or normalized.startswith(".." + os.sep) or os.path.isabs(normalized):
-        raise InvalidMetadataSchemaError(
-            f"{field} '{value}' escapes the workspace (path traversal)"
-        )
+        raise InvalidMetadataSchemaError(f"{field} '{value}' escapes the workspace (path traversal)")
     return normalized
+
 
 # Artifact kind -> (required typed block key, default execution engine).
 ARTIFACT_KINDS: dict[str, dict[str, str]] = {
@@ -205,17 +208,13 @@ class ModuleMetadataParser:
         metadata_file = self.repo_path / module_path / "module.json"
 
         if not metadata_file.exists():
-            raise MissingMetadataError(
-                f"module.json not found for {module_path} at {metadata_file}"
-            )
+            raise MissingMetadataError(f"module.json not found for {module_path} at {metadata_file}")
 
         try:
             with open(metadata_file) as f:
                 metadata = json.load(f)
         except json.JSONDecodeError as e:
-            raise ModuleMetadataError(
-                f"Invalid JSON in {metadata_file}: {e}"
-            )
+            raise ModuleMetadataError(f"Invalid JSON in {metadata_file}: {e}")
 
         # Cache and return
         self._cache[module_path] = metadata
@@ -241,9 +240,7 @@ class ModuleMetadataParser:
 
         manifest_file = self.repo_path / module_path / PACK_MANIFEST_FILENAME
         if not manifest_file.exists():
-            raise MissingMetadataError(
-                f"{PACK_MANIFEST_FILENAME} not found for {module_path} at {manifest_file}"
-            )
+            raise MissingMetadataError(f"{PACK_MANIFEST_FILENAME} not found for {module_path} at {manifest_file}")
 
         try:
             with open(manifest_file) as f:
@@ -267,9 +264,7 @@ class ModuleMetadataParser:
 
         manifest_file = self.repo_path / module_path / ARTIFACT_MANIFEST_FILENAME
         if not manifest_file.exists():
-            raise MissingMetadataError(
-                f"{ARTIFACT_MANIFEST_FILENAME} not found for {module_path} at {manifest_file}"
-            )
+            raise MissingMetadataError(f"{ARTIFACT_MANIFEST_FILENAME} not found for {module_path} at {manifest_file}")
 
         try:
             with open(manifest_file) as f:
@@ -291,7 +286,7 @@ class ModuleMetadataParser:
             category=module_data.get("category", ""),
             description=module_data.get("description", ""),
             cloud_specific=module_data.get("cloud_specific", False),
-            supported_platforms=module_data.get("supported_platforms", [])
+            supported_platforms=module_data.get("supported_platforms", []),
         )
 
     def get_required_dependencies(self, metadata: dict) -> list[dict]:
@@ -316,26 +311,17 @@ class ModuleMetadataParser:
 
     def get_user_inputs(self, metadata: dict) -> list[dict]:
         """Get inputs that require user input (source=user)"""
-        all_inputs = (
-            self.get_required_inputs(metadata) +
-            self.get_optional_inputs(metadata)
-        )
+        all_inputs = self.get_required_inputs(metadata) + self.get_optional_inputs(metadata)
         return [inp for inp in all_inputs if inp.get("source") == "user"]
 
     def get_module_inputs(self, metadata: dict) -> list[dict]:
         """Get inputs from other modules (source=module)"""
-        all_inputs = (
-            self.get_required_inputs(metadata) +
-            self.get_optional_inputs(metadata)
-        )
+        all_inputs = self.get_required_inputs(metadata) + self.get_optional_inputs(metadata)
         return [inp for inp in all_inputs if inp.get("source") == "module"]
 
     def get_auto_inputs(self, metadata: dict) -> list[dict]:
         """Get auto-calculated inputs (source=auto)"""
-        all_inputs = (
-            self.get_required_inputs(metadata) +
-            self.get_optional_inputs(metadata)
-        )
+        all_inputs = self.get_required_inputs(metadata) + self.get_optional_inputs(metadata)
         return [inp for inp in all_inputs if inp.get("source") == "auto"]
 
     def get_outputs(self, metadata: dict) -> list[dict]:
@@ -428,16 +414,16 @@ class ModuleMetadataValidator:
         validator.validate(metadata)  # Raises InvalidMetadataSchemaError if invalid
     """
 
-    VALID_LAYERS = [
-        "infrastructure",
-        "kubernetes",
-        "bnk-foundation",
-        "bnk-platform",
-        "bnk-gateway",
-        "bnk-policy"
-    ]
+    VALID_LAYERS = ["infrastructure", "kubernetes", "bnk-foundation", "bnk-platform", "bnk-gateway", "bnk-policy"]
 
-    VALID_SOURCES = ["user", "module", "auto"]
+    VALID_SOURCES = [
+        "user",
+        "module",
+        "auto",
+        "credential_template",
+        "project",
+        "project_secret",
+    ]
 
     VALID_PLATFORMS = VALID_SUPPORTED_PLATFORM_VALUES
 
@@ -511,9 +497,7 @@ class ModuleMetadataValidator:
 
         schema_version = manifest.get("schema_version")
         if schema_version != 1:
-            raise InvalidMetadataSchemaError(
-                f"Invalid schema_version '{schema_version}'. Must be 1"
-            )
+            raise InvalidMetadataSchemaError(f"Invalid schema_version '{schema_version}'. Must be 1")
 
         for field in ("name", "version"):
             if not self._is_non_empty_string(manifest.get(field)):
@@ -521,26 +505,20 @@ class ModuleMetadataValidator:
 
         kind = manifest.get("kind")
         if kind not in ARTIFACT_KINDS:
-            raise InvalidMetadataSchemaError(
-                f"Invalid kind '{kind}'. Must be one of: {', '.join(ARTIFACT_KINDS)}"
-            )
+            raise InvalidMetadataSchemaError(f"Invalid kind '{kind}'. Must be one of: {', '.join(ARTIFACT_KINDS)}")
         return kind
 
     def _validate_artifact_typed_block(self, manifest: dict, kind: str) -> None:
         block_key = ARTIFACT_KINDS[kind]["block"]
         block = manifest.get(block_key)
         if not isinstance(block, dict):
-            raise InvalidMetadataSchemaError(
-                f"kind '{kind}' requires a '{block_key}' object block"
-            )
+            raise InvalidMetadataSchemaError(f"kind '{kind}' requires a '{block_key}' object block")
 
         # Every kind that ships an image/chart/manifest must pin an immutable
         # digest — no floating tags.
         digest = block.get("digest")
         if not self._is_non_empty_string(digest):
-            raise InvalidMetadataSchemaError(
-                f"{block_key}.digest is required (immutable sha256 digest)"
-            )
+            raise InvalidMetadataSchemaError(f"{block_key}.digest is required (immutable sha256 digest)")
         if not _DIGEST_RE.match(digest.strip()):
             raise InvalidMetadataSchemaError(
                 f"{block_key}.digest must be a pinned 'sha256:<64 hex>' digest, not a floating tag"
@@ -595,9 +573,7 @@ class ModuleMetadataValidator:
         if secret_files is None:
             return
         if kind not in PROCEDURAL_ARTIFACT_KINDS:
-            raise InvalidMetadataSchemaError(
-                f"kind '{kind}' has no run workspace and must not declare 'secret_files'"
-            )
+            raise InvalidMetadataSchemaError(f"kind '{kind}' has no run workspace and must not declare 'secret_files'")
         if not isinstance(secret_files, list):
             raise InvalidMetadataSchemaError("'secret_files' must be a list")
 
@@ -607,20 +583,14 @@ class ModuleMetadataValidator:
                 raise InvalidMetadataSchemaError("each secret_files entry must be an object")
             secret_name = entry.get("secret_name")
             if not self._is_non_empty_string(secret_name):
-                raise InvalidMetadataSchemaError(
-                    "secret_files[].secret_name is required (a project secret name)"
-                )
+                raise InvalidMetadataSchemaError("secret_files[].secret_name is required (a project secret name)")
             path_value = entry.get("path")
             if not self._is_non_empty_string(path_value):
-                raise InvalidMetadataSchemaError(
-                    f"secret_files[].path is required for secret '{secret_name}'"
-                )
+                raise InvalidMetadataSchemaError(f"secret_files[].path is required for secret '{secret_name}'")
             validate_workspace_relative_path(path_value, field=f"secret_files[{secret_name}].path")
             normalized = os.path.normpath(path_value.strip())
             if normalized in seen_paths:
-                raise InvalidMetadataSchemaError(
-                    f"secret_files[].path '{path_value}' is declared more than once"
-                )
+                raise InvalidMetadataSchemaError(f"secret_files[].path '{path_value}' is declared more than once")
             seen_paths.add(normalized)
 
         self._reject_secret_file_step_collisions(manifest, seen_paths)
@@ -710,9 +680,7 @@ class ModuleMetadataValidator:
         # rather than silently resolving one. Two declared step-sets is how a
         # reviewed manifest becomes a decoy for an executed one.
         execution = manifest.get("execution")
-        has_execution_steps = (
-            isinstance(execution, dict) and isinstance(execution.get("steps"), dict)
-        )
+        has_execution_steps = isinstance(execution, dict) and isinstance(execution.get("steps"), dict)
         if has_execution_steps and isinstance(manifest.get("steps"), dict):
             raise InvalidMetadataSchemaError(
                 "lifecycle steps are declared in both 'steps' and "
@@ -733,9 +701,7 @@ class ModuleMetadataValidator:
 
         if not is_procedural:
             if steps is not None:
-                raise InvalidMetadataSchemaError(
-                    f"kind '{kind}' is declarative and must not declare 'steps'"
-                )
+                raise InvalidMetadataSchemaError(f"kind '{kind}' is declarative and must not declare 'steps'")
             return
 
         # Procedural kinds: a step-set is the unit of execution.
@@ -762,9 +728,7 @@ class ModuleMetadataValidator:
 
     def _validate_artifact_step_list(self, step_list: object, manifest: dict, *, phase: str) -> None:
         if not isinstance(step_list, list) or not step_list:
-            raise InvalidMetadataSchemaError(
-                f"steps.{phase} must be a non-empty list for a procedural artifact"
-            )
+            raise InvalidMetadataSchemaError(f"steps.{phase} must be a non-empty list for a procedural artifact")
         for idx, step in enumerate(step_list):
             self._validate_artifact_step(step, manifest, path=f"steps.{phase}[{idx}]")
 
@@ -800,9 +764,7 @@ class ModuleMetadataValidator:
         # denylisted above, but reject any 'ref'/'from' image redirection too).
         for redirect_key in ("ref", "from", "uses"):
             if self._is_non_empty_string(step.get(redirect_key)):
-                raise InvalidMetadataSchemaError(
-                    f"{path} must not reference another image via '{redirect_key}'"
-                )
+                raise InvalidMetadataSchemaError(f"{path} must not reference another image via '{redirect_key}'")
 
     def _validate_artifact_actions(self, manifest: dict, kind: str) -> None:
         """Validate the optional top-level ``actions`` block (D-034).
@@ -816,30 +778,20 @@ class ModuleMetadataValidator:
         if actions is None:
             return
         if not isinstance(actions, dict):
-            raise InvalidMetadataSchemaError(
-                "'actions' must be an object mapping action names to definitions"
-            )
+            raise InvalidMetadataSchemaError("'actions' must be an object mapping action names to definitions")
         if kind not in PROCEDURAL_ARTIFACT_KINDS:
-            raise InvalidMetadataSchemaError(
-                f"kind '{kind}' is declarative and must not declare 'actions'"
-            )
+            raise InvalidMetadataSchemaError(f"kind '{kind}' is declarative and must not declare 'actions'")
 
         for name, definition in actions.items():
             if not isinstance(name, str) or not ARTIFACT_ACTION_NAME_RE.match(name):
-                raise InvalidMetadataSchemaError(
-                    f"Invalid action name '{name}'. Must match [a-z0-9-]{{1,64}}"
-                )
+                raise InvalidMetadataSchemaError(f"Invalid action name '{name}'. Must match [a-z0-9-]{{1,64}}")
             if name in ARTIFACT_ACTION_RESERVED_NAMES:
-                raise InvalidMetadataSchemaError(
-                    f"Action name '{name}' collides with a lifecycle phase"
-                )
+                raise InvalidMetadataSchemaError(f"Action name '{name}' collides with a lifecycle phase")
             if not isinstance(definition, dict):
                 raise InvalidMetadataSchemaError(f"actions.{name} must be an object")
 
             if not self._is_non_empty_string(definition.get("title")):
-                raise InvalidMetadataSchemaError(
-                    f"actions.{name}.title is required and must be a non-empty string"
-                )
+                raise InvalidMetadataSchemaError(f"actions.{name}.title is required and must be a non-empty string")
 
             description = definition.get("description")
             if description is not None and not isinstance(description, str):
@@ -854,9 +806,7 @@ class ModuleMetadataValidator:
 
             steps = definition.get("steps")
             if not isinstance(steps, list) or not steps:
-                raise InvalidMetadataSchemaError(
-                    f"actions.{name}.steps must be a non-empty list"
-                )
+                raise InvalidMetadataSchemaError(f"actions.{name}.steps must be a non-empty list")
             for idx, step in enumerate(steps):
                 self._validate_artifact_step(step, manifest, path=f"actions.{name}.steps[{idx}]")
 
@@ -870,9 +820,7 @@ class ModuleMetadataValidator:
             raise InvalidMetadataSchemaError(f"actions.{action_name}.inputs must be a list")
         for idx, inp in enumerate(inputs):
             if not isinstance(inp, dict):
-                raise InvalidMetadataSchemaError(
-                    f"actions.{action_name}.inputs[{idx}] must be an object"
-                )
+                raise InvalidMetadataSchemaError(f"actions.{action_name}.inputs[{idx}] must be an object")
             for field in ("name", "type"):
                 if not self._is_non_empty_string(inp.get(field)):
                     raise InvalidMetadataSchemaError(
@@ -893,25 +841,17 @@ class ModuleMetadataValidator:
         if reports is None:
             return
         if kind not in PROCEDURAL_ARTIFACT_KINDS:
-            raise InvalidMetadataSchemaError(
-                f"kind '{kind}' has no run workspace and must not declare 'reports'"
-            )
+            raise InvalidMetadataSchemaError(f"kind '{kind}' has no run workspace and must not declare 'reports'")
         if not isinstance(reports, dict):
             raise InvalidMetadataSchemaError("'reports' must be an object")
         dir_value = reports.get("dir")
         if not self._is_non_empty_string(dir_value):
-            raise InvalidMetadataSchemaError(
-                "reports.dir is required (a non-empty workspace-relative path)"
-            )
+            raise InvalidMetadataSchemaError("reports.dir is required (a non-empty workspace-relative path)")
         candidate = dir_value.strip()
         if candidate.startswith("/") or candidate.startswith("~") or "\x00" in candidate:
-            raise InvalidMetadataSchemaError(
-                f"reports.dir '{dir_value}' must be workspace-relative, not absolute"
-            )
+            raise InvalidMetadataSchemaError(f"reports.dir '{dir_value}' must be workspace-relative, not absolute")
         if any(part == ".." for part in candidate.replace("\\", "/").split("/")):
-            raise InvalidMetadataSchemaError(
-                f"reports.dir '{dir_value}' escapes the workspace (path traversal)"
-            )
+            raise InvalidMetadataSchemaError(f"reports.dir '{dir_value}' escapes the workspace (path traversal)")
 
     def _validate_artifact_secret_safety(self, manifest: dict) -> None:
         self._reject_embedded_secrets(manifest, path="$")
@@ -926,9 +866,7 @@ class ModuleMetadataValidator:
                     and key.strip().lower() in ARTIFACT_DISALLOWED_SECRET_KEYS
                     and self._is_non_empty_string(value)
                 ):
-                    raise InvalidMetadataSchemaError(
-                        f"{path}.{key} must not contain an embedded secret value"
-                    )
+                    raise InvalidMetadataSchemaError(f"{path}.{key} must not contain an embedded secret value")
                 self._reject_embedded_secrets(value, path=f"{path}.{key}", _depth=_depth + 1)
         elif isinstance(node, list):
             for idx, item in enumerate(node):
@@ -948,9 +886,7 @@ class ModuleMetadataValidator:
         elif not self._is_non_empty_string(engine):
             raise InvalidMetadataSchemaError("execution.engine must be a non-empty string")
 
-    def _resolve_artifact_references(
-        self, manifest: dict, known_artifact_refs: set[str] | None
-    ) -> dict:
+    def _resolve_artifact_references(self, manifest: dict, known_artifact_refs: set[str] | None) -> dict:
         self_id = f"{manifest.get('name')}@{manifest.get('version')}"
         references = manifest.get("references", [])
         if references is None:
@@ -974,14 +910,10 @@ class ModuleMetadataValidator:
             # A node cannot depend on itself — a self-loop makes the graph
             # cyclic and every consumer would have to defend against it.
             if target in (self_id, str(manifest.get("name") or "")):
-                raise InvalidMetadataSchemaError(
-                    f"references[{idx}] '{target}' is a self-reference (cycle)"
-                )
+                raise InvalidMetadataSchemaError(f"references[{idx}] '{target}' is a self-reference (cycle)")
 
             if known_artifact_refs is not None and target not in known_artifact_refs:
-                raise InvalidMetadataSchemaError(
-                    f"references[{idx}] '{target}' does not resolve to a known artifact"
-                )
+                raise InvalidMetadataSchemaError(f"references[{idx}] '{target}' does not resolve to a known artifact")
 
             if target not in nodes:
                 nodes.append(target)
@@ -999,15 +931,12 @@ class ModuleMetadataValidator:
 
         for field in required_fields:
             if field not in module:
-                raise InvalidMetadataSchemaError(
-                    f"Missing required field 'module.{field}'"
-                )
+                raise InvalidMetadataSchemaError(f"Missing required field 'module.{field}'")
 
         # Validate layer value
         if module.get("layer") not in self.VALID_LAYERS:
             raise InvalidMetadataSchemaError(
-                f"Invalid layer '{module.get('layer')}'. "
-                f"Must be one of: {', '.join(self.VALID_LAYERS)}"
+                f"Invalid layer '{module.get('layer')}'. Must be one of: {', '.join(self.VALID_LAYERS)}"
             )
 
         # Validate platforms
@@ -1015,8 +944,7 @@ class ModuleMetadataValidator:
             for platform in module["supported_platforms"]:
                 if platform not in self.VALID_PLATFORMS:
                     raise InvalidMetadataSchemaError(
-                        f"Invalid platform '{platform}'. "
-                        f"Must be one of: {', '.join(self.VALID_PLATFORMS)}"
+                        f"Invalid platform '{platform}'. Must be one of: {', '.join(self.VALID_PLATFORMS)}"
                     )
 
     def _validate_dependencies_section(self, metadata: dict):
@@ -1030,21 +958,15 @@ class ModuleMetadataValidator:
         if "required" in deps:
             for dep in deps["required"]:
                 if "module" not in dep:
-                    raise InvalidMetadataSchemaError(
-                        "Required dependency missing 'module' field"
-                    )
+                    raise InvalidMetadataSchemaError("Required dependency missing 'module' field")
                 if "reason" not in dep:
-                    raise InvalidMetadataSchemaError(
-                        "Required dependency missing 'reason' field"
-                    )
+                    raise InvalidMetadataSchemaError("Required dependency missing 'reason' field")
 
         # Validate optional dependencies
         if "optional" in deps:
             for dep in deps["optional"]:
                 if "module" not in dep:
-                    raise InvalidMetadataSchemaError(
-                        "Optional dependency missing 'module' field"
-                    )
+                    raise InvalidMetadataSchemaError("Optional dependency missing 'module' field")
 
     def _validate_inputs_section(self, metadata: dict):
         """Validate inputs section"""
@@ -1069,27 +991,20 @@ class ModuleMetadataValidator:
 
         for field in required_fields:
             if field not in inp:
-                raise InvalidMetadataSchemaError(
-                    f"{input_type.capitalize()} input missing '{field}' field"
-                )
+                raise InvalidMetadataSchemaError(f"{input_type.capitalize()} input missing '{field}' field")
 
         # Validate source value
         if inp.get("source") not in self.VALID_SOURCES:
             raise InvalidMetadataSchemaError(
-                f"Invalid input source '{inp.get('source')}'. "
-                f"Must be one of: {', '.join(self.VALID_SOURCES)}"
+                f"Invalid input source '{inp.get('source')}'. Must be one of: {', '.join(self.VALID_SOURCES)}"
             )
 
         # If source is 'module', validate from_module and from_output
         if inp.get("source") == "module":
             if "from_module" not in inp:
-                raise InvalidMetadataSchemaError(
-                    "Input with source='module' must have 'from_module' field"
-                )
+                raise InvalidMetadataSchemaError("Input with source='module' must have 'from_module' field")
             if "from_output" not in inp:
-                raise InvalidMetadataSchemaError(
-                    "Input with source='module' must have 'from_output' field"
-                )
+                raise InvalidMetadataSchemaError("Input with source='module' must have 'from_output' field")
 
     def _validate_outputs_section(self, metadata: dict):
         """Validate outputs section"""
@@ -1101,13 +1016,9 @@ class ModuleMetadataValidator:
         if "key_outputs" in outputs:
             for out in outputs["key_outputs"]:
                 if "name" not in out:
-                    raise InvalidMetadataSchemaError(
-                        "Output missing 'name' field"
-                    )
+                    raise InvalidMetadataSchemaError("Output missing 'name' field")
                 if "type" not in out:
-                    raise InvalidMetadataSchemaError(
-                        "Output missing 'type' field"
-                    )
+                    raise InvalidMetadataSchemaError("Output missing 'type' field")
 
     def _validate_providers_section(self, metadata: dict):
         """Validate providers section"""
@@ -1123,9 +1034,7 @@ class ModuleMetadataValidator:
     def _validate_pack_schema_version(self, manifest: dict):
         schema_version = manifest.get("schema_version")
         if schema_version != 1:
-            raise InvalidMetadataSchemaError(
-                f"Invalid schema_version '{schema_version}'. Must be 1"
-            )
+            raise InvalidMetadataSchemaError(f"Invalid schema_version '{schema_version}'. Must be 1")
 
     def _validate_pack_module_section(self, manifest: dict):
         module = manifest.get("module")
@@ -1187,9 +1096,7 @@ class ModuleMetadataValidator:
             if field not in lifecycle:
                 raise InvalidMetadataSchemaError(f"Missing required field 'deployment_pack.lifecycle.{field}'")
             if not isinstance(lifecycle[field], bool):
-                raise InvalidMetadataSchemaError(
-                    f"Field 'deployment_pack.lifecycle.{field}' must be a boolean"
-                )
+                raise InvalidMetadataSchemaError(f"Field 'deployment_pack.lifecycle.{field}' must be a boolean")
 
         if lifecycle.get("supports_apply") is not True:
             raise InvalidMetadataSchemaError("deployment_pack.lifecycle.supports_apply must be true")
@@ -1293,7 +1200,9 @@ class ModuleMetadataValidator:
                 raise InvalidMetadataSchemaError("Output missing 'description' field")
 
             if "value" in out:
-                self._validate_pack_output_value(out["value"], path=f"outputs.key_outputs[{out.get('name', '?')}].value")
+                self._validate_pack_output_value(
+                    out["value"], path=f"outputs.key_outputs[{out.get('name', '?')}].value"
+                )
 
     def _validate_pack_output_value(self, value: object, *, path: str, _depth: int = 0):
         """Validate optional outputs.key_outputs[].value payload.
@@ -1303,9 +1212,7 @@ class ModuleMetadataValidator:
         without becoming an unbounded arbitrary payload channel.
         """
         if _depth > 6:
-            raise InvalidMetadataSchemaError(
-                f"{path} nesting is too deep (max depth 6)"
-            )
+            raise InvalidMetadataSchemaError(f"{path} nesting is too deep (max depth 6)")
 
         if value is None or isinstance(value, (str, int, float, bool)):
             return
@@ -1322,9 +1229,7 @@ class ModuleMetadataValidator:
                 self._validate_pack_output_value(item, path=f"{path}.{key}", _depth=_depth + 1)
             return
 
-        raise InvalidMetadataSchemaError(
-            f"{path} must be JSON-compatible (string/number/boolean/null/object/array)"
-        )
+        raise InvalidMetadataSchemaError(f"{path} must be JSON-compatible (string/number/boolean/null/object/array)")
 
     def _validate_manifest_secret_safety(self, manifest: dict):
         # Sensitive inputs should not declare inline defaults.
@@ -1357,9 +1262,7 @@ class ModuleMetadataValidator:
 
             for entry in entries:
                 if not isinstance(entry, dict):
-                    raise InvalidMetadataSchemaError(
-                        f"Each credentials entry in '{group_name}' must be an object"
-                    )
+                    raise InvalidMetadataSchemaError(f"Each credentials entry in '{group_name}' must be an object")
                 for required_field in ["name", "type", "description"]:
                     if not self._is_non_empty_string(entry.get(required_field)):
                         raise InvalidMetadataSchemaError(
@@ -1433,6 +1336,33 @@ def normalize_pack_manifest_for_catalog(pack_manifest: dict) -> dict:
     inputs = pack_manifest.get("inputs", {})
     outputs = pack_manifest.get("outputs", {})
 
+    cloud_credential_names: set[str] = {
+        "aws_access_key_id",
+        "aws_secret_access_key",
+        "aws_session_token",
+    }
+    credentials_block = pack_manifest.get("credentials")
+    if isinstance(credentials_block, dict):
+        for group_name in ("required", "optional"):
+            for entry in credentials_block.get(group_name) or []:
+                if isinstance(entry, dict) and entry.get("type") == "cloud":
+                    cred_name = entry.get("name")
+                    if isinstance(cred_name, str) and cred_name.strip():
+                        cloud_credential_names.add(cred_name.strip())
+
+    def _normalize_input_entry(inp: dict) -> dict:
+        if not isinstance(inp, dict):
+            return inp
+        inp_name = inp.get("name")
+        if inp_name in cloud_credential_names and inp.get("source") in (None, "user"):
+            normalized = dict(inp)
+            normalized["source"] = "credential_template"
+            return normalized
+        return inp
+
+    required_inputs = [_normalize_input_entry(inp) for inp in inputs.get("required", [])]
+    optional_inputs = [_normalize_input_entry(inp) for inp in inputs.get("optional", [])]
+
     supported_platforms = module_data.get("supported_platforms", [])
     required_capabilities = module_data.get("required_capabilities", [])
 
@@ -1455,8 +1385,8 @@ def normalize_pack_manifest_for_catalog(pack_manifest: dict) -> dict:
         "engine_type": deployment_pack.get("engine"),
         "pack_manifest": pack_manifest,
         "inputs_metadata": {
-            "required": inputs.get("required", []),
-            "optional": inputs.get("optional", []),
+            "required": required_inputs,
+            "optional": optional_inputs,
             "providers": {},
             "compatibility": {
                 "supported_platforms": supported_platforms,

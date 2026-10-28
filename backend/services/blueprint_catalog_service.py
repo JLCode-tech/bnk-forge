@@ -13,6 +13,7 @@ from models.blueprint_catalog import _MUTABLE_BLUEPRINT_RELEASE_LIFECYCLE_FIELDS
 from models.enums import BlueprintReleaseState, BlueprintValidationState, ModuleSyncStatus
 from services.blueprint_default_source_service import is_default_blueprint_source, set_default_blueprint_source
 from services.blueprint_manifest_service import BlueprintManifestValidationError, validate_blueprint_manifest
+from services.defaults_service import get_default
 from utils.catalog_versioning import canonical_json_sha256
 
 logger = logging.getLogger(__name__)
@@ -98,18 +99,33 @@ class BlueprintCatalogService:
             raise BadRequestError("Cannot modify built-in blueprint source", code="BUILTIN_SOURCE_IMMUTABLE")
 
         if source_data.name is not None:
-            existing = self.db.query(BlueprintSource).filter(
-                BlueprintSource.name == source_data.name,
-                BlueprintSource.id != source_id,
-            ).first()
+            existing = (
+                self.db.query(BlueprintSource)
+                .filter(
+                    BlueprintSource.name == source_data.name,
+                    BlueprintSource.id != source_id,
+                )
+                .first()
+            )
             if existing:
                 raise ConflictError("blueprint_source", f"Blueprint source '{source_data.name}' already exists")
             source.name = source_data.name
+
+        default_git_url = get_default(self.db, "blueprint_library.git_url")
+        was_official_source = (
+            source.source_type == "git"
+            and bool(default_git_url)
+            and bool(source.url)
+            and source.url.strip().rstrip("/").removesuffix(".git")
+            == str(default_git_url).strip().rstrip("/").removesuffix(".git")
+        )
 
         if source_data.url is not None:
             source.url = source_data.url
         if source_data.branch is not None:
             source.branch = source_data.branch
+            if source_data.git_ref is None:
+                source.git_ref = source_data.branch
         if source_data.git_ref is not None:
             source.git_ref = source_data.git_ref
         if source_data.is_active is not None:
@@ -118,7 +134,7 @@ class BlueprintCatalogService:
             source.description = source_data.description
 
         self.db.flush()
-        if getattr(source_data, "make_default", False):
+        if getattr(source_data, "make_default", False) or was_official_source:
             set_default_blueprint_source(source, self.db)
         self.db.refresh(source)
         return self._serialize_source(source)
@@ -155,18 +171,26 @@ class BlueprintCatalogService:
         validation_state: str | None = None,
         is_active: bool | None = None,
     ) -> list[dict[str, Any]]:
-        normalized_release_state = _normalize_enum_value(
-            release_state,
-            field_name="release_state",
-            allowed={state.value for state in ALLOWED_BLUEPRINT_RELEASE_STATES},
-            default=BlueprintReleaseState.IMPORTED,
-        ) if release_state is not None else None
-        normalized_validation_state = _normalize_enum_value(
-            validation_state,
-            field_name="validation_state",
-            allowed={state.value for state in ALLOWED_BLUEPRINT_VALIDATION_STATES},
-            default=BlueprintValidationState.UNKNOWN,
-        ) if validation_state is not None else None
+        normalized_release_state = (
+            _normalize_enum_value(
+                release_state,
+                field_name="release_state",
+                allowed={state.value for state in ALLOWED_BLUEPRINT_RELEASE_STATES},
+                default=BlueprintReleaseState.IMPORTED,
+            )
+            if release_state is not None
+            else None
+        )
+        normalized_validation_state = (
+            _normalize_enum_value(
+                validation_state,
+                field_name="validation_state",
+                allowed={state.value for state in ALLOWED_BLUEPRINT_VALIDATION_STATES},
+                default=BlueprintValidationState.UNKNOWN,
+            )
+            if validation_state is not None
+            else None
+        )
 
         query = self.db.query(BlueprintRelease)
         if source_id is not None:
@@ -279,10 +303,14 @@ class BlueprintCatalogService:
         self.db.add(release)
         self.db.flush()
 
-        source.release_count = self.db.query(BlueprintRelease).filter(
-            BlueprintRelease.blueprint_source_id == source.id,
-            BlueprintRelease.is_active,
-        ).count()
+        source.release_count = (
+            self.db.query(BlueprintRelease)
+            .filter(
+                BlueprintRelease.blueprint_source_id == source.id,
+                BlueprintRelease.is_active,
+            )
+            .count()
+        )
 
         self.db.refresh(release)
         self.db.refresh(source)
@@ -345,10 +373,14 @@ class BlueprintCatalogService:
         release.state_reason = state_data.state_reason
 
         source = release.source
-        source.release_count = self.db.query(BlueprintRelease).filter(
-            BlueprintRelease.blueprint_source_id == release.blueprint_source_id,
-            BlueprintRelease.is_active,
-        ).count()
+        source.release_count = (
+            self.db.query(BlueprintRelease)
+            .filter(
+                BlueprintRelease.blueprint_source_id == release.blueprint_source_id,
+                BlueprintRelease.is_active,
+            )
+            .count()
+        )
 
         self.db.flush()
         self.db.refresh(release)
@@ -398,10 +430,14 @@ class BlueprintCatalogService:
 
         source = release.source
         if source is not None:
-            source.release_count = self.db.query(BlueprintRelease).filter(
-                BlueprintRelease.blueprint_source_id == source.id,
-                BlueprintRelease.is_active,
-            ).count()
+            source.release_count = (
+                self.db.query(BlueprintRelease)
+                .filter(
+                    BlueprintRelease.blueprint_source_id == source.id,
+                    BlueprintRelease.is_active,
+                )
+                .count()
+            )
 
         self.db.flush()
         self.db.refresh(release)
@@ -440,10 +476,14 @@ class BlueprintCatalogService:
 
         source = release.source
         if source is not None:
-            source.release_count = self.db.query(BlueprintRelease).filter(
-                BlueprintRelease.blueprint_source_id == release.blueprint_source_id,
-                BlueprintRelease.is_active,
-            ).count()
+            source.release_count = (
+                self.db.query(BlueprintRelease)
+                .filter(
+                    BlueprintRelease.blueprint_source_id == release.blueprint_source_id,
+                    BlueprintRelease.is_active,
+                )
+                .count()
+            )
 
         self.db.flush()
         self.db.refresh(release)
@@ -460,10 +500,14 @@ class BlueprintCatalogService:
         self.db.flush()
 
         if source is not None:
-            source.release_count = self.db.query(BlueprintRelease).filter(
-                BlueprintRelease.blueprint_source_id == source.id,
-                BlueprintRelease.is_active,
-            ).count()
+            source.release_count = (
+                self.db.query(BlueprintRelease)
+                .filter(
+                    BlueprintRelease.blueprint_source_id == source.id,
+                    BlueprintRelease.is_active,
+                )
+                .count()
+            )
             self.db.flush()
 
         return {

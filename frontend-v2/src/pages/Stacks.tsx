@@ -33,10 +33,11 @@ import { ImportedBlueprintDeployDialog } from "@/components/stacks/ImportedBluep
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { useStackTemplates } from "@/hooks/useStacks";
+import { useSetBlueprintReleaseVisibility } from "@/hooks/useBlueprintCatalog";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { usePageRefresh } from "@/hooks/usePageRefresh";
 import { cn } from "@/lib/utils";
-import { Search, Rocket, MoreVertical, Eye } from "lucide-react";
+import { Search, Rocket, MoreVertical, Eye, EyeOff } from "lucide-react";
 import type { StackDeployKind, StackTemplateList } from "@/types";
 
 const INITIAL_STACKS_LIMIT = 20;
@@ -131,6 +132,7 @@ export default function Stacks() {
   } = useStackTemplates({
     category: selectedCategory || undefined,
   });
+  const visibilityMutation = useSetBlueprintReleaseVisibility();
 
   const filteredStacks = useMemo(() => {
     return (stacks || [])
@@ -467,6 +469,21 @@ export default function Stacks() {
                                 <Eye className="h-4 w-4 mr-2" />
                                 View Details
                               </DropdownMenuItem>
+                              {stack.blueprint_release_id != null && (
+                                <DropdownMenuItem
+                                  disabled={visibilityMutation.isPending}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    visibilityMutation.mutate({
+                                      releaseId: stack.blueprint_release_id!,
+                                      isVisible: false,
+                                    });
+                                  }}
+                                >
+                                  <EyeOff className="h-4 w-4 mr-2" />
+                                  Hide from Blueprints
+                                </DropdownMenuItem>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>

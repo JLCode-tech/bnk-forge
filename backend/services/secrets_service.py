@@ -28,12 +28,26 @@ SECRETS_MOUNT_DIR = os.getenv("SECRETS_MOUNT_DIR", "/app/project_secrets")
 #   project             — resolved from project-level settings, not user-supplied secrets
 #   module              — wired between modules by the orchestrator
 #   auto                — forge auto-injects at runtime (e.g. forge_kubeconfig_content)
-CONTEXT_RESOLVED_SECRET_SOURCES: frozenset[str] = frozenset({
-    "credential_template",
-    "project",
-    "module",
-    "auto",
-})
+CONTEXT_RESOLVED_SECRET_SOURCES: frozenset[str] = frozenset(
+    {
+        "credential_template",
+        "project",
+        "module",
+        "auto",
+    }
+)
+
+# Cloud credential variables injected at execution time from the project's bound
+# CloudCredentialTemplate (SSO/Profile/Static keys). These must never be surfaced
+# as required user-provided Project Secrets even if a legacy module manifest
+# declares them with source="user" and sensitive=True.
+CLOUD_CREDENTIAL_TEMPLATE_VARS: frozenset[str] = frozenset(
+    {
+        "aws_access_key_id",
+        "aws_secret_access_key",
+        "aws_session_token",
+    }
+)
 
 
 class SecretsService:
@@ -53,10 +67,12 @@ class SecretsService:
         Returns:
             List of secret metadata (without sensitive content by default)
         """
-        secrets = self.db.query(ProjectSecret).filter(
-            ProjectSecret.project_id == project_id,
-            ProjectSecret.is_active
-        ).order_by(ProjectSecret.name).all()
+        secrets = (
+            self.db.query(ProjectSecret)
+            .filter(ProjectSecret.project_id == project_id, ProjectSecret.is_active)
+            .order_by(ProjectSecret.name)
+            .all()
+        )
 
         result = []
         for secret in secrets:
@@ -85,19 +101,19 @@ class SecretsService:
 
     def get_secret(self, project_id: int, secret_id: int) -> ProjectSecret | None:
         """Get a specific secret by ID."""
-        return self.db.query(ProjectSecret).filter(
-            ProjectSecret.id == secret_id,
-            ProjectSecret.project_id == project_id,
-            ProjectSecret.is_active
-        ).first()
+        return (
+            self.db.query(ProjectSecret)
+            .filter(ProjectSecret.id == secret_id, ProjectSecret.project_id == project_id, ProjectSecret.is_active)
+            .first()
+        )
 
     def get_secret_by_name(self, project_id: int, name: str) -> ProjectSecret | None:
         """Get a secret by name."""
-        return self.db.query(ProjectSecret).filter(
-            ProjectSecret.project_id == project_id,
-            ProjectSecret.name == name,
-            ProjectSecret.is_active
-        ).first()
+        return (
+            self.db.query(ProjectSecret)
+            .filter(ProjectSecret.project_id == project_id, ProjectSecret.name == name, ProjectSecret.is_active)
+            .first()
+        )
 
     def _upsert_secret(
         self,
@@ -126,11 +142,15 @@ class SecretsService:
             raise ValueError(f"Secret with name '{name}' already exists")
 
         # Check for soft-deleted secret — reactivate it
-        inactive = self.db.query(ProjectSecret).filter(
-            ProjectSecret.project_id == project_id,
-            ProjectSecret.name == name,
-            ProjectSecret.is_active == False,  # noqa: E712 — must use == False, not `not col` (Python bool, not SQL)
-        ).first()
+        inactive = (
+            self.db.query(ProjectSecret)
+            .filter(
+                ProjectSecret.project_id == project_id,
+                ProjectSecret.name == name,
+                ProjectSecret.is_active == False,  # noqa: E712 — must use == False, not `not col` (Python bool, not SQL)
+            )
+            .first()
+        )
 
         if inactive:
             inactive.is_active = True
@@ -170,20 +190,24 @@ class SecretsService:
         violation on the project_id+name index).
         """
         content = await file.read()
-        content_b64 = base64.b64encode(content).decode('utf-8')
+        content_b64 = base64.b64encode(content).decode("utf-8")
         encrypted_content = encrypt_value(content_b64)
 
-        return self._upsert_secret(project_id, name, {
-            "secret_type": "file",
-            "filename": file.filename,
-            "file_content_encrypted": encrypted_content,
-            "file_size": len(content),
-            "mime_type": file.content_type or "application/octet-stream",
-            "description": description,
-            "target_module_path": target_module_path,
-            "target_variable_name": target_variable_name,
-            "value_encrypted": None,
-        })
+        return self._upsert_secret(
+            project_id,
+            name,
+            {
+                "secret_type": "file",
+                "filename": file.filename,
+                "file_content_encrypted": encrypted_content,
+                "file_size": len(content),
+                "mime_type": file.content_type or "application/octet-stream",
+                "description": description,
+                "target_module_path": target_module_path,
+                "target_variable_name": target_variable_name,
+                "value_encrypted": None,
+            },
+        )
 
     def create_value_secret(
         self,
@@ -201,17 +225,21 @@ class SecretsService:
         and updated instead of inserting a new row (avoids unique constraint
         violation on the project_id+name index).
         """
-        return self._upsert_secret(project_id, name, {
-            "secret_type": "value",
-            "value_encrypted": encrypt_value(value),
-            "description": description,
-            "target_module_path": target_module_path,
-            "target_variable_name": target_variable_name,
-            "file_content_encrypted": None,
-            "filename": None,
-            "file_size": None,
-            "mime_type": None,
-        })
+        return self._upsert_secret(
+            project_id,
+            name,
+            {
+                "secret_type": "value",
+                "value_encrypted": encrypt_value(value),
+                "description": description,
+                "target_module_path": target_module_path,
+                "target_variable_name": target_variable_name,
+                "file_content_encrypted": None,
+                "filename": None,
+                "file_size": None,
+                "mime_type": None,
+            },
+        )
 
     async def update_file_secret(
         self,
@@ -231,7 +259,7 @@ class SecretsService:
 
         if file:
             content = await file.read()
-            content_b64 = base64.b64encode(content).decode('utf-8')
+            content_b64 = base64.b64encode(content).decode("utf-8")
             secret.file_content_encrypted = encrypt_value(content_b64)
             secret.filename = file.filename
             secret.file_size = len(content)
@@ -319,10 +347,7 @@ class SecretsService:
         return decrypt_value(secret.value_encrypted)
 
     def prepare_secrets_for_execution(
-        self,
-        project_id: int,
-        work_dir: str,
-        module_path: str | None = None
+        self, project_id: int, work_dir: str, module_path: str | None = None
     ) -> tuple[dict[str, str], list[str]]:
         """
         Prepare secrets for module execution.
@@ -343,10 +368,9 @@ class SecretsService:
         Returns:
             Tuple of (value_secrets_dict, file_paths_list)
         """
-        secrets = self.db.query(ProjectSecret).filter(
-            ProjectSecret.project_id == project_id,
-            ProjectSecret.is_active
-        ).all()
+        secrets = (
+            self.db.query(ProjectSecret).filter(ProjectSecret.project_id == project_id, ProjectSecret.is_active).all()
+        )
 
         value_secrets = {}
         file_paths = []
@@ -359,14 +383,16 @@ class SecretsService:
             # Filter: only include secrets that target this module or have no target
             if module_path and secret.target_module_path:
                 if secret.target_module_path != module_path:
-                    logger.debug(f"Skipping secret '{secret.name}' - targets {secret.target_module_path}, not {module_path}")
+                    logger.debug(
+                        f"Skipping secret '{secret.name}' - targets {secret.target_module_path}, not {module_path}"
+                    )
                     continue
 
             if secret.secret_type == "file":
                 # Write file to workspace
                 file_path = os.path.join(secrets_dir, secret.filename or secret.name)
                 content = self.get_decrypted_file_content(secret)
-                with open(file_path, 'wb') as f:
+                with open(file_path, "wb") as f:
                     f.write(content)
                 os.chmod(file_path, 0o600)  # Secure permissions
 
@@ -389,7 +415,9 @@ class SecretsService:
             # Update last_used_at
             secret.last_used_at = datetime.now(UTC)
 
-        logger.info(f"Prepared {len(file_paths)} file secrets and {len(value_secrets)} value secrets for module {module_path}")
+        logger.info(
+            f"Prepared {len(file_paths)} file secrets and {len(value_secrets)} value secrets for module {module_path}"
+        )
         return value_secrets, file_paths
 
     def get_required_secrets_for_module(
@@ -423,52 +451,67 @@ class SecretsService:
             if not name or name in seen_names:
                 continue
             seen_names.add(name)
-            required_secrets.append({
-                "name": name,
-                "type": "file",
-                "description": entry.get("description")
-                or f"Materialized into the module workspace at {entry.get('path')}",
-                "module_path": module_path,
-                "variable_name": name,
-                "required": True,
-            })
+            required_secrets.append(
+                {
+                    "name": name,
+                    "type": "file",
+                    "description": entry.get("description")
+                    or f"Materialized into the module workspace at {entry.get('path')}",
+                    "module_path": module_path,
+                    "variable_name": name,
+                    "required": True,
+                }
+            )
 
-        all_inputs = (
-            inputs_metadata.get("required", []) +
-            inputs_metadata.get("optional", [])
-        )
+        all_inputs = inputs_metadata.get("required", []) + inputs_metadata.get("optional", [])
+
+        cloud_credential_names: set[str] = set(CLOUD_CREDENTIAL_TEMPLATE_VARS)
+        credentials_block = (pack_manifest or {}).get("credentials")
+        if isinstance(credentials_block, dict):
+            for group_name in ("required", "optional"):
+                for entry in credentials_block.get(group_name) or []:
+                    if isinstance(entry, dict) and entry.get("type") == "cloud":
+                        cred_name = entry.get("name")
+                        if isinstance(cred_name, str) and cred_name.strip():
+                            cloud_credential_names.add(cred_name.strip())
 
         for inp in all_inputs:
             validation = inp.get("validation", {})
             validation_type = validation.get("type", "")
             inp_source = inp.get("source")
-            if inp.get("name") in seen_names:
+            inp_name = inp.get("name")
+            if inp_name in seen_names:
                 # Already required via secret_files — don't report it twice.
                 continue
 
-            # Skip inputs whose value forge resolves automatically — they must
-            # not be reported as required user-provided project secrets.
-            if inp_source in CONTEXT_RESOLVED_SECRET_SOURCES:
+            # Skip inputs whose value forge resolves automatically or from the
+            # bound cloud credential template — they must not be reported as
+            # required user-provided project secrets.
+            if inp_source in CONTEXT_RESOLVED_SECRET_SOURCES or inp_name in cloud_credential_names:
                 continue
 
             # Check if this is a file or secret input
             if validation_type == "file_path":
-                required_secrets.append({
-                    "name": inp.get("name"),
-                    "type": "file",
-                    "description": inp.get("description"),
-                    "module_path": module_path,
-                    "variable_name": inp.get("name"),
-                    "required": inp in inputs_metadata.get("required", []),
-                })
+                required_secrets.append(
+                    {
+                        "name": inp.get("name"),
+                        "type": "file",
+                        "description": inp.get("description"),
+                        "module_path": module_path,
+                        "variable_name": inp.get("name"),
+                        "required": inp in inputs_metadata.get("required", []),
+                    }
+                )
             elif validation_type == "secret" or inp.get("sensitive"):
-                required_secrets.append({
-                    "name": inp.get("name"),
-                    "type": "value",
-                    "description": inp.get("description"),
-                    "module_path": module_path,
-                    "variable_name": inp.get("name"),
-                    "required": inp in inputs_metadata.get("required", []),
-                })
+                required_secrets.append(
+                    {
+                        "name": inp.get("name"),
+                        "type": "value",
+                        "description": inp.get("description"),
+                        "module_path": module_path,
+                        "variable_name": inp.get("name"),
+                        "required": inp in inputs_metadata.get("required", []),
+                    }
+                )
 
         return required_secrets

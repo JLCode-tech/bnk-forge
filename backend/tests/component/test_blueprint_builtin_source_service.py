@@ -17,6 +17,7 @@ from services.blueprint_catalog_service import BlueprintCatalogService
 # helpers
 # ---------------------------------------------------------------------------
 
+
 def _minimal_manifest(blueprint_id: str = "aws-eks-cluster-demo", version: str = "1.0.0") -> dict:
     return {
         "schema_version": 1,
@@ -43,6 +44,7 @@ def _minimal_manifest(blueprint_id: str = "aws-eks-cluster-demo", version: str =
 # ensure_default_builtin_blueprint_source
 # ---------------------------------------------------------------------------
 
+
 def test_ensure_default_builtin_blueprint_source_creates_source(db):
     source = ensure_default_builtin_blueprint_source(db)
     db.commit()
@@ -66,6 +68,7 @@ def test_ensure_default_builtin_blueprint_source_idempotent(db):
 # ---------------------------------------------------------------------------
 # sync_builtin_source — loads bundled aws-eks-cluster-demo manifest
 # ---------------------------------------------------------------------------
+
 
 def test_sync_builtin_source_loads_aws_eks_cluster_demo(db):
     """sync_builtin_source picks up the bundled aws-eks-cluster-demo manifest."""
@@ -96,6 +99,7 @@ def test_sync_builtin_source_loads_aws_eks_cluster_demo(db):
 # sync_builtin_source — idempotency
 # ---------------------------------------------------------------------------
 
+
 def test_sync_builtin_source_idempotent(db):
     """Running sync twice does not duplicate the release."""
     source = ensure_default_builtin_blueprint_source(db)
@@ -119,6 +123,7 @@ def test_sync_builtin_source_idempotent(db):
 # ---------------------------------------------------------------------------
 # sync_builtin_source — mocked single manifest
 # ---------------------------------------------------------------------------
+
 
 def test_sync_builtin_source_creates_imported_valid_active_release(db):
     """Mocked manifest is stored with IMPORTED/valid/active states."""
@@ -169,6 +174,7 @@ def test_sync_builtin_source_skips_existing_same_content(db):
 # BlueprintManifest schema — optional field
 # ---------------------------------------------------------------------------
 
+
 def test_blueprint_manifest_accepts_module_with_optional_true():
     data = {
         "schema_version": 1,
@@ -212,6 +218,7 @@ def test_blueprint_manifest_optional_defaults_to_false():
 # sync_builtin_source — all 15 bundled manifests load
 # ---------------------------------------------------------------------------
 
+
 def test_sync_builtin_source_loads_all_15_manifests(db):
     """sync_builtin_source finds and creates releases for all 15 bundled blueprints."""
     source = ensure_default_builtin_blueprint_source(db)
@@ -221,23 +228,19 @@ def test_sync_builtin_source_loads_all_15_manifests(db):
     db.commit()
 
     assert result["blueprints_found"] == 15, (
-        f"Expected 15 bundled blueprints, found {result['blueprints_found']}. "
-        f"Errors: {result['errors']}"
+        f"Expected 15 bundled blueprints, found {result['blueprints_found']}. Errors: {result['errors']}"
     )
     assert result["releases_invalid"] == 0, f"Validation failures: {result['errors']}"
     assert result["errors"] == []
 
-    total_releases = (
-        db.query(BlueprintRelease)
-        .filter(BlueprintRelease.blueprint_source_id == source.id)
-        .count()
-    )
+    total_releases = db.query(BlueprintRelease).filter(BlueprintRelease.blueprint_source_id == source.id).count()
     assert total_releases == 15
 
 
 # ---------------------------------------------------------------------------
 # set_release_visibility — via BlueprintCatalogService
 # ---------------------------------------------------------------------------
+
 
 def _make_imported_release(db, source_id: int, blueprint_id: str = "aws-eks-cluster-demo") -> BlueprintRelease:
     svc = BlueprintCatalogService(db)
@@ -253,11 +256,7 @@ def _make_imported_release(db, source_id: int, blueprint_id: str = "aws-eks-clus
         )
     )
     db.flush()
-    return (
-        db.query(BlueprintRelease)
-        .filter(BlueprintRelease.blueprint_id == blueprint_id)
-        .one()
-    )
+    return db.query(BlueprintRelease).filter(BlueprintRelease.blueprint_id == blueprint_id).one()
 
 
 def test_set_release_visibility_off_hides_from_catalog(db):
@@ -317,11 +316,7 @@ def test_set_release_visibility_discovered_raises(db):
         )
     )
     db.flush()
-    discovered = (
-        db.query(BlueprintRelease)
-        .filter(BlueprintRelease.blueprint_id == "azure-aks-foundation")
-        .one()
-    )
+    discovered = db.query(BlueprintRelease).filter(BlueprintRelease.blueprint_id == "azure-aks-foundation").one()
     db.commit()
 
     with pytest.raises(BadRequestError, match="import it first"):
@@ -350,11 +345,7 @@ def test_is_featured_serialized_from_manifest(db):
         )
     )
     db.flush()
-    release = (
-        db.query(BlueprintRelease)
-        .filter(BlueprintRelease.blueprint_id == "aws-k8s-foundation")
-        .one()
-    )
+    release = db.query(BlueprintRelease).filter(BlueprintRelease.blueprint_id == "aws-k8s-foundation").one()
     db.commit()
 
     result = svc.get_release(release.id)
@@ -364,6 +355,7 @@ def test_is_featured_serialized_from_manifest(db):
 # ---------------------------------------------------------------------------
 # _serialize_release — source_type exposed from related source
 # ---------------------------------------------------------------------------
+
 
 def test_serialize_release_includes_source_type(db):
     """_serialize_release includes source_type from the related BlueprintSource."""
@@ -377,3 +369,48 @@ def test_serialize_release_includes_source_type(db):
 
     assert "source_type" in result
     assert result["source_type"] == "builtin"
+
+
+def test_sync_builtin_source_inherits_is_active_from_previous_release(db):
+    """When a new builtin release version is synced, it inherits is_active from prior versions of the same blueprint_id."""
+    source = ensure_default_builtin_blueprint_source(db)
+    db.commit()
+
+    v1_manifest = _minimal_manifest("aws-eks-cluster-demo", "1.0.0")
+    with patch(
+        "services.blueprint_builtin_source_service._discover_builtin_manifests",
+        return_value=[("data/blueprints/aws-eks-cluster-demo/forge-blueprint.json", v1_manifest)],
+    ):
+        sync_builtin_source(db, source)
+    db.commit()
+
+    v1_release = (
+        db.query(BlueprintRelease)
+        .filter(
+            BlueprintRelease.blueprint_source_id == source.id,
+            BlueprintRelease.blueprint_id == "aws-eks-cluster-demo",
+            BlueprintRelease.blueprint_version == "1.0.0",
+        )
+        .one()
+    )
+    BlueprintCatalogService(db).set_release_visibility(v1_release.id, False)
+    db.commit()
+
+    v2_manifest = _minimal_manifest("aws-eks-cluster-demo", "2.0.0")
+    with patch(
+        "services.blueprint_builtin_source_service._discover_builtin_manifests",
+        return_value=[("data/blueprints/aws-eks-cluster-demo/forge-blueprint.json", v2_manifest)],
+    ):
+        sync_builtin_source(db, source)
+    db.commit()
+
+    v2_release = (
+        db.query(BlueprintRelease)
+        .filter(
+            BlueprintRelease.blueprint_source_id == source.id,
+            BlueprintRelease.blueprint_id == "aws-eks-cluster-demo",
+            BlueprintRelease.blueprint_version == "2.0.0",
+        )
+        .one()
+    )
+    assert v2_release.is_active is False

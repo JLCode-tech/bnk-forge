@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   AlertCircle,
   ArrowRight,
@@ -54,6 +55,7 @@ interface ImportedBlueprintDeployDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: (projectId: number) => void;
+  initialProjectId?: number;
 }
 
 export function ImportedBlueprintDeployDialog({
@@ -61,11 +63,14 @@ export function ImportedBlueprintDeployDialog({
   open,
   onOpenChange,
   onSuccess,
+  initialProjectId,
 }: ImportedBlueprintDeployDialogProps) {
-  const [deployMode, setDeployMode] = useState<DeployMode>("new");
+  const [deployMode, setDeployMode] = useState<DeployMode>(
+    initialProjectId ? "existing" : "new",
+  );
   const [selectedProjectId, setSelectedProjectId] = useState<
     number | undefined
-  >(undefined);
+  >(initialProjectId);
   const [projectName, setProjectName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -158,30 +163,65 @@ export function ImportedBlueprintDeployDialog({
     needsCredentialTemplate && !credentialTemplateId;
   const ibmRegions = ibmRegionsResponse?.regions || [];
 
+  const navigate = useNavigate();
+
   // Detect whether the blueprint requires a kubernetes_cluster prerequisite.
   const requiresCluster = useMemo(
     () =>
       (template?.prerequisites || []).some(
-        (p: StackPrerequisite) => p.type === "kubernetes_cluster",
+        (p: StackPrerequisite) =>
+          p.type === "kubernetes_cluster" ||
+          p.type === "cluster" ||
+          p.type === "k8s_cluster",
       ),
     [template],
   );
 
-  // Projects that satisfy the cluster prerequisite.
+  // Projects that satisfy the cluster prerequisite (or the pre-selected initialProjectId,
+  // or all workspaces labeled "(no cluster registered)" when none have a cluster yet).
   const eligibleProjects = useMemo<Project[]>(() => {
     if (!projects) return [];
-    if (requiresCluster)
-      return projects.filter((p) => (p.cluster_count ?? 0) > 0);
+    if (requiresCluster) {
+      const withClusters = projects.filter((p) => (p.cluster_count ?? 0) > 0);
+      if (withClusters.length === 0) {
+        return projects;
+      }
+      if (initialProjectId != null) {
+        const initial = projects.find((p) => p.id === initialProjectId);
+        if (initial && !withClusters.some((p) => p.id === initial.id)) {
+          return [initial, ...withClusters];
+        }
+      }
+      return withClusters;
+    }
     return projects;
-  }, [projects, requiresCluster]);
+  }, [projects, requiresCluster, initialProjectId]);
 
-  // Reset mode and project selection when the dialog closes.
+  const selectedProject = useMemo(
+    () => projects?.find((p) => p.id === selectedProjectId),
+    [projects, selectedProjectId],
+  );
+  const selectedProjectMissingCluster =
+    requiresCluster &&
+    selectedProject != null &&
+    (selectedProject.cluster_count ?? 0) === 0;
+  const noWorkspacesWithCluster =
+    requiresCluster &&
+    projects != null &&
+    projects.every((p) => (p.cluster_count ?? 0) === 0);
+  const targetClusterProject =
+    selectedProject ?? (projects?.length === 1 ? projects[0] : undefined);
+
+  // Reset mode and project selection when the dialog opens/closes.
   useEffect(() => {
     if (!open) {
-      setDeployMode("new");
-      setSelectedProjectId(undefined);
+      setDeployMode(initialProjectId ? "existing" : "new");
+      setSelectedProjectId(initialProjectId);
+    } else if (initialProjectId) {
+      setDeployMode("existing");
+      setSelectedProjectId(initialProjectId);
     }
-  }, [open]);
+  }, [open, initialProjectId]);
 
   // When the template loads and requires a cluster, default to existing mode.
   useEffect(() => {
@@ -432,13 +472,13 @@ export function ImportedBlueprintDeployDialog({
           queryKey: ["project", selectedProjectId],
         });
         notify.success(
-          `Blueprint added to project`,
+          `Blueprint added to workspace`,
           `${result.module_count} modules added from imported blueprint release.`,
           { category: "deployment" },
         );
       } else {
         result = await api.createProjectFromImportedBlueprint(releaseId, {
-          name: projectName.trim() || `${template.name} Project`,
+          name: projectName.trim() || `${template.name} Workspace`,
           description: `${template.name} deployment from imported blueprint release`,
           project_type: ["aws", "gcp", "azure", "ibm"].includes(
             template.cloud_provider ?? "",
@@ -455,7 +495,7 @@ export function ImportedBlueprintDeployDialog({
           variables: values,
         });
         notify.success(
-          `Project "${result.project_name}" created`,
+          `Workspace "${result.project_name}" created`,
           `${result.module_count} modules added from imported blueprint release.`,
           { category: "deployment" },
         );
@@ -479,7 +519,7 @@ export function ImportedBlueprintDeployDialog({
           await api.planModule(moduleId);
           notify.success(
             "Dry-run plan started",
-            "The CLI module dry-run plan has been initiated. Check the project for progress.",
+            "The CLI module dry-run plan has been initiated. Check the workspace for progress.",
             { category: "deployment" },
           );
         } catch (deployError) {
@@ -521,7 +561,7 @@ export function ImportedBlueprintDeployDialog({
     Boolean(template) &&
     !inputsError &&
     (deployMode === "existing"
-      ? !!selectedProjectId
+      ? !!selectedProjectId && !selectedProjectMissingCluster
       : !!projectName.trim() && !requiresCluster);
 
   return (
@@ -762,7 +802,7 @@ export function ImportedBlueprintDeployDialog({
                         className="h-8 text-xs"
                         onClick={() => setDeployMode("new")}
                       >
-                        New Project
+                        New Workspace
                       </Button>
                       <Button
                         type="button"
@@ -773,14 +813,14 @@ export function ImportedBlueprintDeployDialog({
                         className="h-8 text-xs"
                         onClick={() => setDeployMode("existing")}
                       >
-                        Existing Project
+                        Existing Workspace
                       </Button>
                     </div>
                     {requiresCluster && deployMode === "new" && (
                       <p className="text-xs text-warning">
                         This blueprint requires a registered Kubernetes cluster.
-                        Add it to an existing project that already has a cluster
-                        registered.
+                        Add it to an existing workspace that already has a
+                        cluster registered.
                       </p>
                     )}
                   </div>
@@ -791,7 +831,7 @@ export function ImportedBlueprintDeployDialog({
                         htmlFor="imported-blueprint-existing-project"
                         className="text-xs"
                       >
-                        Target Project *
+                        Target Workspace *
                       </Label>
                       <Select
                         value={
@@ -808,8 +848,8 @@ export function ImportedBlueprintDeployDialog({
                           <SelectValue
                             placeholder={
                               requiresCluster
-                                ? "Select a project with a registered cluster"
-                                : "Select an existing project"
+                                ? "Select a workspace with a registered cluster"
+                                : "Select an existing workspace"
                             }
                           />
                         </SelectTrigger>
@@ -822,22 +862,81 @@ export function ImportedBlueprintDeployDialog({
                               {project.name}
                               {project.cluster_count
                                 ? ` (${project.cluster_count} cluster${project.cluster_count !== 1 ? "s" : ""})`
-                                : ""}
+                                : requiresCluster
+                                  ? " (no cluster registered)"
+                                  : ""}
                             </SelectItem>
                           ))}
                           {eligibleProjects.length === 0 && (
                             <div className="py-2 px-3 text-sm text-muted-foreground">
                               {requiresCluster
-                                ? "No projects with registered clusters"
-                                : "No projects available"}
+                                ? "No workspaces with registered clusters"
+                                : "No workspaces available"}
                             </div>
                           )}
                         </SelectContent>
                       </Select>
+                      {(selectedProjectMissingCluster ||
+                        noWorkspacesWithCluster) && (
+                        <Alert className="border-warning/50 bg-warning/5">
+                          <AlertCircle className="h-4 w-4 text-warning" />
+                          <AlertDescription className="text-xs space-y-2">
+                            <p>
+                              {targetClusterProject ? (
+                                <>
+                                  Workspace &ldquo;{targetClusterProject.name}
+                                  &rdquo; does not have a registered Kubernetes
+                                  cluster yet.
+                                </>
+                              ) : (
+                                <>
+                                  No workspaces have a registered Kubernetes
+                                  cluster yet.
+                                </>
+                              )}{" "}
+                              This blueprint installs onto an existing
+                              Kubernetes cluster — deploy an infrastructure
+                              cluster blueprint (such as AWS EKS Cluster) or
+                              register a cluster in the workspace&apos;s K8s
+                              Clusters tab first.
+                            </p>
+                            <div className="flex flex-wrap items-center gap-2">
+                              {targetClusterProject && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  onClick={() => {
+                                    onOpenChange(false);
+                                    navigate(
+                                      `/projects/${targetClusterProject.id}?tab=clusters`,
+                                    );
+                                  }}
+                                >
+                                  Open K8s Clusters tab
+                                </Button>
+                              )}
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={() => {
+                                  onOpenChange(false);
+                                  navigate("/stacks?category=infrastructure");
+                                }}
+                              >
+                                Browse cluster blueprints
+                              </Button>
+                            </div>
+                          </AlertDescription>
+                        </Alert>
+                      )}
                       {requiresCluster && (
                         <p className="text-xs text-muted-foreground">
-                          Only projects with at least one registered Kubernetes
-                          cluster are shown.
+                          Only workspaces with at least one registered
+                          Kubernetes cluster can deploy this blueprint.
                         </p>
                       )}
                     </div>
@@ -847,14 +946,16 @@ export function ImportedBlueprintDeployDialog({
                         htmlFor="imported-blueprint-project-name"
                         className="text-xs"
                       >
-                        Project Name *
+                        Workspace Name *
                       </Label>
                       <Input
                         id="imported-blueprint-project-name"
                         value={projectName}
                         onChange={(e) => setProjectName(e.target.value)}
                         placeholder={
-                          template ? `${template.name} Project` : "Project name"
+                          template
+                            ? `${template.name} Workspace`
+                            : "Workspace name"
                         }
                         className="h-9"
                       />
@@ -1048,7 +1149,7 @@ export function ImportedBlueprintDeployDialog({
                       ) : (
                         <>
                           {deployMode === "existing"
-                            ? "Add to Project"
+                            ? "Add to Workspace"
                             : "Deploy Blueprint"}
                           <ArrowRight className="ml-2 h-3 w-3" />
                         </>

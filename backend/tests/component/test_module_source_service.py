@@ -17,6 +17,7 @@ from services.module_source_service import ModuleSourceService
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_source(db, **overrides):
     """Insert a ModuleSource row directly and return it."""
     defaults = dict(
@@ -74,6 +75,7 @@ def _source_update_data(*, provided_fields: set[str], **values):
 # list_sources
 # ---------------------------------------------------------------------------
 
+
 class TestListSources:
     """Listing module sources with optional filters."""
 
@@ -109,6 +111,7 @@ class TestListSources:
 # get_source
 # ---------------------------------------------------------------------------
 
+
 class TestGetSource:
     """Retrieving a single module source by ID."""
 
@@ -129,6 +132,7 @@ class TestGetSource:
 # create_source
 # ---------------------------------------------------------------------------
 
+
 class TestCreateSource:
     """Creating new module sources."""
 
@@ -137,7 +141,12 @@ class TestCreateSource:
     def test_create_git_source_runs_initial_sync(self, mock_sync_class, mock_blueprint_sync_cls, db):
         svc = ModuleSourceService(db)
         mock_sync = MagicMock()
-        mock_sync.sync_git_source.return_value = {"modules_found": 1, "modules_created": 1, "modules_updated": 0, "errors": []}
+        mock_sync.sync_git_source.return_value = {
+            "modules_found": 1,
+            "modules_created": 1,
+            "modules_updated": 0,
+            "errors": [],
+        }
         mock_sync_class.return_value = mock_sync
 
         mock_blueprint_sync = MagicMock()
@@ -173,8 +182,12 @@ class TestCreateSource:
         real cause. The savepoint must contain that damage.
         """
         mock_sync_class.return_value.sync_git_source.return_value = {
-            "modules_found": 0, "modules_created": 0, "modules_updated": 0, "errors": [],
+            "modules_found": 0,
+            "modules_created": 0,
+            "modules_updated": 0,
+            "errors": [],
         }
+
         # Fail the way the real bug did: a flush error inside the blueprint sync,
         # which is what poisons the session (not a plain Python exception).
         def _explode(source, **kwargs):
@@ -210,6 +223,7 @@ class TestCreateSource:
         commit, so this path is invisible unless the mock does what the real
         thing does.
         """
+
         def _sync_and_commit(src):
             src.sync_status = "success"
             db.commit()
@@ -217,8 +231,11 @@ class TestCreateSource:
 
         mock_sync_class.return_value.sync_git_source.side_effect = _sync_and_commit
         mock_blueprint_sync_cls.return_value.sync_git_source.return_value = {
-            "blueprints_found": 0, "releases_created": 0, "releases_existing": 0,
-            "releases_invalid": 0, "errors": [],
+            "blueprints_found": 0,
+            "releases_created": 0,
+            "releases_existing": 0,
+            "releases_invalid": 0,
+            "errors": [],
         }
 
         result = ModuleSourceService(db).create_source(_source_data())
@@ -235,7 +252,10 @@ class TestCreateSource:
     def test_create_records_sync_error_text(self, mock_sync_class, mock_blueprint_sync_cls, db):
         """The real cause must reach the caller, not just the log."""
         mock_sync_class.return_value.sync_git_source.return_value = {
-            "modules_found": 0, "modules_created": 0, "modules_updated": 0, "errors": [],
+            "modules_found": 0,
+            "modules_created": 0,
+            "modules_updated": 0,
+            "errors": [],
         }
         mock_blueprint_sync_cls.return_value.sync_git_source.side_effect = RuntimeError(
             "manifest.yaml is not valid YAML"
@@ -261,7 +281,10 @@ class TestCreateSource:
         from models import BlueprintSource
 
         mock_sync_class.return_value.sync_git_source.return_value = {
-            "modules_found": 0, "modules_created": 0, "modules_updated": 0, "errors": [],
+            "modules_found": 0,
+            "modules_created": 0,
+            "modules_updated": 0,
+            "errors": [],
         }
         # The pre-existing, deliberately deactivated twin.
         twin = BlueprintSource(
@@ -307,7 +330,12 @@ class TestCreateSource:
     @patch("services.module_source_service.encrypt_value", return_value="encrypted-tok")
     def test_create_with_auth_token(self, mock_encrypt, mock_blueprint_sync_cls, mock_sync_class, db):
         mock_sync = MagicMock()
-        mock_sync.sync_git_source.return_value = {"modules_found": 0, "modules_created": 0, "modules_updated": 0, "errors": []}
+        mock_sync.sync_git_source.return_value = {
+            "modules_found": 0,
+            "modules_created": 0,
+            "modules_updated": 0,
+            "errors": [],
+        }
         mock_sync_class.return_value = mock_sync
         mock_blueprint_sync = MagicMock()
         mock_blueprint_sync.sync_git_source.return_value = {
@@ -565,15 +593,25 @@ class TestCreateSource:
 # update_source
 # ---------------------------------------------------------------------------
 
+
 class TestUpdateSource:
     """Updating existing module sources."""
 
     def test_update_name(self, db):
         src = _make_source(db, name="old-name")
         svc = ModuleSourceService(db)
-        data = _source_data(name="new-name", url=None, branch=None, git_ref=None,
-                            auth_type=None, auth_token=None, auto_sync=None,
-                            sync_interval_hours=None, is_active=None, description=None)
+        data = _source_data(
+            name="new-name",
+            url=None,
+            branch=None,
+            git_ref=None,
+            auth_type=None,
+            auth_token=None,
+            auto_sync=None,
+            sync_interval_hours=None,
+            is_active=None,
+            description=None,
+        )
         result = svc.update_source(src.id, data)
         assert result["name"] == "new-name"
 
@@ -581,9 +619,18 @@ class TestUpdateSource:
         _make_source(db, name="existing")
         src = _make_source(db, name="to-update")
         svc = ModuleSourceService(db)
-        data = _source_data(name="existing", url=None, branch=None, git_ref=None,
-                            auth_type=None, auth_token=None, auto_sync=None,
-                            sync_interval_hours=None, is_active=None, description=None)
+        data = _source_data(
+            name="existing",
+            url=None,
+            branch=None,
+            git_ref=None,
+            auth_type=None,
+            auth_token=None,
+            auto_sync=None,
+            sync_interval_hours=None,
+            is_active=None,
+            description=None,
+        )
         with pytest.raises(ConflictError):
             svc.update_source(src.id, data)
 
@@ -598,9 +645,18 @@ class TestUpdateSource:
     def test_update_auth_token_encrypts(self, mock_encrypt, db):
         src = _make_source(db)
         svc = ModuleSourceService(db)
-        data = _source_data(name=None, url=None, branch=None, git_ref=None,
-                            auth_type=None, auth_token="new-token", auto_sync=None,
-                            sync_interval_hours=None, is_active=None, description=None)
+        data = _source_data(
+            name=None,
+            url=None,
+            branch=None,
+            git_ref=None,
+            auth_type=None,
+            auth_token="new-token",
+            auto_sync=None,
+            sync_interval_hours=None,
+            is_active=None,
+            description=None,
+        )
         result = svc.update_source(src.id, data)
         assert result["has_secret"] is True
         assert result["credential_type"] == "legacy_pat"
@@ -756,7 +812,10 @@ class TestUpdateSource:
         )
         result = svc.update_source(src.id, data)
         assert result["credential_type"] == "gitlab_group_token"
-        assert result["credential_scope"] == "gitlab_group:gitlab.example.com:group:team/platform:repo:team/platform/modules"
+        assert (
+            result["credential_scope"]
+            == "gitlab_group:gitlab.example.com:group:team/platform:repo:team/platform/modules"
+        )
         assert result["credential_capabilities"] == ["repo:read"]
         assert result["credential_metadata"]["gitlab"]["token_class"] == "group_access_token"
 
@@ -836,6 +895,7 @@ class TestUpdateSource:
 # delete_source
 # ---------------------------------------------------------------------------
 
+
 class TestDeleteSource:
     """Deleting module sources with in-use checks."""
 
@@ -852,9 +912,13 @@ class TestDeleteSource:
     def test_delete_with_unused_modules(self, mock_cache, db):
         src = _make_source(db)
         lib = ModuleLibrary(
-            name="mod-a", category="net", path="m/a", provider="test",
+            name="mod-a",
+            category="net",
+            path="m/a",
+            provider="test",
             git_source="https://github.com/example/modules.git",
-            module_source_id=src.id, is_active=True,
+            module_source_id=src.id,
+            is_active=True,
         )
         db.add(lib)
         db.flush()
@@ -873,9 +937,13 @@ class TestDeleteSource:
         """Source whose modules are referenced by a project cannot be deleted."""
         src = _make_source(db, name="in-use-src")
         lib = ModuleLibrary(
-            name="used-mod", category="net", path="m/used", provider="test",
+            name="used-mod",
+            category="net",
+            path="m/used",
+            provider="test",
             git_source="https://github.com/example/modules.git",
-            module_source_id=src.id, is_active=True,
+            module_source_id=src.id,
+            is_active=True,
         )
         db.add(lib)
         db.flush()
@@ -895,17 +963,24 @@ class TestDeleteSource:
 # list_source_modules
 # ---------------------------------------------------------------------------
 
+
 class TestListSourceModules:
     """Listing modules belonging to a source."""
 
     def test_list_source_modules(self, db):
         src = _make_source(db)
         for i in range(3):
-            db.add(ModuleLibrary(
-                name=f"mod-{i}", category="net", path=f"m/{i}", provider="test",
-                git_source="https://github.com/example/modules.git",
-                module_source_id=src.id, is_active=True,
-            ))
+            db.add(
+                ModuleLibrary(
+                    name=f"mod-{i}",
+                    category="net",
+                    path=f"m/{i}",
+                    provider="test",
+                    git_source="https://github.com/example/modules.git",
+                    module_source_id=src.id,
+                    is_active=True,
+                )
+            )
         db.flush()
         svc = ModuleSourceService(db)
         result = svc.list_source_modules(src.id)
@@ -914,16 +989,28 @@ class TestListSourceModules:
 
     def test_list_source_modules_excludes_inactive(self, db):
         src = _make_source(db)
-        db.add(ModuleLibrary(
-            name="active-mod", category="net", path="m/a", provider="test",
-            git_source="https://github.com/example/modules.git",
-            module_source_id=src.id, is_active=True,
-        ))
-        db.add(ModuleLibrary(
-            name="inactive-mod", category="net", path="m/b", provider="test",
-            git_source="https://github.com/example/modules.git",
-            module_source_id=src.id, is_active=False,
-        ))
+        db.add(
+            ModuleLibrary(
+                name="active-mod",
+                category="net",
+                path="m/a",
+                provider="test",
+                git_source="https://github.com/example/modules.git",
+                module_source_id=src.id,
+                is_active=True,
+            )
+        )
+        db.add(
+            ModuleLibrary(
+                name="inactive-mod",
+                category="net",
+                path="m/b",
+                provider="test",
+                git_source="https://github.com/example/modules.git",
+                module_source_id=src.id,
+                is_active=False,
+            )
+        )
         db.flush()
         svc = ModuleSourceService(db)
         result = svc.list_source_modules(src.id)
@@ -933,6 +1020,7 @@ class TestListSourceModules:
 # ---------------------------------------------------------------------------
 # sync_source
 # ---------------------------------------------------------------------------
+
 
 class TestSyncSource:
     """Sync delegation to ModuleSyncService."""
@@ -980,9 +1068,7 @@ class TestSyncSource:
         """
         src = _make_source(db, source_type="git")
         mock_sync_class.return_value = MagicMock(sync_git_source=MagicMock(return_value={"added": 1}))
-        mock_blueprint_sync_cls.return_value = MagicMock(
-            sync_git_source=MagicMock(return_value={"errors": []})
-        )
+        mock_blueprint_sync_cls.return_value = MagicMock(sync_git_source=MagicMock(return_value={"errors": []}))
 
         svc = ModuleSourceService(db)
         svc.sync_source(src.id)
@@ -992,7 +1078,9 @@ class TestSyncSource:
     @patch("services.module_source_service.BlueprintSyncService")
     @patch("services.module_sync_service.ModuleSyncService")
     def test_sync_git_source_auto_creates_blueprint_source_once(self, mock_sync_class, mock_blueprint_sync_cls, db):
-        src = _make_source(db, source_type="git", name="ibm-cluster", url="https://github.com/jgruberf5/bnk-forge-ibm-roks-cluster.git")
+        src = _make_source(
+            db, source_type="git", name="ibm-cluster", url="https://github.com/jgruberf5/bnk-forge-ibm-roks-cluster.git"
+        )
         mock_sync_class.return_value = MagicMock(sync_git_source=MagicMock(return_value={"added": 1}))
         mock_blueprint_sync = MagicMock()
         mock_blueprint_sync.sync_git_source.return_value = {
@@ -1014,6 +1102,36 @@ class TestSyncSource:
         assert len(blueprint_sources) == 1
         assert first["results"]["blueprint_auto_sync"]["source_id"] == blueprint_sources[0].id
         assert second["results"]["blueprint_auto_sync"]["created"] is False
+
+    @patch("services.module_source_service.BlueprintSyncService")
+    @patch("services.module_sync_service.ModuleSyncService")
+    def test_sync_git_source_removes_newly_created_blueprint_source_when_no_blueprints_found(
+        self, mock_sync_class, mock_blueprint_sync_cls, db
+    ):
+        src = _make_source(
+            db,
+            source_type="git",
+            name="official-bnk-forge-modules",
+            url="https://github.com/JLCode-tech/bnk-forge-modules.git",
+        )
+        mock_sync_class.return_value = MagicMock(sync_git_source=MagicMock(return_value={"added": 1}))
+        mock_blueprint_sync = MagicMock()
+        mock_blueprint_sync.sync_git_source.return_value = {
+            "blueprints_found": 0,
+            "releases_created": 0,
+            "releases_existing": 0,
+            "releases_invalid": 0,
+            "errors": [],
+        }
+        mock_blueprint_sync_cls.return_value = mock_blueprint_sync
+
+        svc = ModuleSourceService(db)
+        res = svc.sync_source(src.id)
+
+        from models import BlueprintSource
+
+        assert res["results"].get("blueprint_auto_sync") is None
+        assert db.query(BlueprintSource).filter(BlueprintSource.url == src.url).count() == 0
 
     def test_get_or_create_linked_blueprint_source_ref_mismatch_creates_distinct_source(self, db):
         src_release_23 = _make_source(
@@ -1121,7 +1239,10 @@ class TestValidateSourceCredentials:
         assert mock_audit.call_count == 1
 
     @patch("services.module_source_service.create_audit_log")
-    @patch("services.module_source_service.GitHubAppAuthService.validate_repository_access", side_effect=RuntimeError("forbidden"))
+    @patch(
+        "services.module_source_service.GitHubAppAuthService.validate_repository_access",
+        side_effect=RuntimeError("forbidden"),
+    )
     @patch("services.module_source_service.decrypt_value_or_none", return_value="---PRIVATE KEY---")
     def test_validate_github_app_failure_updates_status_and_raises(self, _mock_decrypt, _mock_validate, mock_audit, db):
         src = _make_source(
@@ -1187,7 +1308,9 @@ class TestValidateSourceCredentials:
         assert mock_audit.call_count == 1
 
     @patch("services.module_source_service.create_audit_log")
-    @patch("services.module_source_service.GitLabAuthService.validate_repository_access", side_effect=RuntimeError("boom"))
+    @patch(
+        "services.module_source_service.GitLabAuthService.validate_repository_access", side_effect=RuntimeError("boom")
+    )
     @patch("services.module_source_service.decrypt_value_or_none", return_value="glpat-abc")
     def test_validate_gitlab_unexpected_failure_sets_error_status(self, _mock_decrypt, _mock_validate, mock_audit, db):
         src = _make_source(
@@ -1317,7 +1440,9 @@ class TestValidateSourceCredentials:
         )
         mock_resolve.return_value = SimpleNamespace(secret="PRIVATE KEY")
         mock_build_env.return_value = ({"GIT_SSH": "/tmp/git_ssh.sh"}, lambda: None)
-        mock_subprocess.return_value = MagicMock(returncode=128, stderr="ssh: Could not resolve host git.internal.example.com", stdout="")
+        mock_subprocess.return_value = MagicMock(
+            returncode=128, stderr="ssh: Could not resolve host git.internal.example.com", stdout=""
+        )
 
         svc = ModuleSourceService(db)
         with pytest.raises(BadRequestError, match=r"\[connectivity_dns\]"):
@@ -1527,3 +1652,47 @@ class TestValidateSourceCredentials:
         mock_build_env.assert_not_called()
         mock_subprocess.assert_not_called()
         assert mock_audit.call_count == 1
+
+    @patch("services.module_source_service.BlueprintSyncService")
+    @patch("services.module_sync_service.ModuleSyncService")
+    def test_update_official_default_source_branch_persists_across_sync(
+        self, mock_sync_class, mock_blueprint_sync_cls, db
+    ):
+        """Updating branch on official-bnk-forge-modules updates module_library.git_ref so sync_source does not revert it."""
+        svc = ModuleSourceService(db)
+        official = _make_source(
+            db,
+            name="official-bnk-forge-modules",
+            url="https://github.com/JLCode-tech/bnk-forge-modules.git",
+            branch="release/2.2",
+            git_ref="release/2.2",
+        )
+        svc._set_default_module_source(official)
+        db.commit()
+        assert official.branch == "release/2.2"
+
+        update_payload = _source_update_data(
+            provided_fields={"branch"},
+            branch="release/2.4.1",
+        )
+        updated = svc.update_source(official.id, update_payload)
+        db.commit()
+        assert updated["branch"] == "release/2.4.1"
+        assert updated["git_ref"] == "release/2.4.1"
+
+        mock_sync_class.return_value.sync_git_source.return_value = {
+            "modules_found": 38,
+            "modules_created": 38,
+            "modules_updated": 0,
+            "errors": [],
+        }
+        mock_blueprint_sync_cls.return_value.sync_git_source.return_value = {
+            "blueprints_found": 0,
+            "releases_created": 0,
+            "releases_updated": 0,
+            "errors": [],
+        }
+        svc.sync_source(official.id)
+        db.refresh(official)
+        assert official.branch == "release/2.4.1"
+        assert official.git_ref == "release/2.4.1"

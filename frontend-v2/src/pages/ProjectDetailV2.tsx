@@ -106,6 +106,7 @@ import {
   useCancelDeployment,
 } from "@/hooks/useModules";
 import { AddModuleToProjectDialog } from "@/components/modules/AddModuleToProjectDialog";
+import { AddBlueprintToProjectDialog } from "@/components/stacks/AddBlueprintToProjectDialog";
 import { EditProjectDialog } from "@/components/projects/EditProjectDialog";
 import { CloudCredentialsDialog } from "@/components/projects/CloudCredentialsDialog";
 import { ProjectDependenciesDialog } from "@/components/projects/ProjectDependenciesDialog";
@@ -281,6 +282,7 @@ export default function ProjectDetailV2() {
   const [detailTab, setDetailTab] = useState("outputs");
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showAddModuleDialog, setShowAddModuleDialog] = useState(false);
+  const [showAddBlueprintDialog, setShowAddBlueprintDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showCredentialsDialog, setShowCredentialsDialog] = useState(false);
   const [showDependenciesDialog, setShowDependenciesDialog] = useState(false);
@@ -1002,14 +1004,24 @@ export default function ProjectDetailV2() {
                 {isOwner && (
                   <div className="flex items-center gap-2 shrink-0">
                     {isProvisioningTab && projectMode !== "k8s-only" && (
-                      <Button
-                        variant={modules.length === 0 ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setShowAddModuleDialog(true)}
-                      >
-                        <Plus className="h-4 w-4 mr-1.5" />
-                        Add module
-                      </Button>
+                      <>
+                        <Button
+                          variant={modules.length === 0 ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setShowAddModuleDialog(true)}
+                        >
+                          <Plus className="h-4 w-4 mr-1.5" />
+                          Add module
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowAddBlueprintDialog(true)}
+                        >
+                          <Layers className="h-4 w-4 mr-1.5" />
+                          Add blueprint
+                        </Button>
+                      </>
                     )}
                     {isProvisioningTab && modules.length > 0 && (
                       <>
@@ -1371,35 +1383,58 @@ export default function ProjectDetailV2() {
                                 provisioning.
                               </p>
                               {isOwner && (
-                                <Button
-                                  variant="default"
-                                  onClick={() => setShowAddModuleDialog(true)}
-                                >
-                                  <Plus className="h-4 w-4 mr-2" />
-                                  Add Module (Optional)
-                                </Button>
+                                <div className="flex items-center justify-center gap-2">
+                                  <Button
+                                    variant="default"
+                                    onClick={() => setShowAddModuleDialog(true)}
+                                  >
+                                    <Plus className="h-4 w-4 mr-2" />
+                                    Add Module (Optional)
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    onClick={() =>
+                                      setShowAddBlueprintDialog(true)
+                                    }
+                                  >
+                                    <Layers className="h-4 w-4 mr-2" />
+                                    Add blueprint
+                                  </Button>
+                                </div>
                               )}
                             </>
                           ) : (
                             <>
                               <Package className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
                               <h3 className="text-lg font-semibold mb-2 text-muted-foreground">
-                                No modules yet
+                                No modules or blueprints yet
                               </h3>
                               <p className="text-sm mb-4 text-muted-foreground">
                                 {isOwner
-                                  ? "Add your first module to get started"
-                                  : "No modules have been added to this project"}
+                                  ? "Add a module or blueprint to get started"
+                                  : "No modules or blueprints have been added to this workspace"}
                               </p>
                               {isOwner && (
-                                <Button
-                                  variant="default"
-                                  size="sm"
-                                  onClick={() => setShowAddModuleDialog(true)}
-                                >
-                                  <Plus className="h-4 w-4 mr-1.5" />
-                                  Add module
-                                </Button>
+                                <div className="flex items-center justify-center gap-2">
+                                  <Button
+                                    variant="default"
+                                    size="sm"
+                                    onClick={() => setShowAddModuleDialog(true)}
+                                  >
+                                    <Plus className="h-4 w-4 mr-1.5" />
+                                    Add module
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                      setShowAddBlueprintDialog(true)
+                                    }
+                                  >
+                                    <Layers className="h-4 w-4 mr-1.5" />
+                                    Add blueprint
+                                  </Button>
+                                </div>
                               )}
                             </>
                           )}
@@ -1866,6 +1901,12 @@ export default function ProjectDetailV2() {
         projectId={projectId}
         open={showAddModuleDialog}
         onOpenChange={setShowAddModuleDialog}
+      />
+      <AddBlueprintToProjectDialog
+        projectId={projectId}
+        open={showAddBlueprintDialog}
+        onOpenChange={setShowAddBlueprintDialog}
+        onSuccess={handlePageRefresh}
       />
       <EditProjectDialog
         project={project}

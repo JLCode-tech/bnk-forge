@@ -53,10 +53,12 @@ def test_sync_git_source_discovers_blueprint_release(db):
     source = _source(db)
     service = BlueprintSyncService(db)
 
-    with patch.object(service, "_clone_repository", return_value="/tmp/repo"), \
-            patch.object(service, "_find_blueprint_manifests", return_value=["blueprints/sample/forge-blueprint.json"]), \
-            patch.object(service, "_load_manifest", return_value=_manifest()), \
-            patch("os.path.exists", return_value=False):
+    with (
+        patch.object(service, "_clone_repository", return_value="/tmp/repo"),
+        patch.object(service, "_find_blueprint_manifests", return_value=["blueprints/sample/forge-blueprint.json"]),
+        patch.object(service, "_load_manifest", return_value=_manifest()),
+        patch("os.path.exists", return_value=False),
+    ):
         result = service.sync_git_source(source)
 
     assert result["blueprints_found"] == 1
@@ -83,10 +85,12 @@ def test_sync_git_source_skips_existing_same_content(db):
     service = BlueprintSyncService(db)
 
     for _ in range(2):
-        with patch.object(service, "_clone_repository", return_value="/tmp/repo"), \
-                patch.object(service, "_find_blueprint_manifests", return_value=["blueprints/sample/forge-blueprint.json"]), \
-                patch.object(service, "_load_manifest", return_value=_manifest()), \
-                patch("os.path.exists", return_value=False):
+        with (
+            patch.object(service, "_clone_repository", return_value="/tmp/repo"),
+            patch.object(service, "_find_blueprint_manifests", return_value=["blueprints/sample/forge-blueprint.json"]),
+            patch.object(service, "_load_manifest", return_value=_manifest()),
+            patch("os.path.exists", return_value=False),
+        ):
             result = service.sync_git_source(source)
 
     assert result["releases_created"] == 0
@@ -100,19 +104,23 @@ def test_sync_git_source_reports_conflicting_existing_release_content(db):
     source = _source(db)
     service = BlueprintSyncService(db)
 
-    with patch.object(service, "_clone_repository", return_value="/tmp/repo"), \
-            patch.object(service, "_find_blueprint_manifests", return_value=["blueprints/sample/forge-blueprint.json"]), \
-            patch.object(service, "_load_manifest", return_value=_manifest(version="1.0.0")), \
-            patch("os.path.exists", return_value=False):
+    with (
+        patch.object(service, "_clone_repository", return_value="/tmp/repo"),
+        patch.object(service, "_find_blueprint_manifests", return_value=["blueprints/sample/forge-blueprint.json"]),
+        patch.object(service, "_load_manifest", return_value=_manifest(version="1.0.0")),
+        patch("os.path.exists", return_value=False),
+    ):
         service.sync_git_source(source)
 
     conflicting_manifest = _manifest(version="1.0.0")
     conflicting_manifest["blueprint"]["description"] = "Updated blueprint content"
 
-    with patch.object(service, "_clone_repository", return_value="/tmp/repo"), \
-            patch.object(service, "_find_blueprint_manifests", return_value=["blueprints/sample/forge-blueprint.json"]), \
-            patch.object(service, "_load_manifest", return_value=conflicting_manifest), \
-            patch("os.path.exists", return_value=False):
+    with (
+        patch.object(service, "_clone_repository", return_value="/tmp/repo"),
+        patch.object(service, "_find_blueprint_manifests", return_value=["blueprints/sample/forge-blueprint.json"]),
+        patch.object(service, "_load_manifest", return_value=conflicting_manifest),
+        patch("os.path.exists", return_value=False),
+    ):
         result = service.sync_git_source(source)
 
     assert result["releases_created"] == 0
@@ -125,10 +133,12 @@ def test_sync_git_source_collects_manifest_errors(db):
     source = _source(db)
     service = BlueprintSyncService(db)
 
-    with patch.object(service, "_clone_repository", return_value="/tmp/repo"), \
-            patch.object(service, "_find_blueprint_manifests", return_value=["blueprints/bad/forge-blueprint.json"]), \
-            patch.object(service, "_load_manifest", return_value={"schema_version": 1}), \
-            patch("os.path.exists", return_value=False):
+    with (
+        patch.object(service, "_clone_repository", return_value="/tmp/repo"),
+        patch.object(service, "_find_blueprint_manifests", return_value=["blueprints/bad/forge-blueprint.json"]),
+        patch.object(service, "_load_manifest", return_value={"schema_version": 1}),
+        patch("os.path.exists", return_value=False),
+    ):
         result = service.sync_git_source(source)
 
     assert result["blueprints_found"] == 1
@@ -186,7 +196,9 @@ def test_transition_release_manifest_generates_discovered_blueprints(db, tmp_pat
     (repo / "bnk" / "flo").mkdir(parents=True)
     (repo / "k8s" / "cert-manager").mkdir(parents=True)
     (repo / "bnk" / "flo" / "README.md").write_text("## Solution Description\n\nDeploy FLO onto BNK.", encoding="utf-8")
-    (repo / "k8s" / "cert-manager" / "README.md").write_text("## Solution Description\n\nInstall cert-manager.", encoding="utf-8")
+    (repo / "k8s" / "cert-manager" / "README.md").write_text(
+        "## Solution Description\n\nInstall cert-manager.", encoding="utf-8"
+    )
     (repo / "catalog" / "releases" / "release-2.2-official.json").write_text(
         """
         {
@@ -205,25 +217,73 @@ def test_transition_release_manifest_generates_discovered_blueprints(db, tmp_pat
         encoding="utf-8",
     )
 
-    with patch.object(service, "_clone_repository", return_value=str(repo)), patch("os.path.exists", return_value=False):
+    with (
+        patch.object(service, "_clone_repository", return_value=str(repo)),
+        patch("os.path.exists", return_value=False),
+    ):
         result = service.sync_git_source(source)
 
     assert result["blueprints_found"] == 2
     assert result["releases_created"] == 2
+    assert result["releases_invalid"] == 0
     releases = db.query(BlueprintRelease).filter(BlueprintRelease.blueprint_source_id == source.id).all()
     assert len(releases) == 2
     assert {release.blueprint_name for release in releases} == {"Flo", "Cert Manager"}
+    assert all(release.validation_state == "valid" for release in releases)
+
+
+def test_transition_release_manifest_skipped_when_pack_modules_exist(db, tmp_path):
+    source = _source(db, branch="release/2.4.1", git_ref="release/2.4.1")
+    service = BlueprintSyncService(db)
+
+    repo = tmp_path / "repo"
+    (repo / "catalog" / "releases").mkdir(parents=True)
+    (repo / "bnk" / "flo").mkdir(parents=True)
+    (repo / "bnk" / "flo" / "bnkforge.pack.json").write_text('{"schema_version": 1}', encoding="utf-8")
+    (repo / "catalog" / "releases" / "release-2.4.1-official.json").write_text(
+        """
+        {
+          "schema_version": "catalog-release/v1alpha2",
+          "release": {
+            "channel": "release/2.4.1",
+            "name": "BNK 2.4.1 Official Baseline"
+          },
+          "official_modules": [
+            { "path": "bnk/flo", "version": "2.1.0", "state": "active" }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    with (
+        patch.object(service, "_clone_repository", return_value=str(repo)),
+        patch("services.blueprint_sync_service.ModuleSyncService.sync_git_source", return_value={"modules_found": 1}),
+        patch("os.path.exists", return_value=False),
+    ):
+        result = service.sync_git_source(source)
+
+    assert result["blueprints_found"] == 0
+    assert result["releases_created"] == 0
+    assert db.query(BlueprintRelease).filter(BlueprintRelease.blueprint_source_id == source.id).count() == 0
 
 
 def test_sync_git_source_auto_creates_module_source_when_pack_manifests_present(db):
-    source = _source(db, url="https://github.com/example/catalog-shared.git", branch="release/2.3", git_ref="release/2.3")
+    source = _source(
+        db, url="https://github.com/example/catalog-shared.git", branch="release/2.3", git_ref="release/2.3"
+    )
     service = BlueprintSyncService(db)
 
-    with patch.object(service, "_clone_repository", return_value="/tmp/repo"), \
-            patch.object(service, "_find_blueprint_manifests", return_value=[]), \
-            patch("services.blueprint_sync_service.ModuleSyncService._find_pack_modules", return_value=["modules/live-observability"]), \
-            patch("services.blueprint_sync_service.ModuleSyncService.sync_git_source", return_value={"modules_found": 1}), \
-            patch("os.path.exists", return_value=False):
+    with (
+        patch.object(service, "_clone_repository", return_value="/tmp/repo"),
+        patch.object(service, "_find_blueprint_manifests", return_value=[]),
+        patch(
+            "services.blueprint_sync_service.ModuleSyncService._find_pack_modules",
+            return_value=["modules/live-observability"],
+        ),
+        patch("services.blueprint_sync_service.ModuleSyncService.sync_git_source", return_value={"modules_found": 1}),
+        patch("os.path.exists", return_value=False),
+    ):
         result = service.sync_git_source(source)
 
     module_sources = db.query(ModuleSource).filter(ModuleSource.url == source.url).all()
@@ -237,11 +297,13 @@ def test_sync_git_source_does_not_create_module_source_when_no_pack_manifests(db
     source = _source(db)
     service = BlueprintSyncService(db)
 
-    with patch.object(service, "_clone_repository", return_value="/tmp/repo"), \
-            patch.object(service, "_find_blueprint_manifests", return_value=[]), \
-            patch("services.blueprint_sync_service.ModuleSyncService._find_pack_modules", return_value=[]), \
-            patch("services.blueprint_sync_service.ModuleSyncService.sync_git_source") as mock_module_sync, \
-            patch("os.path.exists", return_value=False):
+    with (
+        patch.object(service, "_clone_repository", return_value="/tmp/repo"),
+        patch.object(service, "_find_blueprint_manifests", return_value=[]),
+        patch("services.blueprint_sync_service.ModuleSyncService._find_pack_modules", return_value=[]),
+        patch("services.blueprint_sync_service.ModuleSyncService.sync_git_source") as mock_module_sync,
+        patch("os.path.exists", return_value=False),
+    ):
         result = service.sync_git_source(source)
 
     assert result["module_auto_sync"] is None
@@ -250,7 +312,9 @@ def test_sync_git_source_does_not_create_module_source_when_no_pack_manifests(db
 
 
 def test_sync_git_source_reuses_existing_module_source_by_url_and_ref(db):
-    source = _source(db, url="https://github.com/example/catalog-shared.git", branch="release/2.3", git_ref="release/2.3")
+    source = _source(
+        db, url="https://github.com/example/catalog-shared.git", branch="release/2.3", git_ref="release/2.3"
+    )
     existing_module_source = ModuleSource(
         name="shared modules",
         source_type="git",
@@ -265,11 +329,16 @@ def test_sync_git_source_reuses_existing_module_source_by_url_and_ref(db):
     db.refresh(existing_module_source)
 
     service = BlueprintSyncService(db)
-    with patch.object(service, "_clone_repository", return_value="/tmp/repo"), \
-            patch.object(service, "_find_blueprint_manifests", return_value=[]), \
-            patch("services.blueprint_sync_service.ModuleSyncService._find_pack_modules", return_value=["modules/live-observability"]), \
-            patch("services.blueprint_sync_service.ModuleSyncService.sync_git_source", return_value={"modules_found": 1}), \
-            patch("os.path.exists", return_value=False):
+    with (
+        patch.object(service, "_clone_repository", return_value="/tmp/repo"),
+        patch.object(service, "_find_blueprint_manifests", return_value=[]),
+        patch(
+            "services.blueprint_sync_service.ModuleSyncService._find_pack_modules",
+            return_value=["modules/live-observability"],
+        ),
+        patch("services.blueprint_sync_service.ModuleSyncService.sync_git_source", return_value={"modules_found": 1}),
+        patch("os.path.exists", return_value=False),
+    ):
         result = service.sync_git_source(source)
 
     assert db.query(ModuleSource).count() == 1
@@ -282,7 +351,9 @@ def test_sync_git_source_skips_module_sync_when_linked_module_source_is_inactive
     """A deliberately deactivated twin module source must not be re-synced (and
     therefore re-activated) just because the blueprint source it is linked to
     gets synced."""
-    source = _source(db, url="https://github.com/example/catalog-shared.git", branch="release/2.3", git_ref="release/2.3")
+    source = _source(
+        db, url="https://github.com/example/catalog-shared.git", branch="release/2.3", git_ref="release/2.3"
+    )
     existing_module_source = ModuleSource(
         name="shared modules",
         source_type="git",
@@ -297,11 +368,16 @@ def test_sync_git_source_skips_module_sync_when_linked_module_source_is_inactive
     db.refresh(existing_module_source)
 
     service = BlueprintSyncService(db)
-    with patch.object(service, "_clone_repository", return_value="/tmp/repo"), \
-            patch.object(service, "_find_blueprint_manifests", return_value=[]), \
-            patch("services.blueprint_sync_service.ModuleSyncService._find_pack_modules", return_value=["modules/live-observability"]), \
-            patch("services.blueprint_sync_service.ModuleSyncService.sync_git_source") as mock_module_sync, \
-            patch("os.path.exists", return_value=False):
+    with (
+        patch.object(service, "_clone_repository", return_value="/tmp/repo"),
+        patch.object(service, "_find_blueprint_manifests", return_value=[]),
+        patch(
+            "services.blueprint_sync_service.ModuleSyncService._find_pack_modules",
+            return_value=["modules/live-observability"],
+        ),
+        patch("services.blueprint_sync_service.ModuleSyncService.sync_git_source") as mock_module_sync,
+        patch("os.path.exists", return_value=False),
+    ):
         result = service.sync_git_source(source)
 
     mock_module_sync.assert_not_called()
@@ -312,7 +388,9 @@ def test_sync_git_source_skips_module_sync_when_linked_module_source_is_inactive
 
 
 def test_sync_git_source_ref_mismatch_creates_distinct_module_source(db):
-    source = _source(db, url="https://github.com/example/catalog-shared.git", branch="release/2.4", git_ref="release/2.4")
+    source = _source(
+        db, url="https://github.com/example/catalog-shared.git", branch="release/2.4", git_ref="release/2.4"
+    )
     existing_module_source = ModuleSource(
         name="shared modules",
         source_type="git",
@@ -326,11 +404,16 @@ def test_sync_git_source_ref_mismatch_creates_distinct_module_source(db):
     db.commit()
 
     service = BlueprintSyncService(db)
-    with patch.object(service, "_clone_repository", return_value="/tmp/repo"), \
-            patch.object(service, "_find_blueprint_manifests", return_value=[]), \
-            patch("services.blueprint_sync_service.ModuleSyncService._find_pack_modules", return_value=["modules/live-observability"]), \
-            patch("services.blueprint_sync_service.ModuleSyncService.sync_git_source", return_value={"modules_found": 1}), \
-            patch("os.path.exists", return_value=False):
+    with (
+        patch.object(service, "_clone_repository", return_value="/tmp/repo"),
+        patch.object(service, "_find_blueprint_manifests", return_value=[]),
+        patch(
+            "services.blueprint_sync_service.ModuleSyncService._find_pack_modules",
+            return_value=["modules/live-observability"],
+        ),
+        patch("services.blueprint_sync_service.ModuleSyncService.sync_git_source", return_value={"modules_found": 1}),
+        patch("os.path.exists", return_value=False),
+    ):
         result = service.sync_git_source(source)
 
     assert db.query(ModuleSource).count() == 2
@@ -343,17 +426,21 @@ def test_sync_git_source_module_auto_sync_failure_does_not_fail_blueprint(db):
     """A module auto-sync failure must not roll back created blueprint releases,
     must leave the blueprint source status 'success', and must not KeyError while
     recording the failure-shape module_auto_sync result in the audit summary."""
-    source = _source(db, url="https://github.com/example/catalog-shared.git", branch="release/2.3", git_ref="release/2.3")
+    source = _source(
+        db, url="https://github.com/example/catalog-shared.git", branch="release/2.3", git_ref="release/2.3"
+    )
     service = BlueprintSyncService(db)
 
-    with patch.object(service, "_clone_repository", return_value="/tmp/repo"), \
-            patch.object(service, "_find_blueprint_manifests", return_value=[]), \
-            patch.object(
-                service,
-                "_auto_sync_modules_for_git_source",
-                side_effect=RuntimeError("transient clone failure"),
-            ), \
-            patch("os.path.exists", return_value=False):
+    with (
+        patch.object(service, "_clone_repository", return_value="/tmp/repo"),
+        patch.object(service, "_find_blueprint_manifests", return_value=[]),
+        patch.object(
+            service,
+            "_auto_sync_modules_for_git_source",
+            side_effect=RuntimeError("transient clone failure"),
+        ),
+        patch("os.path.exists", return_value=False),
+    ):
         result = service.sync_git_source(source)
 
     assert result["module_auto_sync"] == {"sync_status": "failed", "error": "transient clone failure"}
@@ -367,8 +454,13 @@ def test_sync_git_source_module_auto_sync_db_error_preserves_pending_releases(db
     transaction: the blueprint release flushed earlier in the same
     sync_git_source call must survive and the final commit must still succeed.
     """
-    source = _source(db, name="external-blueprints", url="https://github.com/example/catalog-shared.git",
-                      branch="release/2.3", git_ref="release/2.3")
+    source = _source(
+        db,
+        name="external-blueprints",
+        url="https://github.com/example/catalog-shared.git",
+        branch="release/2.3",
+        git_ref="release/2.3",
+    )
 
     # Simulate a name collision from a concurrent sync: pre-create (and commit)
     # a module source under the exact name this sync's auto-created linked
@@ -387,12 +479,17 @@ def test_sync_git_source_module_auto_sync_db_error_preserves_pending_releases(db
     db.commit()
 
     service = BlueprintSyncService(db)
-    with patch.object(service, "_clone_repository", return_value="/tmp/repo"), \
-            patch.object(service, "_find_blueprint_manifests", return_value=["blueprints/sample/forge-blueprint.json"]), \
-            patch.object(service, "_load_manifest", return_value=_manifest()), \
-            patch.object(service, "_linked_module_source_name", return_value="external-blueprints modules"), \
-            patch("services.blueprint_sync_service.ModuleSyncService._find_pack_modules", return_value=["modules/live-observability"]), \
-            patch("os.path.exists", return_value=False):
+    with (
+        patch.object(service, "_clone_repository", return_value="/tmp/repo"),
+        patch.object(service, "_find_blueprint_manifests", return_value=["blueprints/sample/forge-blueprint.json"]),
+        patch.object(service, "_load_manifest", return_value=_manifest()),
+        patch.object(service, "_linked_module_source_name", return_value="external-blueprints modules"),
+        patch(
+            "services.blueprint_sync_service.ModuleSyncService._find_pack_modules",
+            return_value=["modules/live-observability"],
+        ),
+        patch("os.path.exists", return_value=False),
+    ):
         result = service.sync_git_source(source)
 
     # The module auto-sync attempt failed with a DB-level error...
@@ -419,8 +516,9 @@ def test_sync_git_source_module_auto_sync_commit_does_not_corrupt_session(db):
     transaction, wedging the session so the blueprint sync's final commit died
     with PendingRollbackError (#428) — while the mid-flight commit persisted
     partial release rows that later syncs flagged as conflicted."""
-    source = _source(db, url="https://github.com/example/catalog-shared.git",
-                     branch="release/2.3", git_ref="release/2.3")
+    source = _source(
+        db, url="https://github.com/example/catalog-shared.git", branch="release/2.3", git_ref="release/2.3"
+    )
     service = BlueprintSyncService(db)
 
     def committing_module_sync(module_source):
@@ -428,12 +526,16 @@ def test_sync_git_source_module_auto_sync_commit_does_not_corrupt_session(db):
         db.commit()
         return {"modules_found": 1}
 
-    with patch.object(service, "_clone_repository", return_value="/tmp/repo"), \
-            patch.object(service, "_find_blueprint_manifests", return_value=["blueprints/sample/forge-blueprint.json"]), \
-            patch.object(service, "_load_manifest", return_value=_manifest()), \
-            patch("services.blueprint_sync_service.ModuleSyncService._find_pack_modules", return_value=["tools/roksbnkctl"]), \
-            patch("services.blueprint_sync_service.ModuleSyncService.sync_git_source", side_effect=committing_module_sync), \
-            patch("os.path.exists", return_value=False):
+    with (
+        patch.object(service, "_clone_repository", return_value="/tmp/repo"),
+        patch.object(service, "_find_blueprint_manifests", return_value=["blueprints/sample/forge-blueprint.json"]),
+        patch.object(service, "_load_manifest", return_value=_manifest()),
+        patch(
+            "services.blueprint_sync_service.ModuleSyncService._find_pack_modules", return_value=["tools/roksbnkctl"]
+        ),
+        patch("services.blueprint_sync_service.ModuleSyncService.sync_git_source", side_effect=committing_module_sync),
+        patch("os.path.exists", return_value=False),
+    ):
         result = service.sync_git_source(source)
 
     assert result["releases_created"] == 1

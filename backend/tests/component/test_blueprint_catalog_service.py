@@ -282,7 +282,11 @@ def test_update_release_state_blocks_invalid_promotion(db):
         source_path="blueprints/bad/forge-blueprint.json",
         source_ref="refs/heads/main",
         content_sha256="0" * 64,
-        manifest={"schema_version": 1, "blueprint": {"id": "bad.bp", "version": "1.0.0", "name": "Bad BP"}, "modules": []},
+        manifest={
+            "schema_version": 1,
+            "blueprint": {"id": "bad.bp", "version": "1.0.0", "name": "Bad BP"},
+            "modules": [],
+        },
         validation_state="invalid",
         validation_errors=[{"code": "X"}],
         release_state="discovered",
@@ -390,3 +394,39 @@ def test_lifecycle_update_allows_only_mutable_fields(db):
     persisted = service.get_release(created["id"])
     assert persisted["state_reason"] == "updated reason"
     assert persisted["is_active"] is False
+
+
+def test_update_official_default_blueprint_source_branch_persists_across_ensure_default(db):
+    from services.blueprint_default_source_service import ensure_default_blueprint_source
+
+    service = BlueprintCatalogService(db)
+    seed_defaults(db)
+    set_default(db, "blueprint_library.git_url", "https://github.com/JLCode-tech/bnk-forge-blueprints.git")
+    set_default(db, "blueprint_library.git_ref", "release/2.2")
+    db.commit()
+
+    official = ensure_default_blueprint_source(db)
+    db.commit()
+    assert official.branch == "release/2.2"
+    assert official.git_ref == "release/2.2"
+
+    updated = service.update_source(
+        official.id,
+        SimpleNamespace(
+            name=None,
+            url=None,
+            branch="release/2.4.1",
+            git_ref=None,
+            is_active=None,
+            description=None,
+            model_fields_set={"branch"},
+        ),
+    )
+    db.commit()
+    assert updated["branch"] == "release/2.4.1"
+    assert updated["git_ref"] == "release/2.4.1"
+
+    reconciled = ensure_default_blueprint_source(db)
+    db.commit()
+    assert reconciled.branch == "release/2.4.1"
+    assert reconciled.git_ref == "release/2.4.1"

@@ -73,6 +73,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Switch } from "@/components/ui/switch";
 import { ImportedBlueprintDeployDialog } from "@/components/stacks/ImportedBlueprintDeployDialog";
 import {
   Tooltip,
@@ -776,11 +777,11 @@ function BlueprintTable({
   onImport,
   onDiscard,
   onRemove,
-  onSetVisibility: _onSetVisibility,
+  onSetVisibility,
   importPending,
   discardPending,
   removePending,
-  visibilityPending: _visibilityPending,
+  visibilityPending,
 }: BlueprintTableProps) {
   // Per-group expanded state for the "other versions" disclosure.
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -812,6 +813,9 @@ function BlueprintTable({
             </TableHead>
             <TableHead className="text-xs uppercase tracking-wider text-muted-foreground">
               State
+            </TableHead>
+            <TableHead className="text-xs uppercase tracking-wider text-muted-foreground">
+              Visible
             </TableHead>
             <TableHead className="text-xs uppercase tracking-wider text-muted-foreground text-right w-48">
               {/* actions */}
@@ -924,6 +928,20 @@ function BlueprintTable({
                   <TableCell>
                     {releaseStateBadge(latest.release_state)}
                   </TableCell>
+                  <TableCell>
+                    <Switch
+                      checked={latest.is_active}
+                      onCheckedChange={(checked) =>
+                        onSetVisibility(latest, checked)
+                      }
+                      disabled={
+                        visibilityPending ||
+                        isDiscoveredOnly ||
+                        isRemovedRelease(latest)
+                      }
+                      aria-label={`Toggle visibility for ${latest.blueprint_name} v${latest.blueprint_version}`}
+                    />
+                  </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
                       <Button
@@ -1020,6 +1038,20 @@ function BlueprintTable({
                         </TableCell>
                         <TableCell>
                           {releaseStateBadge(release.release_state)}
+                        </TableCell>
+                        <TableCell>
+                          <Switch
+                            checked={release.is_active}
+                            onCheckedChange={(checked) =>
+                              onSetVisibility(release, checked)
+                            }
+                            disabled={
+                              visibilityPending ||
+                              rIsDiscoveredOnly ||
+                              isRemovedRelease(release)
+                            }
+                            aria-label={`Toggle visibility for ${release.blueprint_name} v${release.blueprint_version}`}
+                          />
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">

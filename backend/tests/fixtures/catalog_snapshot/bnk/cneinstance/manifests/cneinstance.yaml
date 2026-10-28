@@ -87,6 +87,8 @@ spec:
           value: "${tmm_default_mtu | default(9000)}"
         - name: TMM_IGNORE_GATEWAYS
           value: "TRUE"
+        - name: TMM_SOCAT_DISABLE
+          value: "1"
 {% if _is_kernel_mode %}
         # Kernel-mode TMM env vars (Doc 3 Multi-AZ Network Architecture)
         - name: TMM_GENERIC_SOCKET_DRIVER

@@ -69,9 +69,7 @@ class BlueprintSyncService:
                 try:
                     blueprint_id, blueprint_version = self._manifest_identity(manifest)
                     if not blueprint_id or not blueprint_version:
-                        raise ValueError(
-                            "Blueprint manifest must include non-empty blueprint.id and blueprint.version"
-                        )
+                        raise ValueError("Blueprint manifest must include non-empty blueprint.id and blueprint.version")
 
                     manifest_sha = self._content_sha256(self._canonical_manifest(manifest))
                     existing = (
@@ -248,10 +246,7 @@ class BlueprintSyncService:
     def _get_or_create_linked_module_source(self, source: BlueprintSource) -> tuple[ModuleSource, bool]:
         source_key = self._source_key(source.url, source.branch, source.git_ref)
         existing = (
-            self.db.query(ModuleSource)
-            .filter(ModuleSource.source_type == "git")
-            .order_by(ModuleSource.id.asc())
-            .all()
+            self.db.query(ModuleSource).filter(ModuleSource.source_type == "git").order_by(ModuleSource.id.asc()).all()
         )
         for module_source in existing:
             if self._source_key(module_source.url, module_source.branch, module_source.git_ref) == source_key:
@@ -305,13 +300,18 @@ class BlueprintSyncService:
         manifests.sort()
         return manifests
 
-    def _discover_blueprint_manifests(self, repo_path: str, source: BlueprintSource) -> list[tuple[str, dict[str, Any]]]:
+    def _discover_blueprint_manifests(
+        self, repo_path: str, source: BlueprintSource
+    ) -> list[tuple[str, dict[str, Any]]]:
         discovered: list[tuple[str, dict[str, Any]]] = []
 
         for manifest_path in self._find_blueprint_manifests(repo_path):
             discovered.append((manifest_path, self._load_manifest(repo_path, manifest_path)))
 
         if discovered:
+            return discovered
+
+        if ModuleSyncService(self.db)._find_pack_modules(repo_path):
             return discovered
 
         for manifest_path in self._find_transition_release_manifests(repo_path):
@@ -399,6 +399,7 @@ class BlueprintSyncService:
         )
         tags = [segments[0].lower()] if segments else []
         tags.extend(segment.lower() for segment in segments[1:])
+        module_version = str(module_entry.get("version") or "1.0.0").strip() or "1.0.0"
 
         manifest: dict[str, Any] = {
             "schema_version": 1,
@@ -416,6 +417,7 @@ class BlueprintSyncService:
                     "id": segments[-1] if segments else path.replace("/", "-"),
                     "name": display_name,
                     "module": path,
+                    "version": module_version,
                     "depends_on": [],
                     "inputs": {},
                     "description": description,

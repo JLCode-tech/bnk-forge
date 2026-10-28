@@ -193,9 +193,7 @@ class ModuleSourceService:
         metadata = source.credential_metadata if isinstance(source.credential_metadata, dict) else {}
         oauth_obj = metadata.get("oauth") if isinstance(metadata.get("oauth"), dict) else {}
         provider = str(
-            oauth_obj.get("provider")
-            or metadata.get("provider")
-            or self._infer_git_provider(source.url)
+            oauth_obj.get("provider") or metadata.get("provider") or self._infer_git_provider(source.url)
         ).strip().lower() or self._infer_git_provider(source.url)
 
         if provider not in OAUTH_SUPPORTED_PROVIDERS:
@@ -259,7 +257,9 @@ class ModuleSourceService:
 
     def _set_default_module_source(self, source: ModuleSource) -> None:
         if source.source_type != "git":
-            raise BadRequestError("Only git module sources can be configured as default", code="DEFAULT_SOURCE_REQUIRES_GIT")
+            raise BadRequestError(
+                "Only git module sources can be configured as default", code="DEFAULT_SOURCE_REQUIRES_GIT"
+            )
 
         set_default(self.db, "module_library.git_url", source.url)
         set_default(self.db, "module_library.git_ref", source.git_ref or source.branch or "main")
@@ -277,12 +277,8 @@ class ModuleSourceService:
         default_url = self._get_default_module_source_url()
         if not default_url:
             return
-        normalized_source = (
-            GitAuthService.strip_url_credentials(source.url).rstrip("/").removesuffix(".git")
-        )
-        normalized_default = (
-            GitAuthService.strip_url_credentials(default_url).rstrip("/").removesuffix(".git")
-        )
+        normalized_source = GitAuthService.strip_url_credentials(source.url).rstrip("/").removesuffix(".git")
+        normalized_default = GitAuthService.strip_url_credentials(default_url).rstrip("/").removesuffix(".git")
         if normalized_source == normalized_default:
             default_ref = self._get_default_module_source_ref()
             source.branch = default_ref
@@ -456,13 +452,16 @@ class ModuleSourceService:
                 code="UNSUPPORTED_OAUTH_PROVIDER",
             )
 
-        principal = str(
-            oauth_obj.get("principal")
-            or oauth_obj.get("subject")
-            or metadata_obj.get("principal")
-            or metadata_obj.get("subject")
-            or ""
-        ).strip() or None
+        principal = (
+            str(
+                oauth_obj.get("principal")
+                or oauth_obj.get("subject")
+                or metadata_obj.get("principal")
+                or metadata_obj.get("subject")
+                or ""
+            ).strip()
+            or None
+        )
         if not principal:
             raise BadRequestError(
                 "OAuth credential metadata must include oauth.principal",
@@ -517,8 +516,7 @@ class ModuleSourceService:
     # CRUD
     # ================================================================
 
-    def list_sources(self, source_type: str | None = None,
-                     is_active: bool | None = None) -> list[dict[str, Any]]:
+    def list_sources(self, source_type: str | None = None, is_active: bool | None = None) -> list[dict[str, Any]]:
         """List all module sources with optional filters."""
         query = self.db.query(ModuleSource)
         if source_type:
@@ -535,15 +533,12 @@ class ModuleSourceService:
     def create_source(self, source_data) -> dict[str, Any]:
         """Create a new module source. Auth tokens are encrypted before storage."""
         # Duplicate name check
-        existing = self.db.query(ModuleSource).filter(
-            ModuleSource.name == source_data.name
-        ).first()
+        existing = self.db.query(ModuleSource).filter(ModuleSource.name == source_data.name).first()
         if existing:
             raise ConflictError("module_source", f"Module source '{source_data.name}' already exists")
 
-        if source_data.source_type not in ['git', 'registry', 'builtin']:
-            raise BadRequestError("source_type must be 'git', 'registry', or 'builtin'",
-                                  code="INVALID_SOURCE_TYPE")
+        if source_data.source_type not in ["git", "registry", "builtin"]:
+            raise BadRequestError("source_type must be 'git', 'registry', or 'builtin'", code="INVALID_SOURCE_TYPE")
 
         auth_token_encrypted = None
         if source_data.auth_token:
@@ -605,7 +600,7 @@ class ModuleSourceService:
             auto_sync=source_data.auto_sync,
             sync_interval_hours=source_data.sync_interval_hours,
             description=source_data.description,
-            sync_status='pending'
+            sync_status="pending",
         )
 
         self.db.add(source)
@@ -614,7 +609,7 @@ class ModuleSourceService:
             self._set_default_module_source(source)
         self.db.refresh(source)
 
-        if source.source_type == 'git':
+        if source.source_type == "git":
             # The initial sync is best-effort: a bad manifest or an unreachable
             # remote must not lose the source row the caller just created.
             #
@@ -661,10 +656,8 @@ class ModuleSourceService:
                 # Record the cause where the caller can actually see it. The
                 # source is still created; sync_status/sync_error say why it is
                 # empty, instead of the client getting an opaque 500.
-                logger.exception(
-                    "Initial sync failed for new module source %s: %s", source.name, exc
-                )
-                source.sync_status = 'failed'
+                logger.exception("Initial sync failed for new module source %s: %s", source.name, exc)
+                source.sync_status = "failed"
                 source.sync_error = f"Initial sync failed: {exc}"[:2000]
 
         logger.info(f"Created module source: {source.name} ({source.source_type})")
@@ -674,24 +667,32 @@ class ModuleSourceService:
         """Update an existing module source."""
         source = self._get_source(source_id)
 
-        if source.source_type == 'builtin':
-            raise BadRequestError("Cannot modify built-in module source",
-                                  code="BUILTIN_SOURCE_IMMUTABLE")
+        if source.source_type == "builtin":
+            raise BadRequestError("Cannot modify built-in module source", code="BUILTIN_SOURCE_IMMUTABLE")
 
         if source_data.name is not None:
-            existing = self.db.query(ModuleSource).filter(
-                ModuleSource.name == source_data.name,
-                ModuleSource.id != source_id
-            ).first()
+            existing = (
+                self.db.query(ModuleSource)
+                .filter(ModuleSource.name == source_data.name, ModuleSource.id != source_id)
+                .first()
+            )
             if existing:
-                raise ConflictError("module_source",
-                                    f"Module source '{source_data.name}' already exists")
+                raise ConflictError("module_source", f"Module source '{source_data.name}' already exists")
             source.name = source_data.name
+
+        default_url = self._get_default_module_source_url()
+        was_official_source = False
+        if source.source_type == "git" and default_url and source.url:
+            normalized_source = GitAuthService.strip_url_credentials(source.url).rstrip("/").removesuffix(".git")
+            normalized_default = GitAuthService.strip_url_credentials(default_url).rstrip("/").removesuffix(".git")
+            was_official_source = normalized_source == normalized_default
 
         if source_data.url is not None:
             source.url = source_data.url
         if source_data.branch is not None:
             source.branch = source_data.branch
+            if source_data.git_ref is None:
+                source.git_ref = source_data.branch
         if source_data.git_ref is not None:
             source.git_ref = source_data.git_ref
         credential_type, auth_type = self._resolve_credential_fields(source_data, existing_source=source)
@@ -842,7 +843,7 @@ class ModuleSourceService:
             source.description = source_data.description
 
         self.db.flush()
-        if getattr(source_data, "make_default", False):
+        if getattr(source_data, "make_default", False) or was_official_source:
             self._set_default_module_source(source)
         self.db.refresh(source)
         logger.info(f"Updated module source: {source.name}")
@@ -1030,13 +1031,15 @@ class ModuleSourceService:
             source.credential_last_validated_at = datetime.now(UTC)
             source.credential_validation_error = None
             source.credential_capabilities = source.credential_capabilities or ["repo:read"]
-            source.credential_metadata, source.credential_scope, source.credential_capabilities = self._normalize_ssh_fields(
-                credential_type=credential_type,
-                source_url=source.url,
-                credential_metadata=source.credential_metadata,
-                credential_scope=source.credential_scope,
-                credential_capabilities=source.credential_capabilities,
-                require_known_hosts=True,
+            source.credential_metadata, source.credential_scope, source.credential_capabilities = (
+                self._normalize_ssh_fields(
+                    credential_type=credential_type,
+                    source_url=source.url,
+                    credential_metadata=source.credential_metadata,
+                    credential_scope=source.credential_scope,
+                    credential_capabilities=source.credential_capabilities,
+                    require_known_hosts=True,
+                )
             )
             self.db.flush()
 
@@ -1125,9 +1128,7 @@ class ModuleSourceService:
                 credential_capabilities=source.credential_capabilities,
             )
             provider = str(
-                normalized_metadata.get("oauth", {}).get("provider")
-                or normalized_metadata.get("provider")
-                or provider
+                normalized_metadata.get("oauth", {}).get("provider") or normalized_metadata.get("provider") or provider
             )
 
             auth_ctx = GitAuthService.resolve_for_module_source(source, db=self.db)
@@ -1378,20 +1379,19 @@ class ModuleSourceService:
         """Delete a module source and all its catalog modules (if not in use)."""
         source = self._get_source(source_id)
 
-        if source.source_type == 'builtin':
-            raise BadRequestError("Cannot delete built-in module source",
-                                  code="BUILTIN_SOURCE_IMMUTABLE")
+        if source.source_type == "builtin":
+            raise BadRequestError("Cannot delete built-in module source", code="BUILTIN_SOURCE_IMMUTABLE")
 
         # Check if any modules are in use by projects
-        in_use_ids = self.db.query(ProjectModule.module_library_id).join(
-            ModuleLibrary, ProjectModule.module_library_id == ModuleLibrary.id
-        ).filter(
-            ModuleLibrary.module_source_id == source_id
-        ).distinct().subquery()
+        in_use_ids = (
+            self.db.query(ProjectModule.module_library_id)
+            .join(ModuleLibrary, ProjectModule.module_library_id == ModuleLibrary.id)
+            .filter(ModuleLibrary.module_source_id == source_id)
+            .distinct()
+            .subquery()
+        )
 
-        modules_in_use = self.db.query(ModuleLibrary).filter(
-            ModuleLibrary.id.in_(self.db.query(in_use_ids))
-        ).all()
+        modules_in_use = self.db.query(ModuleLibrary).filter(ModuleLibrary.id.in_(self.db.query(in_use_ids))).all()
 
         if modules_in_use:
             module_names = [m.name for m in modules_in_use[:5]]
@@ -1399,13 +1399,11 @@ class ModuleSourceService:
             names_str = ", ".join(module_names) + (f" and {more} more" if more else "")
             raise BadRequestError(
                 f"Cannot delete source: {len(modules_in_use)} modules are in use by projects ({names_str})",
-                code="SOURCE_IN_USE"
+                code="SOURCE_IN_USE",
             )
 
         # Delete catalog modules
-        modules_to_delete = self.db.query(ModuleLibrary).filter(
-            ModuleLibrary.module_source_id == source_id
-        ).all()
+        modules_to_delete = self.db.query(ModuleLibrary).filter(ModuleLibrary.module_source_id == source_id).all()
         module_count = len(modules_to_delete)
         for module in modules_to_delete:
             self.db.delete(module)
@@ -1419,7 +1417,7 @@ class ModuleSourceService:
 
         return {
             "success": True,
-            "message": f"Module source '{source_name}' deleted ({module_count} catalog modules removed)"
+            "message": f"Module source '{source_name}' deleted ({module_count} catalog modules removed)",
         }
 
     # ================================================================
@@ -1430,10 +1428,11 @@ class ModuleSourceService:
         """List all modules from a specific source."""
         source = self._get_source(source_id)
 
-        modules = self.db.query(ModuleLibrary).filter(
-            ModuleLibrary.module_source_id == source_id,
-            ModuleLibrary.is_active
-        ).all()
+        modules = (
+            self.db.query(ModuleLibrary)
+            .filter(ModuleLibrary.module_source_id == source_id, ModuleLibrary.is_active)
+            .all()
+        )
 
         return {
             "source_id": source_id,
@@ -1441,14 +1440,19 @@ class ModuleSourceService:
             "module_count": len(modules),
             "modules": [
                 {
-                    "id": m.id, "name": m.name, "category": m.category,
-                    "provider": m.provider, "description": m.description,
-                    "source_path": m.source_path, "source_version": m.source_version,
-                    "is_custom": m.is_custom, "update_available": m.update_available,
+                    "id": m.id,
+                    "name": m.name,
+                    "category": m.category,
+                    "provider": m.provider,
+                    "description": m.description,
+                    "source_path": m.source_path,
+                    "source_version": m.source_version,
+                    "is_custom": m.is_custom,
+                    "update_available": m.update_available,
                     "latest_version": m.latest_version,
                 }
                 for m in modules
-            ]
+            ],
         }
 
     # ================================================================
@@ -1462,8 +1466,9 @@ class ModuleSourceService:
         if not source.is_active:
             raise BadRequestError("Source is inactive", code="SOURCE_INACTIVE")
 
-        if source.source_type == 'git':
+        if source.source_type == "git":
             from services.module_sync_service import ModuleSyncService
+
             self._reconcile_official_source_ref(source)
             sync_service = ModuleSyncService(self.db)
             try:
@@ -1482,7 +1487,7 @@ class ModuleSourceService:
                     "source_id": source_id,
                     "source_name": source.name,
                     "sync_status": source.sync_status,
-                    "results": results
+                    "results": results,
                 }
             except Exception as e:
                 logger.error(f"Sync failed for source {source_id}: {e}")
@@ -1491,15 +1496,12 @@ class ModuleSourceService:
             # Imported registry/git modules don't have a bulk-list endpoint to scan;
             # sync means "refresh upstream version metadata for each imported module".
             from services.registry_service import RegistryService
+
             registry = RegistryService(self.db)
             checked = 0
             updates_available = 0
             errors: list[str] = []
-            modules = (
-                self.db.query(ModuleLibrary)
-                .filter(ModuleLibrary.module_source_id == source.id)
-                .all()
-            )
+            modules = self.db.query(ModuleLibrary).filter(ModuleLibrary.module_source_id == source.id).all()
             for module in modules:
                 try:
                     info = registry.check_for_updates(module.id)
@@ -1525,8 +1527,9 @@ class ModuleSourceService:
                 },
             }
         else:
-            raise BadRequestError(f"Sync not supported for source type: {source.source_type}",
-                                  code="UNSUPPORTED_SOURCE_TYPE")
+            raise BadRequestError(
+                f"Sync not supported for source type: {source.source_type}", code="UNSUPPORTED_SOURCE_TYPE"
+            )
 
     def _auto_sync_blueprints_for_git_source(self, module_source: ModuleSource) -> dict[str, Any] | None:
         if module_source.source_type != "git":
@@ -1552,6 +1555,15 @@ class ModuleSourceService:
                 "results": None,
             }
         results = BlueprintSyncService(self.db).sync_git_source(blueprint_source, sync_related_modules=False)
+        if (
+            created
+            and isinstance(results, dict)
+            and "blueprints_found" in results
+            and results.get("blueprints_found") == 0
+        ):
+            self.db.delete(blueprint_source)
+            self.db.commit()
+            return None
         self.db.refresh(blueprint_source)
         return {
             "source_id": blueprint_source.id,
