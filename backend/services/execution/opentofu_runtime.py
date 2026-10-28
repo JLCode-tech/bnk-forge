@@ -390,7 +390,7 @@ def _materialize_inline_ssh_key_file(work_dir: str, private_key_value: str) -> s
 def _apply_known_module_hotfixes(work_dir: str, module_path: str | None) -> None:
     """Apply bounded runtime hotfixes for known module-contract drift."""
     normalized_module_path = (module_path or "").strip("/")
-    if normalized_module_path.endswith("k8s/bnk-prerequisites"):
+    if normalized_module_path.endswith(("bnk-prerequisites", "eks-cluster-install-bnk-prereqs", "far-setup")):
         download_manifest_script = os.path.join(work_dir, "scripts", "download-manifest.sh")
         if os.path.exists(download_manifest_script):
             script_content = Path(download_manifest_script).read_text(encoding="utf-8")
@@ -412,11 +412,19 @@ def _apply_known_module_hotfixes(work_dir: str, module_path: str | None) -> None
             # The script receives a relative path like "./work/cne_pull_secret.json"
             # then does `cd "$WORK_DIR"` (./work).  After the cd, the relative path
             # resolves to ./work/work/cne_pull_secret.json which doesn't exist.
-            # Insert path resolution right after the eval that reads terraform inputs.
+            # Also materialize the key from terraform.tfvars.json if OpenTofu runs
+            # the external data source during `plan` before local_sensitive_file is written.
             _sa_resolve_line = (
                 "\n# Resolve SERVICE_ACCOUNT_KEY_FILE to absolute path before cd\n"
-                'if [ -n "${SERVICE_ACCOUNT_KEY_FILE:-}" ] && [ -f "$SERVICE_ACCOUNT_KEY_FILE" ]; then\n'
-                '    SERVICE_ACCOUNT_KEY_FILE="$(cd "$(dirname "$SERVICE_ACCOUNT_KEY_FILE")" && pwd)/$(basename "$SERVICE_ACCOUNT_KEY_FILE")"\n'
+                'if [ -n "${SERVICE_ACCOUNT_KEY_FILE:-}" ]; then\n'
+                '    mkdir -p "$(dirname "$SERVICE_ACCOUNT_KEY_FILE")"\n'
+                '    if [ ! -f "$SERVICE_ACCOUNT_KEY_FILE" ] && [ -f "terraform.tfvars.json" ]; then\n'
+                "        jq -r '.cne_pull_secret // empty' terraform.tfvars.json > \"$SERVICE_ACCOUNT_KEY_FILE\"\n"
+                '        chmod 600 "$SERVICE_ACCOUNT_KEY_FILE"\n'
+                "    fi\n"
+                '    if [ -f "$SERVICE_ACCOUNT_KEY_FILE" ]; then\n'
+                '        SERVICE_ACCOUNT_KEY_FILE="$(cd "$(dirname "$SERVICE_ACCOUNT_KEY_FILE")" && pwd)/$(basename "$SERVICE_ACCOUNT_KEY_FILE")"\n'
+                "    fi\n"
                 "fi\n"
             )
             _eval_line = (
@@ -433,7 +441,8 @@ def _apply_known_module_hotfixes(work_dir: str, module_path: str | None) -> None
             if updated_script_content != script_content:
                 Path(download_manifest_script).write_text(updated_script_content, encoding="utf-8")
                 logger.info(
-                    "Applied hotfixes for k8s/bnk-prerequisites download-manifest.sh in %s",
+                    "Applied hotfixes for %s download-manifest.sh in %s",
+                    normalized_module_path,
                     download_manifest_script,
                 )
 
