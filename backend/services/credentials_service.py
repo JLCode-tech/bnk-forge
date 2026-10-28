@@ -61,6 +61,37 @@ def _decrypt_credential(encrypted_value: str | None, field_name: str) -> str | N
         return None
 
 
+def attach_aws_cli_credential_cache(session) -> None:
+    """Attach the AWS CLI credential cache (~/.aws/cli/cache) to a boto3 Session.
+
+    AWS CLI caches STS role credentials exchanged from IAM Identity Center (SSO)
+    and AssumeRole profiles in ``~/.aws/cli/cache`` (typically valid for 4–12 hours),
+    whereas plain ``boto3.Session(profile_name=...)`` leaves provider.cache unset
+    and re-queries ``~/.aws/sso/cache`` (whose OIDC accessToken often expires after
+    1 hour). Configuring ``JSONFileCache`` aligns boto3 with the AWS CLI.
+    """
+    cli_cache = os.path.expanduser("~/.aws/cli/cache")
+    bc_session = getattr(session, "_session", None)
+    if bc_session is None or not os.path.isdir(cli_cache):
+        return
+    try:
+        import botocore.credentials
+
+        cred_resolver = bc_session.get_component("credential_provider")
+        if cred_resolver is None or not hasattr(cred_resolver, "get_provider"):
+            return
+        cache = botocore.credentials.JSONFileCache(cli_cache)
+        for provider_name in ("sso", "assume-role", "assume-role-with-web-identity"):
+            try:
+                provider = cred_resolver.get_provider(provider_name)
+                if provider is not None:
+                    provider.cache = cache
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 def _resolve_aws_profile_credentials(
     profile: str,
     region: str | None = None,
@@ -87,6 +118,7 @@ def _resolve_aws_profile_credentials(
         import boto3
 
         session = boto3.Session(profile_name=profile, region_name=region or None)
+        attach_aws_cli_credential_cache(session)
         creds = session.get_credentials()
         if creds is None:
             if strict:

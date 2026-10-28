@@ -810,6 +810,38 @@ class TestAWSProfileSSOResolution:
         assert env["AWS_ACCESS_KEY_ID"] == "AKIA_STATIC"
         assert env["AWS_SECRET_ACCESS_KEY"] == "static_secret"
 
+    def test_attach_aws_cli_credential_cache_wires_json_file_cache(self, tmp_path, monkeypatch):
+        """attach_aws_cli_credential_cache configures botocore JSONFileCache on SSO/AssumeRole providers."""
+        from services.credentials_service import attach_aws_cli_credential_cache
+
+        cli_cache = tmp_path / ".aws" / "cli" / "cache"
+        cli_cache.mkdir(parents=True)
+        monkeypatch.setattr("os.path.expanduser", lambda p: str(cli_cache) if p == "~/.aws/cli/cache" else p)
+
+        sso_provider = MagicMock()
+        sso_provider.cache = None
+        assume_role_provider = MagicMock()
+        assume_role_provider.cache = None
+
+        providers = {
+            "sso": sso_provider,
+            "assume-role": assume_role_provider,
+            "assume-role-with-web-identity": None,
+        }
+        cred_resolver = MagicMock()
+        cred_resolver.get_provider.side_effect = lambda name: providers.get(name)
+
+        bc_session = MagicMock()
+        bc_session.get_component.return_value = cred_resolver
+        session = MagicMock()
+        session._session = bc_session
+
+        attach_aws_cli_credential_cache(session)
+
+        assert sso_provider.cache is not None
+        assert assume_role_provider.cache is not None
+        assert sso_provider.cache is assume_role_provider.cache
+
 
 class TestAWSVPCQuotaPreflight:
     """Verify AWS VPC quota preflight prevents VpcLimitExceeded partial deployments."""

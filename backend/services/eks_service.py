@@ -47,11 +47,7 @@ def matches_eks_output_contract(outputs: dict) -> bool:
 
 
 def generate_eks_kubeconfig(
-    cluster_name: str,
-    cluster_endpoint: str,
-    cluster_ca_data: str,
-    region: str,
-    context_name: str = None
+    cluster_name: str, cluster_endpoint: str, cluster_ca_data: str, region: str, context_name: str = None
 ) -> str:
     """
     Generate a kubeconfig YAML for an EKS cluster.
@@ -78,21 +74,10 @@ def generate_eks_kubeconfig(
         "clusters": [
             {
                 "name": cluster_name,
-                "cluster": {
-                    "server": cluster_endpoint,
-                    "certificate-authority-data": cluster_ca_data
-                }
+                "cluster": {"server": cluster_endpoint, "certificate-authority-data": cluster_ca_data},
             }
         ],
-        "contexts": [
-            {
-                "name": context_name,
-                "context": {
-                    "cluster": cluster_name,
-                    "user": cluster_name
-                }
-            }
-        ],
+        "contexts": [{"name": context_name, "context": {"cluster": cluster_name, "user": cluster_name}}],
         "current-context": context_name,
         "users": [
             {
@@ -101,18 +86,11 @@ def generate_eks_kubeconfig(
                     "exec": {
                         "apiVersion": "client.authentication.k8s.io/v1beta1",
                         "command": "aws",
-                        "args": [
-                            "eks",
-                            "get-token",
-                            "--cluster-name",
-                            cluster_name,
-                            "--region",
-                            region
-                        ]
+                        "args": ["eks", "get-token", "--cluster-name", cluster_name, "--region", region],
                     }
-                }
+                },
             }
-        ]
+        ],
     }
 
     return yaml.dump(kubeconfig)
@@ -147,7 +125,7 @@ def register_eks_cluster(db: Session, eks_module: ProjectModule) -> KubernetesCl
             region = arn_parts[3]
 
     # Fallback: use project region if ARN extraction failed
-    if not region and hasattr(eks_module.project, 'region'):
+    if not region and hasattr(eks_module.project, "region"):
         region = eks_module.project.region
 
     # Validate required outputs
@@ -164,10 +142,11 @@ def register_eks_cluster(db: Session, eks_module: ProjectModule) -> KubernetesCl
         raise ValueError(f"Missing required EKS outputs for registration: {', '.join(missing)}")
 
     # Check if cluster already registered
-    existing = db.query(KubernetesCluster).filter(
-        KubernetesCluster.name == cluster_name,
-        KubernetesCluster.project_id == eks_module.project_id
-    ).first()
+    existing = (
+        db.query(KubernetesCluster)
+        .filter(KubernetesCluster.name == cluster_name, KubernetesCluster.project_id == eks_module.project_id)
+        .first()
+    )
 
     if existing:
         logger.info(f"Cluster {cluster_name} already registered (id={existing.id}), skipping")
@@ -176,23 +155,18 @@ def register_eks_cluster(db: Session, eks_module: ProjectModule) -> KubernetesCl
     # Generate kubeconfig
     logger.info(f"Generating kubeconfig for EKS cluster {cluster_name}")
     kubeconfig_yaml = generate_eks_kubeconfig(
-        cluster_name=cluster_name,
-        cluster_endpoint=cluster_endpoint,
-        cluster_ca_data=cluster_ca_data,
-        region=region
+        cluster_name=cluster_name, cluster_endpoint=cluster_endpoint, cluster_ca_data=cluster_ca_data, region=region
     )
 
     # Assert invariant — EKS kubeconfig builder must produce portable output.
     # Hard-fail on violation (kubeconfig_invariant_violation) so the bug surfaces loudly.
     try:
-        kubeconfig_yaml = normalize_kubeconfig(
-            kubeconfig_yaml, source=NormalizationSource.CLOUD_API_GENERATED
-        )
+        kubeconfig_yaml = normalize_kubeconfig(kubeconfig_yaml, source=NormalizationSource.CLOUD_API_GENERATED)
     except Exception as norm_exc:
         logger.error(
-            "kubeconfig_invariant_violation: EKS kubeconfig builder produced non-portable "
-            "output for cluster %s: %s",
-            cluster_name, norm_exc,
+            "kubeconfig_invariant_violation: EKS kubeconfig builder produced non-portable output for cluster %s: %s",
+            cluster_name,
+            norm_exc,
         )
         raise
 
@@ -218,8 +192,8 @@ def register_eks_cluster(db: Session, eks_module: ProjectModule) -> KubernetesCl
             "cluster_arn": outputs.get("cluster_arn"),
             "oidc_provider_url": outputs.get("oidc_provider_url"),
             "nodegroup_name": outputs.get("nodegroup_name"),
-            "nodegroup_status": outputs.get("nodegroup_status")
-        }
+            "nodegroup_status": outputs.get("nodegroup_status"),
+        },
     )
 
     db.add(cluster)
@@ -242,10 +216,14 @@ def unregister_eks_cluster(db: Session, eks_module: ProjectModule) -> bool:
         True if cluster was removed, False if not found
     """
     # Find cluster registered by this module
-    cluster = db.query(KubernetesCluster).filter(
-        KubernetesCluster.project_id == eks_module.project_id,
-        KubernetesCluster.meta_data.op('->>')('source_module_id') == str(eks_module.id)
-    ).first()
+    cluster = (
+        db.query(KubernetesCluster)
+        .filter(
+            KubernetesCluster.project_id == eks_module.project_id,
+            KubernetesCluster.meta_data.op("->>")("source_module_id") == str(eks_module.id),
+        )
+        .first()
+    )
 
     if cluster:
         cluster_name = cluster.name
@@ -262,6 +240,7 @@ def unregister_eks_cluster(db: Session, eks_module: ProjectModule) -> bool:
 # Credential-template-driven discovery
 # ---------------------------------------------------------------------------
 
+
 def _boto3_session_from_template(template) -> Any:
     """Build a boto3 Session from a CloudCredentialTemplate.
 
@@ -270,13 +249,17 @@ def _boto3_session_from_template(template) -> Any:
     """
     import boto3
 
-    if template.aws_auth_method == 'access_keys':
+    if template.aws_auth_method == "access_keys":
         from core.encryption import decrypt_value
 
-        secret_key = decrypt_value(template.aws_secret_access_key_encrypted) \
-            if template.aws_secret_access_key_encrypted else None
-        session_token = decrypt_value(template.aws_session_token_encrypted) \
-            if template.aws_session_token_encrypted else None
+        secret_key = (
+            decrypt_value(template.aws_secret_access_key_encrypted)
+            if template.aws_secret_access_key_encrypted
+            else None
+        )
+        session_token = (
+            decrypt_value(template.aws_session_token_encrypted) if template.aws_session_token_encrypted else None
+        )
         return boto3.Session(
             aws_access_key_id=template.aws_access_key_id,
             aws_secret_access_key=secret_key,
@@ -284,8 +267,12 @@ def _boto3_session_from_template(template) -> Any:
             region_name=template.region or None,
         )
 
-    if template.aws_auth_method == 'profile':
-        return boto3.Session(profile_name=template.aws_profile, region_name=template.region or None)
+    if template.aws_auth_method == "profile":
+        from services.credentials_service import attach_aws_cli_credential_cache
+
+        session = boto3.Session(profile_name=template.aws_profile, region_name=template.region or None)
+        attach_aws_cli_credential_cache(session)
+        return session
 
     # SSO / default session — picks up whatever the SSO flow already populated.
     return boto3.Session(region_name=template.region or None)
@@ -307,34 +294,36 @@ def list_eks_clusters_from_template(template) -> list[dict[str, Any]]:
         raise ValueError("AWS region is required to list EKS clusters")
 
     try:
-        eks = session.client('eks', region_name=region, config=adaptive_retry_config())
+        eks = session.client("eks", region_name=region, config=adaptive_retry_config())
         response = eks.list_clusters()
-        cluster_names = response.get('clusters', [])
+        cluster_names = response.get("clusters", [])
     except (ClientError, BotoCoreError) as e:
         raise RuntimeError(f"Failed to list EKS clusters in {region}: {e}") from e
 
     clusters = []
     for name in cluster_names:
         try:
-            detail = eks.describe_cluster(name=name)['cluster']
+            detail = eks.describe_cluster(name=name)["cluster"]
         except (ClientError, BotoCoreError) as e:
             logger.warning(f"Skipping EKS cluster {name}: describe_cluster failed: {e}")
             continue
 
-        endpoint = detail.get('endpoint')
-        ca_data = detail.get('certificateAuthority', {}).get('data')
+        endpoint = detail.get("endpoint")
+        ca_data = detail.get("certificateAuthority", {}).get("data")
         if not endpoint or not ca_data:
             logger.warning(f"Skipping EKS cluster {name}: missing endpoint or CA data")
             continue
 
-        clusters.append({
-            "name": name,
-            "endpoint": endpoint,
-            "certificate_authority_data": ca_data,
-            "region": region,
-            "version": detail.get('version'),
-            "arn": detail.get('arn'),
-            "account_id": detail.get('arn', '').split(":")[4] if detail.get('arn') else None,
-        })
+        clusters.append(
+            {
+                "name": name,
+                "endpoint": endpoint,
+                "certificate_authority_data": ca_data,
+                "region": region,
+                "version": detail.get("version"),
+                "arn": detail.get("arn"),
+                "account_id": detail.get("arn", "").split(":")[4] if detail.get("arn") else None,
+            }
+        )
 
     return clusters

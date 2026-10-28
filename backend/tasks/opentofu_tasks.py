@@ -128,6 +128,10 @@ def _check_aws_vpc_quota_preflight(module: ProjectModule, env: dict[str, str]) -
             session_kwargs["profile_name"] = env["AWS_PROFILE"]
 
         session = boto3.Session(**session_kwargs)
+        if "profile_name" in session_kwargs:
+            from services.credentials_service import attach_aws_cli_credential_cache
+
+            attach_aws_cli_credential_cache(session)
         boto_cfg = Config(connect_timeout=5, read_timeout=5, retries={"max_attempts": 2})
         ec2 = session.client("ec2", config=boto_cfg)
         vpcs = ec2.describe_vpcs().get("Vpcs", [])

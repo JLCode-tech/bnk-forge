@@ -126,7 +126,10 @@ def _test_aws_template_via_boto3(template: Any) -> dict[str, Any]:
                 "error": "No AWS profile configured",
                 "message": "Please configure AWS profile name in this template",
             }
+        from services.credentials_service import attach_aws_cli_credential_cache
+
         session = boto3.Session(profile_name=template.aws_profile, region_name=template.region or None)
+        attach_aws_cli_credential_cache(session)
     elif template.aws_auth_method == "sso" and template.aws_access_key_id:
         access_key = template.aws_access_key_id
         secret_key = (
