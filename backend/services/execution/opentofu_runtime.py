@@ -438,6 +438,40 @@ def _apply_known_module_hotfixes(work_dir: str, module_path: str | None) -> None
                     _eval_line + _sa_resolve_line,
                 )
 
+            # Fix 4: remap legacy 2.4.1 placeholder manifest tag (2.4.1-3.2850.1-0.0.9)
+            # to the published FAR tag (2.4.1-3.3175.0-0.0.527) and fall back via oras tags.
+            _old_pull_block = (
+                "# Download manifest from FAR\n"
+                'log "Downloading manifest from FAR..."\n'
+                'if ! helm pull "oci://repo.f5.com/release/${CHART_NAME}" --version "$MANIFEST_VERSION" >/dev/null 2>&1; then\n'
+                '    error_exit "Failed to download manifest. Ensure FAR authentication is configured: helm registry login -u _json_key_base64 --password-stdin https://repo.f5.com"\n'
+                "fi"
+            )
+            _new_pull_block = (
+                "# Normalize legacy 2.4.1 placeholder tag to the published FAR tag\n"
+                'if [ "$MANIFEST_VERSION" = "2.4.1-3.2850.1-0.0.9" ]; then\n'
+                '    log "Remapping legacy 2.4.1 manifest tag $MANIFEST_VERSION -> 2.4.1-3.3175.0-0.0.527"\n'
+                '    MANIFEST_VERSION="2.4.1-3.3175.0-0.0.527"\n'
+                "fi\n\n"
+                "# Download manifest from FAR\n"
+                'log "Downloading manifest from FAR..."\n'
+                'if ! helm pull "oci://repo.f5.com/release/${CHART_NAME}" --version "$MANIFEST_VERSION" >/dev/null 2>&1; then\n'
+                '    BASE_VER="${MANIFEST_VERSION%%-*}"\n'
+                '    FALLBACK_TAG=""\n'
+                '    if command -v oras >/dev/null 2>&1 && [ -f "${HOME}/.config/helm/registry/config.json" ]; then\n'
+                '        FALLBACK_TAG=$(oras repo tags --registry-config "${HOME}/.config/helm/registry/config.json" "repo.f5.com/release/${CHART_NAME}" 2>/dev/null | grep -E "^${BASE_VER}-" | tail -n1 || true)\n'
+                "    fi\n"
+                '    if [ -n "$FALLBACK_TAG" ] && helm pull "oci://repo.f5.com/release/${CHART_NAME}" --version "$FALLBACK_TAG" >/dev/null 2>&1; then\n'
+                '        log "Resolved manifest version $MANIFEST_VERSION -> $FALLBACK_TAG from FAR tags"\n'
+                '        MANIFEST_VERSION="$FALLBACK_TAG"\n'
+                "    else\n"
+                '        error_exit "Failed to download manifest. Ensure FAR authentication is configured: helm registry login -u _json_key_base64 --password-stdin https://repo.f5.com"\n'
+                "    fi\n"
+                "fi"
+            )
+            if _old_pull_block in updated_script_content and "2.4.1-3.3175.0-0.0.527" not in updated_script_content:
+                updated_script_content = updated_script_content.replace(_old_pull_block, _new_pull_block)
+
             if updated_script_content != script_content:
                 Path(download_manifest_script).write_text(updated_script_content, encoding="utf-8")
                 logger.info(
@@ -445,6 +479,17 @@ def _apply_known_module_hotfixes(work_dir: str, module_path: str | None) -> None
                     normalized_module_path,
                     download_manifest_script,
                 )
+
+        outputs_tf_prereq = os.path.join(work_dir, "outputs.tf")
+        if os.path.exists(outputs_tf_prereq):
+            out_content = Path(outputs_tf_prereq).read_text(encoding="utf-8")
+            out_updated = out_content.replace(
+                'output "manifest_version" {\n  description = "BNK manifest version used"\n  value       = var.bnk_manifest_version\n}',
+                'output "manifest_version" {\n  description = "BNK manifest version used"\n  value       = lookup(data.external.manifest_download.result, "manifest_version", var.bnk_manifest_version)\n}',
+            )
+            if out_updated != out_content:
+                Path(outputs_tf_prereq).write_text(out_updated, encoding="utf-8")
+                logger.info("Applied outputs.tf hotfix for %s in %s", normalized_module_path, outputs_tf_prereq)
 
     if normalized_module_path.endswith(
         (
