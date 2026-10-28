@@ -1095,3 +1095,40 @@ class TestCheckAwsVpcQuotaPreflight:
         patched_main = main_tf.read_text()
         assert 'var.aws_access_key_id != "" ? var.aws_access_key_id : null' in patched_main
         assert 'var.aws_secret_access_key != "" ? var.aws_secret_access_key : null' in patched_main
+
+    def test_apply_known_module_hotfixes_normalizes_bnk_241_manifest_version(self, tmp_path):
+        from services.execution.opentofu_runtime import _apply_known_module_hotfixes
+
+        ws = tmp_path / "eks-cluster-install-bnk-prereqs"
+        scripts_dir = ws / "scripts"
+        scripts_dir.mkdir(parents=True)
+        dl_script = scripts_dir / "download-manifest.sh"
+        dl_script.write_text(
+            "#!/usr/bin/env bash\n"
+            "# Download manifest from FAR\n"
+            'log "Downloading manifest from FAR..."\n'
+            'if ! helm pull "oci://repo.f5.com/release/${CHART_NAME}" --version "$MANIFEST_VERSION" >/dev/null 2>&1; then\n'
+            '    error_exit "Failed to download manifest. Ensure FAR authentication is configured: helm registry login -u _json_key_base64 --password-stdin https://repo.f5.com"\n'
+            "fi\n"
+        )
+        outputs_tf = ws / "outputs.tf"
+        outputs_tf.write_text(
+            'output "manifest_version" {\n'
+            '  description = "BNK manifest version used"\n'
+            "  value       = var.bnk_manifest_version\n"
+            "}\n"
+        )
+
+        _apply_known_module_hotfixes(str(ws), "modules/eks-cluster-install-bnk-prereqs")
+
+        patched_script = dl_script.read_text()
+        assert 'MANIFEST_VERSION="2.4.1-3.3175.0-0.0.527"' in patched_script
+        assert 'if [[ "$MANIFEST_VERSION" == 2.4.1-* ]]; then' in patched_script
+        assert 'MANIFEST_VERSION="2.4.1"' in patched_script
+
+        patched_outputs = outputs_tf.read_text()
+        assert (
+            'startswith(lookup(data.external.manifest_download.result, "manifest_version", var.bnk_manifest_version), "2.4.1-")'
+            in patched_outputs
+        )
+        assert '? "2.4.1"' in patched_outputs

@@ -448,9 +448,9 @@ def _apply_known_module_hotfixes(work_dir: str, module_path: str | None) -> None
                 "fi"
             )
             _new_pull_block = (
-                "# Normalize legacy 2.4.1 placeholder tag to the published FAR tag\n"
-                'if [ "$MANIFEST_VERSION" = "2.4.1-3.2850.1-0.0.9" ]; then\n'
-                '    log "Remapping legacy 2.4.1 manifest tag $MANIFEST_VERSION -> 2.4.1-3.3175.0-0.0.527"\n'
+                "# Resolve legacy or short 2.4.1 tags to the published FAR chart tag before helm pull\n"
+                'if [ "$MANIFEST_VERSION" = "2.4.1-3.2850.1-0.0.9" ] || [ "$MANIFEST_VERSION" = "2.4.1" ]; then\n'
+                '    log "Remapping 2.4.1 manifest tag $MANIFEST_VERSION -> 2.4.1-3.3175.0-0.0.527 for FAR pull"\n'
                 '    MANIFEST_VERSION="2.4.1-3.3175.0-0.0.527"\n'
                 "fi\n\n"
                 "# Download manifest from FAR\n"
@@ -467,6 +467,11 @@ def _apply_known_module_hotfixes(work_dir: str, module_path: str | None) -> None
                 "    else\n"
                 '        error_exit "Failed to download manifest. Ensure FAR authentication is configured: helm registry login -u _json_key_base64 --password-stdin https://repo.f5.com"\n'
                 "    fi\n"
+                "fi\n\n"
+                "# Normalize 2.4.1-* build tags to 2.4.1 after chart download for FLO consumption\n"
+                'if [[ "$MANIFEST_VERSION" == 2.4.1-* ]]; then\n'
+                '    log "Normalizing 2.4.1 manifest tag $MANIFEST_VERSION -> 2.4.1 for downstream FLO consumption"\n'
+                '    MANIFEST_VERSION="2.4.1"\n'
                 "fi"
             )
             if _old_pull_block in updated_script_content and "2.4.1-3.3175.0-0.0.527" not in updated_script_content:
@@ -483,9 +488,22 @@ def _apply_known_module_hotfixes(work_dir: str, module_path: str | None) -> None
         outputs_tf_prereq = os.path.join(work_dir, "outputs.tf")
         if os.path.exists(outputs_tf_prereq):
             out_content = Path(outputs_tf_prereq).read_text(encoding="utf-8")
+            _normalized_manifest_output = (
+                'output "manifest_version" {\n'
+                '  description = "BNK manifest version used"\n'
+                "  value = (\n"
+                '    startswith(lookup(data.external.manifest_download.result, "manifest_version", var.bnk_manifest_version), "2.4.1-")\n'
+                '    ? "2.4.1"\n'
+                '    : lookup(data.external.manifest_download.result, "manifest_version", var.bnk_manifest_version)\n'
+                "  )\n"
+                "}"
+            )
             out_updated = out_content.replace(
                 'output "manifest_version" {\n  description = "BNK manifest version used"\n  value       = var.bnk_manifest_version\n}',
+                _normalized_manifest_output,
+            ).replace(
                 'output "manifest_version" {\n  description = "BNK manifest version used"\n  value       = lookup(data.external.manifest_download.result, "manifest_version", var.bnk_manifest_version)\n}',
+                _normalized_manifest_output,
             )
             if out_updated != out_content:
                 Path(outputs_tf_prereq).write_text(out_updated, encoding="utf-8")
