@@ -99,9 +99,7 @@ def _pick_bnk_external_vip(db: Session, cluster) -> str | None:
     # while DNS propagates; default urllib3 retries (~150s × 3) used to add ~10
     # minutes to every dependent module's init. (connect_timeout, read_timeout)
     try:
-        api.api_client.rest_client.pool_manager.connection_pool_kw[
-            "retries"
-        ] = 0
+        api.api_client.rest_client.pool_manager.connection_pool_kw["retries"] = 0
     except Exception:  # noqa: BLE001
         pass
 
@@ -174,9 +172,7 @@ def _inject_cluster_kubeconfig(
     placeholder values like ``"<username>"``).
     """
     _module_schema = (lib_module.variables_schema or []) if lib_module else []
-    _wants_kubeconfig = any(
-        isinstance(v, dict) and v.get("name") == "kubeconfig_content" for v in _module_schema
-    )
+    _wants_kubeconfig = any(isinstance(v, dict) and v.get("name") == "kubeconfig_content" for v in _module_schema)
     if not _wants_kubeconfig:
         return
     if variables.get("kubeconfig_content"):
@@ -211,11 +207,7 @@ def _inject_project_ssh_credential_variables(
         return
 
     schema = lib_module.variables_schema or []
-    declared_names = {
-        str(v.get("name"))
-        for v in schema
-        if isinstance(v, dict) and v.get("name")
-    }
+    declared_names = {str(v.get("name")) for v in schema if isinstance(v, dict) and v.get("name")}
 
     wanted = {"ssh_host", "ssh_user", "ssh_private_key_path"}
     needed = wanted.intersection(declared_names)
@@ -278,11 +270,7 @@ def _inject_rendered_bf_conf(
     # Check project DPU settings first.  When no settings exist (or no template
     # is configured), the DPU tab was never set up — the minimal bf.cfg fallback
     # is intentional.  Returning here is the ONLY silent path.
-    settings = (
-        db.query(ProjectDpuSettings)
-        .filter(ProjectDpuSettings.project_id == module.project_id)
-        .first()
-    )
+    settings = db.query(ProjectDpuSettings).filter(ProjectDpuSettings.project_id == module.project_id).first()
     if settings is None or settings.bf_template_id is None:
         logger.debug("No DPU settings or bf.conf template for project %s — skipping render", module.project_id)
         return
@@ -320,7 +308,10 @@ def _inject_rendered_bf_conf(
         logger.debug(
             "No Dpu row for host '%s' (ip=%s, pci_bus=%s, project=%s) — "
             "skipping bf.conf render, minimal bf.cfg fallback applies",
-            host.name, host.host_ip, deploy_pci_bus or "<any>", module.project_id,
+            host.name,
+            host.host_ip,
+            deploy_pci_bus or "<any>",
+            module.project_id,
         )
         return
 
@@ -351,9 +342,7 @@ def _inject_rendered_bf_conf(
     # Resolve SSH credential for authorized_keys injection
     ssh_cred: SSHCredential | None = None
     if settings.default_os_ssh_credential_id is not None:
-        ssh_cred = db.query(SSHCredential).filter(
-            SSHCredential.id == settings.default_os_ssh_credential_id
-        ).first()
+        ssh_cred = db.query(SSHCredential).filter(SSHCredential.id == settings.default_os_ssh_credential_id).first()
 
     from services.bf_conf_renderer import build_render_context, render_bf_conf
 
@@ -379,21 +368,21 @@ def _inject_rendered_bf_conf(
     # render the symmetric host-side netplan: matching VLAN sub-interfaces
     # on the host's LAG PF, IPs derived from the DPU's subnet + host's
     # mgmt-IP last octet.
-    variables["dpu_vlans"] = [
-        {"name": v.name, "tag": v.tag, "uplink": v.uplink, "ip": v.ip}
-        for v in ctx.host.vlans
-    ]
+    variables["dpu_vlans"] = [{"name": v.name, "tag": v.tag, "uplink": v.uplink, "ip": v.ip} for v in ctx.host.vlans]
     variables["dpu_mtu"] = ctx.dpu_mtu
 
     logger.info(
         "Injected rendered bf.conf (%d chars) + %d VLAN entries for host %s",
-        len(rendered), len(ctx.host.vlans), host.name,
+        len(rendered),
+        len(ctx.host.vlans),
+        host.name,
     )
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def build_variables(
     db: Session,
@@ -434,9 +423,11 @@ def build_variables(
 
     # Validate region alignment with credential template
     if project.credential_template_id:
-        template = db.query(CloudCredentialTemplate).filter(
-            CloudCredentialTemplate.id == project.credential_template_id
-        ).first()
+        template = (
+            db.query(CloudCredentialTemplate)
+            .filter(CloudCredentialTemplate.id == project.credential_template_id)
+            .first()
+        )
 
         if template and project.cloud_provider == "aws" and template.region != project.region:
             logger.warning(
@@ -495,10 +486,12 @@ def build_variables(
 
         # Add aws_profile if credential template uses profile auth
         if project.credential_template_id:
-            template = db.query(CloudCredentialTemplate).filter(
-                CloudCredentialTemplate.id == project.credential_template_id
-            ).first()
-            if template and template.aws_auth_method == 'profile' and template.aws_profile:
+            template = (
+                db.query(CloudCredentialTemplate)
+                .filter(CloudCredentialTemplate.id == project.credential_template_id)
+                .first()
+            )
+            if template and template.aws_auth_method == "profile" and template.aws_profile:
                 variables["aws_profile"] = template.aws_profile
             else:
                 variables["aws_profile"] = "default"
@@ -510,9 +503,11 @@ def build_variables(
         variables["ibm_region"] = project.region
 
         if project.credential_template_id:
-            template = db.query(CloudCredentialTemplate).filter(
-                CloudCredentialTemplate.id == project.credential_template_id
-            ).first()
+            template = (
+                db.query(CloudCredentialTemplate)
+                .filter(CloudCredentialTemplate.id == project.credential_template_id)
+                .first()
+            )
             if template and template.ibmcloud_resource_group:
                 variables["ibmcloud_resource_group"] = template.ibmcloud_resource_group
 
@@ -655,9 +650,7 @@ def _resolve_bmc_credentials(db: Session, host) -> tuple[str, str]:
     # 2. Project DPU settings defaults
     from models.dpu import ProjectDpuSettings
 
-    settings = db.query(ProjectDpuSettings).filter(
-        ProjectDpuSettings.project_id == host.project_id
-    ).first()
+    settings = db.query(ProjectDpuSettings).filter(ProjectDpuSettings.project_id == host.project_id).first()
     if settings:
         if not bmc_user and settings.default_oob_username:
             bmc_user = settings.default_oob_username
@@ -707,6 +700,7 @@ def build_variables_for_ssh(
             host_id = (module.variables or {}).get("bare_metal_host_id")
         if host_id:
             from models.bare_metal import BareMetalHost
+
             host = db.query(BareMetalHost).filter(BareMetalHost.id == int(host_id)).first()
 
     if host is None:
@@ -761,6 +755,7 @@ def build_variables_for_ssh(
     # These are in-memory only — never logged, stored in DB, or returned to the UI.
     if host.dpu_credential and "dpu_username" not in variables:
         from services.ssh.paramiko_utils import decrypt_ssh_credential
+
         try:
             dpu_cred = decrypt_ssh_credential(host.dpu_credential)
             if dpu_cred.get("username"):
@@ -789,6 +784,7 @@ def build_variables_for_ssh(
 # Dependency checking
 # ---------------------------------------------------------------------------
 
+
 def can_execute(db: Session, module) -> tuple[bool, list[str]]:
     """
     Check if module can be executed (all dependencies satisfied).
@@ -812,11 +808,13 @@ def can_execute(db: Session, module) -> tuple[bool, list[str]]:
 
     # Single query with eager loading to avoid N+1 problem
     from models import ModuleLibrary
+
     deps = (
         db.query(ProjectModule)
         .options(
             joinedload(ProjectModule.library_module).load_only(
-                ModuleLibrary.id, ModuleLibrary.name,
+                ModuleLibrary.id,
+                ModuleLibrary.name,
             )
         )
         .filter(ProjectModule.id.in_(module.dependencies))
@@ -843,6 +841,7 @@ def can_execute(db: Session, module) -> tuple[bool, list[str]]:
 # ---------------------------------------------------------------------------
 # Dependency resolution
 # ---------------------------------------------------------------------------
+
 
 def apply_dependency_output_wiring(
     db: Session,
@@ -921,8 +920,7 @@ def apply_dependency_output_wiring(
                     # any module at all — if the dep exists but has no outputs yet, we
                     # let the error path below raise instead of wiring from an unrelated module.
                     fallback_value = (
-                        _resolve_from_dependency_outputs(db, module, from_output)
-                        if dep_module is None else None
+                        _resolve_from_dependency_outputs(db, module, from_output) if dep_module is None else None
                     )
                     if fallback_value is not None:
                         if input_name not in variables:
@@ -933,9 +931,7 @@ def apply_dependency_output_wiring(
                                 f"(hint '{from_module_path}' did not match)"
                             )
                         else:
-                            logger.info(
-                                f"Layer-3 fallback skipped for {input_name}: already resolved earlier"
-                            )
+                            logger.info(f"Layer-3 fallback skipped for {input_name}: already resolved earlier")
                     else:
                         # BUG-009: Fail if required dependency module is missing
                         # But during destroy, skip — deps may already be torn down.
@@ -960,7 +956,7 @@ def apply_dependency_output_wiring(
                             logger.warning(
                                 f"{'[destroy-lenient] ' if operation == 'destroy' else ''}"
                                 f"Optional dependency {from_module_path} not found or has no outputs"
-                        )
+                            )
 
     return variables
 
@@ -1028,7 +1024,8 @@ def find_dependency_by_path(
         .join(ProjectModule.library_module)
         .options(
             joinedload(ProjectModule.library_module).load_only(
-                ModuleLibrary.id, ModuleLibrary.path,
+                ModuleLibrary.id,
+                ModuleLibrary.path,
             )
         )
         .filter(ProjectModule.project_id == project_id)
@@ -1060,10 +1057,14 @@ def find_dependency_by_path(
                 continue
             seen_ids.add(pm.id)
             if _suffix_or_normalized_match(pm):
-                match_type = "suffix" if (
-                    (pm.library_module.path if pm.library_module else "").endswith("/" + module_path)
-                    or module_path.endswith("/" + (pm.library_module.path if pm.library_module else ""))
-                ) else "normalized path"
+                match_type = (
+                    "suffix"
+                    if (
+                        (pm.library_module.path if pm.library_module else "").endswith("/" + module_path)
+                        or module_path.endswith("/" + (pm.library_module.path if pm.library_module else ""))
+                    )
+                    else "normalized path"
+                )
                 logger.info(
                     f"Matched dependency by {match_type}: {module_path} -> "
                     f"{pm.library_module.path if pm.library_module else ''}"
@@ -1100,11 +1101,7 @@ def _resolve_from_dependency_outputs(db: Session, module, output_name: str) -> A
 
     # ── Search declared dependencies first ───────────────────────────────────
     if dep_ids:
-        deps = (
-            db.query(ProjectModule)
-            .filter(ProjectModule.id.in_(dep_ids))
-            .all()
-        )
+        deps = db.query(ProjectModule).filter(ProjectModule.id.in_(dep_ids)).all()
         # Prefer same-stack dep, then any dep
         same_stack = [d for d in deps if d.stack_instance_id == stack_id and d.outputs]
         any_dep = [d for d in deps if d.outputs]
@@ -1113,10 +1110,7 @@ def _resolve_from_dependency_outputs(db: Session, module, output_name: str) -> A
                 value = dep.outputs.get(output_name)
                 if value is not None:
                     dep_path = dep.library_module.path if dep.library_module else f"id:{dep.id}"
-                    logger.debug(
-                        f"_resolve_from_dependency_outputs: found '{output_name}' "
-                        f"in declared dep {dep_path}"
-                    )
+                    logger.debug(f"_resolve_from_dependency_outputs: found '{output_name}' in declared dep {dep_path}")
                     return value
 
     # ── Fallback: project-wide applied modules ────────────────────────────────
@@ -1132,14 +1126,11 @@ def _resolve_from_dependency_outputs(db: Session, module, output_name: str) -> A
         value = providers[0].outputs[output_name]
         dep_path = providers[0].library_module.path if providers[0].library_module else f"id:{providers[0].id}"
         logger.info(
-            f"_resolve_from_dependency_outputs: unambiguous project-wide match for "
-            f"'{output_name}' from {dep_path}"
+            f"_resolve_from_dependency_outputs: unambiguous project-wide match for '{output_name}' from {dep_path}"
         )
         return value
     if len(providers) > 1:
-        paths = [
-            (m.library_module.path if m.library_module else f"id:{m.id}") for m in providers
-        ]
+        paths = [(m.library_module.path if m.library_module else f"id:{m.id}") for m in providers]
         logger.warning(
             f"_resolve_from_dependency_outputs: ambiguous — multiple modules produce "
             f"'{output_name}': {paths}. Skipping fallback to avoid mis-wiring."
@@ -1150,6 +1141,7 @@ def _resolve_from_dependency_outputs(db: Session, module, output_name: str) -> A
 # ---------------------------------------------------------------------------
 # Auto-wiring
 # ---------------------------------------------------------------------------
+
 
 def auto_wire_common_variables(db: Session, module, variables: dict[str, Any]) -> None:
     """
@@ -1170,7 +1162,9 @@ def auto_wire_common_variables(db: Session, module, variables: dict[str, Any]) -
         db.query(ProjectModule)
         .options(
             joinedload(ProjectModule.library_module).load_only(
-                ModuleLibrary.id, ModuleLibrary.name, ModuleLibrary.path,
+                ModuleLibrary.id,
+                ModuleLibrary.name,
+                ModuleLibrary.path,
                 ModuleLibrary.inputs_metadata,
             )
         )
@@ -1235,9 +1229,7 @@ def auto_wire_common_variables(db: Session, module, variables: dict[str, Any]) -
             second_rank = _candidate_priority(second)
             if selected_rank < second_rank:
                 selected_reason = (
-                    "same-stack precedence"
-                    if selected_is_same_stack
-                    else "declared dependency precedence"
+                    "same-stack precedence" if selected_is_same_stack else "declared dependency precedence"
                 )
                 logger.info(
                     f"Auto-wire conflict for '{output_name}': preferring '{selected_source}' "
@@ -1255,41 +1247,49 @@ def auto_wire_common_variables(db: Session, module, variables: dict[str, Any]) -
     # AUTO-WIRE: For any variable not yet set, check if a matching output exists.
     # Some output names are too generic and cause cross-contamination between
     # modules with different namespace/release requirements. Skip those.
-    _AUTO_WIRE_SKIP = {"namespace", "release_name", "name"}
+    # Also skip cert_manager_version: bnk-prerequisites outputs the F5-internal
+    # f5-cert-manager chart version (e.g. 0.27.9-0.0.5), which must not overwrite
+    # Jetstack cert-manager's chart version default (e.g. v1.16.2).
+    _AUTO_WIRE_SKIP = {"namespace", "release_name", "name", "cert_manager_version"}
     for output_name, (output_value, source_path, _is_dep) in available_outputs.items():
         if output_name in _AUTO_WIRE_SKIP:
             continue
         if variables.get(output_name):
             continue
         variables[output_name] = output_value
-        log_value = str(output_value)[:50] + '...' if isinstance(output_value, str) and len(str(output_value)) > 50 else output_value
+        log_value = (
+            str(output_value)[:50] + "..."
+            if isinstance(output_value, str) and len(str(output_value)) > 50
+            else output_value
+        )
         logger.info(f"Auto-wired {output_name}='{log_value}' from {source_path}")
 
     # Auto-wire project-level variables
     project = db.query(Project).filter(Project.id == module.project_id).first()
     if project:
-        if not variables.get('project_name'):
-            variables['project_name'] = project.name
+        if not variables.get("project_name"):
+            variables["project_name"] = project.name
             logger.info(f"Auto-wired project_name='{project.name}' from project")
-        if not variables.get('project_name_aws_safe'):
-            variables['project_name_aws_safe'] = slugify_aws_name(project.name)
-        if not variables.get('project_name_s3_safe'):
-            variables['project_name_s3_safe'] = slugify_s3_name(project.name)
-        if not variables.get('project_name_gcp_safe'):
-            variables['project_name_gcp_safe'] = slugify_gcp_name(project.name)
+        if not variables.get("project_name_aws_safe"):
+            variables["project_name_aws_safe"] = slugify_aws_name(project.name)
+        if not variables.get("project_name_s3_safe"):
+            variables["project_name_s3_safe"] = slugify_s3_name(project.name)
+        if not variables.get("project_name_gcp_safe"):
+            variables["project_name_gcp_safe"] = slugify_gcp_name(project.name)
         # Only auto-wire AWS region for AWS projects
         if project.cloud_provider == "aws" and project.region:
-            if not variables.get('region'):
-                variables['region'] = project.region
+            if not variables.get("region"):
+                variables["region"] = project.region
                 logger.info(f"Auto-wired region='{project.region}' from project")
-            if not variables.get('aws_region'):
-                variables['aws_region'] = project.region
+            if not variables.get("aws_region"):
+                variables["aws_region"] = project.region
                 logger.info(f"Auto-wired aws_region='{project.region}' from project")
 
 
 # ---------------------------------------------------------------------------
 # Variable mappings & transformations
 # ---------------------------------------------------------------------------
+
 
 def _looks_like_jwt(value: str) -> bool:
     """
@@ -1357,8 +1357,10 @@ def _get_raw_encoding_vars(module) -> set:
     # module.json-based modules (catalog source of truth)
     lib_module = module.library_module
     if lib_module and lib_module.inputs_metadata:
-        for inp_list in (lib_module.inputs_metadata.get("required", []),
-                         lib_module.inputs_metadata.get("optional", [])):
+        for inp_list in (
+            lib_module.inputs_metadata.get("required", []),
+            lib_module.inputs_metadata.get("optional", []),
+        ):
             for inp in inp_list:
                 if inp.get("encoding") == "raw":
                     raw_vars.add(inp.get("name", ""))
@@ -1384,10 +1386,14 @@ def apply_variable_mappings(db: Session, module, variables: dict[str, Any]) -> d
     """
     from models import VariableMapping
 
-    mappings = db.query(VariableMapping).filter(
-        VariableMapping.project_module_id == module.id,
-        VariableMapping.is_active,
-    ).all()
+    mappings = (
+        db.query(VariableMapping)
+        .filter(
+            VariableMapping.project_module_id == module.id,
+            VariableMapping.is_active,
+        )
+        .all()
+    )
 
     if not mappings:
         return variables
@@ -1478,6 +1484,7 @@ def build_variables_for_tmos(
         if device_id:
             try:
                 from models.f5_device import F5BIGIPDevice
+
                 device = db.query(F5BIGIPDevice).filter(F5BIGIPDevice.id == int(device_id)).first()
             except Exception as exc:
                 logger.warning("Could not resolve F5BIGIPDevice for module %s: %s", module.id, exc)
@@ -1520,12 +1527,14 @@ def render_as3(template: str | dict, variables: dict[str, Any]) -> dict:
 
     def _substitute(text: str, vars_: dict[str, Any]) -> str:
         """Simple {{variable}} substitution for Mustache-style templates."""
+
         def _replace(match: re.Match) -> str:
             key = match.group(1).strip()
             value = vars_.get(key)
             if value is None:
                 return match.group(0)  # Leave unresolved placeholders in place
             return str(value)
+
         return re.sub(r"\{\{([^}]+)\}\}", _replace, text)
 
     try:
@@ -1551,9 +1560,7 @@ def render_as3(template: str | dict, variables: dict[str, Any]) -> dict:
             try:
                 return _json.loads(rendered_str)
             except _json.JSONDecodeError as exc:
-                raise ValueError(
-                    f"AS3 template rendered to invalid JSON: {exc}"
-                ) from exc
+                raise ValueError(f"AS3 template rendered to invalid JSON: {exc}") from exc
 
         raise ValueError(f"render_as3: unsupported template type {type(template).__name__}")
 

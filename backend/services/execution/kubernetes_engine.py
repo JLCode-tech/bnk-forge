@@ -183,9 +183,7 @@ class KubernetesEngine(DeploymentEngine):
                 ns = manifest["metadata"].get("namespace", "default")
 
                 try:
-                    actual_list = loop.run_until_complete(
-                        _collect_resources(api, kind, name, ns)
-                    )
+                    actual_list = loop.run_until_complete(_collect_resources(api, kind, name, ns))
                     # kr8s returns a list; if empty, resource doesn't exist
                     if not actual_list:
                         adds += 1
@@ -307,9 +305,11 @@ class KubernetesEngine(DeploymentEngine):
         validate_cli_arg("namespace", module_def.namespace)
 
         cmd = [
-            "helm", "status",
+            "helm",
+            "status",
             module_def.release_name,
-            "--namespace", module_def.namespace,
+            "--namespace",
+            module_def.namespace,
         ] + self._conn_args(for_helm=True)
 
         proc_env = {**os.environ, **(ctx.credentials_env or {})}
@@ -345,7 +345,11 @@ class KubernetesEngine(DeploymentEngine):
         # OCI registry login (F5 charts require authentication)
         if module_def.chart_ref.startswith("oci://"):
             registry_host = module_def.chart_ref.replace("oci://", "").split("/")[0]
-            self._helm_registry_login(registry_host, values, proc_env, on_output)
+            login_vars = {
+                **(ctx.variables if isinstance(ctx.variables, dict) else {}),
+                **(values if isinstance(values, dict) else {}),
+            }
+            self._helm_registry_login(registry_host, login_vars, proc_env, on_output)
 
         # Add any required repos
         for repo_name, repo_url in module_def.helm_repos.items():
@@ -363,13 +367,18 @@ class KubernetesEngine(DeploymentEngine):
         validate_cli_arg("chart_version", module_def.chart_version)
 
         cmd = [
-            "helm", "upgrade", "--install",
+            "helm",
+            "upgrade",
+            "--install",
             module_def.release_name,
             module_def.chart_ref,
-            "--namespace", module_def.namespace,
-            "--values", values_path,
+            "--namespace",
+            module_def.namespace,
+            "--values",
+            values_path,
             "--wait",
-            "--timeout", f"{module_def.timeout}s",
+            "--timeout",
+            f"{module_def.timeout}s",
         ] + self._conn_args(for_helm=True)
 
         if module_def.create_namespace:
@@ -386,7 +395,9 @@ class KubernetesEngine(DeploymentEngine):
                 on_output(f"  Version: {module_def.chart_version}")
 
         result = subprocess.run(
-            cmd, capture_output=True, text=True,
+            cmd,
+            capture_output=True,
+            text=True,
             timeout=module_def.timeout + 60,
             env=proc_env,
         )
@@ -394,8 +405,7 @@ class KubernetesEngine(DeploymentEngine):
         if result.returncode != 0:
             stderr_lower = (result.stderr or "").lower()
             has_crd_ownership_error = (
-                "invalid ownership metadata" in stderr_lower
-                or "release-namespace" in stderr_lower
+                "invalid ownership metadata" in stderr_lower or "release-namespace" in stderr_lower
             )
 
             if has_crd_ownership_error:
@@ -408,13 +418,12 @@ class KubernetesEngine(DeploymentEngine):
                 )
                 if adopted_crds:
                     if on_output:
-                        on_output(
-                            "Retrying Helm install after CRD adoption: "
-                            f"{', '.join(adopted_crds)}"
-                        )
+                        on_output(f"Retrying Helm install after CRD adoption: {', '.join(adopted_crds)}")
 
                     retry_result = subprocess.run(
-                        cmd, capture_output=True, text=True,
+                        cmd,
+                        capture_output=True,
+                        text=True,
                         timeout=module_def.timeout + 60,
                         env=proc_env,
                     )
@@ -473,17 +482,22 @@ class KubernetesEngine(DeploymentEngine):
             on_output(f"Uninstalling Helm release: {module_def.release_name}")
 
         cmd = [
-            "helm", "uninstall",
+            "helm",
+            "uninstall",
             module_def.release_name,
-            "--namespace", module_def.namespace,
+            "--namespace",
+            module_def.namespace,
             "--wait",
-            "--timeout", f"{module_def.timeout}s",
+            "--timeout",
+            f"{module_def.timeout}s",
         ] + self._conn_args(for_helm=True)
 
         proc_env = {**os.environ, **(ctx.credentials_env or {})}
 
         result = subprocess.run(
-            cmd, capture_output=True, text=True,
+            cmd,
+            capture_output=True,
+            text=True,
             timeout=module_def.timeout + 60,
             env=proc_env,
         )
@@ -637,9 +651,7 @@ class KubernetesEngine(DeploymentEngine):
         manifests = None
         for _attempt in range(10):
             try:
-                manifests = module_def.get_destroy_order(
-                    module_def.render_manifests(render_vars)
-                )
+                manifests = module_def.get_destroy_order(module_def.render_manifests(render_vars))
                 break
             except KeyError as e:
                 missing_key = e.args[0] if e.args else str(e)
@@ -744,39 +756,94 @@ class KubernetesEngine(DeploymentEngine):
                         if ":" in auth_decoded:
                             username, password = auth_decoded.split(":", 1)
                             cmd = [
-                                "helm", "registry", "login", registry_host,
-                                "--username", username, "--password-stdin",
+                                "helm",
+                                "registry",
+                                "login",
+                                registry_host,
+                                "--username",
+                                username,
+                                "--password-stdin",
                             ]
                             result = subprocess.run(
-                                cmd, input=password, capture_output=True,
-                                text=True, timeout=30, env=proc_env,
+                                cmd,
+                                input=password,
+                                capture_output=True,
+                                text=True,
+                                timeout=30,
+                                env=proc_env,
                             )
                             if result.returncode == 0:
                                 if on_output:
                                     on_output(f"  ✓ Authenticated to OCI registry {registry_host}")
                                 return
                             else:
-                                logger.warning(
-                                    f"OCI registry login to {registry_host} failed: {result.stderr}"
-                                )
+                                logger.warning(f"OCI registry login to {registry_host} failed: {result.stderr}")
                                 return
 
-            # No matching host found in auths — try using the raw secret as password
-            logger.warning(
-                f"No auth entry for {registry_host} in cne_pull_secret Docker config. "
-                f"Available hosts: {list(auths.keys())}"
-            )
+            # Format A: base64-encoded GCP service account JSON key ({"type": "service_account", ...})
+            if (
+                not auths
+                and isinstance(config, dict)
+                and (config.get("type") == "service_account" or "private_key" in config)
+            ):
+                if registry_host in {"quay.io", "ghcr.io", "registry.k8s.io", "docker.io", "registry-1.docker.io"}:
+                    return
+                for username, password in (
+                    ("_json_key", decoded),
+                    ("_json_key_base64", cne_pull_secret.strip()),
+                ):
+                    cmd = [
+                        "helm",
+                        "registry",
+                        "login",
+                        registry_host,
+                        "--username",
+                        username,
+                        "--password-stdin",
+                    ]
+                    result = subprocess.run(
+                        cmd,
+                        input=password,
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                        env=proc_env,
+                    )
+                    if result.returncode == 0:
+                        if on_output:
+                            on_output(f"  ✓ Authenticated to OCI registry {registry_host}")
+                        return
+                logger.warning(f"OCI registry login to {registry_host} failed: {result.stderr}")
+                return
+
+            # No matching host found in auths — warn only for non-public registries
+            if registry_host not in {"quay.io", "ghcr.io", "registry.k8s.io", "docker.io", "registry-1.docker.io"}:
+                logger.warning(
+                    f"No auth entry for {registry_host} in cne_pull_secret Docker config. "
+                    f"Available hosts: {list(auths.keys())}"
+                )
 
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            if registry_host in {"quay.io", "ghcr.io", "registry.k8s.io", "docker.io", "registry-1.docker.io"}:
+                return
             # Not a Docker config JSON — try raw value as password (legacy format)
             logger.debug(f"cne_pull_secret is not Docker config JSON ({e}), trying as raw password")
             cmd = [
-                "helm", "registry", "login", registry_host,
-                "--username", "_json_key", "--password-stdin",
+                "helm",
+                "registry",
+                "login",
+                registry_host,
+                "--username",
+                "_json_key",
+                "--password-stdin",
             ]
             result = subprocess.run(
-                cmd, input=cne_pull_secret, capture_output=True,
-                text=True, timeout=30, env=proc_env,
+                cmd,
+                input=cne_pull_secret,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                env=proc_env,
             )
             if result.returncode == 0:
                 if on_output:
@@ -804,8 +871,11 @@ class KubernetesEngine(DeploymentEngine):
 
         try:
             list_cmd = [
-                "kubectl", "get", "crd",
-                "-o", "json",
+                "kubectl",
+                "get",
+                "crd",
+                "-o",
+                "json",
             ] + self._conn_args(kubeconfig_path)
             result = subprocess.run(
                 list_cmd,
@@ -841,13 +911,13 @@ class KubernetesEngine(DeploymentEngine):
                     continue
 
                 if on_output:
-                    on_output(
-                        f"  Adopting CRD {crd_name}: "
-                        f"release-namespace {current_namespace!r} -> {namespace!r}"
-                    )
+                    on_output(f"  Adopting CRD {crd_name}: release-namespace {current_namespace!r} -> {namespace!r}")
 
                 annotate_cmd = [
-                    "kubectl", "annotate", "crd", crd_name,
+                    "kubectl",
+                    "annotate",
+                    "crd",
+                    crd_name,
                     f"meta.helm.sh/release-name={release_name}",
                     f"meta.helm.sh/release-namespace={namespace}",
                     "--overwrite",
@@ -860,16 +930,17 @@ class KubernetesEngine(DeploymentEngine):
                     env=proc_env,
                 )
                 if annotate_result.returncode != 0:
-                    logger.warning(
-                        f"Failed to adopt CRD {crd_name} annotations: {annotate_result.stderr}"
-                    )
+                    logger.warning(f"Failed to adopt CRD {crd_name} annotations: {annotate_result.stderr}")
                     if on_output:
                         on_output(f"  - Warning: failed CRD adoption for {crd_name}")
                     continue
 
                 if labels.get("app.kubernetes.io/managed-by") != "Helm":
                     label_cmd = [
-                        "kubectl", "label", "crd", crd_name,
+                        "kubectl",
+                        "label",
+                        "crd",
+                        crd_name,
                         "app.kubernetes.io/managed-by=Helm",
                         "--overwrite",
                     ] + self._conn_args(kubeconfig_path)
@@ -881,9 +952,7 @@ class KubernetesEngine(DeploymentEngine):
                         env=proc_env,
                     )
                     if label_result.returncode != 0:
-                        logger.warning(
-                            f"Failed to set Helm managed-by label for {crd_name}: {label_result.stderr}"
-                        )
+                        logger.warning(f"Failed to set Helm managed-by label for {crd_name}: {label_result.stderr}")
                         if on_output:
                             on_output(f"  - Warning: failed managed-by label patch for {crd_name}")
 
@@ -915,6 +984,7 @@ class KubernetesEngine(DeploymentEngine):
     async def _get_api(self):
         """Get kr8s API client."""
         import kr8s
+
         if self.context:
             return await kr8s.asyncio.api(kubeconfig=self.kubeconfig_path, context=self.context)
         return await kr8s.asyncio.api(kubeconfig=self.kubeconfig_path)
@@ -928,6 +998,7 @@ class KubernetesEngine(DeploymentEngine):
 # =============================================================================
 # Async helpers (called via asyncio.run_until_complete from sync methods)
 # =============================================================================
+
 
 def _get_or_create_loop() -> asyncio.AbstractEventLoop:
     """Get or create an event loop for the current thread."""
@@ -1012,8 +1083,7 @@ async def _server_side_apply(api, manifest: dict):
                 pass
         except Exception as e2:
             raise RuntimeError(
-                f"Failed to apply {kind}/{name}: "
-                f"server-side apply failed ({e}), create also failed: {e2}"
+                f"Failed to apply {kind}/{name}: server-side apply failed ({e}), create also failed: {e2}"
             ) from e
 
 
