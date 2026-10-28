@@ -473,6 +473,11 @@ def _apply_known_module_hotfixes(work_dir: str, module_path: str | None) -> None
                         updated,
                         count=1,
                     )
+                if '"opt-in-status"' not in updated:
+                    updated = updated.replace(
+                        'data "aws_availability_zones" "available" {\n  state = "available"\n}',
+                        'data "aws_availability_zones" "available" {\n  state = "available"\n\n  filter {\n    name   = "opt-in-status"\n    values = ["opt-in-not-required"]\n  }\n}',
+                    )
             if updated != content:
                 Path(main_tf_eks).write_text(updated, encoding="utf-8")
                 logger.info("Applied hotfixes for %s in %s", normalized_module_path, main_tf_eks)
