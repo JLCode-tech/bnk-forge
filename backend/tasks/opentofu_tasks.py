@@ -63,6 +63,127 @@ def _is_saved_plan_stale_error(logs: str) -> bool:
     return "saved plan is stale" in (logs or "").lower()
 
 
+def _is_aws_vpc_creating_module(module: ProjectModule) -> bool:
+    """Return True if the module provisions a new AWS VPC."""
+    lib = getattr(module, "library_module", None)
+    candidates = [
+        getattr(module, "path_in_project", None),
+        getattr(lib, "path", None) if lib is not None else None,
+        getattr(lib, "source_path", None) if lib is not None else None,
+        getattr(lib, "name", None) if lib is not None else None,
+        getattr(module, "source_path", None),
+        getattr(module, "module_name", None),
+    ]
+    combined = " ".join(c.lower() for c in candidates if isinstance(c, str))
+    return any(token in combined for token in ("eks-cluster-create", "eks_cluster_create", "aws-vpc", "aws_vpc"))
+
+
+def _check_aws_vpc_quota_preflight(module: ProjectModule, env: dict[str, str]) -> str:
+    """Verify AWS regional VPC quota before running plan/apply on a VPC-creating module.
+
+    Returns a log line when the check succeeds, or raises ValueError if the
+    regional VPC limit has already been reached (preventing partial apply from
+    stranding IAM roles, KMS keys, and CloudWatch log groups).
+    """
+    if getattr(module, "status", None) == "applied" or not _is_aws_vpc_creating_module(module):
+        return ""
+
+    raw_overrides = getattr(module, "variable_overrides", None)
+    overrides = raw_overrides if isinstance(raw_overrides, dict) else {}
+    raw_variables = getattr(module, "variables", None)
+    variables = raw_variables if isinstance(raw_variables, dict) else {}
+    raw_project_region = getattr(getattr(module, "project", None), "region", None)
+    project_region = raw_project_region if isinstance(raw_project_region, str) else None
+
+    region = (
+        overrides.get("aws_region")
+        or overrides.get("region")
+        or variables.get("aws_region")
+        or variables.get("region")
+        or env.get("AWS_DEFAULT_REGION")
+        or env.get("AWS_REGION")
+        or project_region
+        or "ap-southeast-2"
+    )
+    cluster_name = (
+        overrides.get("eks_cluster_name")
+        or overrides.get("cluster_name")
+        or variables.get("eks_cluster_name")
+        or variables.get("cluster_name")
+        or ""
+    )
+    explicit_vpc_name = overrides.get("vpc_name") or variables.get("vpc_name") or ""
+
+    try:
+        import boto3
+        from botocore.config import Config
+
+        session_kwargs: dict[str, str] = {"region_name": region}
+        if env.get("AWS_ACCESS_KEY_ID") and env.get("AWS_SECRET_ACCESS_KEY"):
+            session_kwargs["aws_access_key_id"] = env["AWS_ACCESS_KEY_ID"]
+            session_kwargs["aws_secret_access_key"] = env["AWS_SECRET_ACCESS_KEY"]
+            if env.get("AWS_SESSION_TOKEN"):
+                session_kwargs["aws_session_token"] = env["AWS_SESSION_TOKEN"]
+        elif env.get("AWS_PROFILE"):
+            session_kwargs["profile_name"] = env["AWS_PROFILE"]
+
+        session = boto3.Session(**session_kwargs)
+        boto_cfg = Config(connect_timeout=5, read_timeout=5, retries={"max_attempts": 2})
+        ec2 = session.client("ec2", config=boto_cfg)
+        vpcs = ec2.describe_vpcs().get("Vpcs", [])
+    except Exception as exc:
+        logger.debug("Skipping AWS VPC quota preflight for module %s: %s", getattr(module, "id", None), exc)
+        return ""
+
+    # If the target cluster's VPC already exists (e.g. idempotent re-run), quota won't be incremented.
+    expected_vpc_name = explicit_vpc_name or (f"{cluster_name}-vpc" if cluster_name else "")
+    for vpc in vpcs:
+        tags = {t.get("Key"): t.get("Value") for t in vpc.get("Tags", [])}
+        if expected_vpc_name and tags.get("Name") == expected_vpc_name:
+            return f"[{_ts()}] === AWS VPC QUOTA PREFLIGHT: existing VPC {vpc.get('VpcId')} ({expected_vpc_name}) found in {region} ===\n"
+
+    vpc_quota = 5
+    quota_resolved = False
+    try:
+        sq = session.client("service-quotas", config=boto_cfg)
+        quota_resp = sq.get_service_quota(ServiceCode="vpc", QuotaCode="L-F678F1CE")
+        quota_val = int(quota_resp.get("Quota", {}).get("Value", 0))
+        if quota_val > 0:
+            vpc_quota = quota_val
+            quota_resolved = True
+    except Exception:
+        pass
+
+    if not quota_resolved:
+        try:
+            attr_resp = ec2.describe_account_attributes(AttributeNames=["max-vpc"])
+            for attr in attr_resp.get("AccountAttributes", []):
+                if attr.get("AttributeName") == "max-vpc":
+                    vals = attr.get("AttributeValues", [])
+                    if vals and vals[0].get("AttributeValue"):
+                        attr_val = int(vals[0]["AttributeValue"])
+                        if attr_val > 0:
+                            vpc_quota = attr_val
+                            break
+        except Exception:
+            pass
+
+    vpc_count = len(vpcs)
+    if vpc_count >= vpc_quota:
+        vpc_summaries = []
+        for vpc in vpcs:
+            tags = {t.get("Key"): t.get("Value") for t in vpc.get("Tags", [])}
+            name = tags.get("Name") or ("default" if vpc.get("IsDefault") else "unnamed")
+            vpc_summaries.append(f"{vpc.get('VpcId')} ({name})")
+        summary_str = ", ".join(vpc_summaries)
+        raise ValueError(
+            f"AWS VPC quota preflight failed in {region}: {vpc_count}/{vpc_quota} VPCs already in use "
+            f"[{summary_str}]. Delete orphaned/unused VPCs or request a quota increase before deploying."
+        )
+
+    return f"[{_ts()}] === AWS VPC QUOTA PREFLIGHT: {vpc_count}/{vpc_quota} VPCs in use in {region} ===\n"
+
+
 @celery_app.task(
     bind=True,
     base=CallbackTask,
@@ -73,7 +194,14 @@ def _is_saved_plan_stale_error(logs: str) -> bool:
     retry_backoff_max=120,
     retry_jitter=True,
 )
-def run_opentofu_init(self, task_db_id: int, module_id: int, keep_workspace: bool = False, auto_apply: bool = False, force_reinit: bool = False):
+def run_opentofu_init(
+    self,
+    task_db_id: int,
+    module_id: int,
+    keep_workspace: bool = False,
+    auto_apply: bool = False,
+    force_reinit: bool = False,
+):
     """
     Run tofu init for a module using persistent workspace.
 
@@ -113,6 +241,7 @@ def run_opentofu_init(self, task_db_id: int, module_id: int, keep_workspace: boo
 
             # Import WorkspaceManager for persistent workspace handling
             from services.workspace_manager import WorkspaceManager
+
             workspace = WorkspaceManager(db)
 
             # Note: Init does NOT require dependencies to be applied
@@ -165,7 +294,7 @@ def run_opentofu_init(self, task_db_id: int, module_id: int, keep_workspace: boo
                                             status="queued",
                                             project_id=module.project_id,
                                             module_id=module.id,
-                                            created_at=datetime.now(UTC)
+                                            created_at=datetime.now(UTC),
                                         )
                                         db.add(apply_task)
                                         db.commit()
@@ -180,7 +309,8 @@ def run_opentofu_init(self, task_db_id: int, module_id: int, keep_workspace: boo
                                     else:
                                         logger.info(
                                             "Auto-apply skipped for module %s: dependencies not ready (%s)",
-                                            module.id, missing,
+                                            module.id,
+                                            missing,
                                         )
 
                                 return {"success": True, "exit_code": 0, "skipped": True, "apply_queued": apply_queued}
@@ -222,7 +352,7 @@ def run_opentofu_init(self, task_db_id: int, module_id: int, keep_workspace: boo
                                 status="queued",
                                 project_id=module.project_id,
                                 module_id=module.id,
-                                created_at=datetime.now(UTC)
+                                created_at=datetime.now(UTC),
                             )
                             db.add(apply_task)
                             db.commit()
@@ -237,7 +367,8 @@ def run_opentofu_init(self, task_db_id: int, module_id: int, keep_workspace: boo
                         else:
                             logger.info(
                                 "Auto-apply skipped for module %s: dependencies not ready (%s)",
-                                module.id, missing,
+                                module.id,
+                                missing,
                             )
 
                     return {"success": True, "exit_code": 0, "skipped": True, "apply_queued": apply_queued}
@@ -249,7 +380,9 @@ def run_opentofu_init(self, task_db_id: int, module_id: int, keep_workspace: boo
                 # run instead of only at completion (#195).
                 streamer = TofuLogStreamer(task, db)
                 exit_code, logs = engine.run_init(
-                    work_dir, env, on_output=streamer.begin(""),
+                    work_dir,
+                    env,
+                    on_output=streamer.begin(""),
                 )
 
                 # Update task
@@ -305,7 +438,7 @@ def run_opentofu_init(self, task_db_id: int, module_id: int, keep_workspace: boo
                             status="queued",
                             project_id=module.project_id,
                             module_id=module.id,
-                            created_at=datetime.now(UTC)
+                            created_at=datetime.now(UTC),
                         )
                         db.add(apply_task)
                         db.commit()
@@ -321,7 +454,8 @@ def run_opentofu_init(self, task_db_id: int, module_id: int, keep_workspace: boo
                     else:
                         logger.info(
                             "Auto-apply skipped for module %s: dependencies not ready (%s)",
-                            module.id, missing,
+                            module.id,
+                            missing,
                         )
 
             return {"success": exit_code == 0, "exit_code": exit_code, "skipped": False, "apply_queued": apply_queued}
@@ -355,9 +489,7 @@ def run_opentofu_init(self, task_db_id: int, module_id: int, keep_workspace: boo
 
         except Exception as e:
             logger.exception(f"Init task failed: {e}")
-            _mark_task_failed(task, e, db,
-                              module=locals().get('module'),
-                              failed_status="init_failed")
+            _mark_task_failed(task, e, db, module=locals().get("module"), failed_status="init_failed")
             raise
 
 
@@ -412,6 +544,7 @@ def run_opentofu_plan(self, task_db_id: int, module_id: int, keep_workspace: boo
 
             # Import WorkspaceManager for persistent workspace handling
             from services.workspace_manager import WorkspaceManager
+
             workspace = WorkspaceManager(db)
 
             # Check dependencies
@@ -420,6 +553,7 @@ def run_opentofu_plan(self, task_db_id: int, module_id: int, keep_workspace: boo
                 raise ValueError(f"Dependencies not satisfied: {', '.join(missing)}")
 
             env = get_cloud_credentials_env(project, db)
+            preflight_log = _check_aws_vpc_quota_preflight(module, env)
 
             # Acquire workspace lock to prevent concurrent operations (CQ-009)
             with module_lock(db, module.id, task_id=task_db_id) as lock:
@@ -428,7 +562,7 @@ def run_opentofu_plan(self, task_db_id: int, module_id: int, keep_workspace: boo
                 task.working_directory = work_dir
                 db.commit()
 
-                all_logs = ""
+                all_logs = preflight_log
                 # Stream tofu output into task.logs during the run (#195).
                 streamer = TofuLogStreamer(task, db)
 
@@ -446,7 +580,9 @@ def run_opentofu_plan(self, task_db_id: int, module_id: int, keep_workspace: boo
                     task.command = "tofu init && tofu plan"
                     all_logs += f"[{_ts()}] --- INIT ---\n"
                     init_code, init_logs = engine.run_init(
-                        work_dir, env, on_output=streamer.begin(all_logs),
+                        work_dir,
+                        env,
+                        on_output=streamer.begin(all_logs),
                     )
                     all_logs += init_logs
 
@@ -468,7 +604,9 @@ def run_opentofu_plan(self, task_db_id: int, module_id: int, keep_workspace: boo
                 # Run plan (saves plan.out to workspace)
                 all_logs += f"[{_ts()}] --- PLAN ---\n"
                 exit_code, plan_logs = engine.run_plan(
-                    work_dir, env, on_output=streamer.begin(all_logs),
+                    work_dir,
+                    env,
+                    on_output=streamer.begin(all_logs),
                 )
                 all_logs += plan_logs
 
@@ -486,7 +624,9 @@ def run_opentofu_plan(self, task_db_id: int, module_id: int, keep_workspace: boo
                     # Save plan output summary
                     workspace.save_plan_output(module, plan_logs)
 
-                    logger.info(f"Plan saved for module {module.id}, serial={module.plan_serial}, vars_hash={module.vars_hash[:8] if module.vars_hash else 'N/A'}...")
+                    logger.info(
+                        f"Plan saved for module {module.id}, serial={module.plan_serial}, vars_hash={module.vars_hash[:8] if module.vars_hash else 'N/A'}..."
+                    )
                 else:
                     task.status = "failed"
                     task.error = "Plan failed"
@@ -533,9 +673,7 @@ def run_opentofu_plan(self, task_db_id: int, module_id: int, keep_workspace: boo
         except Exception as e:
             # S15-001: Removed duplicate exception handler (first block had wrong "apply_failed" status)
             logger.exception(f"Plan task failed: {e}")
-            _mark_task_failed(task, e, db,
-                              module=locals().get('module'),
-                              failed_status="plan_failed")
+            _mark_task_failed(task, e, db, module=locals().get("module"), failed_status="plan_failed")
             raise
 
 
@@ -549,7 +687,9 @@ def run_opentofu_plan(self, task_db_id: int, module_id: int, keep_workspace: boo
     retry_backoff_max=120,
     retry_jitter=True,
 )
-def run_opentofu_apply(self, task_db_id: int, module_id: int, keep_workspace: bool = False, force_new_plan: bool = False):
+def run_opentofu_apply(
+    self, task_db_id: int, module_id: int, keep_workspace: bool = False, force_new_plan: bool = False
+):
     """
     Run tofu apply for a module using saved plan from persistent workspace.
 
@@ -595,6 +735,7 @@ def run_opentofu_apply(self, task_db_id: int, module_id: int, keep_workspace: bo
 
             # Import WorkspaceManager for persistent workspace handling
             from services.workspace_manager import WorkspaceManager
+
             workspace = WorkspaceManager(db)
 
             # Check dependencies
@@ -603,6 +744,7 @@ def run_opentofu_apply(self, task_db_id: int, module_id: int, keep_workspace: bo
                 raise ValueError(f"Dependencies not satisfied: {', '.join(missing)}")
 
             env = get_cloud_credentials_env(project, db)
+            preflight_log = _check_aws_vpc_quota_preflight(module, env)
 
             # Acquire workspace lock to prevent concurrent operations (CQ-009)
             # Apply uses longer timeout since it can run for extended periods
@@ -612,7 +754,7 @@ def run_opentofu_apply(self, task_db_id: int, module_id: int, keep_workspace: bo
                 task.working_directory = work_dir
                 db.commit()
 
-                all_logs = ""
+                all_logs = preflight_log
                 used_saved_plan = False
                 # Stream tofu output into task.logs during the run (#195).
                 streamer = TofuLogStreamer(task, db)
@@ -630,7 +772,9 @@ def run_opentofu_apply(self, task_db_id: int, module_id: int, keep_workspace: bo
 
                     all_logs += f"[{_ts()}] --- INIT ---\n"
                     init_code, init_logs = engine.run_init(
-                        work_dir, env, on_output=streamer.begin(all_logs),
+                        work_dir,
+                        env,
+                        on_output=streamer.begin(all_logs),
                     )
                     all_logs += init_logs
                     if init_code != 0:
@@ -715,13 +859,17 @@ def run_opentofu_apply(self, task_db_id: int, module_id: int, keep_workspace: bo
                     if reconciled_imports > 0:
                         # Clear any stale saved plan since state changed
                         if workspace.has_saved_plan(module):
-                            all_logs += f"[{_ts()}] Discarding saved plan because state imports changed managed resources.\n\n"
+                            all_logs += (
+                                f"[{_ts()}] Discarding saved plan because state imports changed managed resources.\n\n"
+                            )
                             workspace.clear_plan(module)
 
                     # Run plan
                     all_logs += f"[{_ts()}] --- PLAN ---\n"
                     plan_code, plan_logs = engine.run_plan(
-                        work_dir, env, on_output=streamer.begin(all_logs),
+                        work_dir,
+                        env,
+                        on_output=streamer.begin(all_logs),
                     )
                     all_logs += plan_logs
                     if plan_code != 0:
@@ -731,7 +879,9 @@ def run_opentofu_apply(self, task_db_id: int, module_id: int, keep_workspace: bo
                         task.error = "Plan failed"
                         task.completed_at = datetime.now(UTC)
                         set_locked_module_fields(
-                            db, module, lock,
+                            db,
+                            module,
+                            lock,
                             status="plan_failed",
                             deployment_error=plan_logs[-2000:] if len(plan_logs) > 2000 else plan_logs,
                         )
@@ -743,7 +893,10 @@ def run_opentofu_apply(self, task_db_id: int, module_id: int, keep_workspace: bo
                 # Apply (uses plan.out which exists either from saved plan or just-created plan)
                 all_logs += f"[{_ts()}] --- APPLY ---\n"
                 apply_code, apply_logs, outputs = engine.run_apply(
-                    work_dir, env, module=module, on_output=streamer.begin(all_logs),
+                    work_dir,
+                    env,
+                    module=module,
+                    on_output=streamer.begin(all_logs),
                 )
                 # #195 F1: fold the first apply's output into all_logs *now*, before
                 # the retry block. This both preserves it (it was previously dropped
@@ -772,7 +925,9 @@ def run_opentofu_apply(self, task_db_id: int, module_id: int, keep_workspace: bo
                         if reinit_reason:
                             all_logs += f"[{_ts()}] === INIT REQUIRED: {reinit_reason} ===\n"
                         init_code, init_logs = engine.run_init(
-                            work_dir, env, on_output=streamer.begin(all_logs),
+                            work_dir,
+                            env,
+                            on_output=streamer.begin(all_logs),
                         )
                         all_logs += init_logs
                         if init_code != 0:
@@ -791,7 +946,9 @@ def run_opentofu_apply(self, task_db_id: int, module_id: int, keep_workspace: bo
 
                     all_logs += f"[{_ts()}] --- PLAN (RETRY AFTER STALE PLAN) ---\n"
                     plan_code, plan_logs = engine.run_plan(
-                        work_dir, env, on_output=streamer.begin(all_logs),
+                        work_dir,
+                        env,
+                        on_output=streamer.begin(all_logs),
                     )
                     all_logs += plan_logs
                     if plan_code != 0:
@@ -801,7 +958,9 @@ def run_opentofu_apply(self, task_db_id: int, module_id: int, keep_workspace: bo
                         task.error = "Plan failed"
                         task.completed_at = datetime.now(UTC)
                         set_locked_module_fields(
-                            db, module, lock,
+                            db,
+                            module,
+                            lock,
                             status="plan_failed",
                             deployment_error=plan_logs[-2000:] if len(plan_logs) > 2000 else plan_logs,
                         )
@@ -811,7 +970,10 @@ def run_opentofu_apply(self, task_db_id: int, module_id: int, keep_workspace: bo
                     all_logs += "\n"
                     all_logs += f"[{_ts()}] --- APPLY (RETRY) ---\n"
                     apply_code, apply_logs, outputs = engine.run_apply(
-                        work_dir, env, module=module, on_output=streamer.begin(all_logs),
+                        work_dir,
+                        env,
+                        module=module,
+                        on_output=streamer.begin(all_logs),
                     )
                     # Fold the retry apply's output in here (the first apply's was
                     # already folded in above, #195 F1).
@@ -830,7 +992,9 @@ def run_opentofu_apply(self, task_db_id: int, module_id: int, keep_workspace: bo
                     final_outputs = module.outputs
                     db.expire(module, ["outputs"])
                     set_locked_module_fields(
-                        db, module, lock,
+                        db,
+                        module,
+                        lock,
                         status="applied",
                         outputs=final_outputs,
                         last_deployed_at=datetime.now(UTC),
@@ -843,16 +1007,19 @@ def run_opentofu_apply(self, task_db_id: int, module_id: int, keep_workspace: bo
 
                     # PERF-011/PERF-017: Invalidate all state caches after apply
                     from services.state_decryption_service import invalidate_state_cache
+
                     invalidate_state_cache(module_id, project.id)
 
                     # Auto-register managed cluster (EKS or ROKS) to Kubernetes page
                     from services.cluster_management_service import ClusterManagementService
                     from services.eks_service import matches_eks_output_contract
                     from tasks.cluster_scan_task import enqueue_cluster_scan
+
                     managed_type = ClusterManagementService._classify_managed_cluster_module(module.library_module)
                     if managed_type == "eks" or matches_eks_output_contract(final_outputs):
                         try:
                             from services.eks_service import register_eks_cluster
+
                             cluster = register_eks_cluster(db, module)
                             logger.info(f"Auto-registered EKS cluster {cluster.name} to Kubernetes page")
 
@@ -861,7 +1028,7 @@ def run_opentofu_apply(self, task_db_id: int, module_id: int, keep_workspace: bo
                             task.meta_data["eks_cluster_registered"] = {
                                 "cluster_id": cluster.id,
                                 "cluster_name": cluster.name,
-                                "message": f"EKS cluster '{cluster.name}' registered to Kubernetes page"
+                                "message": f"EKS cluster '{cluster.name}' registered to Kubernetes page",
                             }
                             db.commit()
                             enqueue_cluster_scan(int(cluster.id))
@@ -871,6 +1038,7 @@ def run_opentofu_apply(self, task_db_id: int, module_id: int, keep_workspace: bo
                     elif managed_type == "roks":
                         try:
                             from services.roks_service import register_roks_cluster
+
                             cluster = register_roks_cluster(db, module)
                             logger.info(f"Auto-registered ROKS cluster {cluster.name} to Kubernetes page")
 
@@ -878,7 +1046,7 @@ def run_opentofu_apply(self, task_db_id: int, module_id: int, keep_workspace: bo
                             task.meta_data["roks_cluster_registered"] = {
                                 "cluster_id": cluster.id,
                                 "cluster_name": cluster.name,
-                                "message": f"ROKS cluster '{cluster.name}' registered to Kubernetes page"
+                                "message": f"ROKS cluster '{cluster.name}' registered to Kubernetes page",
                             }
                             db.commit()
                             enqueue_cluster_scan(int(cluster.id))
@@ -895,6 +1063,7 @@ def run_opentofu_apply(self, task_db_id: int, module_id: int, keep_workspace: bo
                         from services.cluster_auto_registration_service import (
                             maybe_auto_register_cluster,
                         )
+
                         reg_result = maybe_auto_register_cluster(db, module, outputs)
                         if reg_result and reg_result.get("success"):
                             logger.info(
@@ -924,7 +1093,9 @@ def run_opentofu_apply(self, task_db_id: int, module_id: int, keep_workspace: bo
                     task.status = "failed"
                     task.error = "Apply failed"
                     set_locked_module_fields(
-                        db, module, lock,
+                        db,
+                        module,
+                        lock,
                         status="apply_failed",
                         deployment_error=apply_logs[-2000:] if len(apply_logs) > 2000 else apply_logs,
                     )
@@ -944,18 +1115,20 @@ def run_opentofu_apply(self, task_db_id: int, module_id: int, keep_workspace: bo
                 "success": apply_code == 0,
                 "exit_code": apply_code,
                 "outputs": outputs,
-                "used_saved_plan": used_saved_plan
+                "used_saved_plan": used_saved_plan,
             }
 
         except SoftTimeLimitExceeded:
             # S14-034: Handle Celery soft time limit gracefully
             logger.error(f"Apply task hit soft time limit for module {module_id}")
             try:
-                task_obj = locals().get('task')
-                module_obj = locals().get('module')
+                task_obj = locals().get("task")
+                module_obj = locals().get("module")
                 if task_obj:
                     task_obj.status = "failed"
-                    task_obj.error = "Task exceeded time limit (soft timeout). The operation may still be running in AWS."
+                    task_obj.error = (
+                        "Task exceeded time limit (soft timeout). The operation may still be running in AWS."
+                    )
                     task_obj.completed_at = datetime.now(UTC)
                     if task_obj.started_at:
                         task_obj.duration_seconds = (task_obj.completed_at - task_obj.started_at).total_seconds()
@@ -995,9 +1168,7 @@ def run_opentofu_apply(self, task_db_id: int, module_id: int, keep_workspace: bo
 
         except Exception as e:
             logger.exception(f"Apply task failed: {e}")
-            _mark_task_failed(task, e, db,
-                              module=locals().get('module'),
-                              failed_status="apply_failed")
+            _mark_task_failed(task, e, db, module=locals().get("module"), failed_status="apply_failed")
             raise
 
 
@@ -1039,7 +1210,9 @@ def run_opentofu_destroy(self, task_db_id: int, module_id: int, keep_workspace: 
 
             # CP-008: Skip destroy for modules that were never applied (no infrastructure to destroy)
             if module.status in ["not_initialized", "initialized", "planned", "init_failed", "plan_failed"]:
-                logger.info(f"Skipping destroy for module {module_id} - no deployed infrastructure (status: {module.status})")
+                logger.info(
+                    f"Skipping destroy for module {module_id} - no deployed infrastructure (status: {module.status})"
+                )
                 task.status = "completed"
                 task.completed_at = datetime.now(UTC)
                 task.error = f"Skipped: no deployed infrastructure (status: {module.status})"
@@ -1053,13 +1226,18 @@ def run_opentofu_destroy(self, task_db_id: int, module_id: int, keep_workspace: 
                 _update_stack_status_if_needed(module, db)
                 # D-001 Phase 3: fire destroy trigger even for skipped modules
                 _trigger_next_destroy_module(module, db, task.id)
-                return {"status": "skipped", "module_id": module.id, "reason": f"No infrastructure (status was {module.status})"}
+                return {
+                    "status": "skipped",
+                    "module_id": module.id,
+                    "reason": f"No infrastructure (status was {module.status})",
+                }
 
             project = module.project
             engine = OpenTofuRuntime(db)
 
             # Import WorkspaceManager for persistent workspace handling
             from services.workspace_manager import WorkspaceManager
+
             workspace = WorkspaceManager(db)
 
             env = get_cloud_credentials_env(project, db)
@@ -1088,7 +1266,9 @@ def run_opentofu_destroy(self, task_db_id: int, module_id: int, keep_workspace: 
                     # Init
                     all_logs += f"[{_ts()}] --- INIT ---\n"
                     init_code, init_logs = engine.run_init(
-                        work_dir, env, on_output=streamer.begin(all_logs),
+                        work_dir,
+                        env,
+                        on_output=streamer.begin(all_logs),
                     )
                     all_logs += init_logs
                     if init_code != 0:
@@ -1109,7 +1289,10 @@ def run_opentofu_destroy(self, task_db_id: int, module_id: int, keep_workspace: 
                 all_logs += f"[{_ts()}] --- DESTROY ---\n"
                 timeout = engine.get_destroy_timeout(module)
                 destroy_code, destroy_logs = engine.run_destroy_with_retry(
-                    work_dir, env, module=module, timeout=timeout,
+                    work_dir,
+                    env,
+                    module=module,
+                    timeout=timeout,
                     on_output=streamer.begin(all_logs),
                 )
                 all_logs += destroy_logs
@@ -1127,7 +1310,10 @@ def run_opentofu_destroy(self, task_db_id: int, module_id: int, keep_workspace: 
                         logger.info("Retrying destroy after finalizer cleanup")
                         all_logs += f"\n[{_ts()}] --- DESTROY RETRY ---\n"
                         retry_code, retry_logs = engine.run_destroy_with_retry(
-                            work_dir, env, module=module, timeout=300,  # Shorter timeout for retry
+                            work_dir,
+                            env,
+                            module=module,
+                            timeout=300,  # Shorter timeout for retry
                             on_output=streamer.begin(all_logs),
                         )
                         all_logs += f"{retry_logs}\n"
@@ -1143,9 +1329,9 @@ def run_opentofu_destroy(self, task_db_id: int, module_id: int, keep_workspace: 
                                 notification_type="success",
                                 title="Destroy Succeeded After Auto-Cleanup",
                                 message=f"Module '{module.library_module.name}' was successfully destroyed after "
-                                       f"automatic finalizer cleanup. No manual intervention required.",
+                                f"automatic finalizer cleanup. No manual intervention required.",
                                 resource_type="module",
-                                resource_id=module.id
+                                resource_id=module.id,
                             )
                         else:
                             # Notify user that retry also failed
@@ -1154,9 +1340,9 @@ def run_opentofu_destroy(self, task_db_id: int, module_id: int, keep_workspace: 
                                 notification_type="error",
                                 title="Destroy Failed After Auto-Cleanup",
                                 message=f"Module '{module.library_module.name}' destroy still failed after finalizer cleanup. "
-                                       f"Manual cleanup may be required. Check task logs for details.",
+                                f"Manual cleanup may be required. Check task logs for details.",
                                 resource_type="module",
-                                resource_id=module.id
+                                resource_id=module.id,
                             )
 
                 task.exit_code = destroy_code
@@ -1165,7 +1351,9 @@ def run_opentofu_destroy(self, task_db_id: int, module_id: int, keep_workspace: 
                 if destroy_code == 0:
                     task.status = "completed"
                     set_locked_module_fields(
-                        db, module, lock,
+                        db,
+                        module,
+                        lock,
                         status="destroyed",
                         outputs=None,
                         last_deployed_at=None,
@@ -1174,12 +1362,14 @@ def run_opentofu_destroy(self, task_db_id: int, module_id: int, keep_workspace: 
 
                     # PERF-011/PERF-017: Invalidate all state caches after destroy
                     from services.state_decryption_service import invalidate_state_cache
+
                     invalidate_state_cache(module_id, project.id)
 
                     # Auto-unregister EKS cluster from Kubernetes page
                     if module.library_module.name == "eks":
                         try:
                             from services.eks_service import unregister_eks_cluster
+
                             unregistered = unregister_eks_cluster(db, module)
                             if unregistered:
                                 logger.info("Auto-unregistered EKS cluster from Kubernetes page")
@@ -1190,7 +1380,9 @@ def run_opentofu_destroy(self, task_db_id: int, module_id: int, keep_workspace: 
                     task.status = "failed"
                     task.error = "Destroy failed"
                     set_locked_module_fields(
-                        db, module, lock,
+                        db,
+                        module,
+                        lock,
                         status="destroy_failed",
                         deployment_error=destroy_logs[-2000:] if len(destroy_logs) > 2000 else destroy_logs,
                     )
@@ -1225,11 +1417,13 @@ def run_opentofu_destroy(self, task_db_id: int, module_id: int, keep_workspace: 
             logger.error(f"Destroy task hit soft time limit for module {module_id}")
             _exc_module = None
             try:
-                task_obj = locals().get('task')
-                module_obj = locals().get('module')
+                task_obj = locals().get("task")
+                module_obj = locals().get("module")
                 if task_obj:
                     task_obj.status = "failed"
-                    task_obj.error = "Task exceeded time limit (soft timeout). The destroy operation may still be running in AWS."
+                    task_obj.error = (
+                        "Task exceeded time limit (soft timeout). The destroy operation may still be running in AWS."
+                    )
                     task_obj.completed_at = datetime.now(UTC)
                     if task_obj.started_at:
                         task_obj.duration_seconds = (task_obj.completed_at - task_obj.started_at).total_seconds()
@@ -1255,7 +1449,7 @@ def run_opentofu_destroy(self, task_db_id: int, module_id: int, keep_workspace: 
             # Do NOT touch module.status; let the live holder own state
             # transitions. Just fail this task cleanly.
             # C1: set destroy_failed so this module is terminal and trigger detection.
-            _exc_module = locals().get('module')
+            _exc_module = locals().get("module")
             if task:
                 task.status = "failed"
                 task.error = f"Module locked: {str(e)}"
@@ -1279,7 +1473,7 @@ def run_opentofu_destroy(self, task_db_id: int, module_id: int, keep_workspace: 
         except ModuleLockLostError as e:
             logger.warning(f"Destroy task aborted - lock lost mid-operation: {e}")
             # C1: set destroy_failed and fire trigger so terminal detection runs.
-            _exc_module = locals().get('module')
+            _exc_module = locals().get("module")
             if task:
                 task.status = "failed"
                 task.error = f"Lock lost: {str(e)}"
@@ -1302,10 +1496,8 @@ def run_opentofu_destroy(self, task_db_id: int, module_id: int, keep_workspace: 
 
         except Exception as e:
             logger.exception(f"Destroy task failed: {e}")
-            _exc_module = locals().get('module')
-            _mark_task_failed(task, e, db,
-                              module=_exc_module,
-                              failed_status="destroy_failed")
+            _exc_module = locals().get("module")
+            _mark_task_failed(task, e, db, module=_exc_module, failed_status="destroy_failed")
             # C1: fire event-chain trigger so terminal detection runs even on exception
             try:
                 if _exc_module is not None:
@@ -1344,10 +1536,12 @@ def run_opentofu_refresh(self, task_id: int, module_id: int):
     with get_db_context() as db:
         try:
             task = fetch_task_or_raise(db, task_id)
-            module = db.query(ProjectModule).options(
-                joinedload(ProjectModule.project),
-                joinedload(ProjectModule.library_module)
-            ).filter(ProjectModule.id == module_id).first()
+            module = (
+                db.query(ProjectModule)
+                .options(joinedload(ProjectModule.project), joinedload(ProjectModule.library_module))
+                .filter(ProjectModule.id == module_id)
+                .first()
+            )
 
             if not module:
                 raise Exception(f"Module {module_id} not found")
@@ -1426,7 +1620,9 @@ def run_opentofu_refresh(self, task_id: int, module_id: int):
                     return
 
                 # Run apply to reconcile state
-                task.logs += f"\n[{datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S')}] Running tofu apply to reconcile state...\n"
+                task.logs += (
+                    f"\n[{datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S')}] Running tofu apply to reconcile state...\n"
+                )
                 task.logs += "=" * 80 + "\n"
                 db.commit()
 
@@ -1453,7 +1649,9 @@ def run_opentofu_refresh(self, task_id: int, module_id: int):
                     normalize_module_outputs_in_place(module)
                     final_outputs = module.outputs
                     db.expire(module, ["outputs"])
-                    task.logs += f"\n[{datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S')}] Captured {len(outputs_data)} outputs\n"
+                    task.logs += (
+                        f"\n[{datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S')}] Captured {len(outputs_data)} outputs\n"
+                    )
                     task.logs += f"Outputs: {list(outputs_data.keys())}\n"
 
                 # Success!
@@ -1477,7 +1675,7 @@ def run_opentofu_refresh(self, task_id: int, module_id: int):
                 _publish_task_completion(task)
 
             # S15-024: Guard against outputs_data being undefined if apply wasn't reached
-            output_count = len(outputs_data) if 'outputs_data' in dir() and outputs_data else 0
+            output_count = len(outputs_data) if "outputs_data" in dir() and outputs_data else 0
             logger.info(f"State recovery completed for module {module_id} - captured {output_count} outputs")
 
         except Exception as e:

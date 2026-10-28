@@ -90,13 +90,13 @@ def _stream_subprocess(
       task is marked failed and the workspace lock released. We do the same.
     """
     deadline = time.monotonic() + timeout
-    chunks: list[str] = []           # decoded+newline-normalized pieces == combined output
+    chunks: list[str] = []  # decoded+newline-normalized pieces == combined output
     # Incremental UTF-8 decoder: correctly reassembles multibyte characters that
     # straddle two reads, and (strict) raises UnicodeDecodeError on genuinely
     # invalid bytes — the same failure ``text=True`` would surface.
     decoder = codecs.getincrementaldecoder("utf-8")("strict")
-    pending = ""                     # current partial line, not yet newline-terminated
-    carry_cr = False                 # a trailing '\r' held back — maybe the first half of a CRLF
+    pending = ""  # current partial line, not yet newline-terminated
+    carry_cr = False  # a trailing '\r' held back — maybe the first half of a CRLF
 
     def _deliver(line: str) -> None:
         try:
@@ -128,7 +128,7 @@ def _stream_subprocess(
         newline = pending.find("\n")
         while newline != -1:
             _deliver(pending[:newline])
-            pending = pending[newline + 1:]
+            pending = pending[newline + 1 :]
             newline = pending.find("\n")
         if flush and pending:
             _deliver(pending)
@@ -242,9 +242,7 @@ def _resolve_git_ref(inline_ref: str | None, module_source: "ModuleSource | None
 
 # Matches a terraform `source = "./x"` or `source = "../x"` assignment, capturing
 # the relative path. Handles both double- and single-quoted strings.
-_RELATIVE_SOURCE_RE = re.compile(
-    r'\bsource\s*=\s*["\'](\.\.?/[^"\']*)["\']'
-)
+_RELATIVE_SOURCE_RE = re.compile(r'\bsource\s*=\s*["\'](\.\.?/[^"\']*)["\']')
 
 # Sentinel dir under work_dir where co-fetched siblings are materialised. Keeping
 # co-fetched siblings under work_dir makes them execution-isolated and auto-cleaned
@@ -288,9 +286,7 @@ def _rewrite_relative_source(module_dir: str, old_rel: str, new_rel: str) -> Non
     if not os.path.isdir(module_dir):
         return
     # Match the exact relative path inside either quote style, capturing the quote.
-    pattern = re.compile(
-        r'(\bsource\s*=\s*)(["\'])' + re.escape(old_rel) + r'(["\'])'
-    )
+    pattern = re.compile(r'(\bsource\s*=\s*)(["\'])' + re.escape(old_rel) + r'(["\'])')
 
     def _sub(m: re.Match) -> str:
         # Preserve the opening quote char; close with the same kind it opened with.
@@ -350,6 +346,7 @@ def _inject_forge_kubeconfig_into_sibling(sibling_dir: str, project) -> None:
     """
     try:
         from services.execution.config_writer import _inject_forge_kubeconfig_locals
+
         _inject_forge_kubeconfig_locals(sibling_dir, None, project)
     except Exception as exc:  # pragma: no cover - defensive; injection is best-effort
         logger.warning("forge_kubeconfig injection into sibling %s failed: %s", sibling_dir, exc)
@@ -401,7 +398,7 @@ def _apply_known_module_hotfixes(work_dir: str, module_path: str | None) -> None
 
             # Fix 1: avoid SIGPIPE/141 from `tar | head` under `set -o pipefail`.
             updated_script_content = updated_script_content.replace(
-                'MANIFEST_DIR=$(tar -tf "$MANIFEST_TAR" | head -n1 | cut -d\'/\' -f1)',
+                "MANIFEST_DIR=$(tar -tf \"$MANIFEST_TAR\" | head -n1 | cut -d'/' -f1)",
                 'FIRST_TAR_ENTRY=""\nIFS= read -r FIRST_TAR_ENTRY < <(tar -tf "$MANIFEST_TAR")\nMANIFEST_DIR="${FIRST_TAR_ENTRY%%/*}"',
             )
 
@@ -417,14 +414,14 @@ def _apply_known_module_hotfixes(work_dir: str, module_path: str | None) -> None
             # resolves to ./work/work/cne_pull_secret.json which doesn't exist.
             # Insert path resolution right after the eval that reads terraform inputs.
             _sa_resolve_line = (
-                '\n# Resolve SERVICE_ACCOUNT_KEY_FILE to absolute path before cd\n'
+                "\n# Resolve SERVICE_ACCOUNT_KEY_FILE to absolute path before cd\n"
                 'if [ -n "${SERVICE_ACCOUNT_KEY_FILE:-}" ] && [ -f "$SERVICE_ACCOUNT_KEY_FILE" ]; then\n'
                 '    SERVICE_ACCOUNT_KEY_FILE="$(cd "$(dirname "$SERVICE_ACCOUNT_KEY_FILE")" && pwd)/$(basename "$SERVICE_ACCOUNT_KEY_FILE")"\n'
-                'fi\n'
+                "fi\n"
             )
             _eval_line = (
                 'eval "$(jq -r \'@sh "MANIFEST_VERSION=\\(.manifest_version) '
-                'WORK_DIR=\\(.work_dir) CHART_NAME=\\(.chart_name) '
+                "WORK_DIR=\\(.work_dir) CHART_NAME=\\(.chart_name) "
                 'SERVICE_ACCOUNT_KEY_FILE=\\(.service_account_key_file // empty)"\')"'
             )
             if _eval_line in updated_script_content and _sa_resolve_line not in updated_script_content:
@@ -439,6 +436,58 @@ def _apply_known_module_hotfixes(work_dir: str, module_path: str | None) -> None
                     "Applied hotfixes for k8s/bnk-prerequisites download-manifest.sh in %s",
                     download_manifest_script,
                 )
+
+    if normalized_module_path.endswith(
+        (
+            "eks-cluster-create",
+            "eks-cluster-register",
+            "eks-cluster-hp-nodes",
+            "eks-cluster-cneinstall",
+            "eks-cluster-install-tmm-nads",
+            "eks-cluster-jumphost",
+            "eks-cluster-tmm-heal",
+        )
+    ):
+        main_tf_eks = os.path.join(work_dir, "main.tf")
+        if os.path.exists(main_tf_eks):
+            content = Path(main_tf_eks).read_text(encoding="utf-8")
+            updated = content.replace(
+                "  access_key = var.aws_access_key_id\n  secret_key = var.aws_secret_access_key",
+                '  access_key = var.aws_access_key_id != "" ? var.aws_access_key_id : null\n'
+                '  secret_key = var.aws_secret_access_key != "" ? var.aws_secret_access_key : null',
+            )
+            updated = updated.replace(
+                "      AWS_ACCESS_KEY_ID     = var.aws_access_key_id\n"
+                "      AWS_SECRET_ACCESS_KEY = var.aws_secret_access_key\n"
+                "      AWS_SESSION_TOKEN     = var.aws_session_token",
+                '      AWS_ACCESS_KEY_ID     = var.aws_access_key_id != "" ? var.aws_access_key_id : null\n'
+                '      AWS_SECRET_ACCESS_KEY = var.aws_secret_access_key != "" ? var.aws_secret_access_key : null\n'
+                '      AWS_SESSION_TOKEN     = var.aws_session_token != "" ? var.aws_session_token : null',
+            )
+            if normalized_module_path.endswith("eks-cluster-create"):
+                updated = updated.replace("\n  depends_on = [module.vpc]\n", "\n")
+                if '"bnk-forge:vpc-id"' not in updated:
+                    updated = re.sub(
+                        r'(module\s+"eks"\s*\{[\s\S]*?)tags\s*=\s*local\.common_tags',
+                        r'\1tags = merge(local.common_tags, {\n    "bnk-forge:vpc-id" = module.vpc.vpc_id\n  })',
+                        updated,
+                        count=1,
+                    )
+            if updated != content:
+                Path(main_tf_eks).write_text(updated, encoding="utf-8")
+                logger.info("Applied hotfixes for %s in %s", normalized_module_path, main_tf_eks)
+
+        vars_tf_eks = os.path.join(work_dir, "variables.tf")
+        if os.path.exists(vars_tf_eks):
+            v_content = Path(vars_tf_eks).read_text(encoding="utf-8")
+            v_updated = re.sub(
+                r'(variable\s+"aws_(?:access_key_id|secret_access_key)"\s*\{[^}]*?sensitive\s*=\s*true\n)(\})',
+                r'\1  default   = ""\n\2',
+                v_content,
+            )
+            if v_updated != v_content:
+                Path(vars_tf_eks).write_text(v_updated, encoding="utf-8")
+                logger.info("Applied variables.tf hotfixes for %s in %s", normalized_module_path, vars_tf_eks)
 
     if not normalized_module_path.endswith("infra/ubuntu/kind"):
         return
@@ -514,11 +563,11 @@ def _apply_known_module_hotfixes(work_dir: str, module_path: str | None) -> None
                 'resource "local_file" "remote_input_guard" {\n  filename = "${local.local_artifact_dir}/.remote-input-guard"\n  content  = "remote-inputs-validated"',
             )
             content = content.replace(
-                'depends_on = [terraform_data.validate_remote_inputs]',
-                'depends_on = [local_file.remote_input_guard]',
+                "depends_on = [terraform_data.validate_remote_inputs]",
+                "depends_on = [local_file.remote_input_guard]",
             )
         # ubuntu /bin/sh (dash) does not support pipefail; keep scripts POSIX-safe.
-        content = content.replace('set -euo pipefail', 'set -eu')
+        content = content.replace("set -euo pipefail", "set -eu")
 
         # Hotfix 3: make remote workspace/kubeconfig dir creation idempotent even
         # when stale files exist at those paths from prior failed runs.
@@ -541,7 +590,7 @@ def _apply_known_module_hotfixes(work_dir: str, module_path: str | None) -> None
 
         old_preflight_line_escaped = (
             '"if ! $${SUDO} iptables -S DOCKER-FORWARD >/dev/null 2>&1; then '
-            'echo \\\"DOCKER-FORWARD chain missing. Docker host networking is not ready for kind.\\\"; '
+            'echo \\"DOCKER-FORWARD chain missing. Docker host networking is not ready for kind.\\"; '
             'exit 1; fi",'
         )
 
@@ -553,17 +602,17 @@ def _apply_known_module_hotfixes(work_dir: str, module_path: str | None) -> None
 
         remediation_preflight_line = (
             '"if ! $${SUDO} iptables -S DOCKER-FORWARD >/dev/null 2>&1; then '
-            'echo \'DOCKER-FORWARD chain missing; attempting docker/iptables remediation...\'; '
-            'if command -v update-alternatives >/dev/null 2>&1; then '
-            'if update-alternatives --list iptables >/dev/null 2>&1 | grep -q iptables-legacy; then '
-            '$${SUDO} update-alternatives --set iptables /usr/sbin/iptables-legacy >/dev/null 2>&1 || true; fi; '
-            'if update-alternatives --list ip6tables >/dev/null 2>&1 | grep -q ip6tables-legacy; then '
-            '$${SUDO} update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy >/dev/null 2>&1 || true; fi; '
-            'fi; '
-            '$${SUDO} systemctl restart docker >/dev/null 2>&1 || true; '
-            'sleep 3; '
-            'if ! $${SUDO} iptables -S DOCKER-FORWARD >/dev/null 2>&1; then '
-            'echo \'DOCKER-FORWARD chain missing after remediation. Docker host networking is not ready for kind.\'; '
+            "echo 'DOCKER-FORWARD chain missing; attempting docker/iptables remediation...'; "
+            "if command -v update-alternatives >/dev/null 2>&1; then "
+            "if update-alternatives --list iptables >/dev/null 2>&1 | grep -q iptables-legacy; then "
+            "$${SUDO} update-alternatives --set iptables /usr/sbin/iptables-legacy >/dev/null 2>&1 || true; fi; "
+            "if update-alternatives --list ip6tables >/dev/null 2>&1 | grep -q ip6tables-legacy; then "
+            "$${SUDO} update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy >/dev/null 2>&1 || true; fi; "
+            "fi; "
+            "$${SUDO} systemctl restart docker >/dev/null 2>&1 || true; "
+            "sleep 3; "
+            "if ! $${SUDO} iptables -S DOCKER-FORWARD >/dev/null 2>&1; then "
+            "echo 'DOCKER-FORWARD chain missing after remediation. Docker host networking is not ready for kind.'; "
             'exit 1; fi; fi",'
         )
         remediation_preflight_line_indented = f"      {remediation_preflight_line}"
@@ -572,7 +621,7 @@ def _apply_known_module_hotfixes(work_dir: str, module_path: str | None) -> None
             content = content.replace(old_preflight_line_escaped, remediation_preflight_line)
         if old_preflight_line_broken in content:
             content = content.replace(old_preflight_line_broken, remediation_preflight_line)
-        elif 'DOCKER-FORWARD chain missing after remediation' not in content:
+        elif "DOCKER-FORWARD chain missing after remediation" not in content:
             content, _ = kind_create_pattern.subn(
                 lambda m: f"{remediation_preflight_line_indented}\n{m.group(0)}",
                 content,
@@ -623,7 +672,7 @@ def _reconcile_known_existing_k8s_resources(work_dir: str, module_path: str | No
     def _requires_init(output: str) -> bool:
         normalized = (output or "").lower()
         return (
-            "run \"tofu init\"" in normalized
+            'run "tofu init"' in normalized
             or "initialization required" in normalized
             or "backend initialization required" in normalized
             or "providers are not installed" in normalized
@@ -742,11 +791,7 @@ def _reconcile_known_existing_k8s_resources(work_dir: str, module_path: str | No
                 )
 
         if state_result.returncode == 0:
-            managed_resources = {
-                line.strip()
-                for line in (state_result.stdout or "").splitlines()
-                if line.strip()
-            }
+            managed_resources = {line.strip() for line in (state_result.stdout or "").splitlines() if line.strip()}
 
         logger.info(
             "Reconcile: state list found %d managed resources, init_attempted=%s",
@@ -820,6 +865,7 @@ def _reconcile_known_existing_k8s_resources(work_dir: str, module_path: str | No
 
 class SystemDefaultsNotConfiguredError(Exception):
     """Raised when required system defaults are not configured."""
+
     def __init__(self, missing_settings: list):
         self.missing_settings = missing_settings
         missing_names = [s["description"] for s in missing_settings]
@@ -841,10 +887,10 @@ class OpenTofuRuntime:
     # Destroy timeout configuration (in seconds)
     # Different module types need different timeouts for cleanup
     DESTROY_TIMEOUTS = {
-        "vpc": 45 * 60,      # 45 minutes - ENI cleanup can be slow
-        "eks": 60 * 60,      # 60 minutes - node group + ENI cleanup
+        "vpc": 45 * 60,  # 45 minutes - ENI cleanup can be slow
+        "eks": 60 * 60,  # 60 minutes - node group + ENI cleanup
         "security": 60 * 60,  # 60 minutes - SG/ENI detach propagation can be slow
-        "rds": 45 * 60,      # 45 minutes - snapshot creation
+        "rds": 45 * 60,  # 45 minutes - snapshot creation
         "default": 30 * 60,  # 30 minutes - standard modules
     }
 
@@ -973,18 +1019,15 @@ class OpenTofuRuntime:
 
         # Add summary if we found specific errors
         if error_guidance:
-            summary = (
-                "\n" + "="*60 + "\n"
-                "DESTROY ERROR ANALYSIS & TROUBLESHOOTING\n"
-                "="*60
-            )
-            return summary + "".join(error_guidance) + "\n" + "="*60 + "\n"
+            summary = "\n" + "=" * 60 + "\nDESTROY ERROR ANALYSIS & TROUBLESHOOTING\n=" * 60
+            return summary + "".join(error_guidance) + "\n" + "=" * 60 + "\n"
 
         return ""
 
     def can_execute(self, module: ProjectModule) -> tuple[bool, list[str]]:
         """Check if module can be executed — delegates to variable_assembler."""
         from services.execution.variable_assembler import can_execute
+
         return can_execute(self.db, module)
 
     def reconcile_known_existing_resources(self, work_dir: str, module: ProjectModule, env: dict) -> int:
@@ -995,7 +1038,9 @@ class OpenTofuRuntime:
         module_path = module.library_module.path if module and module.library_module else None
         return _reconcile_known_existing_k8s_resources(work_dir, module_path, env)
 
-    def _prepare_project_secrets(self, project_id: int, work_dir: str, module_path: str | None = None) -> dict[str, str]:
+    def _prepare_project_secrets(
+        self, project_id: int, work_dir: str, module_path: str | None = None
+    ) -> dict[str, str]:
         """
         Prepare project secrets for module execution.
 
@@ -1013,16 +1058,19 @@ class OpenTofuRuntime:
         from services.secrets_service import SecretsService
 
         secrets_service = SecretsService(self.db)
-        value_secrets, file_paths = secrets_service.prepare_secrets_for_execution(
-            project_id, work_dir, module_path
-        )
+        value_secrets, file_paths = secrets_service.prepare_secrets_for_execution(project_id, work_dir, module_path)
 
-        logger.info(f"Prepared {len(value_secrets)} secret variables and {len(file_paths)} secret files for {module_path}")
+        logger.info(
+            f"Prepared {len(value_secrets)} secret variables and {len(file_paths)} secret files for {module_path}"
+        )
         return value_secrets
 
-    def build_variables(self, module: ProjectModule, secret_variables: dict | None = None, *, operation: str = "apply") -> dict:
+    def build_variables(
+        self, module: ProjectModule, secret_variables: dict | None = None, *, operation: str = "apply"
+    ) -> dict:
         """Build complete variable dict — delegates to variable_assembler."""
         from services.execution.variable_assembler import build_variables
+
         return build_variables(self.db, module, secret_variables, operation=operation)
 
     def _strip_global_tfvar_secrets(self, variables: dict, lib_module) -> dict:
@@ -1043,11 +1091,7 @@ class OpenTofuRuntime:
         """
         if "jwt_token" not in variables:
             return variables
-        declared = {
-            v.get("name")
-            for v in (getattr(lib_module, "variables_schema", None) or [])
-            if v.get("name")
-        }
+        declared = {v.get("name") for v in (getattr(lib_module, "variables_schema", None) or []) if v.get("name")}
         if "jwt_token" in declared:
             return variables
         result = dict(variables)
@@ -1076,9 +1120,7 @@ class OpenTofuRuntime:
 
         try:
             # Clone module source (pass ModuleSource for auth token)
-            self._clone_module_source(
-                lib_module.git_source, work_dir, lib_module.source, project=module.project
-            )
+            self._clone_module_source(lib_module.git_source, work_dir, lib_module.source, project=module.project)
 
             _apply_known_module_hotfixes(work_dir, lib_module.path if lib_module else None)
 
@@ -1113,14 +1155,16 @@ class OpenTofuRuntime:
             # Secrets are always exempt — they were already filtered to this module
             # by _prepare_project_secrets and should never be stripped.
             if lib_module and lib_module.variables_schema:
-                declared_vars = {v.get('name') for v in lib_module.variables_schema if v.get('name')}
+                declared_vars = {v.get("name") for v in lib_module.variables_schema if v.get("name")}
                 secret_keys = set(secret_variables.keys()) if secret_variables else set()
                 if declared_vars:
                     allowed = declared_vars | secret_keys
                     filtered = {k: v for k, v in variables.items() if k in allowed}
                     removed = len(variables) - len(filtered)
                     if removed > 0:
-                        logger.info(f"Filtered {removed} undeclared variables (module declares {len(declared_vars)} vars)")
+                        logger.info(
+                            f"Filtered {removed} undeclared variables (module declares {len(declared_vars)} vars)"
+                        )
                     variables = filtered
 
             module_overrides = dict(module.variable_overrides or {})
@@ -1203,11 +1247,9 @@ class OpenTofuRuntime:
                 if git_source.startswith("builtin://"):
                     # Builtin modules: source lives in the shared blueprint repo.
                     # The subpath after builtin:// maps to a directory in the repo.
-                    builtin_subpath = git_source[len("builtin://"):]
+                    builtin_subpath = git_source[len("builtin://") :]
                     blueprint_repo = os.path.join(
-                        workspace.get_blueprint_workspace_path(
-                            module.project_id, module.stack_instance_id
-                        ),
+                        workspace.get_blueprint_workspace_path(module.project_id, module.stack_instance_id),
                         "repo",
                     )
                     if not os.path.isdir(blueprint_repo):
@@ -1233,8 +1275,7 @@ class OpenTofuRuntime:
                         )
                     else:
                         raise ValueError(
-                            f"Builtin module source not found: {src_path}. "
-                            f"Ensure the module library is synced."
+                            f"Builtin module source not found: {src_path}. Ensure the module library is synced."
                         )
                 elif workspace.is_blueprint_eligible(module):
                     blueprint_repo = workspace.ensure_blueprint_repo(
@@ -1285,12 +1326,13 @@ class OpenTofuRuntime:
             # safe-name variables are declared and passed through filtering.
             if lib_module and getattr(module.project, "cloud_provider", None) == "aws":
                 from utils.naming import slugify_aws_name, slugify_s3_name
+
                 s3_safe = variables.get("project_name_s3_safe") or slugify_s3_name(module.project.name)
                 aws_safe = variables.get("project_name_aws_safe") or slugify_aws_name(module.project.name)
                 variables["project_name_s3_safe"] = s3_safe
                 variables["project_name_aws_safe"] = aws_safe
 
-                for tf_file in [f for f in os.listdir(work_dir) if f.endswith('.tf')]:
+                for tf_file in [f for f in os.listdir(work_dir) if f.endswith(".tf")]:
                     tf_path = os.path.join(work_dir, tf_file)
                     try:
                         with open(tf_path) as f:
@@ -1299,19 +1341,19 @@ class OpenTofuRuntime:
 
                         # Replace S3 bucket naming patterns that use raw project_name
                         # with the S3-safe variant to avoid uppercase/invalid chars
-                        if '${var.project_name}-dpdk-scripts' in patched:
+                        if "${var.project_name}-dpdk-scripts" in patched:
                             patched = patched.replace(
-                                '${var.project_name}-dpdk-scripts',
-                                '${var.project_name_s3_safe}-dpdk-scripts',
+                                "${var.project_name}-dpdk-scripts",
+                                "${var.project_name_s3_safe}-dpdk-scripts",
                             )
-                        if '${var.project_name}-terraform-state' in patched:
+                        if "${var.project_name}-terraform-state" in patched:
                             patched = patched.replace(
-                                '${var.project_name}-terraform-state',
-                                '${var.project_name_s3_safe}-terraform-state',
+                                "${var.project_name}-terraform-state",
+                                "${var.project_name_s3_safe}-terraform-state",
                             )
 
                         if patched != content:
-                            with open(tf_path, 'w') as f:
+                            with open(tf_path, "w") as f:
                                 f.write(patched)
                             logger.info("Patched %s for S3-safe naming", tf_file)
                     except Exception:
@@ -1330,7 +1372,7 @@ class OpenTofuRuntime:
                         vars_content += '\nvariable "project_name_aws_safe" {\n  description = "AWS-safe project name"\n  type        = string\n}\n'
                         declarations_added.append("project_name_aws_safe")
                     if declarations_added:
-                        with open(vars_tf_path, 'w') as f:
+                        with open(vars_tf_path, "w") as f:
                             f.write(vars_content)
                         logger.info("Added variable declarations to variables.tf: %s", declarations_added)
 
@@ -1338,10 +1380,10 @@ class OpenTofuRuntime:
             # Secrets are always exempt — they were already filtered to this module
             # by _prepare_project_secrets and should never be stripped.
             if lib_module and lib_module.variables_schema:
-                declared_vars = {v.get('name') for v in lib_module.variables_schema if v.get('name')}
+                declared_vars = {v.get("name") for v in lib_module.variables_schema if v.get("name")}
                 secret_keys = set(secret_variables.keys()) if secret_variables else set()
                 if lib_module and getattr(module.project, "cloud_provider", None) == "aws":
-                    for special in ('project_name_s3_safe', 'project_name_aws_safe'):
+                    for special in ("project_name_s3_safe", "project_name_aws_safe"):
                         if special in variables:
                             declared_vars.add(special)
                 if declared_vars:
@@ -1349,7 +1391,9 @@ class OpenTofuRuntime:
                     filtered = {k: v for k, v in variables.items() if k in allowed}
                     removed = len(variables) - len(filtered)
                     if removed > 0:
-                        logger.info(f"Filtered {removed} undeclared variables (module declares {len(declared_vars)} vars)")
+                        logger.info(
+                            f"Filtered {removed} undeclared variables (module declares {len(declared_vars)} vars)"
+                        )
                     variables = filtered
 
             self.write_tfvars(work_dir, variables)
@@ -1370,9 +1414,7 @@ class OpenTofuRuntime:
             logger.error(f"Failed to prepare persistent workspace: {e}")
             raise
 
-    def _clone_module_source(
-        self, git_source: str, work_dir: str, module_source: ModuleSource = None, project=None
-    ):
+    def _clone_module_source(self, git_source: str, work_dir: str, module_source: ModuleSource = None, project=None):
         """
         Clone module source to workspace.
 
@@ -1434,7 +1476,7 @@ class OpenTofuRuntime:
                     check=True,
                     capture_output=True,
                     text=True,
-                    timeout=300  # S15-033: 5 minute timeout for git clone
+                    timeout=300,  # S15-033: 5 minute timeout for git clone
                 )
             except subprocess.CalledProcessError as e:
                 # S15-032: Include git-specific stderr in error message
@@ -1444,9 +1486,7 @@ class OpenTofuRuntime:
                     f"Git clone failed [{error_kind}] {guidance} (exit code {e.returncode}): {stderr.strip()}"
                 ) from e
             except subprocess.TimeoutExpired:
-                raise RuntimeError(
-                    f"Git clone timed out after 300s for {source} (ref={ref})"
-                )
+                raise RuntimeError(f"Git clone timed out after 300s for {source} (ref={ref})")
 
             # Copy subpath to work_dir (or entire repo if no subpath)
             src_path = os.path.join(clone_temp, subpath) if subpath else clone_temp
@@ -1486,9 +1526,7 @@ class OpenTofuRuntime:
             cleanup_env()
             shutil.rmtree(clone_temp, ignore_errors=True)
 
-    def _cofetch_relative_siblings(
-        self, clone_root: str, subpath: str, work_dir: str, project=None
-    ) -> None:
+    def _cofetch_relative_siblings(self, clone_root: str, subpath: str, work_dir: str, project=None) -> None:
         """Co-fetch sibling modules referenced via relative ``source = "../..."``.
 
         #322: An isolated per-module workspace only copies ``subpath`` out of the clone.
@@ -1581,17 +1619,13 @@ class OpenTofuRuntime:
                 target_clone = os.path.realpath(os.path.join(module_clone_dir, rel_source))
                 # Path-traversal guard: never copy outside the clone root.
                 if os.path.commonpath([clone_root_abs, target_clone]) != clone_root_abs:
-                    logger.warning(
-                        "Skipping sibling reference '%s' — resolves outside clone root", rel_source
-                    )
+                    logger.warning("Skipping sibling reference '%s' — resolves outside clone root", rel_source)
                     continue
                 # Explicit guard: never copy the clone root itself (e.g. source = "../.."
                 # from a deeply nested module that resolves to the repo root would
                 # otherwise shutil.copytree the entire working tree into .forge_siblings).
                 if target_clone == clone_root_abs:
-                    logger.warning(
-                        "Skipping sibling reference '%s' — resolves to clone root", rel_source
-                    )
+                    logger.warning("Skipping sibling reference '%s' — resolves to clone root", rel_source)
                     continue
                 # Also skip when the target is an ancestor of the current subpath
                 # (e.g. source = ".." from clone/modules/foo resolves to clone/modules/,
@@ -1603,9 +1637,7 @@ class OpenTofuRuntime:
                     )
                     continue
                 if not os.path.isdir(target_clone):
-                    logger.warning(
-                        "Skipping sibling reference '%s' — not a directory in clone", rel_source
-                    )
+                    logger.warning("Skipping sibling reference '%s' — not a directory in clone", rel_source)
                     continue
                 # Skip references that resolve inside the originally-copied subpath
                 # tree (e.g. `./child`) — those are already present under work_dir and
@@ -1663,28 +1695,32 @@ class OpenTofuRuntime:
     def write_tfvars(self, work_dir: str, variables: dict) -> str:
         """Generate terraform.tfvars.json — delegates to config_writer."""
         from services.execution.config_writer import write_tfvars
+
         return write_tfvars(work_dir, variables)
 
     def write_backend_config(self, work_dir: str, module: ProjectModule):
         """Generate backend configuration — delegates to config_writer."""
         from services.execution.config_writer import write_backend_config
+
         write_backend_config(work_dir, module, db=self.db)
 
     def write_encryption_config(self, work_dir: str, module: ProjectModule):
         """Generate state encryption configuration — delegates to config_writer."""
         from services.execution.config_writer import write_encryption_config
+
         write_encryption_config(work_dir, module, db=self.db)
 
     def write_provider_config(self, work_dir: str, module: ProjectModule, variables: dict = None):
         """Generate provider configuration — delegates to config_writer."""
         from services.execution.config_writer import write_provider_config
+
         write_provider_config(work_dir, module, variables, db=self.db)
 
     # S14-021: Subprocess timeout constants (in seconds)
-    INIT_TIMEOUT = 15 * 60      # 15 minutes - downloading providers
-    PLAN_TIMEOUT = 30 * 60      # 30 minutes - complex infrastructure plans
-    APPLY_TIMEOUT = 90 * 60     # 90 minutes - long-running resource creation
-    REFRESH_TIMEOUT = 30 * 60   # 30 minutes - state refresh
+    INIT_TIMEOUT = 15 * 60  # 15 minutes - downloading providers
+    PLAN_TIMEOUT = 30 * 60  # 30 minutes - complex infrastructure plans
+    APPLY_TIMEOUT = 90 * 60  # 90 minutes - long-running resource creation
+    REFRESH_TIMEOUT = 30 * 60  # 30 minutes - state refresh
 
     @staticmethod
     def _run_tofu(
@@ -1704,7 +1740,11 @@ class OpenTofuRuntime:
         """
         if on_output is not None:
             return _stream_subprocess(
-                cmd, cwd=work_dir, env=tofu_env, timeout=timeout, on_output=on_output,
+                cmd,
+                cwd=work_dir,
+                env=tofu_env,
+                timeout=timeout,
+                on_output=on_output,
             )
         result = subprocess.run(
             cmd,
@@ -1746,7 +1786,10 @@ class OpenTofuRuntime:
         try:
             returncode, raw_output = self._run_tofu(
                 ["tofu", "init", "-no-color", "-input=false"],
-                work_dir, tofu_env, timeout, on_output,
+                work_dir,
+                tofu_env,
+                timeout,
+                on_output,
             )
 
             output = _add_provider_lock_timeout_hint(raw_output)
@@ -1764,9 +1807,9 @@ class OpenTofuRuntime:
             stdout = e.stdout
             stderr = e.stderr
             if isinstance(stdout, bytes):
-                stdout = stdout.decode(errors='replace')
+                stdout = stdout.decode(errors="replace")
             if isinstance(stderr, bytes):
-                stderr = stderr.decode(errors='replace')
+                stderr = stderr.decode(errors="replace")
             output = _add_provider_lock_timeout_hint((stdout or "") + (stderr or "") + timeout_msg)
             return 1, output
 
@@ -1798,7 +1841,10 @@ class OpenTofuRuntime:
         try:
             returncode, output = self._run_tofu(
                 ["tofu", "plan", "-no-color", "-input=false", "-out=plan.out"],
-                work_dir, tofu_env, timeout, on_output,
+                work_dir,
+                tofu_env,
+                timeout,
+                on_output,
             )
 
             logger.info(f"tofu plan completed with exit code {returncode}")
@@ -1815,9 +1861,9 @@ class OpenTofuRuntime:
             stdout = e.stdout
             stderr = e.stderr
             if isinstance(stdout, bytes):
-                stdout = stdout.decode(errors='replace')
+                stdout = stdout.decode(errors="replace")
             if isinstance(stderr, bytes):
-                stderr = stderr.decode(errors='replace')
+                stderr = stderr.decode(errors="replace")
             output = (stdout or "") + (stderr or "") + timeout_msg
             return 1, output
 
@@ -1851,7 +1897,7 @@ class OpenTofuRuntime:
                 env=tofu_env,
                 capture_output=True,
                 text=True,
-                timeout=timeout
+                timeout=timeout,
             )
 
             output = result.stdout + result.stderr
@@ -1861,16 +1907,14 @@ class OpenTofuRuntime:
 
         except subprocess.TimeoutExpired as e:
             # S14-021: Handle timeout for drift detection plan
-            timeout_msg = (
-                f"\nDrift detection plan timed out after {timeout} seconds.\n"
-            )
+            timeout_msg = f"\nDrift detection plan timed out after {timeout} seconds.\n"
             logger.error(f"Drift plan timeout after {timeout}s")
             stdout = e.stdout
             stderr = e.stderr
             if isinstance(stdout, bytes):
-                stdout = stdout.decode(errors='replace')
+                stdout = stdout.decode(errors="replace")
             if isinstance(stderr, bytes):
-                stderr = stderr.decode(errors='replace')
+                stderr = stderr.decode(errors="replace")
             output = (stdout or "") + (stderr or "") + timeout_msg
             return 1, output  # Return error code (not 2 for changes)
 
@@ -1904,7 +1948,10 @@ class OpenTofuRuntime:
             # Apply the plan
             returncode, output = self._run_tofu(
                 ["tofu", "apply", "-no-color", "-input=false", "-auto-approve", "plan.out"],
-                work_dir, tofu_env, timeout, on_output,
+                work_dir,
+                tofu_env,
+                timeout,
+                on_output,
             )
 
             logger.info(f"tofu apply completed with exit code {returncode}")
@@ -1934,9 +1981,9 @@ class OpenTofuRuntime:
             stdout = e.stdout
             stderr = e.stderr
             if isinstance(stdout, bytes):
-                stdout = stdout.decode(errors='replace')
+                stdout = stdout.decode(errors="replace")
             if isinstance(stderr, bytes):
-                stderr = stderr.decode(errors='replace')
+                stderr = stderr.decode(errors="replace")
             output = (stdout or "") + (stderr or "") + timeout_msg
             return 1, output, {}
 
@@ -1961,7 +2008,7 @@ class OpenTofuRuntime:
                 env=tofu_env,
                 capture_output=True,
                 text=True,
-                timeout=60  # S15-033: 60 second timeout for output capture
+                timeout=60,  # S15-033: 60 second timeout for output capture
             )
         except subprocess.TimeoutExpired:
             logger.warning("Timed out capturing outputs after 60s")
@@ -2009,7 +2056,7 @@ class OpenTofuRuntime:
                 env=tofu_env,
                 capture_output=True,
                 text=True,
-                timeout=timeout
+                timeout=timeout,
             )
 
             output = result.stdout + result.stderr
@@ -2026,9 +2073,9 @@ class OpenTofuRuntime:
             stdout = e.stdout
             stderr = e.stderr
             if isinstance(stdout, bytes):
-                stdout = stdout.decode(errors='replace')
+                stdout = stdout.decode(errors="replace")
             if isinstance(stderr, bytes):
-                stderr = stderr.decode(errors='replace')
+                stderr = stderr.decode(errors="replace")
             output = (stdout or "") + (stderr or "") + timeout_msg
             return 1, output
 
@@ -2073,7 +2120,10 @@ class OpenTofuRuntime:
         try:
             returncode, output = self._run_tofu(
                 ["tofu", "destroy", "-no-color", "-input=false", "-auto-approve"],
-                work_dir, tofu_env, timeout, on_output,
+                work_dir,
+                tofu_env,
+                timeout,
+                on_output,
             )
 
             logger.info(f"tofu destroy completed with exit code {returncode}")
@@ -2142,21 +2192,26 @@ class OpenTofuRuntime:
         while attempt <= max_retries:
             if attempt > 0:
                 delay = initial_delay * (2 ** (attempt - 1))  # Exponential backoff
-                retry_msg = f"\n{'='*60}\nRETRY ATTEMPT {attempt}/{max_retries} after {delay}s delay\n{'='*60}\n"
-                logger.info(f"Destroy failed with retryable error. Waiting {delay}s before retry {attempt}/{max_retries}")
+                retry_msg = f"\n{'=' * 60}\nRETRY ATTEMPT {attempt}/{max_retries} after {delay}s delay\n{'=' * 60}\n"
+                logger.info(
+                    f"Destroy failed with retryable error. Waiting {delay}s before retry {attempt}/{max_retries}"
+                )
                 all_output += retry_msg
                 time.sleep(delay)
 
             # Run destroy
             exit_code, output = self.run_destroy(
-                work_dir, env, timeout=timeout, on_output=on_output,
+                work_dir,
+                env,
+                timeout=timeout,
+                on_output=on_output,
             )
             all_output += output
 
             # Success - return immediately
             if exit_code == 0:
                 if attempt > 0:
-                    success_msg = f"\n{'='*60}\nDESTROY SUCCEEDED ON RETRY {attempt}\n{'='*60}\n"
+                    success_msg = f"\n{'=' * 60}\nDESTROY SUCCEEDED ON RETRY {attempt}\n{'=' * 60}\n"
                     all_output += success_msg
                     logger.info(f"Destroy succeeded on retry attempt {attempt}")
                 return exit_code, all_output
@@ -2172,11 +2227,7 @@ class OpenTofuRuntime:
             # Retryable error - check if we have retries left
             if attempt >= max_retries:
                 # Out of retries - add detailed error analysis
-                failure_msg = (
-                    f"\n{'='*60}\n"
-                    f"DESTROY FAILED after {max_retries} retry attempts\n"
-                    f"{'='*60}\n"
-                )
+                failure_msg = f"\n{'=' * 60}\nDESTROY FAILED after {max_retries} retry attempts\n{'=' * 60}\n"
                 all_output += failure_msg
 
                 # Add parsed error guidance if module is provided

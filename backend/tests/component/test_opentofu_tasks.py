@@ -16,6 +16,7 @@ from services.module_lock import ModuleLock
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
+
 def _now():
     """Return a naive UTC datetime compatible with SQLite."""
     return datetime.utcnow()
@@ -23,8 +24,13 @@ def _now():
 
 def _make_project(db, name="Tofu Test Project"):
     project = Project(
-        name=name, project_type="kubernetes", cloud_provider="on-prem",
-        environment="dev", backend_type="local", color="#000", icon="cloud",
+        name=name,
+        project_type="kubernetes",
+        cloud_provider="on-prem",
+        environment="dev",
+        backend_type="local",
+        color="#000",
+        icon="cloud",
         is_active=True,
     )
     db.add(project)
@@ -34,10 +40,14 @@ def _make_project(db, name="Tofu Test Project"):
 
 def _make_library(db, name="test-module"):
     lib = ModuleLibrary(
-        name=name, category="kubernetes", path=f"modules/{name}",
-        provider="test", description="Test module",
+        name=name,
+        category="kubernetes",
+        path=f"modules/{name}",
+        provider="test",
+        description="Test module",
         git_source="https://github.com/test/test.git",
-        is_official=True, is_active=True,
+        is_official=True,
+        is_active=True,
     )
     db.add(lib)
     db.flush()
@@ -46,9 +56,12 @@ def _make_library(db, name="test-module"):
 
 def _make_module(db, project, library, status="not_initialized"):
     pm = ProjectModule(
-        project_id=project.id, module_library_id=library.id,
+        project_id=project.id,
+        module_library_id=library.id,
         path_in_project=f"modules/{library.name}",
-        status=status, variables={}, enabled=True,
+        status=status,
+        variables={},
+        enabled=True,
     )
     db.add(pm)
     db.flush()
@@ -57,8 +70,10 @@ def _make_module(db, project, library, status="not_initialized"):
 
 def _make_task(db, project, module, task_type="init"):
     task = TaskModel(
-        task_type=task_type, status="queued",
-        project_id=project.id, module_id=module.id,
+        task_type=task_type,
+        status="queued",
+        project_id=project.id,
+        module_id=module.id,
         created_at=_now(),
     )
     db.add(task)
@@ -103,6 +118,7 @@ def _mock_datetime_now(monkeypatch_target=None):
 
 # ── Init Task ────────────────────────────────────────────────────────
 
+
 class TestRunOpenTofuInit:
     """tasks.opentofu_tasks.run_opentofu_init."""
 
@@ -114,8 +130,9 @@ class TestRunOpenTofuInit:
     @patch(f"{_MOD}.OpenTofuRuntime")
     @patch(f"{_MOD}.get_db_context")
     @patch(f"{_MOD}.datetime")
-    def test_init_success(self, mock_dt, mock_db_ctx, mock_runtime_cls, mock_creds,
-                          mock_lock, mock_notify, mock_deploy, mock_counts, db):
+    def test_init_success(
+        self, mock_dt, mock_db_ctx, mock_runtime_cls, mock_creds, mock_lock, mock_notify, mock_deploy, mock_counts, db
+    ):
         """Successful init sets task to completed and module to initialized."""
         # Make datetime.now() return naive UTC datetimes matching SQLite
         naive_now = datetime.utcnow()
@@ -146,6 +163,7 @@ class TestRunOpenTofuInit:
 
         with patch("services.workspace_manager.WorkspaceManager", return_value=mock_workspace):
             from tasks.opentofu_tasks import run_opentofu_init
+
             result = run_opentofu_init(task.id, module.id)
 
         assert result["success"] is True
@@ -157,8 +175,7 @@ class TestRunOpenTofuInit:
     @patch(f"{_MOD}.OpenTofuRuntime")
     @patch(f"{_MOD}.get_db_context")
     @patch(f"{_MOD}.datetime")
-    def test_init_failure(self, mock_dt, mock_db_ctx, mock_runtime_cls, mock_creds,
-                          mock_lock, mock_notify, db):
+    def test_init_failure(self, mock_dt, mock_db_ctx, mock_runtime_cls, mock_creds, mock_lock, mock_notify, db):
         """Failed init sets task/module to failed status."""
         naive_now = datetime.utcnow()
         mock_dt.now.return_value = naive_now
@@ -186,11 +203,14 @@ class TestRunOpenTofuInit:
         mock_workspace.needs_reinit.return_value = (True, "first init")
         mock_workspace.is_initialized.return_value = False
 
-        with patch("services.workspace_manager.WorkspaceManager", return_value=mock_workspace), \
-             patch(f"{_MOD}.update_project_counts"), \
-             patch(f"{_MOD}.create_deployment_record"), \
-             patch(f"{_MOD}._update_stack_status_if_needed"):
+        with (
+            patch("services.workspace_manager.WorkspaceManager", return_value=mock_workspace),
+            patch(f"{_MOD}.update_project_counts"),
+            patch(f"{_MOD}.create_deployment_record"),
+            patch(f"{_MOD}._update_stack_status_if_needed"),
+        ):
             from tasks.opentofu_tasks import run_opentofu_init
+
             result = run_opentofu_init(task.id, module.id)
 
         assert result["success"] is False
@@ -201,8 +221,7 @@ class TestRunOpenTofuInit:
     @patch(f"{_MOD}.OpenTofuRuntime")
     @patch(f"{_MOD}.get_db_context")
     @patch(f"{_MOD}.datetime")
-    def test_init_skip_when_initialized(self, mock_dt, mock_db_ctx, mock_runtime_cls,
-                                        mock_lock, mock_notify, db):
+    def test_init_skip_when_initialized(self, mock_dt, mock_db_ctx, mock_runtime_cls, mock_lock, mock_notify, db):
         """Already-initialized workspace skips init and returns success."""
         naive_now = datetime.utcnow()
         mock_dt.now.return_value = naive_now
@@ -229,9 +248,12 @@ class TestRunOpenTofuInit:
         mock_workspace.is_initialized.return_value = True
         mock_workspace.needs_reinit.return_value = (False, None)
 
-        with patch("services.workspace_manager.WorkspaceManager", return_value=mock_workspace), \
-             patch(f"{_MOD}.create_deployment_record"):
+        with (
+            patch("services.workspace_manager.WorkspaceManager", return_value=mock_workspace),
+            patch(f"{_MOD}.create_deployment_record"),
+        ):
             from tasks.opentofu_tasks import run_opentofu_init
+
             result = run_opentofu_init(task.id, module.id)
 
         assert result["success"] is True
@@ -244,6 +266,7 @@ class TestRunOpenTofuInit:
         mock_db_ctx.return_value.__exit__ = MagicMock(return_value=False)
 
         from tasks.opentofu_tasks import run_opentofu_init
+
         with pytest.raises((ValueError, Exception)):
             run_opentofu_init(99999, 1)
 
@@ -311,6 +334,7 @@ class TestRunOpenTofuInit:
 
 # ── Plan Task ────────────────────────────────────────────────────────
 
+
 class TestRunOpenTofuPlan:
     """tasks.opentofu_tasks.run_opentofu_plan."""
 
@@ -323,9 +347,19 @@ class TestRunOpenTofuPlan:
     @patch(f"{_MOD}.OpenTofuRuntime")
     @patch(f"{_MOD}.get_db_context")
     @patch(f"{_MOD}.datetime")
-    def test_plan_success(self, mock_dt, mock_db_ctx, mock_runtime_cls, mock_deps,
-                          mock_creds, mock_lock, mock_notify, mock_deploy,
-                          mock_counts, db):
+    def test_plan_success(
+        self,
+        mock_dt,
+        mock_db_ctx,
+        mock_runtime_cls,
+        mock_deps,
+        mock_creds,
+        mock_lock,
+        mock_notify,
+        mock_deploy,
+        mock_counts,
+        db,
+    ):
         """Successful plan sets status to completed/planned."""
         naive_now = datetime.utcnow()
         mock_dt.now.return_value = naive_now
@@ -355,6 +389,7 @@ class TestRunOpenTofuPlan:
 
         with patch("services.workspace_manager.WorkspaceManager", return_value=mock_workspace):
             from tasks.opentofu_tasks import run_opentofu_plan
+
             result = run_opentofu_plan(task.id, module.id)
 
         assert result["success"] is True
@@ -376,12 +411,14 @@ class TestRunOpenTofuPlan:
         mock_db_ctx.return_value.__exit__ = MagicMock(return_value=False)
 
         from tasks.opentofu_tasks import run_opentofu_plan
+
         result = run_opentofu_plan(task.id, module.id)
 
         assert result["success"] is False
 
 
 # ── Apply Task ───────────────────────────────────────────────────────
+
 
 class TestRunOpenTofuApply:
     """tasks.opentofu_tasks.run_opentofu_apply."""
@@ -402,6 +439,7 @@ class TestRunOpenTofuApply:
         mock_db_ctx.return_value.__exit__ = MagicMock(return_value=False)
 
         from tasks.opentofu_tasks import run_opentofu_apply
+
         result = run_opentofu_apply(task.id, module.id)
 
         assert result["success"] is False
@@ -464,8 +502,10 @@ class TestRunOpenTofuApply:
         mock_workspace.is_initialized.return_value = True
         mock_workspace.needs_reinit.return_value = (False, None)
 
-        with patch("services.workspace_manager.WorkspaceManager", return_value=mock_workspace), \
-             patch(f"{_MOD}._update_stack_status_if_needed"):
+        with (
+            patch("services.workspace_manager.WorkspaceManager", return_value=mock_workspace),
+            patch(f"{_MOD}._update_stack_status_if_needed"),
+        ):
             from tasks.opentofu_tasks import run_opentofu_apply
 
             result = run_opentofu_apply(task.id, module.id)
@@ -534,8 +574,10 @@ class TestRunOpenTofuApply:
         mock_workspace.is_initialized.return_value = True
         mock_workspace.needs_reinit.return_value = (False, None)
 
-        with patch("services.workspace_manager.WorkspaceManager", return_value=mock_workspace), \
-             patch(f"{_MOD}._update_stack_status_if_needed"):
+        with (
+            patch("services.workspace_manager.WorkspaceManager", return_value=mock_workspace),
+            patch(f"{_MOD}._update_stack_status_if_needed"),
+        ):
             from tasks.opentofu_tasks import run_opentofu_apply
 
             result = run_opentofu_apply(task.id, module.id)
@@ -612,8 +654,10 @@ class TestRunOpenTofuApply:
         mock_workspace.is_initialized.return_value = False
         mock_workspace.needs_reinit.return_value = (True, "first init")
 
-        with patch("services.workspace_manager.WorkspaceManager", return_value=mock_workspace), \
-             patch(f"{_MOD}._update_stack_status_if_needed"):
+        with (
+            patch("services.workspace_manager.WorkspaceManager", return_value=mock_workspace),
+            patch(f"{_MOD}._update_stack_status_if_needed"),
+        ):
             from tasks.opentofu_tasks import run_opentofu_apply
 
             result = run_opentofu_apply(task.id, module.id)
@@ -630,6 +674,7 @@ class TestRunOpenTofuApply:
 
 # ── Destroy Task ─────────────────────────────────────────────────────
 
+
 class TestRunOpenTofuDestroy:
     """tasks.opentofu_tasks.run_opentofu_destroy."""
 
@@ -638,8 +683,7 @@ class TestRunOpenTofuDestroy:
     @patch(f"{_MOD}._update_stack_status_if_needed")
     @patch(f"{_MOD}.get_db_context")
     @patch(f"{_MOD}.datetime")
-    def test_destroy_skips_unapplied_module(self, mock_dt, mock_db_ctx, mock_stack,
-                                             mock_notify, mock_publish, db):
+    def test_destroy_skips_unapplied_module(self, mock_dt, mock_db_ctx, mock_stack, mock_notify, mock_publish, db):
         """Destroy for never-applied module is skipped with success."""
         naive_now = datetime.utcnow()
         mock_dt.now.return_value = naive_now
@@ -655,6 +699,7 @@ class TestRunOpenTofuDestroy:
         mock_db_ctx.return_value.__exit__ = MagicMock(return_value=False)
 
         from tasks.opentofu_tasks import run_opentofu_destroy
+
         result = run_opentofu_destroy(task.id, module.id)
 
         assert result["status"] == "skipped"
@@ -677,12 +722,14 @@ class TestRunOpenTofuDestroy:
         mock_db_ctx.return_value.__exit__ = MagicMock(return_value=False)
 
         from tasks.opentofu_tasks import run_opentofu_destroy
+
         result = run_opentofu_destroy(task.id, module.id)
 
         assert result["success"] is False
 
 
 # ── Managed Cluster Scan Enqueue ──────────────────────────────────────
+
 
 class TestManagedClusterScanEnqueue:
     """After EKS/ROKS register in apply, enqueue_cluster_scan is called."""
@@ -697,8 +744,10 @@ class TestManagedClusterScanEnqueue:
         mock_cluster.id = 42
         mock_cluster.name = "eks-cluster"
 
-        with patch("services.eks_service.register_eks_cluster", return_value=mock_cluster), \
-             patch("tasks.cluster_scan_task.scan_cluster_async") as mock_scan_task:
+        with (
+            patch("services.eks_service.register_eks_cluster", return_value=mock_cluster),
+            patch("tasks.cluster_scan_task.scan_cluster_async") as mock_scan_task,
+        ):
             from services.eks_service import register_eks_cluster
             from tasks.cluster_scan_task import enqueue_cluster_scan
 
@@ -714,8 +763,10 @@ class TestManagedClusterScanEnqueue:
         mock_cluster.id = 55
         mock_cluster.name = "roks-cluster"
 
-        with patch("services.roks_service.register_roks_cluster", return_value=mock_cluster), \
-             patch("tasks.cluster_scan_task.scan_cluster_async") as mock_scan_task:
+        with (
+            patch("services.roks_service.register_roks_cluster", return_value=mock_cluster),
+            patch("tasks.cluster_scan_task.scan_cluster_async") as mock_scan_task,
+        ):
             from services.roks_service import register_roks_cluster
             from tasks.cluster_scan_task import enqueue_cluster_scan
 
@@ -727,6 +778,7 @@ class TestManagedClusterScanEnqueue:
 
 
 # ── #195: Incremental log streaming during a run ─────────────────────────────
+
 
 class TestOpenTofuTaskLogStreaming:
     """logs_full_size must grow while the task is in_progress, not jump from 0
@@ -742,8 +794,17 @@ class TestOpenTofuTaskLogStreaming:
     @patch(f"{_MOD}.get_db_context")
     @patch(f"{_MOD}.datetime")
     def test_plan_persists_growing_logs_before_completion(
-        self, mock_dt, mock_db_ctx, mock_runtime_cls, _mock_deps, _mock_creds,
-        mock_lock, _mock_notify, _mock_deploy, _mock_counts, db,
+        self,
+        mock_dt,
+        mock_db_ctx,
+        mock_runtime_cls,
+        _mock_deps,
+        _mock_creds,
+        mock_lock,
+        _mock_notify,
+        _mock_deploy,
+        _mock_counts,
+        db,
     ):
         from sqlalchemy import func
 
@@ -777,12 +838,8 @@ class TestOpenTofuTaskLogStreaming:
             assert on_output is not None, "plan task must pass an on_output sink (#195)"
             for i in range(1, 6):
                 on_output(f"tofu progress line {i}")
-                size = db.query(func.length(TaskModel.logs)).filter(
-                    TaskModel.id == task.id
-                ).scalar()
-                status = db.query(TaskModel.status).filter(
-                    TaskModel.id == task.id
-                ).scalar()
+                size = db.query(func.length(TaskModel.logs)).filter(TaskModel.id == task.id).scalar()
+                status = db.query(TaskModel.status).filter(TaskModel.id == task.id).scalar()
                 observed_sizes.append(size or 0)
                 observed_status.append(status)
             return (0, "".join(f"tofu progress line {i}\n" for i in range(1, 6)))
@@ -801,9 +858,12 @@ class TestOpenTofuTaskLogStreaming:
         def _fast_streamer(t, d, **_kw):
             return TofuLogStreamer(t, d, interval=0)
 
-        with patch("services.workspace_manager.WorkspaceManager", return_value=mock_workspace), \
-             patch(f"{_MOD}.TofuLogStreamer", _fast_streamer):
+        with (
+            patch("services.workspace_manager.WorkspaceManager", return_value=mock_workspace),
+            patch(f"{_MOD}.TofuLogStreamer", _fast_streamer),
+        ):
             from tasks.opentofu_tasks import run_opentofu_plan
+
             result = run_opentofu_plan(task.id, module.id)
 
         assert result["success"] is True
@@ -833,8 +893,17 @@ class TestOpenTofuTaskLogStreaming:
     @patch(f"{_MOD}.get_db_context")
     @patch(f"{_MOD}.datetime")
     def test_plan_passes_on_output_sink_to_runtime(
-        self, mock_dt, mock_db_ctx, mock_runtime_cls, _mock_deps, _mock_creds,
-        mock_lock, _mock_notify, _mock_deploy, _mock_counts, db,
+        self,
+        mock_dt,
+        mock_db_ctx,
+        mock_runtime_cls,
+        _mock_deps,
+        _mock_creds,
+        mock_lock,
+        _mock_notify,
+        _mock_deploy,
+        _mock_counts,
+        db,
     ):
         """Guard: the plan task must hand run_plan a callable on_output sink."""
         naive_now = datetime.utcnow()
@@ -865,7 +934,164 @@ class TestOpenTofuTaskLogStreaming:
 
         with patch("services.workspace_manager.WorkspaceManager", return_value=mock_workspace):
             from tasks.opentofu_tasks import run_opentofu_plan
+
             run_opentofu_plan(task.id, module.id)
 
         _args, kwargs = mock_engine.run_plan.call_args
         assert callable(kwargs.get("on_output"))
+
+
+class TestCheckAwsVpcQuotaPreflight:
+    """Tests for _check_aws_vpc_quota_preflight in opentofu_tasks.py."""
+
+    def test_vpc_quota_preflight_allows_existing_cluster_vpc_via_variable_overrides(self, db):
+        import sys
+
+        from tasks.opentofu_tasks import _check_aws_vpc_quota_preflight
+
+        project = _make_project(db)
+        lib = _make_library(db, name="eks-cluster-create")
+        module = _make_module(db, project, lib, status="initialized")
+        module.variable_overrides = {
+            "aws_region": "ap-southeast-2",
+            "eks_cluster_name": "bnk-eks-1",
+        }
+        module.variables = {}
+        db.commit()
+
+        mock_ec2 = MagicMock()
+        mock_ec2.describe_vpcs.return_value = {
+            "Vpcs": [
+                {"VpcId": "vpc-1", "CidrBlock": "10.0.0.0/16", "IsDefault": True, "Tags": []},
+                {
+                    "VpcId": "vpc-2",
+                    "CidrBlock": "10.1.0.0/16",
+                    "IsDefault": False,
+                    "Tags": [{"Key": "Name", "Value": "bnk-eks-1-vpc"}],
+                },
+                {
+                    "VpcId": "vpc-3",
+                    "CidrBlock": "10.2.0.0/16",
+                    "IsDefault": False,
+                    "Tags": [{"Key": "Name", "Value": "other-1"}],
+                },
+                {
+                    "VpcId": "vpc-4",
+                    "CidrBlock": "10.3.0.0/16",
+                    "IsDefault": False,
+                    "Tags": [{"Key": "Name", "Value": "other-2"}],
+                },
+                {
+                    "VpcId": "vpc-5",
+                    "CidrBlock": "10.4.0.0/16",
+                    "IsDefault": False,
+                    "Tags": [{"Key": "Name", "Value": "other-3"}],
+                },
+            ]
+        }
+        mock_sq = MagicMock()
+        mock_sq.get_service_quota.return_value = {"Quota": {"Value": 5.0}}
+
+        mock_session = MagicMock()
+        mock_session.client.side_effect = lambda svc, **_kw: mock_ec2 if svc == "ec2" else mock_sq
+
+        mock_boto3 = MagicMock()
+        mock_boto3.Session.return_value = mock_session
+        mock_botocore_config = MagicMock()
+
+        with patch.dict(
+            sys.modules,
+            {"boto3": mock_boto3, "botocore": MagicMock(), "botocore.config": mock_botocore_config},
+        ):
+            msg = _check_aws_vpc_quota_preflight(
+                module,
+                {"AWS_ACCESS_KEY_ID": "AKIA...", "AWS_SECRET_ACCESS_KEY": "secret"},
+            )
+
+        assert "existing VPC vpc-2 (bnk-eks-1-vpc) found in ap-southeast-2" in msg
+        mock_boto3.Session.assert_called_once_with(
+            region_name="ap-southeast-2",
+            aws_access_key_id="AKIA...",
+            aws_secret_access_key="secret",
+        )
+
+    def test_vpc_quota_preflight_blocks_new_cluster_with_account_attributes_fallback(self, db):
+        import sys
+
+        from tasks.opentofu_tasks import _check_aws_vpc_quota_preflight
+
+        project = _make_project(db)
+        lib = _make_library(db, name="eks-cluster-create")
+        module = _make_module(db, project, lib, status="initialized")
+        module.variable_overrides = {
+            "aws_region": "ap-southeast-2",
+            "eks_cluster_name": "brand-new-cluster",
+        }
+        module.variables = {}
+        db.commit()
+
+        mock_ec2 = MagicMock()
+        mock_ec2.describe_vpcs.return_value = {
+            "Vpcs": [
+                {
+                    "VpcId": f"vpc-{i}",
+                    "CidrBlock": f"10.{i}.0.0/16",
+                    "IsDefault": i == 1,
+                    "Tags": [{"Key": "Name", "Value": f"vpc-name-{i}"}],
+                }
+                for i in range(1, 6)
+            ]
+        }
+        mock_ec2.describe_account_attributes.return_value = {
+            "AccountAttributes": [{"AttributeName": "max-vpc", "AttributeValues": [{"AttributeValue": "5"}]}]
+        }
+        mock_sq = MagicMock()
+        mock_sq.get_service_quota.side_effect = RuntimeError("AccessDeniedException")
+
+        mock_session = MagicMock()
+        mock_session.client.side_effect = lambda svc, **_kw: mock_ec2 if svc == "ec2" else mock_sq
+
+        mock_boto3 = MagicMock()
+        mock_boto3.Session.return_value = mock_session
+        mock_botocore_config = MagicMock()
+
+        with (
+            patch.dict(
+                sys.modules,
+                {"boto3": mock_boto3, "botocore": MagicMock(), "botocore.config": mock_botocore_config},
+            ),
+            pytest.raises(
+                ValueError, match="AWS VPC quota preflight failed in ap-southeast-2: 5/5 VPCs already in use"
+            ) as exc_info,
+        ):
+            _check_aws_vpc_quota_preflight(module, {"AWS_PROFILE": "my-prof"})
+
+        assert "vpc-1 (vpc-name-1)" in str(exc_info.value)
+        assert "vpc-5 (vpc-name-5)" in str(exc_info.value)
+
+    def test_apply_known_module_hotfixes_covers_all_aws_eks_modules(self, tmp_path):
+        from services.execution.opentofu_runtime import _apply_known_module_hotfixes
+
+        ws = tmp_path / "eks-cluster-hp-nodes"
+        ws.mkdir()
+        vars_tf = ws / "variables.tf"
+        vars_tf.write_text(
+            'variable "aws_access_key_id" {\n  type        = string\n  sensitive   = true\n}\n'
+            'variable "aws_secret_access_key" {\n  type        = string\n  sensitive   = true\n}\n'
+        )
+        main_tf = ws / "main.tf"
+        main_tf.write_text(
+            'provider "aws" {\n'
+            "  region     = var.aws_region\n"
+            "  access_key = var.aws_access_key_id\n"
+            "  secret_key = var.aws_secret_access_key\n"
+            '  token      = var.aws_session_token != "" ? var.aws_session_token : null\n'
+            "}\n"
+        )
+
+        _apply_known_module_hotfixes(str(ws), "modules/eks-cluster-hp-nodes")
+
+        assert 'default   = ""' in vars_tf.read_text()
+        patched_main = main_tf.read_text()
+        assert 'var.aws_access_key_id != "" ? var.aws_access_key_id : null' in patched_main
+        assert 'var.aws_secret_access_key != "" ? var.aws_secret_access_key : null' in patched_main

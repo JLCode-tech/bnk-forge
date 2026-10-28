@@ -95,6 +95,8 @@ x-worker-volumes: &worker-volumes
   # Provisioned by `make fetch-awsbnkctl` (pinned + checksum-verified release
   # download); build-worker depends on it. Override with AWSBNKCTL_VERSION.
   - ./scripts/bin/awsbnkctl:/usr/local/bin/awsbnkctl:ro
+  # Host AWS CLI config, credentials, and SSO cache for profile/SSO auth
+  - ~/.aws:/home/bnkforge/.aws
 
 x-logging: &default-logging
   driver: json-file
@@ -189,6 +191,7 @@ services:
       # backend/entrypoint.sh installs them into the system trust store on startup.
       - ./certs:/app/certs:ro
       - ./scripts/bin/awsbnkctl:/usr/local/bin/awsbnkctl:ro
+      - ~/.aws:/home/bnkforge/.aws
       # Backend-specific volumes (not needed by workers)
       - ./VERSION:/app/VERSION:ro
       # SEC-004: Docker socket moved to docker-compose.override.yml (opt-in).

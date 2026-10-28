@@ -127,6 +127,22 @@ def _test_aws_template_via_boto3(template: Any) -> dict[str, Any]:
                 "message": "Please configure AWS profile name in this template",
             }
         session = boto3.Session(profile_name=template.aws_profile, region_name=template.region or None)
+    elif template.aws_auth_method == "sso" and template.aws_access_key_id:
+        access_key = template.aws_access_key_id
+        secret_key = (
+            decrypt_value(template.aws_secret_access_key_encrypted)
+            if template.aws_secret_access_key_encrypted
+            else None
+        )
+        session_token = (
+            decrypt_value(template.aws_session_token_encrypted) if template.aws_session_token_encrypted else None
+        )
+        session = boto3.Session(
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            aws_session_token=session_token,
+            region_name=template.region or None,
+        )
     else:
         # SSO / other — fall back to default session, which will pick up
         # whatever creds the SSO flow already populated into the environment.

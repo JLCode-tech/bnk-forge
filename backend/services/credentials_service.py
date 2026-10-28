@@ -61,30 +61,107 @@ def _decrypt_credential(encrypted_value: str | None, field_name: str) -> str | N
         return None
 
 
+def _resolve_aws_profile_credentials(
+    profile: str,
+    region: str | None = None,
+    *,
+    strict: bool = False,
+    template_name: str | None = None,
+) -> dict[str, str]:
+    """Resolve frozen AWS credentials from a CLI/SSO profile via boto3.
+
+    Normalizes profile-based auth (including AWS IAM Identity Center / SSO
+    profiles in ~/.aws/config) into concrete AWS_ACCESS_KEY_ID /
+    AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN values so downstream consumers
+    that expect explicit credentials (OpenTofu TF_VAR_aws_*, Kubernetes EKS
+    token generator, artifact container pass-through) work without static IAM
+    keys.
+
+    When strict=False and the profile is absent or unresolvable (e.g. unit tests
+    using synthetic profile names), returns {} so AWS_PROFILE remains set
+    without raising.
+    """
+    if not profile:
+        return {}
+    try:
+        import boto3
+
+        session = boto3.Session(profile_name=profile, region_name=region or None)
+        creds = session.get_credentials()
+        if creds is None:
+            if strict:
+                raise CredentialUnavailableError(
+                    f"AWS profile '{profile}' has no credentials configured or SSO session is not logged in.",
+                    template_name=template_name,
+                )
+            return {}
+        frozen = creds.get_frozen_credentials()
+        if not frozen or not frozen.access_key or not frozen.secret_key:
+            if strict:
+                raise CredentialUnavailableError(
+                    f"AWS profile '{profile}' credentials could not be resolved.",
+                    template_name=template_name,
+                )
+            return {}
+        resolved: dict[str, str] = {
+            "AWS_ACCESS_KEY_ID": frozen.access_key,
+            "AWS_SECRET_ACCESS_KEY": frozen.secret_key,
+        }
+        if frozen.token:
+            resolved["AWS_SESSION_TOKEN"] = frozen.token
+        if not region and session.region_name:
+            resolved["AWS_DEFAULT_REGION"] = session.region_name
+        return resolved
+    except CredentialUnavailableError:
+        raise
+    except Exception as exc:
+        if strict:
+            raise CredentialUnavailableError(
+                f"Failed to resolve credentials from AWS profile '{profile}': {exc}",
+                template_name=template_name,
+            ) from exc
+        logger.debug("Could not resolve frozen credentials for AWS profile '%s': %s", profile, exc)
+        return {}
+
+
+def _mirror_aws_tf_vars(env: dict[str, str]) -> None:
+    """Mirror resolved AWS_* env vars to TF_VAR_aws_* for OpenTofu modules."""
+    for aws_key, tf_var in (
+        ("AWS_ACCESS_KEY_ID", "TF_VAR_aws_access_key_id"),
+        ("AWS_SECRET_ACCESS_KEY", "TF_VAR_aws_secret_access_key"),
+        ("AWS_SESSION_TOKEN", "TF_VAR_aws_session_token"),
+        ("AWS_DEFAULT_REGION", "TF_VAR_aws_region"),
+    ):
+        if env.get(aws_key):
+            env[tf_var] = env[aws_key]
+
+
 # Every cloud-credential var this module manages. get_cloud_credentials_only()
 # filters to exactly these — see #443 for why an allowlist and not a denylist:
 # the alternative leaked DATABASE_URL / CELERY_* / REDIS_URL to third-party
 # artifact images, and a denylist would re-leak on every new worker env var.
-CLOUD_CREDENTIAL_ENV_KEYS = frozenset({
-    "AWS_ACCESS_KEY_ID",
-    "AWS_SECRET_ACCESS_KEY",
-    "AWS_SESSION_TOKEN",
-    "AWS_DEFAULT_REGION",
-    "AWS_PROFILE",
-    "IBMCLOUD_API_KEY",
-    "IBMCLOUD_REGION",
-    "IBMCLOUD_RESOURCE_GROUP",
-    "IC_API_KEY",
-    "ARM_CLIENT_ID",
-    "ARM_CLIENT_SECRET",
-    "ARM_SUBSCRIPTION_ID",
-    "ARM_TENANT_ID",
-    "ARM_LOCATION",
-    "AZURE_CLIENT_ID",
-    "AZURE_CLIENT_SECRET",
-    "AZURE_TENANT_ID",
-    "AZURE_SUBSCRIPTION_ID",
-})
+CLOUD_CREDENTIAL_ENV_KEYS = frozenset(
+    {
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+        "AWS_DEFAULT_REGION",
+        "AWS_PROFILE",
+        "IBMCLOUD_API_KEY",
+        "IBMCLOUD_REGION",
+        "IBMCLOUD_RESOURCE_GROUP",
+        "IC_API_KEY",
+        "ARM_CLIENT_ID",
+        "ARM_CLIENT_SECRET",
+        "ARM_SUBSCRIPTION_ID",
+        "ARM_TENANT_ID",
+        "ARM_LOCATION",
+        "AZURE_CLIENT_ID",
+        "AZURE_CLIENT_SECRET",
+        "AZURE_TENANT_ID",
+        "AZURE_SUBSCRIPTION_ID",
+    }
+)
 
 
 def get_cloud_credentials_only(project: Project, db=None, *, strict: bool = False) -> dict[str, str]:
@@ -103,11 +180,14 @@ def get_cloud_credentials_only(project: Project, db=None, *, strict: bool = Fals
     should honour it the same way subprocesses do.
     """
     resolved = get_cloud_credentials_env(project, db, strict=strict)
-    return {
-        key: value
-        for key, value in resolved.items()
-        if key in CLOUD_CREDENTIAL_ENV_KEYS and value
-    }
+    filtered = {key: value for key, value in resolved.items() if key in CLOUD_CREDENTIAL_ENV_KEYS and value}
+    # Isolated artifact containers do not mount host ~/.aws config/SSO cache.
+    # When concrete AWS credentials have been resolved, omit AWS_PROFILE so
+    # AWS SDKs/CLIs inside the container use the resolved keys instead of
+    # failing with ProfileNotFound.
+    if filtered.get("AWS_ACCESS_KEY_ID") and filtered.get("AWS_SECRET_ACCESS_KEY"):
+        filtered.pop("AWS_PROFILE", None)
+    return filtered
 
 
 def get_cloud_credentials_env(project: Project, db=None, *, strict: bool = False) -> dict[str, str]:
@@ -138,29 +218,25 @@ def get_cloud_credentials_env(project: Project, db=None, *, strict: bool = False
     global_creds_loaded = False
     if db:
         try:
-            access_key_setting = db.query(ApplicationSetting).filter(
-                ApplicationSetting.key == 'aws.access_key_id'
-            ).first()
+            access_key_setting = (
+                db.query(ApplicationSetting).filter(ApplicationSetting.key == "aws.access_key_id").first()
+            )
 
-            secret_key_setting = db.query(ApplicationSetting).filter(
-                ApplicationSetting.key == 'aws.secret_access_key'
-            ).first()
+            secret_key_setting = (
+                db.query(ApplicationSetting).filter(ApplicationSetting.key == "aws.secret_access_key").first()
+            )
 
-            session_token_setting = db.query(ApplicationSetting).filter(
-                ApplicationSetting.key == 'aws.session_token'
-            ).first()
+            session_token_setting = (
+                db.query(ApplicationSetting).filter(ApplicationSetting.key == "aws.session_token").first()
+            )
 
-            region_setting = db.query(ApplicationSetting).filter(
-                ApplicationSetting.key == 'aws.region'
-            ).first()
+            region_setting = db.query(ApplicationSetting).filter(ApplicationSetting.key == "aws.region").first()
 
-            profile_setting = db.query(ApplicationSetting).filter(
-                ApplicationSetting.key == 'aws.profile'
-            ).first()
+            profile_setting = db.query(ApplicationSetting).filter(ApplicationSetting.key == "aws.profile").first()
 
             # Override environment with current credentials from database
             if access_key_setting and access_key_setting.value:
-                env['AWS_ACCESS_KEY_ID'] = access_key_setting.value
+                env["AWS_ACCESS_KEY_ID"] = access_key_setting.value
                 global_creds_loaded = True
 
             if secret_key_setting and secret_key_setting.value:
@@ -168,20 +244,27 @@ def get_cloud_credentials_env(project: Project, db=None, *, strict: bool = False
                 secret_value = secret_key_setting.value
                 if secret_key_setting.is_encrypted:
                     secret_value = decrypt_value_or_none(secret_value) or secret_value
-                env['AWS_SECRET_ACCESS_KEY'] = secret_value
+                env["AWS_SECRET_ACCESS_KEY"] = secret_value
 
             if session_token_setting and session_token_setting.value:
                 # Decrypt if encrypted
                 token_value = session_token_setting.value
                 if session_token_setting.is_encrypted:
                     token_value = decrypt_value_or_none(token_value) or token_value
-                env['AWS_SESSION_TOKEN'] = token_value
+                env["AWS_SESSION_TOKEN"] = token_value
 
             if region_setting and region_setting.value:
-                env['AWS_DEFAULT_REGION'] = region_setting.value
+                env["AWS_DEFAULT_REGION"] = region_setting.value
 
             if profile_setting and profile_setting.value:
-                env['AWS_PROFILE'] = profile_setting.value
+                env["AWS_PROFILE"] = profile_setting.value
+                env.update(
+                    _resolve_aws_profile_credentials(
+                        profile_setting.value,
+                        env.get("AWS_DEFAULT_REGION"),
+                        strict=False,
+                    )
+                )
 
         except Exception as e:
             logger.warning(f"Failed to load global credentials from database: {e}")
@@ -189,31 +272,49 @@ def get_cloud_credentials_env(project: Project, db=None, *, strict: bool = False
     # Priority 1: Check if project uses a credential template (v2)
     if project.credential_template_id and db:
         try:
-            template = db.query(CloudCredentialTemplate).filter(
-                CloudCredentialTemplate.id == project.credential_template_id
-            ).first()
+            template = (
+                db.query(CloudCredentialTemplate)
+                .filter(CloudCredentialTemplate.id == project.credential_template_id)
+                .first()
+            )
 
             if template:
                 logger.info(f"Using credential template '{template.name}' for project {project.name}")
 
-                if template.provider == 'aws':
+                if template.provider == "aws":
                     # Access Keys method
-                    if template.aws_auth_method == 'access_keys':
+                    if template.aws_auth_method == "access_keys":
+                        env.pop("AWS_PROFILE", None)
                         if template.aws_access_key_id:
-                            env['AWS_ACCESS_KEY_ID'] = template.aws_access_key_id
-                        secret = _decrypt_credential(template.aws_secret_access_key_encrypted, 'AWS secret key')
+                            env["AWS_ACCESS_KEY_ID"] = template.aws_access_key_id
+                        secret = _decrypt_credential(template.aws_secret_access_key_encrypted, "AWS secret key")
                         if secret:
-                            env['AWS_SECRET_ACCESS_KEY'] = secret
-                        token = _decrypt_credential(template.aws_session_token_encrypted, 'AWS session token')
+                            env["AWS_SECRET_ACCESS_KEY"] = secret
+                        token = _decrypt_credential(template.aws_session_token_encrypted, "AWS session token")
                         if token:
-                            env['AWS_SESSION_TOKEN'] = token
+                            env["AWS_SESSION_TOKEN"] = token
+                        else:
+                            env.pop("AWS_SESSION_TOKEN", None)
+                            env.pop("TF_VAR_aws_session_token", None)
 
                     # Profile method
-                    elif template.aws_auth_method == 'profile' and template.aws_profile:
-                        env['AWS_PROFILE'] = template.aws_profile
+                    elif template.aws_auth_method == "profile" and template.aws_profile:
+                        env["AWS_PROFILE"] = template.aws_profile
+                        resolved_profile = _resolve_aws_profile_credentials(
+                            template.aws_profile,
+                            template.region or project.region,
+                            strict=strict,
+                            template_name=template.name,
+                        )
+                        if resolved_profile:
+                            env.update(resolved_profile)
+                            if "AWS_SESSION_TOKEN" not in resolved_profile:
+                                env.pop("AWS_SESSION_TOKEN", None)
+                                env.pop("TF_VAR_aws_session_token", None)
 
                     # SSO method - use cached credentials from SSO authentication
-                    elif template.aws_auth_method == 'sso' and template.aws_sso_enabled:
+                    elif template.aws_auth_method == "sso" and template.aws_sso_enabled:
+                        env.pop("AWS_PROFILE", None)
                         # When strict=True (connectivity path), raise a structured
                         # error for absent or expired SSO keys so the caller gets a
                         # clear credential message.  When strict=False (the default,
@@ -225,79 +326,79 @@ def get_cloud_credentials_env(project: Project, db=None, *, strict: bool = False
                                 "Please authenticate via the credential template SSO flow.",
                                 template_name=template.name,
                             )
-                        if strict and template.aws_credentials_expiry and datetime.now(UTC) > template.aws_credentials_expiry:
+                        if (
+                            strict
+                            and template.aws_credentials_expiry
+                            and datetime.now(UTC) > template.aws_credentials_expiry
+                        ):
                             raise CredentialUnavailableError(
                                 f"SSO credentials for template '{template.name}' have expired. "
                                 "Please re-authenticate via the credential template SSO flow.",
                                 template_name=template.name,
                             )
 
-                        env['AWS_ACCESS_KEY_ID'] = template.aws_access_key_id
-                        secret = _decrypt_credential(template.aws_secret_access_key_encrypted, 'SSO AWS secret key')
+                        env["AWS_ACCESS_KEY_ID"] = template.aws_access_key_id
+                        secret = _decrypt_credential(template.aws_secret_access_key_encrypted, "SSO AWS secret key")
                         if secret:
-                            env['AWS_SECRET_ACCESS_KEY'] = secret
-                        token = _decrypt_credential(template.aws_session_token_encrypted, 'SSO AWS session token')
+                            env["AWS_SECRET_ACCESS_KEY"] = secret
+                        token = _decrypt_credential(template.aws_session_token_encrypted, "SSO AWS session token")
                         if token:
-                            env['AWS_SESSION_TOKEN'] = token
+                            env["AWS_SESSION_TOKEN"] = token
+                        else:
+                            env.pop("AWS_SESSION_TOKEN", None)
+                            env.pop("TF_VAR_aws_session_token", None)
 
                     # Set region from template
                     if template.region:
-                        env['AWS_DEFAULT_REGION'] = template.region
+                        env["AWS_DEFAULT_REGION"] = template.region
 
                     # Mirror the resolved AWS credentials as Terraform variables so that
                     # module provider blocks using var.aws_access_key_id / var.aws_region
                     # are populated without persisting creds in project variable storage.
                     # Only set a TF_VAR_* when the corresponding AWS_* key was actually set.
-                    for aws_key, tf_var in (
-                        ('AWS_ACCESS_KEY_ID', 'TF_VAR_aws_access_key_id'),
-                        ('AWS_SECRET_ACCESS_KEY', 'TF_VAR_aws_secret_access_key'),
-                        ('AWS_SESSION_TOKEN', 'TF_VAR_aws_session_token'),
-                        ('AWS_DEFAULT_REGION', 'TF_VAR_aws_region'),
-                    ):
-                        if env.get(aws_key):
-                            env[tf_var] = env[aws_key]
+                    _mirror_aws_tf_vars(env)
 
                     return env
 
-                if template.provider == 'ibm':
-                    api_key = _decrypt_credential(template.ibmcloud_api_key_encrypted, 'IBM Cloud API key')
+                if template.provider == "ibm":
+                    api_key = _decrypt_credential(template.ibmcloud_api_key_encrypted, "IBM Cloud API key")
                     if api_key:
-                        env['IC_API_KEY'] = api_key
-                        env['IBMCLOUD_API_KEY'] = api_key
+                        env["IC_API_KEY"] = api_key
+                        env["IBMCLOUD_API_KEY"] = api_key
                     if template.ibm_cos_instance_name and db:
                         try:
                             access_key_id, secret_access_key = IBMCloudService(db).ensure_cos_hmac_credentials(template)
-                            env['AWS_ACCESS_KEY_ID'] = access_key_id
-                            env['AWS_SECRET_ACCESS_KEY'] = secret_access_key
+                            env["AWS_ACCESS_KEY_ID"] = access_key_id
+                            env["AWS_SECRET_ACCESS_KEY"] = secret_access_key
                         except Exception as e:
                             logger.error(f"Failed to derive IBM COS HMAC credentials: {e}")
                     if template.region:
-                        env['IBMCLOUD_REGION'] = template.region
-                        env.setdefault('AWS_DEFAULT_REGION', template.region)
+                        env["IBMCLOUD_REGION"] = template.region
+                        env.setdefault("AWS_DEFAULT_REGION", template.region)
                     if template.ibmcloud_resource_group:
-                        env['IBMCLOUD_RESOURCE_GROUP'] = template.ibmcloud_resource_group
+                        env["IBMCLOUD_RESOURCE_GROUP"] = template.ibmcloud_resource_group
                     return env
 
-                if template.provider == 'azure':
+                if template.provider == "azure":
                     # Only the service-principal method injects a credential. Entra ID
                     # SSO templates carry a delegated ARM token for validation, not a
                     # terraform identity, so no client id or secret is exported.
                     if template.azure_subscription_id:
-                        env['ARM_SUBSCRIPTION_ID'] = template.azure_subscription_id
-                        env['AZURE_SUBSCRIPTION_ID'] = template.azure_subscription_id
+                        env["ARM_SUBSCRIPTION_ID"] = template.azure_subscription_id
+                        env["AZURE_SUBSCRIPTION_ID"] = template.azure_subscription_id
                     if template.azure_tenant_id:
-                        env['ARM_TENANT_ID'] = template.azure_tenant_id
-                        env['AZURE_TENANT_ID'] = template.azure_tenant_id
-                    if template.azure_auth_method != 'sso' and template.azure_client_id:
-                        env['ARM_CLIENT_ID'] = template.azure_client_id
-                        env['AZURE_CLIENT_ID'] = template.azure_client_id
-                    if template.azure_auth_method != 'sso' and template.azure_client_secret_encrypted:
-                        secret = _decrypt_credential(template.azure_client_secret_encrypted, 'Azure Client Secret')
+                        env["ARM_TENANT_ID"] = template.azure_tenant_id
+                        env["AZURE_TENANT_ID"] = template.azure_tenant_id
+                    if template.azure_auth_method != "sso" and template.azure_client_id:
+                        env["ARM_CLIENT_ID"] = template.azure_client_id
+                        env["AZURE_CLIENT_ID"] = template.azure_client_id
+                    if template.azure_auth_method != "sso" and template.azure_client_secret_encrypted:
+                        secret = _decrypt_credential(template.azure_client_secret_encrypted, "Azure Client Secret")
                         if secret:
-                            env['ARM_CLIENT_SECRET'] = secret
-                            env['AZURE_CLIENT_SECRET'] = secret
+                            env["ARM_CLIENT_SECRET"] = secret
+                            env["AZURE_CLIENT_SECRET"] = secret
                     if template.region:
-                        env['ARM_LOCATION'] = template.region
+                        env["ARM_LOCATION"] = template.region
                     return env
 
         except CredentialUnavailableError:
@@ -313,24 +414,42 @@ def get_cloud_credentials_env(project: Project, db=None, *, strict: bool = False
                 cred_data = json.loads(cred_json)
 
                 # AWS Profile auth
-                if cred_data.get('profile'):
-                    env['AWS_PROFILE'] = cred_data['profile']
-                    if cred_data.get('region'):
-                        env['AWS_DEFAULT_REGION'] = cred_data['region']
+                if cred_data.get("profile"):
+                    env["AWS_PROFILE"] = cred_data["profile"]
+                    if cred_data.get("region"):
+                        env["AWS_DEFAULT_REGION"] = cred_data["region"]
+                    resolved_profile = _resolve_aws_profile_credentials(
+                        cred_data["profile"],
+                        cred_data.get("region") or project.region,
+                        strict=strict,
+                    )
+                    if resolved_profile:
+                        env.update(resolved_profile)
+                        if "AWS_SESSION_TOKEN" not in resolved_profile:
+                            env.pop("AWS_SESSION_TOKEN", None)
+                            env.pop("TF_VAR_aws_session_token", None)
+                    _mirror_aws_tf_vars(env)
                     return env
 
                 # Access Key auth
-                if cred_data.get('access_key_id'):
-                    env['AWS_ACCESS_KEY_ID'] = cred_data['access_key_id']
-                if cred_data.get('secret_access_key'):
-                    env['AWS_SECRET_ACCESS_KEY'] = cred_data['secret_access_key']
-                if cred_data.get('session_token'):
-                    env['AWS_SESSION_TOKEN'] = cred_data['session_token']
+                env.pop("AWS_PROFILE", None)
+                if cred_data.get("access_key_id"):
+                    env["AWS_ACCESS_KEY_ID"] = cred_data["access_key_id"]
+                if cred_data.get("secret_access_key"):
+                    env["AWS_SECRET_ACCESS_KEY"] = cred_data["secret_access_key"]
+                if cred_data.get("session_token"):
+                    env["AWS_SESSION_TOKEN"] = cred_data["session_token"]
                     # SSO credentials need region - use system default if not specified
-                    region = cred_data.get('region') or project.region or get_default(db, "cloud.aws.default_region")
-                    env['AWS_DEFAULT_REGION'] = region
+                    region = cred_data.get("region") or project.region or get_default(db, "cloud.aws.default_region")
+                    env["AWS_DEFAULT_REGION"] = region
+                else:
+                    env.pop("AWS_SESSION_TOKEN", None)
+                    env.pop("TF_VAR_aws_session_token", None)
 
+                _mirror_aws_tf_vars(env)
                 return env
+        except CredentialUnavailableError:
+            raise
         except Exception as e:
             logger.error(f"Error getting project credentials: {e}")
 
@@ -347,26 +466,31 @@ def get_cloud_credentials_env(project: Project, db=None, *, strict: bool = False
         project_provider = getattr(project, "cloud_provider", None)
         if project_provider:
             try:
-                default_template = db.query(CloudCredentialTemplate).filter(
-                    CloudCredentialTemplate.is_default.is_(True),
-                    CloudCredentialTemplate.provider == project_provider,
-                    # Entra ID SSO templates cannot provision.
-                    CloudCredentialTemplate.azure_auth_method.is_distinct_from("sso"),
-                ).first()
+                default_template = (
+                    db.query(CloudCredentialTemplate)
+                    .filter(
+                        CloudCredentialTemplate.is_default.is_(True),
+                        CloudCredentialTemplate.provider == project_provider,
+                        # Entra ID SSO templates cannot provision.
+                        CloudCredentialTemplate.azure_auth_method.is_distinct_from("sso"),
+                    )
+                    .first()
+                )
                 if default_template:
                     logger.info(
                         "Project '%s' has no credential binding — falling back to "
                         "is_default template '%s' (id=%s, provider=%s)",
-                        project.name, default_template.name, default_template.id,
+                        project.name,
+                        default_template.name,
+                        default_template.id,
                         default_template.provider,
                     )
                     # Re-use Priority 1 path by temporarily setting the attribute
                     # on a throwaway namespace so the resolution logic is not duplicated.
                     # We call ourselves with a shim project that has the template id set.
-                    shim = SimpleNamespace(**{
-                        col.key: getattr(project, col.key)
-                        for col in project.__class__.__table__.columns
-                    })
+                    shim = SimpleNamespace(
+                        **{col.key: getattr(project, col.key) for col in project.__class__.__table__.columns}
+                    )
                     shim.credential_template_id = default_template.id
                     shim.cloud_credentials_encrypted = None
                     return get_cloud_credentials_env(shim, db, strict=strict)  # type: ignore[arg-type]
@@ -376,8 +500,8 @@ def get_cloud_credentials_env(project: Project, db=None, *, strict: bool = False
                 logger.error("Error loading is_default credential template fallback: %s", e)
 
     # Priority 3: Set region from project if not already set (AWS projects only)
-    if project.cloud_provider == "aws" and project.region and 'AWS_DEFAULT_REGION' not in env:
-        env['AWS_DEFAULT_REGION'] = project.region
+    if project.cloud_provider == "aws" and project.region and "AWS_DEFAULT_REGION" not in env:
+        env["AWS_DEFAULT_REGION"] = project.region
 
     if global_creds_loaded:
         logger.info(f"Using global credentials from database for project {project.name}")
@@ -401,14 +525,20 @@ def get_gcp_service_account_info(project: Project | None, db=None) -> dict | Non
     template = None
     if db:
         if explicit_template:
-            template = db.query(CloudCredentialTemplate).filter(
-                CloudCredentialTemplate.id == project.credential_template_id
-            ).first()
+            template = (
+                db.query(CloudCredentialTemplate)
+                .filter(CloudCredentialTemplate.id == project.credential_template_id)
+                .first()
+            )
         else:
-            template = db.query(CloudCredentialTemplate).filter(
-                CloudCredentialTemplate.provider == "gcp",
-                CloudCredentialTemplate.is_default.is_(True),
-            ).first()
+            template = (
+                db.query(CloudCredentialTemplate)
+                .filter(
+                    CloudCredentialTemplate.provider == "gcp",
+                    CloudCredentialTemplate.is_default.is_(True),
+                )
+                .first()
+            )
 
     if template and template.provider == "gcp" and template.gcp_credentials_encrypted:
         sa_json = _decrypt_credential(template.gcp_credentials_encrypted, "GCP SA JSON")
@@ -450,14 +580,20 @@ def get_azure_service_principal_info(project: Project | None, db=None) -> tuple[
     template = None
     if db:
         if explicit_template:
-            template = db.query(CloudCredentialTemplate).filter(
-                CloudCredentialTemplate.id == project.credential_template_id
-            ).first()
+            template = (
+                db.query(CloudCredentialTemplate)
+                .filter(CloudCredentialTemplate.id == project.credential_template_id)
+                .first()
+            )
         else:
-            template = db.query(CloudCredentialTemplate).filter(
-                CloudCredentialTemplate.provider == "azure",
-                CloudCredentialTemplate.is_default.is_(True),
-            ).first()
+            template = (
+                db.query(CloudCredentialTemplate)
+                .filter(
+                    CloudCredentialTemplate.provider == "azure",
+                    CloudCredentialTemplate.is_default.is_(True),
+                )
+                .first()
+            )
 
     if template and template.provider == "azure" and template.azure_auth_method != "sso" and template.azure_tenant_id:
         # Check discrete fields first (PR 207 / modern UI)
@@ -495,4 +631,3 @@ def get_azure_service_principal_info(project: Project | None, db=None) -> tuple[
         return (env_tenant, env_client_id, env_client_secret)
 
     return None
-

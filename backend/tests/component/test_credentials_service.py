@@ -16,18 +16,26 @@ from services.credentials_service import (
     _decrypt_credential,
     get_azure_service_principal_info,
     get_cloud_credentials_env,
+    get_cloud_credentials_only,
     get_gcp_service_account_info,
 )
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
+
 def _make_project(db, name="Cred Project", credential_template_id=None, **kwargs):
     project_type = kwargs.pop("project_type", "cloud-aws")
     cloud_provider = kwargs.pop("cloud_provider", "aws")
     project = Project(
-        name=name, project_type=project_type, cloud_provider=cloud_provider,
-        environment="dev", backend_type="local", color="#000", icon="cloud",
-        is_active=True, credential_template_id=credential_template_id,
+        name=name,
+        project_type=project_type,
+        cloud_provider=cloud_provider,
+        environment="dev",
+        backend_type="local",
+        color="#000",
+        icon="cloud",
+        is_active=True,
+        credential_template_id=credential_template_id,
         **kwargs,
     )
     db.add(project)
@@ -37,7 +45,9 @@ def _make_project(db, name="Cred Project", credential_template_id=None, **kwargs
 
 def _make_template(db, **kwargs):
     defaults = dict(
-        name="AWS Template", provider="aws", region="us-east-1",
+        name="AWS Template",
+        provider="aws",
+        region="us-east-1",
         aws_auth_method="access_keys",
         aws_access_key_id="AKIA_TEMPLATE",
         aws_secret_access_key_encrypted="enc_secret",
@@ -57,6 +67,7 @@ def _make_app_setting(db, key, value, is_encrypted=False):
 
 
 # ── _decrypt_credential helper ───────────────────────────────────────
+
 
 class TestDecryptCredentialHelper:
     def test_returns_none_for_empty(self):
@@ -80,6 +91,7 @@ class TestDecryptCredentialHelper:
 
 # ── Priority 1: Credential Template ─────────────────────────────────
 
+
 class TestCredentialTemplate:
     @patch("services.credentials_service.decrypt_value", return_value="template_secret")
     def test_access_keys_template(self, mock_dec, db):
@@ -95,8 +107,11 @@ class TestCredentialTemplate:
     @patch("services.credentials_service.decrypt_value", return_value="decrypted")
     def test_profile_template(self, mock_dec, db):
         template = _make_template(
-            db, aws_auth_method="profile", aws_profile="prod-profile",
-            aws_access_key_id=None, aws_secret_access_key_encrypted=None,
+            db,
+            aws_auth_method="profile",
+            aws_profile="prod-profile",
+            aws_access_key_id=None,
+            aws_secret_access_key_encrypted=None,
         )
         project = _make_project(db, credential_template_id=template.id)
 
@@ -195,13 +210,22 @@ class TestCredentialTemplate:
         for key in ("ARM_CLIENT_ID", "ARM_CLIENT_SECRET", "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET"):
             monkeypatch.delenv(key, raising=False)
         template = _make_template(
-            db, name="Azure Template", provider="azure", region="eastus",
-            aws_auth_method=None, aws_access_key_id=None, aws_secret_access_key_encrypted=None,
-            azure_auth_method=method, azure_tenant_id="tenant-1", azure_subscription_id="sub-1",
-            azure_client_id="client-1", azure_client_secret_encrypted="enc",
+            db,
+            name="Azure Template",
+            provider="azure",
+            region="eastus",
+            aws_auth_method=None,
+            aws_access_key_id=None,
+            aws_secret_access_key_encrypted=None,
+            azure_auth_method=method,
+            azure_tenant_id="tenant-1",
+            azure_subscription_id="sub-1",
+            azure_client_id="client-1",
+            azure_client_secret_encrypted="enc",
         )
-        project = _make_project(db, credential_template_id=template.id,
-                                project_type="cloud-azure", cloud_provider="azure")
+        project = _make_project(
+            db, credential_template_id=template.id, project_type="cloud-azure", cloud_provider="azure"
+        )
 
         env = get_cloud_credentials_env(project, db=db)
 
@@ -213,17 +237,21 @@ class TestCredentialTemplate:
 
 # ── Priority 2: Legacy Encrypted Credentials ────────────────────────
 
+
 class TestLegacyCredentials:
     @patch("services.credentials_service.decrypt_value")
     def test_legacy_access_key_credentials(self, mock_dec, db):
-        cred_data = json.dumps({
-            "access_key_id": "AKIA_LEGACY",
-            "secret_access_key": "legacy_secret",
-        })
+        cred_data = json.dumps(
+            {
+                "access_key_id": "AKIA_LEGACY",
+                "secret_access_key": "legacy_secret",
+            }
+        )
         mock_dec.return_value = cred_data
 
         project = _make_project(
-            db, cloud_credentials_encrypted="encrypted_json",
+            db,
+            cloud_credentials_encrypted="encrypted_json",
         )
 
         env = get_cloud_credentials_env(project, db=db)
@@ -232,14 +260,17 @@ class TestLegacyCredentials:
 
     @patch("services.credentials_service.decrypt_value")
     def test_legacy_profile_credentials(self, mock_dec, db):
-        cred_data = json.dumps({
-            "profile": "my-profile",
-            "region": "eu-west-1",
-        })
+        cred_data = json.dumps(
+            {
+                "profile": "my-profile",
+                "region": "eu-west-1",
+            }
+        )
         mock_dec.return_value = cred_data
 
         project = _make_project(
-            db, cloud_credentials_encrypted="encrypted_json",
+            db,
+            cloud_credentials_encrypted="encrypted_json",
         )
 
         env = get_cloud_credentials_env(project, db=db)
@@ -248,6 +279,7 @@ class TestLegacyCredentials:
 
 
 # ── Priority 3: Global Settings from DB ──────────────────────────────
+
 
 class TestGlobalSettings:
     @patch("services.credentials_service.decrypt_value_or_none", return_value="global_secret")
@@ -266,6 +298,7 @@ class TestGlobalSettings:
 
 # ── Fallback: Environment Variables ──────────────────────────────────
 
+
 class TestEnvironmentFallback:
     @patch.dict("os.environ", {"AWS_ACCESS_KEY_ID": "AKIA_ENV", "AWS_SECRET_ACCESS_KEY": "env_secret"})
     def test_env_fallback(self, db):
@@ -278,10 +311,12 @@ class TestEnvironmentFallback:
 
 # ── GCP service-account info helper ──────────────────────────────────
 
+
 class TestGcpServiceAccountInfo:
     def _make_gcp_template(self, db, encrypted_value="enc_sa_json"):
         template = CloudCredentialTemplate(
-            name="GCP Template", provider="gcp",
+            name="GCP Template",
+            provider="gcp",
             gcp_project_id="my-gcp-project",
             gcp_credentials_encrypted=encrypted_value,
         )
@@ -338,6 +373,7 @@ class TestGcpServiceAccountInfo:
 
 
 # ── is_default fallback (Priority 2.5) ───────────────────────────────
+
 
 class TestDefaultTemplateFallback:
     """
@@ -410,6 +446,7 @@ class TestDefaultTemplateFallback:
 
 
 # ── SSO CredentialUnavailableError ────────────────────────────────────
+
 
 class TestSsoCredentialUnavailableError:
     """
@@ -516,6 +553,7 @@ class TestSsoCredentialUnavailableError:
 
 
 # ── TF_VAR mirroring for AWS credential templates ────────────────────
+
 
 class TestAwsTfVarMirroring:
     """
@@ -625,8 +663,10 @@ class TestAwsTfVarMirroring:
             ibmcloud_api_key_encrypted="enc_ibm",
         )
         project = _make_project(
-            db, credential_template_id=template.id,
-            project_type="cloud-ibm", cloud_provider="ibm",
+            db,
+            credential_template_id=template.id,
+            project_type="cloud-ibm",
+            cloud_provider="ibm",
         )
 
         env = get_cloud_credentials_env(project, db=db)
@@ -638,8 +678,14 @@ class TestAwsTfVarMirroring:
 class TestAzureSSOTemplateNotProvisioning:
     def _sso_template(self, db, **kwargs):
         return _make_template(
-            db, name="Azure SSO", provider="azure", aws_auth_method=None, aws_access_key_id=None,
-            aws_secret_access_key_encrypted=None, azure_auth_method="sso", azure_tenant_id="tenant-1",
+            db,
+            name="Azure SSO",
+            provider="azure",
+            aws_auth_method=None,
+            aws_access_key_id=None,
+            aws_secret_access_key_encrypted=None,
+            azure_auth_method="sso",
+            azure_tenant_id="tenant-1",
             **kwargs,
         )
 
@@ -652,11 +698,266 @@ class TestAzureSSOTemplateNotProvisioning:
 
         assert "ARM_TENANT_ID" not in env
 
-    @patch("services.credentials_service.decrypt_value",
-           return_value='{"client_id": "c", "client_secret": "s"}')
+    @patch("services.credentials_service.decrypt_value", return_value='{"client_id": "c", "client_secret": "s"}')
     def test_sp_resolver_ignores_sso_template_blob(self, mock_dec, db):
         template = self._sso_template(db, azure_credentials_encrypted="enc")
-        project = _make_project(db, name="Azure SSO Bound", project_type="cloud-azure",
-                                cloud_provider="azure", credential_template_id=template.id)
+        project = _make_project(
+            db,
+            name="Azure SSO Bound",
+            project_type="cloud-azure",
+            cloud_provider="azure",
+            credential_template_id=template.id,
+        )
 
         assert get_azure_service_principal_info(project, db) is None
+
+
+class TestAWSProfileSSOResolution:
+    """Verify AWS CLI/SSO profile credentials resolve to frozen credentials and TF_VAR_aws_*."""
+
+    def test_profile_resolves_frozen_credentials_and_tf_vars(self, db):
+        template = _make_template(
+            db,
+            name="AWS SSO Profile",
+            aws_auth_method="profile",
+            aws_profile="Users-292785712872",
+            aws_access_key_id=None,
+            aws_secret_access_key_encrypted=None,
+            region="ap-southeast-2",
+        )
+        project = _make_project(db, credential_template_id=template.id)
+
+        mock_frozen = MagicMock()
+        mock_frozen.access_key = "ASIA_SSO_KEY"
+        mock_frozen.secret_key = "sso_secret_val"
+        mock_frozen.token = "sso_session_tok"
+
+        mock_creds = MagicMock()
+        mock_creds.get_frozen_credentials.return_value = mock_frozen
+
+        mock_session = MagicMock()
+        mock_session.get_credentials.return_value = mock_creds
+
+        with patch("boto3.Session", return_value=mock_session) as session_cls:
+            env = get_cloud_credentials_env(project, db=db, strict=True)
+
+        session_cls.assert_called_once_with(profile_name="Users-292785712872", region_name="ap-southeast-2")
+        assert env["AWS_PROFILE"] == "Users-292785712872"
+        assert env["AWS_ACCESS_KEY_ID"] == "ASIA_SSO_KEY"
+        assert env["AWS_SECRET_ACCESS_KEY"] == "sso_secret_val"
+        assert env["AWS_SESSION_TOKEN"] == "sso_session_tok"
+        assert env["TF_VAR_aws_access_key_id"] == "ASIA_SSO_KEY"
+        assert env["TF_VAR_aws_secret_access_key"] == "sso_secret_val"
+        assert env["TF_VAR_aws_session_token"] == "sso_session_tok"
+        assert env["TF_VAR_aws_region"] == "ap-southeast-2"
+
+    def test_cloud_credentials_only_strips_aws_profile_when_keys_resolved(self, db):
+        """Isolated artifact containers do not mount ~/.aws; AWS_PROFILE must be stripped when keys are resolved."""
+        template = _make_template(
+            db,
+            name="AWS SSO Profile Container",
+            aws_auth_method="profile",
+            aws_profile="Users-292785712872",
+            aws_access_key_id=None,
+            aws_secret_access_key_encrypted=None,
+            region="ap-southeast-2",
+        )
+        project = _make_project(db, credential_template_id=template.id)
+
+        mock_frozen = MagicMock()
+        mock_frozen.access_key = "ASIA_SSO_KEY"
+        mock_frozen.secret_key = "sso_secret_val"
+        mock_frozen.token = "sso_session_tok"
+
+        mock_creds = MagicMock()
+        mock_creds.get_frozen_credentials.return_value = mock_frozen
+
+        mock_session = MagicMock()
+        mock_session.get_credentials.return_value = mock_creds
+
+        with patch("boto3.Session", return_value=mock_session):
+            only_env = get_cloud_credentials_only(project, db=db, strict=True)
+
+        assert "AWS_PROFILE" not in only_env
+        assert only_env["AWS_ACCESS_KEY_ID"] == "ASIA_SSO_KEY"
+        assert only_env["AWS_SECRET_ACCESS_KEY"] == "sso_secret_val"
+        assert only_env["AWS_SESSION_TOKEN"] == "sso_session_tok"
+        assert only_env["AWS_DEFAULT_REGION"] == "ap-southeast-2"
+
+    @patch("services.credentials_service.decrypt_value", side_effect=["static_secret", None])
+    def test_access_keys_clears_ambient_profile_and_session_token(self, _mock_dec, db, monkeypatch):
+        """Binding an access_keys template without a session token clears ambient AWS_PROFILE and AWS_SESSION_TOKEN."""
+        monkeypatch.setenv("AWS_PROFILE", "ambient-profile")
+        monkeypatch.setenv("AWS_SESSION_TOKEN", "ambient-stale-token")
+        monkeypatch.setenv("TF_VAR_aws_session_token", "ambient-stale-token")
+
+        template = _make_template(
+            db,
+            name="Static Keys No Token",
+            aws_auth_method="access_keys",
+            aws_access_key_id="AKIA_STATIC",
+            aws_secret_access_key_encrypted="enc_secret",
+            aws_session_token_encrypted=None,
+            region="ap-southeast-2",
+        )
+        project = _make_project(db, credential_template_id=template.id)
+
+        env = get_cloud_credentials_env(project, db=db)
+
+        assert "AWS_PROFILE" not in env
+        assert "AWS_SESSION_TOKEN" not in env
+        assert "TF_VAR_aws_session_token" not in env
+        assert env["AWS_ACCESS_KEY_ID"] == "AKIA_STATIC"
+        assert env["AWS_SECRET_ACCESS_KEY"] == "static_secret"
+
+
+class TestAWSVPCQuotaPreflight:
+    """Verify AWS VPC quota preflight prevents VpcLimitExceeded partial deployments."""
+
+    def test_vpc_preflight_blocks_when_at_limit(self):
+        from tasks.opentofu_tasks import _check_aws_vpc_quota_preflight
+
+        module = MagicMock()
+        module.id = 72
+        module.status = "initialized"
+        module.source_path = "modules/eks-cluster-create"
+        module.module_name = "aws_eks_cluster_create"
+        module.variable_overrides = {"aws_region": "ap-southeast-2", "eks_cluster_name": "new-cluster"}
+        module.variables = {}
+
+        mock_ec2 = MagicMock()
+        mock_ec2.describe_vpcs.return_value = {
+            "Vpcs": [{"VpcId": f"vpc-{i}", "Tags": [{"Key": "Name", "Value": f"vpc-{i}"}]} for i in range(5)]
+        }
+        mock_sq = MagicMock()
+        mock_sq.get_service_quota.return_value = {"Quota": {"Value": 5.0}}
+
+        mock_session = MagicMock()
+        mock_session.client.side_effect = lambda svc, **kw: mock_ec2 if svc == "ec2" else mock_sq
+
+        with patch("boto3.Session", return_value=mock_session):
+            with pytest.raises(ValueError, match="5/5 VPCs already in use"):
+                _check_aws_vpc_quota_preflight(module, {"AWS_DEFAULT_REGION": "ap-southeast-2"})
+
+    def test_vpc_preflight_passes_when_below_limit(self):
+        from tasks.opentofu_tasks import _check_aws_vpc_quota_preflight
+
+        module = MagicMock()
+        module.id = 72
+        module.status = "initialized"
+        module.source_path = "modules/eks-cluster-create"
+        module.module_name = "aws_eks_cluster_create"
+        module.variable_overrides = {"aws_region": "ap-southeast-2", "eks_cluster_name": "new-cluster"}
+        module.variables = {}
+
+        mock_ec2 = MagicMock()
+        mock_ec2.describe_vpcs.return_value = {
+            "Vpcs": [{"VpcId": f"vpc-{i}", "Tags": [{"Key": "Name", "Value": f"vpc-{i}"}]} for i in range(3)]
+        }
+        mock_sq = MagicMock()
+        mock_sq.get_service_quota.return_value = {"Quota": {"Value": 5.0}}
+
+        mock_session = MagicMock()
+        mock_session.client.side_effect = lambda svc, **kw: mock_ec2 if svc == "ec2" else mock_sq
+
+        with patch("boto3.Session", return_value=mock_session):
+            log_line = _check_aws_vpc_quota_preflight(module, {"AWS_DEFAULT_REGION": "ap-southeast-2"})
+
+        assert "3/5 VPCs in use in ap-southeast-2" in log_line
+
+    def test_vpc_preflight_idempotent_when_cluster_vpc_already_exists_at_limit(self):
+        """When 5/5 VPCs exist but one is <eks_cluster_name>-vpc from variable_overrides, preflight passes."""
+        from tasks.opentofu_tasks import _check_aws_vpc_quota_preflight
+
+        module = MagicMock()
+        module.id = 72
+        module.status = "initialized"
+        module.source_path = "modules/eks-cluster-create"
+        module.module_name = "aws_eks_cluster_create"
+        module.variable_overrides = {"aws_region": "ap-southeast-2", "eks_cluster_name": "my-eks"}
+        module.variables = {}
+
+        vpcs = [{"VpcId": f"vpc-{i}", "Tags": [{"Key": "Name", "Value": f"vpc-{i}"}]} for i in range(4)]
+        vpcs.append({"VpcId": "vpc-existing", "Tags": [{"Key": "Name", "Value": "my-eks-vpc"}]})
+
+        mock_ec2 = MagicMock()
+        mock_ec2.describe_vpcs.return_value = {"Vpcs": vpcs}
+        mock_sq = MagicMock()
+        mock_sq.get_service_quota.return_value = {"Quota": {"Value": 5.0}}
+
+        mock_session = MagicMock()
+        mock_session.client.side_effect = lambda svc, **kw: mock_ec2 if svc == "ec2" else mock_sq
+
+        with patch("boto3.Session", return_value=mock_session):
+            log_line = _check_aws_vpc_quota_preflight(module, {})
+
+        assert "existing VPC vpc-existing (my-eks-vpc) found in ap-southeast-2" in log_line
+
+    def test_vpc_preflight_falls_back_to_describe_account_attributes_max_vpc(self):
+        """When service-quotas raises AccessDenied, preflight falls back to ec2.describe_account_attributes(max-vpc)."""
+        from tasks.opentofu_tasks import _check_aws_vpc_quota_preflight
+
+        module = MagicMock()
+        module.id = 72
+        module.status = "initialized"
+        module.source_path = "modules/eks-cluster-create"
+        module.module_name = "aws_eks_cluster_create"
+        module.variable_overrides = {"aws_region": "ap-southeast-2", "eks_cluster_name": "new-cluster"}
+        module.variables = {}
+
+        mock_ec2 = MagicMock()
+        mock_ec2.describe_vpcs.return_value = {
+            "Vpcs": [{"VpcId": f"vpc-{i}", "Tags": [{"Key": "Name", "Value": f"vpc-{i}"}]} for i in range(6)]
+        }
+        mock_ec2.describe_account_attributes.return_value = {
+            "AccountAttributes": [{"AttributeName": "max-vpc", "AttributeValues": [{"AttributeValue": "10"}]}]
+        }
+        mock_sq = MagicMock()
+        mock_sq.get_service_quota.side_effect = RuntimeError("AccessDeniedException")
+
+        mock_session = MagicMock()
+        mock_session.client.side_effect = lambda svc, **kw: mock_ec2 if svc == "ec2" else mock_sq
+
+        with patch("boto3.Session", return_value=mock_session):
+            log_line = _check_aws_vpc_quota_preflight(module, {})
+
+        assert "6/10 VPCs in use in ap-southeast-2" in log_line
+
+    def test_apply_known_module_hotfixes_covers_all_aws_eks_modules(self, tmp_path):
+        """_apply_known_module_hotfixes updates main.tf and variables.tf across all 5 AWS EKS modules."""
+        from services.execution.opentofu_runtime import _apply_known_module_hotfixes
+
+        for mod_name in (
+            "eks-cluster-create",
+            "eks-cluster-register",
+            "eks-cluster-hp-nodes",
+            "eks-cluster-cneinstall",
+            "eks-cluster-install-tmm-nads",
+        ):
+            mod_dir = tmp_path / mod_name
+            mod_dir.mkdir()
+            (mod_dir / "main.tf").write_text(
+                'provider "aws" {\n'
+                "  region     = var.aws_region\n"
+                "  access_key = var.aws_access_key_id\n"
+                "  secret_key = var.aws_secret_access_key\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            (mod_dir / "variables.tf").write_text(
+                'variable "aws_access_key_id" {\n'
+                "  type      = string\n"
+                "  sensitive = true\n"
+                "}\n\n"
+                'variable "aws_secret_access_key" {\n'
+                "  type      = string\n"
+                "  sensitive = true\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            _apply_known_module_hotfixes(str(mod_dir), f"modules/{mod_name}")
+            main_after = (mod_dir / "main.tf").read_text(encoding="utf-8")
+            vars_after = (mod_dir / "variables.tf").read_text(encoding="utf-8")
+            assert 'var.aws_access_key_id != "" ? var.aws_access_key_id : null' in main_after
+            assert 'var.aws_secret_access_key != "" ? var.aws_secret_access_key : null' in main_after
+            assert vars_after.count('default   = ""') == 2
