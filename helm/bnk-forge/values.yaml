@@ -16,7 +16,7 @@ global:
 
 image:
   pullPolicy: IfNotPresent
-  tag: "4.2.1"
+  tag: "4.2.2"
 
 # Generated/explicit secrets. If left empty, helm generates random values on
 # first install and reuses them on upgrade (lookup-based).

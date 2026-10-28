@@ -4,6 +4,17 @@ All notable changes to BNK-Forge.
 
 ---
 
+## v4.2.2 (2026-10-28) — patch bump
+
+- fix(opentofu): normalize BNK 2.4.1 manifest_version to 2.4.1 in prereqs hotfix and add component test
+- fix(execution): skip auto-wiring cert_manager_version and support SA key in helm OCI login
+- fix(opentofu): resolve BNK 2.4.1 manifest version to published FAR tag 2.4.1-3.3175.0-0.0.527
+- fix(opentofu): apply download-manifest.sh hotfix to eks-cluster-install-bnk-prereqs
+- fix(opentofu): exclude opted-in AWS Local/Wavelength Zones in eks-cluster-create hotfix
+- fix(credentials): attach AWS CLI JSONFileCache (~/.aws/cli/cache) to profile boto3 sessions
+- fix(secrets): exclude cloud credential template inputs from required project secrets
+- fix(aws): support AWS SSO/profile credential resolution, rw ~/.aws mount, and VPC quota preflight
+
 ## v4.2.1 (2026-10-26) — patch bump
 
 - fix(release): emit SLSA v0.2 predicate JSON for cosign attest
