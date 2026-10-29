@@ -22,17 +22,33 @@ def seed_defaults_step():
     """Seed system defaults into the database."""
     from database import get_db_context
     from services.blueprint_builtin_source_service import ensure_default_builtin_blueprint_source, sync_builtin_source
-    from services.blueprint_default_source_service import ensure_default_blueprint_source
+    from services.blueprint_default_source_service import (
+        ensure_default_blueprint_source,
+        ensure_default_catalog_blueprint_sources,
+        ensure_default_catalog_module_sources,
+    )
     from services.blueprint_sync_service import BlueprintSyncService
     from services.defaults_service import seed_defaults
     with get_db_context() as db:
         seeded_count = seed_defaults(db)
         source = ensure_default_blueprint_source(db)
-        if source is not None and source.is_active:
-            try:
-                BlueprintSyncService(db).sync_git_source(source)
-            except Exception as sync_err:
-                logger.warning(f"  Default blueprint source sync failed: {sync_err}")
+        catalog_sources = ensure_default_catalog_blueprint_sources(db)
+        ensure_default_catalog_module_sources(db)
+        sources_to_sync = []
+        seen_ids = set()
+        for src in [source, *(catalog_sources or [])]:
+            if src is not None and src.is_active:
+                src_key = getattr(src, "id", None) or id(src)
+                if src_key not in seen_ids:
+                    seen_ids.add(src_key)
+                    sources_to_sync.append(src)
+        if sources_to_sync:
+            sync_service = BlueprintSyncService(db)
+            for src in sources_to_sync:
+                try:
+                    sync_service.sync_git_source(src, auto_import=True)
+                except Exception as sync_err:
+                    logger.warning(f"  Default blueprint source sync failed: {sync_err}")
         try:
             builtin_source = ensure_default_builtin_blueprint_source(db)
             sync_builtin_source(db, builtin_source)

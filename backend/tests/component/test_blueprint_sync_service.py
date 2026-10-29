@@ -543,3 +543,87 @@ def test_sync_git_source_module_auto_sync_commit_does_not_corrupt_session(db):
     assert source.sync_status == "success"
     releases = db.query(BlueprintRelease).filter(BlueprintRelease.blueprint_source_id == source.id).all()
     assert len(releases) == 1
+
+
+def test_sync_git_source_auto_imports_valid_releases_and_promotes_discovered(db):
+    source = _source(db)
+    service = BlueprintSyncService(db)
+
+    # First sync without auto_import creates a discovered, inactive release
+    with (
+        patch.object(service, "_clone_repository", return_value="/tmp/repo"),
+        patch.object(service, "_find_blueprint_manifests", return_value=["blueprints/sample/forge-blueprint.json"]),
+        patch.object(service, "_load_manifest", return_value=_manifest(version="1.0.0")),
+        patch("os.path.exists", return_value=False),
+    ):
+        service.sync_git_source(source, auto_import=False)
+
+    rel = db.query(BlueprintRelease).filter(BlueprintRelease.blueprint_source_id == source.id).one()
+    assert rel.release_state == "discovered"
+    assert rel.is_active is False
+    assert source.release_count == 0
+
+    # Second sync with auto_import=True promotes the existing discovered release and imports a new one
+    with (
+        patch.object(service, "_clone_repository", return_value="/tmp/repo"),
+        patch.object(
+            service,
+            "_find_blueprint_manifests",
+            return_value=[
+                "blueprints/sample/forge-blueprint.json",
+                "blueprints/sample2/forge-blueprint.json",
+            ],
+        ),
+        patch.object(
+            service,
+            "_load_manifest",
+            side_effect=[_manifest(version="1.0.0"), _manifest(version="2.0.0")],
+        ),
+        patch("os.path.exists", return_value=False),
+    ):
+        result = service.sync_git_source(source, auto_import=True)
+
+    assert result["releases_existing"] == 1
+    assert result["releases_created"] == 1
+    releases = (
+        db.query(BlueprintRelease)
+        .filter(BlueprintRelease.blueprint_source_id == source.id)
+        .order_by(BlueprintRelease.blueprint_version.asc())
+        .all()
+    )
+    assert len(releases) == 2
+    for r in releases:
+        assert r.release_state == "imported"
+        assert r.is_active is True
+        assert r.imported_at is not None
+        assert r.state_reason == "Auto-imported from default catalog source"
+    assert source.release_count == 2
+
+
+def test_sync_git_source_auto_import_falls_back_to_discovered_for_invalid_manifest(db):
+    source = _source(db)
+    service = BlueprintSyncService(db)
+    invalid_manifest = {
+        "schema_version": 1,
+        "blueprint": {
+            "id": "invalid-bp",
+            "version": "1.0.0",
+            "name": "Invalid Blueprint",
+        },
+        # Missing required modules list
+    }
+
+    with (
+        patch.object(service, "_clone_repository", return_value="/tmp/repo"),
+        patch.object(service, "_find_blueprint_manifests", return_value=["blueprints/bad/forge-blueprint.json"]),
+        patch.object(service, "_load_manifest", return_value=invalid_manifest),
+        patch("os.path.exists", return_value=False),
+    ):
+        result = service.sync_git_source(source, auto_import=True)
+
+    assert result["releases_created"] == 1
+    assert result["releases_invalid"] == 1
+    rel = db.query(BlueprintRelease).filter(BlueprintRelease.blueprint_source_id == source.id).one()
+    assert rel.release_state == "discovered"
+    assert rel.is_active is False
+    assert rel.validation_state == "invalid"
