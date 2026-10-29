@@ -46,7 +46,7 @@ cwc:
 # Operator image
 image:
   repository: ghcr.io/jlcode-tech/bnk-forge-operator
-  tag: "4.2.2"
+  tag: "4.3.0"
   pullPolicy: IfNotPresent
 
 # Image pull secrets (if using private registry)

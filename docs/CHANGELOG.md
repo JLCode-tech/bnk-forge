@@ -4,6 +4,10 @@ All notable changes to BNK-Forge.
 
 ---
 
+## v4.3.0 (2026-10-29) — minor bump
+
+- feat(catalog): seed and auto-import default blueprint and module catalog sources on release/2.4.1 (#6)
+
 ## v4.2.2 (2026-10-28) — patch bump
 
 - fix(opentofu): normalize BNK 2.4.1 manifest_version to 2.4.1 in prereqs hotfix and add component test
