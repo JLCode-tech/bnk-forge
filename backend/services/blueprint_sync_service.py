@@ -38,7 +38,13 @@ class BlueprintSyncService:
     def __init__(self, db: Session):
         self.db = db
 
-    def sync_git_source(self, source: BlueprintSource, *, sync_related_modules: bool = True) -> dict[str, Any]:
+    def sync_git_source(
+        self,
+        source: BlueprintSource,
+        *,
+        sync_related_modules: bool = True,
+        auto_import: bool = False,
+    ) -> dict[str, Any]:
         if source.source_type != "git":
             raise ValueError(f"Source {source.name} is not a Git source")
 
@@ -82,6 +88,16 @@ class BlueprintSyncService:
 
                     if existing is not None:
                         if existing.content_sha256 == manifest_sha:
+                            if (
+                                auto_import
+                                and existing.release_state == "discovered"
+                                and existing.validation_state == "valid"
+                            ):
+                                existing.release_state = "imported"
+                                existing.is_active = True
+                                existing.imported_at = func.now()
+                                existing.state_reason = "Auto-imported from default catalog source"
+                                self.db.flush()
                             results["releases_existing"] += 1
                             continue
 
@@ -91,15 +107,27 @@ class BlueprintSyncService:
                         )
                         continue
 
+                    should_import = False
+                    if auto_import:
+                        try:
+                            validate_blueprint_manifest(manifest)
+                            should_import = True
+                        except BlueprintManifestValidationError:
+                            should_import = False
+
                     created = catalog_service.create_release(
                         SimpleNamespace(
                             blueprint_source_id=source.id,
                             manifest=manifest,
                             source_path=manifest_path,
                             source_ref=source_ref,
-                            release_state="discovered",
-                            state_reason="discovered from git source sync",
-                            is_active=False,
+                            release_state="imported" if should_import else "discovered",
+                            state_reason=(
+                                "Auto-imported from default catalog source"
+                                if should_import
+                                else "discovered from git source sync"
+                            ),
+                            is_active=True if should_import else False,
                         )
                     )
                     results["releases_created"] += 1

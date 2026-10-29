@@ -42,11 +42,15 @@ def test_seed_auth_step_fails_closed_on_unpersistable_credential(
 
 @patch("database.get_db_context")
 @patch("services.defaults_service.seed_defaults")
+@patch("services.blueprint_default_source_service.ensure_default_catalog_module_sources")
+@patch("services.blueprint_default_source_service.ensure_default_catalog_blueprint_sources")
 @patch("services.blueprint_default_source_service.ensure_default_blueprint_source")
 @patch("services.blueprint_sync_service.BlueprintSyncService")
 def test_seed_defaults_step_syncs_default_blueprint_source(
     mock_sync_cls,
     mock_ensure_source,
+    mock_ensure_catalog_blueprint_sources,
+    mock_ensure_catalog_module_sources,
     mock_seed_defaults,
     mock_get_db_context,
 ):
@@ -58,8 +62,15 @@ def test_seed_defaults_step_syncs_default_blueprint_source(
     mock_seed_defaults.return_value = 0
 
     source = MagicMock()
+    source.id = 1
     source.is_active = True
     mock_ensure_source.return_value = source
+
+    catalog_source = MagicMock()
+    catalog_source.id = 2
+    catalog_source.is_active = True
+    mock_ensure_catalog_blueprint_sources.return_value = [catalog_source]
+    mock_ensure_catalog_module_sources.return_value = []
 
     sync_service = MagicMock()
     mock_sync_cls.return_value = sync_service
@@ -68,17 +79,26 @@ def test_seed_defaults_step_syncs_default_blueprint_source(
 
     mock_seed_defaults.assert_called_once_with(db)
     mock_ensure_source.assert_called_once_with(db)
-    sync_service.sync_git_source.assert_called_once_with(source)
+    mock_ensure_catalog_blueprint_sources.assert_called_once_with(db)
+    mock_ensure_catalog_module_sources.assert_called_once_with(db)
+    assert sync_service.sync_git_source.call_args_list == [
+        call(source, auto_import=True),
+        call(catalog_source, auto_import=True),
+    ]
     db.commit.assert_called()
 
 
 @patch("database.get_db_context")
 @patch("services.defaults_service.seed_defaults")
+@patch("services.blueprint_default_source_service.ensure_default_catalog_module_sources")
+@patch("services.blueprint_default_source_service.ensure_default_catalog_blueprint_sources")
 @patch("services.blueprint_default_source_service.ensure_default_blueprint_source")
 @patch("services.blueprint_sync_service.BlueprintSyncService")
 def test_seed_defaults_step_skips_sync_when_no_default_blueprint_source(
     mock_sync_cls,
     mock_ensure_source,
+    mock_ensure_catalog_blueprint_sources,
+    mock_ensure_catalog_module_sources,
     mock_seed_defaults,
     mock_get_db_context,
 ):
@@ -89,6 +109,8 @@ def test_seed_defaults_step_skips_sync_when_no_default_blueprint_source(
     mock_get_db_context.return_value = ctx
     mock_seed_defaults.return_value = 0
     mock_ensure_source.return_value = None
+    mock_ensure_catalog_blueprint_sources.return_value = []
+    mock_ensure_catalog_module_sources.return_value = []
 
     seed_defaults_step()
 

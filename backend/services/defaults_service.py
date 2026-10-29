@@ -41,7 +41,7 @@ SYSTEM_DEFAULTS = {
         "category": "module_library",
     },
     "module_library.git_ref": {
-        "value": "release/2.2",
+        "value": "release/2.4.1",
         "value_type": "string",
         "description": "Git branch or tag for module library",
         "category": "module_library",
@@ -354,6 +354,9 @@ def seed_defaults(db: Session) -> int:
         "module_library.git_url": {
             "https://github.com/f5devcentral/bnk-forge-modules.git",
             "https://github.com/bonnyr-f5/bnk-forge-modules.git",
+        },
+        "module_library.git_ref": {
+            "release/2.2",
         },
     }
 

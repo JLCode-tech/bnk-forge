@@ -96,6 +96,16 @@ class TestSeedDefaults:
         assert get_default(db, "system.update_repo_url") == "https://github.com/JLCode-tech/bnk-forge"
         assert get_default(db, "module_library.git_url") == "https://github.com/JLCode-tech/bnk-forge-modules.git"
 
+    def test_seeds_and_migrates_module_library_git_ref_to_release_2_4_1(self, db):
+        seed_defaults(db)
+        assert get_default(db, "module_library.git_ref") == "release/2.4.1"
+
+        set_default(db, "module_library.git_ref", "release/2.2")
+        db.commit()
+        count2 = seed_defaults(db)
+        assert count2 == 0
+        assert get_default(db, "module_library.git_ref") == "release/2.4.1"
+
 
 # ---------------------------------------------------------------------------
 # get_default
