@@ -91,6 +91,7 @@ x-backend-env: &backend-env
   JWT_SECRET_KEY:
   ENCRYPTION_KEY:
   ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
+  TF_PLUGIN_CACHE_DIR: /app/provider-cache
 
 x-worker-volumes: &worker-volumes
   - module_catalog:/tmp/bnk-forge-modules
@@ -101,7 +102,10 @@ x-worker-volumes: &worker-volumes
   - helm_config:/home/bnkforge/.config/helm
   - helm_charts:/app/helm_charts
   - workspace_data:/app/workspaces
+  - provider_cache:/app/provider-cache
+  - bfb_cache:/app/bfb-cache
   - ./secrets:/app/secrets:ro
+  - ./certs:/app/certs:ro
 
 x-logging: &default-logging
   driver: json-file
@@ -236,7 +240,10 @@ services:
       - helm_config:/home/bnkforge/.config/helm
       - helm_charts:/app/helm_charts
       - workspace_data:/app/workspaces
+      - provider_cache:/app/provider-cache
+      - bfb_cache:/app/bfb-cache
       - ./secrets:/app/secrets:ro
+      - ./certs:/app/certs:ro
       - ./VERSION:/app/VERSION:ro
     depends_on:
       postgres:
@@ -529,6 +536,10 @@ volumes:
   state_data:
     driver: local
   workspace_data:
+    driver: local
+  provider_cache:
+    driver: local
+  bfb_cache:
     driver: local
   helm_cache:
     driver: local

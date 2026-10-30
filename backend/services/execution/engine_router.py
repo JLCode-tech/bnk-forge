@@ -51,9 +51,9 @@ _circuit_breaker_state: dict[str, dict] = {}
 _health_cache: dict[str, dict] = {}
 
 # Circuit breaker constants
-CIRCUIT_BREAKER_FAILURE_THRESHOLD = 3   # Trip after N consecutive failures
-CIRCUIT_BREAKER_TRIP_DURATION = 60.0    # Seconds to stay tripped
-HEALTH_CACHE_TTL = 30.0                 # Seconds to cache health check results
+CIRCUIT_BREAKER_FAILURE_THRESHOLD = 3  # Trip after N consecutive failures
+CIRCUIT_BREAKER_TRIP_DURATION = 60.0  # Seconds to stay tripped
+HEALTH_CACHE_TTL = 30.0  # Seconds to cache health check results
 
 
 class EngineUnavailableError(ValueError):
@@ -63,12 +63,14 @@ class EngineUnavailableError(ValueError):
     Extends ValueError for backward compatibility with existing callers
     that catch ValueError from get_engine().
     """
+
     pass
 
 
 # =============================================================================
 # Circuit breaker functions
 # =============================================================================
+
 
 def get_circuit_breaker_state(engine_name: str) -> dict:
     """Get or initialize circuit breaker state for an engine."""
@@ -150,8 +152,7 @@ def record_engine_failure(engine_name: str) -> None:
         state["tripped_at"] = time.monotonic()
         state["last_probe_at"] = time.monotonic()
         logger.warning(
-            f"Circuit breaker probe failed for engine '{engine_name}' — "
-            f"re-tripped for {CIRCUIT_BREAKER_TRIP_DURATION}s"
+            f"Circuit breaker probe failed for engine '{engine_name}' — re-tripped for {CIRCUIT_BREAKER_TRIP_DURATION}s"
         )
     elif state["failures"] >= CIRCUIT_BREAKER_FAILURE_THRESHOLD:
         state["tripped_at"] = time.monotonic()
@@ -161,15 +162,13 @@ def record_engine_failure(engine_name: str) -> None:
             f"{CIRCUIT_BREAKER_TRIP_DURATION}s"
         )
     else:
-        logger.debug(
-            f"Engine '{engine_name}' failure "
-            f"#{state['failures']}/{CIRCUIT_BREAKER_FAILURE_THRESHOLD}"
-        )
+        logger.debug(f"Engine '{engine_name}' failure #{state['failures']}/{CIRCUIT_BREAKER_FAILURE_THRESHOLD}")
 
 
 # =============================================================================
 # Health check cache
 # =============================================================================
+
 
 def check_engine_health_cached(engine_name: str, engine: DeploymentEngine) -> bool:
     """
@@ -236,6 +235,7 @@ def get_engine_status_summary() -> dict[str, dict]:
 # Engine Router
 # =============================================================================
 
+
 class EngineRouter:
     """Routes module execution to the correct engine with health checks and circuit breaker."""
 
@@ -269,6 +269,7 @@ class EngineRouter:
         """Lazy-init KubernetesEngine."""
         if self._k8s_engine is None and self._kubeconfig_path:
             from services.execution.kubernetes_engine import KubernetesEngine
+
             self._k8s_engine = KubernetesEngine(self._kubeconfig_path, context=self._context)
         return self._k8s_engine
 
@@ -277,6 +278,7 @@ class EngineRouter:
         """Lazy-init OperatorEngine."""
         if self._operator_engine is None and self._operator_id:
             from services.execution.operator_engine import OperatorEngine
+
             op_conns = ServiceRegistry.get().operator_connections
             # For WS mode, only create if actually connected via WebSocket
             # For polling mode, the operator may not have a WS connection
@@ -311,8 +313,7 @@ class EngineRouter:
             # Prefer operator if available
             if self._operator_id:
                 op_conns = ServiceRegistry.get().operator_connections
-                if (self._connectivity_mode == "polling" or
-                        op_conns.is_connected(self._operator_id)):
+                if self._connectivity_mode == "polling" or op_conns.is_connected(self._operator_id):
                     return "operator"
 
             # Fall back to direct K8s
@@ -327,7 +328,9 @@ class EngineRouter:
         # Default to OpenTofu
         return "opentofu"
 
-    def _get_compatible_engines(self, module_path: str, execution_engine: str | None = None) -> list[tuple[str, DeploymentEngine]]:
+    def _get_compatible_engines(
+        self, module_path: str, execution_engine: str | None = None
+    ) -> list[tuple[str, DeploymentEngine]]:
         """
         Get all compatible engines for a module in priority order.
 
@@ -349,6 +352,7 @@ class EngineRouter:
             module_def = registry[module_path]
             if getattr(module_def, "module_type", "") == "ssh":
                 from services.execution.ssh_engine import SSHEngine
+
                 engines.append(("ssh", SSHEngine()))
                 return engines
 
@@ -363,6 +367,7 @@ class EngineRouter:
             # Default to OpenTofu
             from database import SessionLocal
             from services.execution.opentofu_engine import OpenTofuEngine
+
             engines.append(("opentofu", OpenTofuEngine(SessionLocal)))
 
         return engines
@@ -396,20 +401,12 @@ class EngineRouter:
             # Check circuit breaker
             if is_circuit_tripped(engine_name):
                 state = get_circuit_breaker_state(engine_name)
-                unavailable_reasons[engine_name] = (
-                    f"tripped ({state['failures']} consecutive failures)"
-                )
-                logger.debug(
-                    f"Skipping engine '{engine_name}' for {module_path} — "
-                    f"circuit breaker tripped"
-                )
+                unavailable_reasons[engine_name] = f"tripped ({state['failures']} consecutive failures)"
+                logger.debug(f"Skipping engine '{engine_name}' for {module_path} — circuit breaker tripped")
 
                 # Check if probe is allowed (trip duration expired)
                 if is_probe_allowed(engine_name):
-                    logger.info(
-                        f"Circuit breaker trip expired for '{engine_name}' — "
-                        f"allowing probe operation"
-                    )
+                    logger.info(f"Circuit breaker trip expired for '{engine_name}' — allowing probe operation")
                     state["last_probe_at"] = time.monotonic()
                     return engine
                 continue
@@ -418,10 +415,7 @@ class EngineRouter:
             if not check_engine_health_cached(engine_name, engine):
                 unavailable_reasons[engine_name] = "health check failed"
                 if engine_name == engine_type:
-                    logger.warning(
-                        f"Primary engine '{engine_name}' unhealthy for {module_path} — "
-                        f"trying fallback"
-                    )
+                    logger.warning(f"Primary engine '{engine_name}' unhealthy for {module_path} — trying fallback")
                 continue
 
             # Engine is healthy and circuit is not tripped — use it
@@ -440,10 +434,7 @@ class EngineRouter:
                     f"No engine available for {module_path}: "
                     f"execution_engine={execution_engine} but operator disconnected and no kubeconfig"
                 )
-            raise EngineUnavailableError(
-                f"No engine available for {module_path}: "
-                f"no OpenTofu engine configured"
-            )
+            raise EngineUnavailableError(f"No engine available for {module_path}: no OpenTofu engine configured")
 
         # All candidates were unavailable — list each engine's status
         status_parts = []
@@ -451,9 +442,7 @@ class EngineRouter:
             status_parts.append(f"{engine_name}: {reason}")
         status_str = ". ".join(status_parts) if status_parts else "unknown"
 
-        raise EngineUnavailableError(
-            f"All compatible engines are unavailable for {module_path}. {status_str}."
-        )
+        raise EngineUnavailableError(f"All compatible engines are unavailable for {module_path}. {status_str}.")
 
     @staticmethod
     def resolve_operator_for_project(project, db: Session) -> str | None:
@@ -471,11 +460,7 @@ class EngineRouter:
         from models import ConnectedOperator, KubernetesCluster
 
         # Find the project's cluster
-        cluster = (
-            db.query(KubernetesCluster)
-            .filter(KubernetesCluster.project_id == project.id)
-            .first()
-        )
+        cluster = db.query(KubernetesCluster).filter(KubernetesCluster.project_id == project.id).first()
         if not cluster:
             return None
 
@@ -496,6 +481,7 @@ class EngineRouter:
         if operator.connectivity_mode == "polling":
             # Check heartbeat recency — if no heartbeat in 60s, consider stale
             from datetime import datetime
+
             if operator.last_heartbeat_at:
                 heartbeat_age = (datetime.now(UTC) - operator.last_heartbeat_at).total_seconds()
                 if heartbeat_age > 60:
@@ -535,13 +521,7 @@ class EngineRouter:
         context via ``--context`` without depending on the kubeconfig's
         current-context. Returns None if no cluster is registered.
         """
-        from models import KubernetesCluster
-
-        cluster = (
-            db.query(KubernetesCluster)
-            .filter(KubernetesCluster.project_id == project.id)
-            .first()
-        )
+        cluster = _resolve_active_project_cluster(project, db)
         if not cluster:
             return None
         return cluster.context
@@ -560,14 +540,8 @@ class EngineRouter:
         ``aws eks get-token`` plugin is replaced with a boto3-generated
         bearer token so the aws CLI binary is not required at runtime.
         """
-        from models import KubernetesCluster
-
-        # Find the project's cluster
-        cluster = (
-            db.query(KubernetesCluster)
-            .filter(KubernetesCluster.project_id == project.id)
-            .first()
-        )
+        # Find (and self-heal if needed) the project's active cluster
+        cluster = _resolve_active_project_cluster(project, db)
 
         if not cluster:
             return None
@@ -582,9 +556,7 @@ class EngineRouter:
             # Defense-in-depth: assert portability before writing to disk.
             # KubeconfigUnportableError here means a legacy row survived pre-fix;
             # the error propagates to the job with an actionable re-upload message.
-            kubeconfig_content = normalize_kubeconfig(
-                kubeconfig_content, source=NormalizationSource.INTERNAL_REREAD
-            )
+            kubeconfig_content = normalize_kubeconfig(kubeconfig_content, source=NormalizationSource.INTERNAL_REREAD)
 
             kubeconfig_dir = "/tmp/bnk-forge-kubeconfigs"
             os.makedirs(kubeconfig_dir, exist_ok=True)
@@ -597,7 +569,10 @@ class EngineRouter:
             # may not have it, so we generate the token via boto3 directly.
             if cluster.cloud_provider in ("eks", "aws"):
                 kubeconfig_content = _inject_eks_bearer_token(
-                    kubeconfig_content, cluster, project, db,
+                    kubeconfig_content,
+                    cluster,
+                    project,
+                    db,
                 )
             # For IBM ROKS clusters, refresh the IAM bearer token from the
             # project's credential template. ROKS kubeconfigs typically embed
@@ -606,7 +581,10 @@ class EngineRouter:
             # will fail with 401 Unauthorized against the cluster API.
             elif cluster.cloud_provider in ("ibm", "ibmcloud", "roks"):
                 kubeconfig_content = _inject_ibm_bearer_token(
-                    kubeconfig_content, cluster, project, db,
+                    kubeconfig_content,
+                    cluster,
+                    project,
+                    db,
                 )
             # For GKE clusters, mint a GCP access token from the project's
             # service-account JSON so the stored kubeconfig's exec-based
@@ -614,14 +592,20 @@ class EngineRouter:
             # is replaced with a static bearer token.
             elif cluster.cloud_provider in ("gke", "gcp"):
                 kubeconfig_content = _inject_gke_bearer_token(
-                    kubeconfig_content, cluster, project, db,
+                    kubeconfig_content,
+                    cluster,
+                    project,
+                    db,
                 )
             # For AKS clusters, mint an AAD access token via the OAuth2
             # client-credentials flow so the stored kubeconfig's exec-based
             # ``kubelogin`` auth is replaced with a static bearer token.
             elif cluster.cloud_provider in ("aks", "azure"):
                 kubeconfig_content = _inject_aks_bearer_token(
-                    kubeconfig_content, cluster, project, db,
+                    kubeconfig_content,
+                    cluster,
+                    project,
+                    db,
                 )
 
             # If the cluster has SSH tunnelling enabled (on-prem clusters
@@ -639,6 +623,7 @@ class EngineRouter:
                     tunnel_port = _maybe_open_ssh_tunnel(cluster)
                     if tunnel_port:
                         import yaml as yaml_lib
+
                         kc_dict = yaml_lib.safe_load(kubeconfig_content)
                         for c in kc_dict.get("clusters", []):
                             # 127.0.0.1 explicitly — see cluster_utils.
@@ -650,13 +635,15 @@ class EngineRouter:
                         logger.info(
                             "engine_router: rewrote kubeconfig server URL to "
                             "https://127.0.0.1:%d (SSH tunnel to cluster %s)",
-                            tunnel_port, cluster.name,
+                            tunnel_port,
+                            cluster.name,
                         )
                 except Exception as exc:
                     logger.warning(
                         "engine_router: SSH tunnel setup for cluster %s failed "
                         "(%s); kubeconfig will be written without rewrite",
-                        cluster.name, exc,
+                        cluster.name,
+                        exc,
                     )
 
             with open(kubeconfig_path, "w") as f:
@@ -669,6 +656,61 @@ class EngineRouter:
             return _generate_eks_kubeconfig(cluster, project, db)
 
         return None
+
+
+def _resolve_active_project_cluster(project, db):
+    """Return the active KubernetesCluster for *project*, self-healing stale EKS records.
+
+    When a project has an applied EKS module whose outputs satisfy the EKS output
+    contract, ensures the project's ``KubernetesCluster`` row reflects the live
+    module's ``cluster_name`` and ``cluster_endpoint`` before returning it.
+    """
+    from models import KubernetesCluster
+    from services.eks_service import _out_val, matches_eks_output_contract, register_eks_cluster
+
+    applied_eks_mod = None
+    project_modules = getattr(project, "project_modules", None)
+    if isinstance(project_modules, list):
+        for mod in project_modules:
+            if getattr(mod, "status", None) == "applied" and matches_eks_output_contract(getattr(mod, "outputs", None)):
+                applied_eks_mod = mod
+                break
+
+    clusters = db.query(KubernetesCluster).filter(KubernetesCluster.project_id == project.id).all()
+    if isinstance(clusters, list):
+        if applied_eks_mod is not None:
+            mod_outputs = applied_eks_mod.outputs or {}
+            target_name = _out_val(mod_outputs, "cluster_name")
+            target_endpoint = _out_val(mod_outputs, "cluster_endpoint")
+            matching = [
+                c
+                for c in clusters
+                if c.name == target_name
+                and c.api_server == target_endpoint
+                and bool(getattr(c, "kubeconfig_encrypted", None))
+            ]
+            if len(matching) != 1 or len(clusters) > 1:
+                try:
+                    return register_eks_cluster(db, applied_eks_mod)
+                except Exception as sync_exc:
+                    logger.warning(
+                        f"Failed to self-heal EKS cluster record for project {getattr(project, 'id', None)}: {sync_exc}"
+                    )
+            else:
+                return matching[0]
+
+        if not clusters:
+            return None
+        # Prefer the most recently created/updated cluster record
+        clusters_sorted = sorted(
+            clusters,
+            key=lambda c: getattr(c, "id", 0) or 0,
+            reverse=True,
+        )
+        return clusters_sorted[0]
+
+    # Fallback for mocked DB sessions in unit tests where .all() is not a list
+    return db.query(KubernetesCluster).filter(KubernetesCluster.project_id == project.id).first()
 
 
 def _inject_eks_bearer_token(kubeconfig_content: str, cluster, project, db) -> str:
@@ -701,29 +743,78 @@ def _inject_eks_bearer_token(kubeconfig_content: str, cluster, project, db) -> s
         logger.warning("boto3/botocore not available — cannot generate EKS bearer token")
         return kubeconfig_content
 
-    creds_env = get_cloud_credentials_env(project, db)
+    creds_env = get_cloud_credentials_env(project, db) or {}
     access_key = creds_env.get("AWS_ACCESS_KEY_ID")
     secret_key = creds_env.get("AWS_SECRET_ACCESS_KEY")
+    session_token = creds_env.get("AWS_SESSION_TOKEN")
+    fallback_region = None
+
+    if not access_key or not secret_key:
+        # Fallback 1: check project.project_variables["variable_defaults"]
+        proj_vars = getattr(project, "project_variables", None)
+        if isinstance(proj_vars, dict):
+            var_defaults = proj_vars.get("variable_defaults")
+            if isinstance(var_defaults, dict):
+                access_key = (
+                    access_key or var_defaults.get("aws_access_key_id") or var_defaults.get("AWS_ACCESS_KEY_ID")
+                )
+                secret_key = (
+                    secret_key or var_defaults.get("aws_secret_access_key") or var_defaults.get("AWS_SECRET_ACCESS_KEY")
+                )
+                session_token = (
+                    session_token or var_defaults.get("aws_session_token") or var_defaults.get("AWS_SESSION_TOKEN")
+                )
+                fallback_region = var_defaults.get("aws_region") or var_defaults.get("region")
+
+    if not access_key or not secret_key:
+        # Fallback 2: check project modules' variable_overrides / variables
+        project_modules = getattr(project, "project_modules", None)
+        if isinstance(project_modules, list):
+            for mod in project_modules:
+                for attr in ("variable_overrides", "variables"):
+                    mod_vars = getattr(mod, attr, None)
+                    if isinstance(mod_vars, dict):
+                        access_key = (
+                            access_key or mod_vars.get("aws_access_key_id") or mod_vars.get("AWS_ACCESS_KEY_ID")
+                        )
+                        secret_key = (
+                            secret_key or mod_vars.get("aws_secret_access_key") or mod_vars.get("AWS_SECRET_ACCESS_KEY")
+                        )
+                        session_token = (
+                            session_token or mod_vars.get("aws_session_token") or mod_vars.get("AWS_SESSION_TOKEN")
+                        )
+                        fallback_region = fallback_region or mod_vars.get("aws_region") or mod_vars.get("region")
+                if access_key and secret_key:
+                    break
 
     if not access_key or not secret_key:
         logger.warning(
-            f"AWS credentials not found for project {project.name} — "
-            f"cannot generate EKS bearer token"
+            f"AWS credentials not found for project {getattr(project, 'name', None)} — cannot generate EKS bearer token"
         )
         return kubeconfig_content
 
-    # Determine region — prefer cluster, then project, then default
+    cluster_region = getattr(cluster, "region", None)
+    if not isinstance(cluster_region, str) or not cluster_region.strip():
+        cluster_region = None
+
+    project_region = getattr(project, "region", None)
+    if not isinstance(project_region, str) or not project_region.strip():
+        project_region = None
+
+    # Determine region — prefer cluster.region (actual deployed cluster location)
+    # over credential template default region, then fallback_region / project.region
     region = (
-        creds_env.get("AWS_REGION")
+        cluster_region
+        or creds_env.get("AWS_REGION")
         or creds_env.get("AWS_DEFAULT_REGION")
-        or cluster.region
-        or project.region
+        or fallback_region
+        or project_region
         or "us-east-1"
     )
 
     # Determine cluster name — use context or cluster name
     cluster_name = cluster.context or cluster.name
-    if cluster.meta_data and cluster.meta_data.get("cluster_arn"):
+    if isinstance(getattr(cluster, "meta_data", None), dict) and cluster.meta_data.get("cluster_arn"):
         # ARN format: arn:aws:eks:region:account:cluster/name
         arn_parts = cluster.meta_data["cluster_arn"].split("/")
         if len(arn_parts) >= 2:
@@ -733,7 +824,7 @@ def _inject_eks_bearer_token(kubeconfig_content: str, cluster, project, db) -> s
         session = boto3.Session(
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
-            aws_session_token=creds_env.get("AWS_SESSION_TOKEN"),
+            aws_session_token=session_token,
             region_name=region,
         )
 
@@ -751,9 +842,7 @@ def _inject_eks_bearer_token(kubeconfig_content: str, cluster, project, db) -> s
         signer.add_auth(request)
 
         # Encode as k8s-aws-v1 token
-        token = "k8s-aws-v1." + base64.urlsafe_b64encode(
-            request.url.encode("utf-8")
-        ).rstrip(b"=").decode("utf-8")
+        token = "k8s-aws-v1." + base64.urlsafe_b64encode(request.url.encode("utf-8")).rstrip(b"=").decode("utf-8")
 
         logger.info(f"Generated EKS bearer token for cluster {cluster_name} (region={region})")
 
@@ -792,11 +881,7 @@ def _inject_ibm_bearer_token(kubeconfig_content: str, cluster, project, db) -> s
         )
         return kubeconfig_content
 
-    template = (
-        db.query(CloudCredentialTemplate)
-        .filter(CloudCredentialTemplate.id == template_id)
-        .first()
-    )
+    template = db.query(CloudCredentialTemplate).filter(CloudCredentialTemplate.id == template_id).first()
     if not template or template.provider != "ibm" or not template.ibmcloud_api_key_encrypted:
         logger.debug(
             f"Credential template for project {project.name} is not an IBM "
@@ -910,11 +995,7 @@ def _inject_aks_bearer_token(kubeconfig_content: str, cluster, project, db) -> s
         )
         return kubeconfig_content
 
-    template = (
-        db.query(CloudCredentialTemplate)
-        .filter(CloudCredentialTemplate.id == template_id)
-        .first()
-    )
+    template = db.query(CloudCredentialTemplate).filter(CloudCredentialTemplate.id == template_id).first()
     if (
         not template
         or template.provider != "azure"
@@ -980,22 +1061,28 @@ def _generate_eks_kubeconfig(cluster, project, db) -> str | None:
 
     region = cluster.region or project.region
     if not region:
-        logger.error(
-            f"No region available for EKS cluster {cluster.name} — "
-            f"set region on cluster or project"
-        )
+        logger.error(f"No region available for EKS cluster {cluster.name} — set region on cluster or project")
         return None
 
     cmd = [
-        "aws", "eks", "update-kubeconfig",
-        "--name", cluster.name,
-        "--region", region,
-        "--kubeconfig", kubeconfig_path,
+        "aws",
+        "eks",
+        "update-kubeconfig",
+        "--name",
+        cluster.name,
+        "--region",
+        region,
+        "--kubeconfig",
+        kubeconfig_path,
     ]
 
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=30, env=env,
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=env,
         )
         if result.returncode == 0:
             return kubeconfig_path

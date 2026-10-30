@@ -31,9 +31,10 @@ _EKS_CONTRACT_REQUIRED_KEYS = (
 def matches_eks_output_contract(outputs: dict) -> bool:
     """Return True iff *outputs* satisfies the EKS registration contract.
 
-    A module's outputs match the contract when all four required keys are
-    present with non-empty values. The key set is the same one that
-    ``register_eks_cluster`` validates so the two functions cannot drift.
+    A module's outputs match the contract when ``cluster_name``,
+    ``cluster_endpoint``, ``cluster_certificate_authority_data``, and a region
+    indicator (``region``, ``aws_region``, ``eks_cluster_arn``, or ``cluster_arn``)
+    are present with non-empty values.
 
     Args:
         outputs: Module output dict (may be None or empty — both return False).
@@ -43,7 +44,12 @@ def matches_eks_output_contract(outputs: dict) -> bool:
     """
     if not outputs or not isinstance(outputs, dict):
         return False
-    return all(bool(outputs.get(key)) for key in _EKS_CONTRACT_REQUIRED_KEYS)
+    has_core = all(
+        bool(_out_val(outputs, key))
+        for key in ("cluster_name", "cluster_endpoint", "cluster_certificate_authority_data")
+    )
+    has_region = any(bool(_out_val(outputs, key)) for key in ("region", "aws_region", "eks_cluster_arn", "cluster_arn"))
+    return has_core and has_region
 
 
 def generate_eks_kubeconfig(
@@ -96,6 +102,16 @@ def generate_eks_kubeconfig(
     return yaml.dump(kubeconfig)
 
 
+def _out_val(outputs: dict[str, Any] | None, key: str) -> Any:
+    """Extract a scalar output value from flat or Terraform-wrapped ({'value': ...}) outputs."""
+    if not isinstance(outputs, dict):
+        return None
+    raw = outputs.get(key)
+    if isinstance(raw, dict) and "value" in raw:
+        return raw["value"]
+    return raw
+
+
 def register_eks_cluster(db: Session, eks_module: ProjectModule) -> KubernetesCluster:
     """
     Auto-register an EKS cluster to the Kubernetes page after deployment.
@@ -105,28 +121,42 @@ def register_eks_cluster(db: Session, eks_module: ProjectModule) -> KubernetesCl
         eks_module: The deployed EKS ProjectModule with outputs
 
     Returns:
-        The created or existing KubernetesCluster record
+        The created or updated KubernetesCluster record
 
     Raises:
         ValueError: If required outputs are missing
     """
     # Extract required outputs
-    outputs = eks_module.outputs
-    cluster_name = outputs.get("cluster_name")
-    cluster_endpoint = outputs.get("cluster_endpoint")
-    cluster_ca_data = outputs.get("cluster_certificate_authority_data")
+    outputs = eks_module.outputs or {}
+    cluster_name = _out_val(outputs, "cluster_name")
+    cluster_endpoint = _out_val(outputs, "cluster_endpoint")
+    cluster_ca_data = _out_val(outputs, "cluster_certificate_authority_data")
 
-    # Extract region from cluster ARN (most accurate - shows actual deployment location)
+    # Extract region from cluster ARN (most accurate - shows actual deployment location).
+    # Support both `cluster_arn` and `eks_cluster_arn` (as well as `cluster_id` when it is an ARN).
     region = None
-    if outputs.get("cluster_arn"):
+    raw_arn = (
+        _out_val(outputs, "cluster_arn") or _out_val(outputs, "eks_cluster_arn") or _out_val(outputs, "cluster_id")
+    )
+    if isinstance(raw_arn, str) and raw_arn.startswith("arn:aws:eks:"):
         # ARN format: arn:aws:eks:region:account:cluster/name
-        arn_parts = outputs.get("cluster_arn").split(":")
-        if len(arn_parts) >= 4:
+        arn_parts = raw_arn.split(":")
+        if len(arn_parts) >= 4 and arn_parts[3]:
             region = arn_parts[3]
 
-    # Fallback: use project region if ARN extraction failed
-    if not region and hasattr(eks_module.project, "region"):
-        region = eks_module.project.region
+    # Fallback 1: explicit region output from module
+    if not region:
+        region = _out_val(outputs, "region") or _out_val(outputs, "aws_region")
+
+    # Fallback 2: use project region or project variable_defaults if ARN/output extraction failed
+    if not region and getattr(eks_module, "project", None) is not None:
+        region = getattr(eks_module.project, "region", None)
+        if not region:
+            proj_vars = getattr(eks_module.project, "project_variables", None) or {}
+            if isinstance(proj_vars, dict):
+                var_defaults = proj_vars.get("variable_defaults") or {}
+                if isinstance(var_defaults, dict):
+                    region = var_defaults.get("aws_region") or var_defaults.get("region")
 
     # Validate required outputs
     if not all([cluster_name, cluster_endpoint, cluster_ca_data, region]):
@@ -140,17 +170,6 @@ def register_eks_cluster(db: Session, eks_module: ProjectModule) -> KubernetesCl
         if not region:
             missing.append("region")
         raise ValueError(f"Missing required EKS outputs for registration: {', '.join(missing)}")
-
-    # Check if cluster already registered
-    existing = (
-        db.query(KubernetesCluster)
-        .filter(KubernetesCluster.name == cluster_name, KubernetesCluster.project_id == eks_module.project_id)
-        .first()
-    )
-
-    if existing:
-        logger.info(f"Cluster {cluster_name} already registered (id={existing.id}), skipping")
-        return existing
 
     # Generate kubeconfig
     logger.info(f"Generating kubeconfig for EKS cluster {cluster_name}")
@@ -174,29 +193,85 @@ def register_eks_cluster(db: Session, eks_module: ProjectModule) -> KubernetesCl
     logger.info(f"Encrypting kubeconfig for cluster {cluster_name}")
     kubeconfig_encrypted = encrypt_value(kubeconfig_yaml)
 
-    # Create cluster record
-    cluster = KubernetesCluster(
-        name=cluster_name,
-        context=cluster_name,  # Use cluster name as context
-        api_server=cluster_endpoint,
-        version=outputs.get("cluster_version"),
-        status="active",
-        project_id=eks_module.project_id,
-        kubeconfig_encrypted=kubeconfig_encrypted,
-        cloud_provider="aws",
-        region=region,
-        default_namespace="default",
-        meta_data={
-            "auto_registered": True,
-            "source_module_id": eks_module.id,
-            "cluster_arn": outputs.get("cluster_arn"),
-            "oidc_provider_url": outputs.get("oidc_provider_url"),
-            "nodegroup_name": outputs.get("nodegroup_name"),
-            "nodegroup_status": outputs.get("nodegroup_status"),
-        },
+    resolved_arn = _out_val(outputs, "cluster_arn") or _out_val(outputs, "eks_cluster_arn")
+    cluster_version = _out_val(outputs, "cluster_version")
+    meta_payload = {
+        "auto_registered": True,
+        "source_module_id": eks_module.id,
+        "cluster_arn": resolved_arn,
+        "oidc_provider_url": _out_val(outputs, "oidc_provider_url"),
+        "nodegroup_name": _out_val(outputs, "nodegroup_name"),
+        "nodegroup_status": _out_val(outputs, "nodegroup_status"),
+    }
+
+    # Check if cluster already registered by name in this project
+    existing = (
+        db.query(KubernetesCluster)
+        .filter(KubernetesCluster.name == cluster_name, KubernetesCluster.project_id == eks_module.project_id)
+        .first()
     )
 
-    db.add(cluster)
+    project_clusters = db.query(KubernetesCluster).filter(KubernetesCluster.project_id == eks_module.project_id).all()
+    if not existing and isinstance(project_clusters, list):
+        for candidate in project_clusters:
+            cand_meta = getattr(candidate, "meta_data", None)
+            if isinstance(cand_meta, dict) and str(cand_meta.get("source_module_id")) == str(eks_module.id):
+                existing = candidate
+                break
+
+    if existing:
+        existing_meta = getattr(existing, "meta_data", None)
+        merged_meta = {**(existing_meta if isinstance(existing_meta, dict) else {}), **meta_payload}
+        existing.name = cluster_name
+        existing.context = cluster_name
+        existing.api_server = cluster_endpoint
+        if cluster_version:
+            existing.version = cluster_version
+        existing.status = "active"
+        existing.kubeconfig_encrypted = kubeconfig_encrypted
+        existing.cloud_provider = "aws"
+        existing.region = region
+        existing.meta_data = merged_meta
+        cluster = existing
+        logger.info(f"Updated existing EKS cluster {cluster_name} (id={cluster.id}) with fresh endpoint and kubeconfig")
+    else:
+        cluster = KubernetesCluster(
+            name=cluster_name,
+            context=cluster_name,  # Use cluster name as context
+            api_server=cluster_endpoint,
+            version=cluster_version,
+            status="active",
+            project_id=eks_module.project_id,
+            kubeconfig_encrypted=kubeconfig_encrypted,
+            cloud_provider="aws",
+            region=region,
+            default_namespace="default",
+            meta_data=meta_payload,
+        )
+        db.add(cluster)
+
+    # Remove any other stale auto-registered EKS cluster rows in the same project
+    if isinstance(project_clusters, list):
+        for other in project_clusters:
+            if other is cluster or (
+                getattr(other, "id", None) is not None and getattr(other, "id", None) == getattr(cluster, "id", None)
+            ):
+                continue
+            other_meta = getattr(other, "meta_data", None)
+            is_stale_auto_eks = isinstance(other_meta, dict) and (
+                str(other_meta.get("source_module_id")) == str(eks_module.id)
+                or (
+                    other_meta.get("auto_registered") is True
+                    and getattr(other, "cloud_provider", None) in ("aws", "eks")
+                )
+            )
+            if is_stale_auto_eks:
+                logger.info(
+                    f"Removing stale auto-registered EKS cluster record {other.name} (id={other.id}) "
+                    f"superseded by {cluster_name}"
+                )
+                db.delete(other)
+
     db.commit()
     db.refresh(cluster)
 
@@ -204,26 +279,47 @@ def register_eks_cluster(db: Session, eks_module: ProjectModule) -> KubernetesCl
     return cluster
 
 
-def unregister_eks_cluster(db: Session, eks_module: ProjectModule) -> bool:
+def unregister_eks_cluster(db: Session, eks_module: ProjectModule, outputs: dict[str, Any] | None = None) -> bool:
     """
     Remove an EKS cluster from the Kubernetes page when module is destroyed.
 
     Args:
         db: Database session
         eks_module: The EKS ProjectModule being destroyed
+        outputs: Optional snapshot of module outputs captured before clearing
 
     Returns:
         True if cluster was removed, False if not found
     """
-    # Find cluster registered by this module
-    cluster = (
-        db.query(KubernetesCluster)
-        .filter(
-            KubernetesCluster.project_id == eks_module.project_id,
-            KubernetesCluster.meta_data.op("->>")("source_module_id") == str(eks_module.id),
-        )
-        .first()
-    )
+    cluster = None
+    effective_outputs = outputs if isinstance(outputs, dict) else (getattr(eks_module, "outputs", None) or {})
+    target_name = _out_val(effective_outputs, "cluster_name")
+
+    query = db.query(KubernetesCluster).filter(KubernetesCluster.project_id == eks_module.project_id)
+    candidates = query.all()
+    if isinstance(candidates, list):
+        for cand in candidates:
+            cand_meta = getattr(cand, "meta_data", None)
+            if isinstance(cand_meta, dict) and str(cand_meta.get("source_module_id")) == str(eks_module.id):
+                cluster = cand
+                break
+        if not cluster and target_name:
+            for cand in candidates:
+                if cand.name == target_name:
+                    cluster = cand
+                    break
+        if not cluster:
+            for cand in candidates:
+                cand_meta = getattr(cand, "meta_data", None)
+                if (
+                    isinstance(cand_meta, dict)
+                    and cand_meta.get("auto_registered") is True
+                    and getattr(cand, "cloud_provider", None) in ("aws", "eks")
+                ):
+                    cluster = cand
+                    break
+    else:
+        cluster = query.first()
 
     if cluster:
         cluster_name = cluster.name

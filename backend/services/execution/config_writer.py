@@ -30,11 +30,13 @@ logger = logging.getLogger(__name__)
 # Writing these into terraform.tfvars.json would override the env-injected values
 # (tfvars take precedence over TF_VAR_* in OpenTofu variable precedence), so we
 # exclude them from the file entirely and let the env vars win.
-ENV_INJECTED_TFVARS: frozenset[str] = frozenset({
-    "aws_access_key_id",
-    "aws_secret_access_key",
-    "aws_session_token",
-})
+ENV_INJECTED_TFVARS: frozenset[str] = frozenset(
+    {
+        "aws_access_key_id",
+        "aws_secret_access_key",
+        "aws_session_token",
+    }
+)
 
 
 def write_tfvars(work_dir: str, variables: dict) -> str:
@@ -53,14 +55,10 @@ def write_tfvars(work_dir: str, variables: dict) -> str:
     # Filter out:
     # 1. Credential keys injected via TF_VAR_* env (tfvars would override env → creds clobbered)
     # 2. Any key with a None value (null in tfvars.json overrides env/defaults with null)
-    filtered = {
-        k: v
-        for k, v in variables.items()
-        if k not in ENV_INJECTED_TFVARS and v is not None
-    }
+    filtered = {k: v for k, v in variables.items() if k not in ENV_INJECTED_TFVARS and v is not None}
 
     tfvars_path = os.path.join(work_dir, "terraform.tfvars.json")
-    with open(tfvars_path, 'w') as f:
+    with open(tfvars_path, "w") as f:
         json.dump(filtered, f, indent=2)
 
     logger.info(f"Wrote {len(filtered)} variables to {tfvars_path}")
@@ -88,15 +86,15 @@ def write_backend_config(work_dir: str, module: "ProjectModule", db=None):
             region = get_default(db, "cloud.aws.default_region")
         region = region or "us-east-1"
         key_prefix = bk.s3_state_key_prefix or ""
-        state_storage_provider = getattr(bk, 'state_storage_provider', None) or (
-            'ibm' if project.cloud_provider == 'ibm' else 'aws'
+        state_storage_provider = getattr(bk, "state_storage_provider", None) or (
+            "ibm" if project.cloud_provider == "ibm" else "aws"
         )
-        s3_endpoint = getattr(bk, 's3_endpoint', None)
+        s3_endpoint = getattr(bk, "s3_endpoint", None)
 
         # Build state key path
         state_key = f"{key_prefix}{project.name}/{module.path_in_project}/terraform.tfstate"
 
-        if state_storage_provider == 'ibm':
+        if state_storage_provider == "ibm":
             endpoint = s3_endpoint or f"https://s3.{region}.cloud-object-storage.appdomain.cloud"
             backend_content = f'''
 terraform {{
@@ -155,7 +153,7 @@ terraform {{
 '''
 
     backend_path = os.path.join(work_dir, "backend_override.tf")
-    with open(backend_path, 'w') as f:
+    with open(backend_path, "w") as f:
         f.write(backend_content)
 
     logger.info(f"Wrote backend config to {backend_path}")
@@ -198,6 +196,7 @@ def write_encryption_config(work_dir: str, module: "ProjectModule", db=None):
             # already-encrypted state (derived from current project.name) stays readable.
             # Once persisted, the passphrase is frozen and immune to future renames.
             import hashlib
+
             passphrase = hashlib.sha256(f"bnk-forge-{project.id}-{project.name}".encode()).hexdigest()[:32]
 
             # Persist so we never re-derive (requires a DB session)
@@ -206,15 +205,15 @@ def write_encryption_config(work_dir: str, module: "ProjectModule", db=None):
                     enc.encryption_passphrase_encrypted = encrypt_value(passphrase)
                     db.commit()
                     logger.info(
-                        "Persisted auto-generated encryption passphrase for project %s "
-                        "(immune to future renames)",
+                        "Persisted auto-generated encryption passphrase for project %s (immune to future renames)",
                         project.id,
                     )
                 except Exception as e:
                     logger.warning(
                         "Failed to persist encryption passphrase for project %s: %s "
                         "(passphrase will be re-derived next run — rename risk remains)",
-                        project.id, e,
+                        project.id,
+                        e,
                     )
 
         key_provider_block = f'''    key_provider "pbkdf2" "main" {{
@@ -279,7 +278,9 @@ def write_encryption_config(work_dir: str, module: "ProjectModule", db=None):
         # S15-031: Validate required fields before generating HCL
         if not vault_address:
             raise ValueError("OpenBao encryption requires 'encryption_openbao_address' to be set on the project")
-        vault_token = decrypt_value(enc.encryption_openbao_token_encrypted) if enc.encryption_openbao_token_encrypted else ""
+        vault_token = (
+            decrypt_value(enc.encryption_openbao_token_encrypted) if enc.encryption_openbao_token_encrypted else ""
+        )
         transit_key = enc.encryption_openbao_transit_key or "tofu-state"
 
         key_provider_block = f'''    key_provider "openbao" "main" {{
@@ -297,7 +298,7 @@ def write_encryption_config(work_dir: str, module: "ProjectModule", db=None):
         )
 
     # Generate full encryption configuration
-    encryption_config = f'''
+    encryption_config = f"""
 terraform {{
   encryption {{
 {key_provider_block}
@@ -323,10 +324,10 @@ terraform {{
     }}
   }}
 }}
-'''
+"""
 
     encryption_path = os.path.join(work_dir, "encryption.tf")
-    with open(encryption_path, 'w') as f:
+    with open(encryption_path, "w") as f:
         f.write(encryption_config)
 
     logger.info(f"Wrote encryption config to {encryption_path} using provider: {provider}")
@@ -353,18 +354,17 @@ def _resolve_project_kubeconfig_path(project) -> str | None:
     try:
         cluster = None
         # Try k8s_clusters relationship (Project.k8s_clusters → list of KubernetesCluster)
-        if hasattr(project, 'k8s_clusters') and project.k8s_clusters:
+        if hasattr(project, "k8s_clusters") and project.k8s_clusters:
             cluster = project.k8s_clusters[0]  # Take the first/primary cluster
 
         if not cluster:
             # Fall back to DB query (for detached session or missing relationship)
             from database import SessionLocal
             from models import KubernetesCluster
+
             db = SessionLocal()
             try:
-                cluster = db.query(KubernetesCluster).filter(
-                    KubernetesCluster.project_id == project.id
-                ).first()
+                cluster = db.query(KubernetesCluster).filter(KubernetesCluster.project_id == project.id).first()
             finally:
                 db.close()
 
@@ -395,7 +395,8 @@ def _resolve_project_kubeconfig_path(project) -> str | None:
                         "SSH tunnel setup for cluster %s failed (%s); "
                         "kubeconfig will be written without rewrite — "
                         "Terraform may fail if API isn't directly routable",
-                        cluster.name, exc,
+                        cluster.name,
+                        exc,
                     )
                     tunnel_port = None
 
@@ -407,19 +408,17 @@ def _resolve_project_kubeconfig_path(project) -> str | None:
                         # the CA allows it, legacy skip only as a fallback (#7).
                         from services.kubeconfig_normalizer import rewrite_kubeconfig_for_tunnel
 
-                        kubeconfig_content = rewrite_kubeconfig_for_tunnel(
-                            kubeconfig_content, tunnel_port
-                        )
+                        kubeconfig_content = rewrite_kubeconfig_for_tunnel(kubeconfig_content, tunnel_port)
                         logger.info(
-                            "Rewrote kubeconfig server URL to "
-                            "https://localhost:%d (SSH tunnel to cluster %s)",
-                            tunnel_port, cluster.name,
+                            "Rewrote kubeconfig server URL to https://localhost:%d (SSH tunnel to cluster %s)",
+                            tunnel_port,
+                            cluster.name,
                         )
                     except Exception as exc:
                         logger.warning(
-                            "Failed to rewrite kubeconfig for SSH tunnel "
-                            "(cluster %s): %s — using original content",
-                            cluster.name, exc,
+                            "Failed to rewrite kubeconfig for SSH tunnel (cluster %s): %s — using original content",
+                            cluster.name,
+                            exc,
                         )
 
                 os.makedirs(os.path.dirname(kubeconfig_path), exist_ok=True)
@@ -479,7 +478,7 @@ def _inject_forge_kubeconfig_locals(work_dir: str, variables: dict | None, proje
             continue
         # Definition guard: if forge_kubeconfig is already defined here, bail out.
         # A definition looks like `forge_kubeconfig = ...` inside a locals block.
-        if re.search(r'forge_kubeconfig\s*=', tf_content):
+        if re.search(r"forge_kubeconfig\s*=", tf_content):
             logger.info("forge_kubeconfig already defined in %s, skipping locals injection", tf_file)
             return
         # Reference detection: module consumes it via local.forge_kubeconfig or
@@ -548,17 +547,17 @@ def _inject_forge_kubeconfig_locals(work_dir: str, variables: dict | None, proje
         )
         cluster_name_literal = json.dumps(cluster_name)
         if "aws_eks_cluster" not in declared_data_sources:
-            missing_sources.append(f'''
+            missing_sources.append(f"""
 data "aws_eks_cluster" "cluster" {{
   name = {cluster_name_literal}
 }}
-''')
+""")
         if "aws_eks_cluster_auth" not in declared_data_sources:
-            missing_sources.append(f'''
+            missing_sources.append(f"""
 data "aws_eks_cluster_auth" "cluster" {{
   name = {cluster_name_literal}
 }}
-''')
+""")
 
         if missing_sources:
             content += "# AWS EKS data sources required by forge_kubeconfig locals\n"
@@ -601,14 +600,14 @@ def write_provider_config(work_dir: str, module: "ProjectModule", variables: dic
     if not required_providers and os.path.exists(versions_tf):
         with open(versions_tf) as f:
             content = f.read()
-            if 'kubernetes' in content.lower():
-                required_providers.append('kubernetes')
-            if 'helm' in content.lower():
-                required_providers.append('helm')
-            if 'hashicorp/aws' in content.lower():
-                required_providers.append('aws')
-            if 'ibm-cloud/ibm' in content.lower():
-                required_providers.append('ibm')
+            if "kubernetes" in content.lower():
+                required_providers.append("kubernetes")
+            if "helm" in content.lower():
+                required_providers.append("helm")
+            if "hashicorp/aws" in content.lower():
+                required_providers.append("aws")
+            if "ibm-cloud/ibm" in content.lower():
+                required_providers.append("ibm")
 
     if not required_providers:
         # Path 1: kubectl-only modules (local+null providers, no kubernetes/helm/aws).
@@ -621,7 +620,7 @@ def write_provider_config(work_dir: str, module: "ProjectModule", variables: dic
 
     # Check if module already has provider config (don't override)
     for tf_file in os.listdir(work_dir):
-        if tf_file.endswith('.tf'):
+        if tf_file.endswith(".tf"):
             tf_path = os.path.join(work_dir, tf_file)
             with open(tf_path) as f:
                 content = f.read()
@@ -659,17 +658,26 @@ def write_provider_config(work_dir: str, module: "ProjectModule", variables: dic
         logger.info(f"Using Helm 3.x assignment syntax for module {module.id}")
 
     # Check if we need K8s/Helm providers
-    needs_k8s = 'kubernetes' in required_providers or 'helm' in required_providers
+    needs_k8s = "kubernetes" in required_providers or "helm" in required_providers
 
     if needs_k8s:
-        # Get cluster_name from assembled variables
+        proj_vars = getattr(project, "project_variables", None) if project else None
+        var_defaults = (
+            proj_vars.get("variable_defaults")
+            if isinstance(proj_vars, dict) and isinstance(proj_vars.get("variable_defaults"), dict)
+            else {}
+        )
+
+        # Get cluster_name from assembled variables (or project variable_defaults fallback)
         cluster_name = (
-            variables.get('cluster_name')
-            or variables.get('eks_cluster_name')
-            or variables.get('aks_cluster_name')
-            or variables.get('gke_cluster_name')
-            or variables.get('roks_cluster_name')
-            or variables.get('openshift_cluster_name')
+            variables.get("cluster_name")
+            or variables.get("eks_cluster_name")
+            or variables.get("aks_cluster_name")
+            or variables.get("gke_cluster_name")
+            or variables.get("roks_cluster_name")
+            or variables.get("openshift_cluster_name")
+            or var_defaults.get("cluster_name")
+            or var_defaults.get("eks_cluster_name")
         )
 
         if not cluster_name:
@@ -680,7 +688,13 @@ def write_provider_config(work_dir: str, module: "ProjectModule", variables: dic
 
         # Generate cloud-specific provider configuration using utility functions
         if cloud_provider == "aws":
-            region = variables.get('region') or variables.get('aws_region') or project.region
+            region = (
+                variables.get("region")
+                or variables.get("aws_region")
+                or var_defaults.get("aws_region")
+                or var_defaults.get("region")
+                or project.region
+            )
             if not region and db:
                 region = get_default(db, "cloud.aws.default_region")
             region = region or "us-east-1"
@@ -688,32 +702,32 @@ def write_provider_config(work_dir: str, module: "ProjectModule", variables: dic
                 cluster_name=cluster_name,
                 aws_region=region,
                 required_providers=required_providers,
-                helm_use_assignment_syntax=helm_use_assignment_syntax
+                helm_use_assignment_syntax=helm_use_assignment_syntax,
             )
 
         elif cloud_provider == "azure":
-            resource_group = variables.get('resource_group_name') or variables.get('azure_resource_group')
+            resource_group = variables.get("resource_group_name") or variables.get("azure_resource_group")
             provider_blocks, data_sources = generate_azure_aks_providers(
                 cluster_name=cluster_name,
                 resource_group=resource_group,
                 required_providers=required_providers,
-                helm_use_assignment_syntax=helm_use_assignment_syntax
+                helm_use_assignment_syntax=helm_use_assignment_syntax,
             )
 
         elif cloud_provider == "gcp":
-            gcp_project = variables.get('gcp_project') or variables.get('project_id')
-            gcp_region = variables.get('gcp_region') or variables.get('region')
+            gcp_project = variables.get("gcp_project") or variables.get("project_id")
+            gcp_region = variables.get("gcp_region") or variables.get("region")
             provider_blocks, data_sources = generate_gcp_gke_providers(
                 cluster_name=cluster_name,
                 gcp_project=gcp_project,
                 gcp_region=gcp_region,
                 required_providers=required_providers,
-                helm_use_assignment_syntax=helm_use_assignment_syntax
+                helm_use_assignment_syntax=helm_use_assignment_syntax,
             )
 
         elif cloud_provider == "ibm":
-            ibm_region = variables.get('ibm_region') or variables.get('region') or project.region
-            resource_group_id = variables.get('ibm_resource_group_id') or variables.get('resource_group_id')
+            ibm_region = variables.get("ibm_region") or variables.get("region") or project.region
+            resource_group_id = variables.get("ibm_resource_group_id") or variables.get("resource_group_id")
             if not ibm_region:
                 logger.warning(f"No IBM region found in variables for module {module.id}, provider injection may fail")
                 return
@@ -728,12 +742,12 @@ def write_provider_config(work_dir: str, module: "ProjectModule", variables: dic
         else:
             # Generic/on-prem: Use kubeconfig file if available
             # Resolve from project cluster when not in variables (bare-metal/on-prem)
-            kubeconfig_path = variables.get('kubeconfig_path')
+            kubeconfig_path = variables.get("kubeconfig_path")
             if not kubeconfig_path:
                 kubeconfig_path = _resolve_project_kubeconfig_path(project)
             if not kubeconfig_path:
                 kubeconfig_path = "/app/kubeconfig"
-            k8s_context = variables.get('k8s_context') or project.k8s_context
+            k8s_context = variables.get("k8s_context") or project.k8s_context
 
             logger.info(f"Using generic kubeconfig provider for cloud_provider='{cloud_provider}'")
 
@@ -741,7 +755,7 @@ def write_provider_config(work_dir: str, module: "ProjectModule", variables: dic
                 kubeconfig_path=kubeconfig_path,
                 k8s_context=k8s_context,
                 required_providers=required_providers,
-                helm_use_assignment_syntax=helm_use_assignment_syntax
+                helm_use_assignment_syntax=helm_use_assignment_syntax,
             )
 
     if not provider_blocks and not data_sources:
@@ -753,7 +767,8 @@ def write_provider_config(work_dir: str, module: "ProjectModule", variables: dic
     # kubectl local-exec provisioners that need a kubeconfig file on disk.
     # Resolve kubeconfig path for the locals block (on-prem/generic)
     from utils.provider_config import generate_forge_kubeconfig_local
-    resolved_kc = variables.get('kubeconfig_path') or _resolve_project_kubeconfig_path(project)
+
+    resolved_kc = variables.get("kubeconfig_path") or _resolve_project_kubeconfig_path(project)
     kubeconfig_local = generate_forge_kubeconfig_local(
         cloud_provider=cloud_provider,
         variables=variables,
@@ -769,7 +784,7 @@ def write_provider_config(work_dir: str, module: "ProjectModule", variables: dic
         provider_content += "\n" + kubeconfig_local
 
     provider_path = os.path.join(work_dir, "bnk_forge_providers.tf")
-    with open(provider_path, 'w') as f:
+    with open(provider_path, "w") as f:
         f.write(provider_content)
 
     logger.info(f"Wrote provider config to {provider_path} for providers: {required_providers}")

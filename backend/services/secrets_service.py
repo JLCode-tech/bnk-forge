@@ -6,6 +6,7 @@ Handles encryption, storage, and runtime mounting/injection.
 """
 
 import base64
+import json
 import logging
 import os
 from datetime import UTC, datetime
@@ -346,6 +347,47 @@ class SecretsService:
 
         return decrypt_value(secret.value_encrypted)
 
+    @staticmethod
+    def _normalize_inline_secret_value(var_name: str, raw_value: str) -> str:
+        """Normalize inline string secrets for known BNK variables.
+
+        - ``cne_pull_secret``: if the value is raw JSON (starts with ``{``),
+          either unwrap ``{"cne_pull_secret": ...}`` or base64-encode the JSON
+          so both OpenTofu ``base64decode(var.cne_pull_secret)`` and
+          ``KubernetesEngine._helm_registry_login`` succeed.
+        - ``jwt_token``: strip surrounding whitespace and unwrap JSON objects
+          containing ``jwt_token`` / ``jwt`` / ``token`` if present.
+        """
+        if not isinstance(raw_value, str):
+            return raw_value
+        if var_name == "cne_pull_secret":
+            stripped = raw_value.strip()
+            if stripped.startswith("{"):
+                try:
+                    parsed = json.loads(stripped)
+                    if isinstance(parsed, dict) and isinstance(parsed.get("cne_pull_secret"), str):
+                        inner = parsed["cne_pull_secret"].strip()
+                        if inner.startswith("{"):
+                            return base64.b64encode(inner.encode("utf-8")).decode("utf-8")
+                        return "".join(inner.split())
+                except Exception:
+                    pass
+                return base64.b64encode(stripped.encode("utf-8")).decode("utf-8")
+            return "".join(stripped.split())
+        if var_name == "jwt_token":
+            stripped = raw_value.strip()
+            if stripped.startswith("{"):
+                try:
+                    parsed = json.loads(stripped)
+                    if isinstance(parsed, dict):
+                        for k in ("jwt_token", "jwt", "token"):
+                            if isinstance(parsed.get(k), str) and parsed[k].strip():
+                                return parsed[k].strip()
+                except Exception:
+                    pass
+            return stripped
+        return raw_value
+
     def prepare_secrets_for_execution(
         self, project_id: int, work_dir: str, module_path: str | None = None
     ) -> tuple[dict[str, str], list[str]]:
@@ -372,8 +414,10 @@ class SecretsService:
             self.db.query(ProjectSecret).filter(ProjectSecret.project_id == project_id, ProjectSecret.is_active).all()
         )
 
-        value_secrets = {}
+        value_secrets: dict[str, str] = {}
+        explicit_value_keys: set[str] = set()
         file_paths = []
+        inline_content_secret_names = {"cne_pull_secret", "jwt_token"}
 
         # Create secrets directory in workspace
         secrets_dir = os.path.join(work_dir, "secrets")
@@ -398,19 +442,24 @@ class SecretsService:
 
                 file_paths.append(file_path)
 
-                # If this secret has a target variable, add the path to value_secrets
-                if secret.target_variable_name:
+                var_key = secret.target_variable_name or secret.name
+                if var_key in inline_content_secret_names or secret.name in inline_content_secret_names:
+                    target_key = var_key if var_key in inline_content_secret_names else secret.name
+                    if target_key not in explicit_value_keys:
+                        decoded_text = content.decode("utf-8", errors="replace")
+                        value_secrets[target_key] = self._normalize_inline_secret_value(target_key, decoded_text)
+                elif secret.target_variable_name:
+                    # If this secret has a target variable, add the path to value_secrets
                     value_secrets[secret.target_variable_name] = file_path
 
                 logger.debug(f"Wrote file secret '{secret.name}' to {file_path}")
 
             elif secret.secret_type == "value":
                 # Add to value secrets dict
-                if secret.target_variable_name:
-                    value_secrets[secret.target_variable_name] = self.get_decrypted_value(secret)
-                else:
-                    # Use secret name as variable name if no target specified
-                    value_secrets[secret.name] = self.get_decrypted_value(secret)
+                var_key = secret.target_variable_name or secret.name
+                raw_val = self.get_decrypted_value(secret)
+                value_secrets[var_key] = self._normalize_inline_secret_value(var_key, raw_val)
+                explicit_value_keys.add(var_key)
 
             # Update last_used_at
             secret.last_used_at = datetime.now(UTC)

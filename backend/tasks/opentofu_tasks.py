@@ -1353,6 +1353,7 @@ def run_opentofu_destroy(self, task_db_id: int, module_id: int, keep_workspace: 
                 task.logs = all_logs
 
                 if destroy_code == 0:
+                    prev_outputs = dict(module.outputs) if isinstance(module.outputs, dict) else {}
                     task.status = "completed"
                     set_locked_module_fields(
                         db,
@@ -1370,11 +1371,13 @@ def run_opentofu_destroy(self, task_db_id: int, module_id: int, keep_workspace: 
                     invalidate_state_cache(module_id, project.id)
 
                     # Auto-unregister EKS cluster from Kubernetes page
-                    if module.library_module.name == "eks":
-                        try:
-                            from services.eks_service import unregister_eks_cluster
+                    from services.cluster_management_service import ClusterManagementService
+                    from services.eks_service import matches_eks_output_contract, unregister_eks_cluster
 
-                            unregistered = unregister_eks_cluster(db, module)
+                    managed_type = ClusterManagementService._classify_managed_cluster_module(module.library_module)
+                    if managed_type == "eks" or matches_eks_output_contract(prev_outputs):
+                        try:
+                            unregistered = unregister_eks_cluster(db, module, outputs=prev_outputs)
                             if unregistered:
                                 logger.info("Auto-unregistered EKS cluster from Kubernetes page")
                         except Exception as e:
