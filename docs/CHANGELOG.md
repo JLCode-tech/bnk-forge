@@ -4,6 +4,10 @@ All notable changes to BNK-Forge.
 
 ---
 
+## v4.3.2 (2026-10-30) — patch bump
+
+- fix(eks): close E2E secret, credential, and cluster-registration edge cases
+
 ## v4.3.1 (2026-10-30) — patch bump
 
 - fix(eks): resolve colleague E2E deployment blockers across cluster lifecycle, STS auth, and secrets (#7)
