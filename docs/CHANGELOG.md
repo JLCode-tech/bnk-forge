@@ -4,6 +4,10 @@ All notable changes to BNK-Forge.
 
 ---
 
+## v4.3.1 (2026-10-30) — patch bump
+
+- fix(eks): resolve colleague E2E deployment blockers across cluster lifecycle, STS auth, and secrets (#7)
+
 ## v4.3.0 (2026-10-29) — minor bump
 
 - feat(catalog): seed and auto-import default blueprint and module catalog sources on release/2.4.1 (#6)
