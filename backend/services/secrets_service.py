@@ -424,8 +424,12 @@ class SecretsService:
         os.makedirs(secrets_dir, exist_ok=True)
 
         for secret in secrets:
+            var_key = secret.target_variable_name or secret.name
+            is_global_bnk_secret = var_key in inline_content_secret_names or secret.name in inline_content_secret_names
             # Filter: only include secrets that target this module or have no target
-            if module_path and secret.target_module_path:
+            # (except project-wide BNK secrets cne_pull_secret / jwt_token, which are
+            # shared across bnk-prereqs, flo, and cneinstance modules).
+            if module_path and secret.target_module_path and not is_global_bnk_secret:
                 if secret.target_module_path != module_path:
                     logger.debug(
                         f"Skipping secret '{secret.name}' - targets {secret.target_module_path}, not {module_path}"

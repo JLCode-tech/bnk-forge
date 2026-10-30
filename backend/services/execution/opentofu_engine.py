@@ -59,10 +59,13 @@ class OpenTofuEngine(DeploymentEngine):
     def health_check(self) -> bool:
         """Check that the `tofu` binary is available and responds."""
         import subprocess
+
         try:
             result = subprocess.run(
                 ["tofu", "--version"],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             return result.returncode == 0
         except Exception:
@@ -90,11 +93,13 @@ class OpenTofuEngine(DeploymentEngine):
     def _create_engine(self, db):
         """Create an OpenTofuRuntime instance with the given session."""
         from services.execution.opentofu_runtime import OpenTofuRuntime
+
         return OpenTofuRuntime(db)
 
     def _get_credentials_env(self, project, db) -> dict[str, str]:
         """Get cloud credentials environment variables for subprocess calls."""
         from services.credentials_service import get_cloud_credentials_env
+
         return get_cloud_credentials_env(project, db)
 
     def _get_global_tfvar_env(self, project, db) -> dict[str, str]:
@@ -111,24 +116,51 @@ class OpenTofuEngine(DeploymentEngine):
         # Future: if a second globally-broadcast secret appears, consider a
         # registry — see followup_jwt_token_undeclared_variable_warning.md
         """
+        from sqlalchemy import or_
+
         from models import ProjectSecret
+        from services.secrets_service import SecretsService
 
         try:
-            secret = (
+            secrets = (
                 db.query(ProjectSecret)
                 .filter(
                     ProjectSecret.project_id == project.id,
-                    ProjectSecret.name == "jwt_token",
+                    or_(
+                        ProjectSecret.name == "jwt_token",
+                        ProjectSecret.target_variable_name == "jwt_token",
+                    ),
                     ProjectSecret.is_active.is_(True),
                 )
-                .first()
+                .all()
             )
-            if secret is None or secret.secret_type != "value" or not secret.value_encrypted:
+            if not isinstance(secrets, list):
+                first = (
+                    db.query(ProjectSecret)
+                    .filter(
+                        ProjectSecret.project_id == project.id,
+                        ProjectSecret.name == "jwt_token",
+                        ProjectSecret.is_active.is_(True),
+                    )
+                    .first()
+                )
+                secrets = [first] if first is not None else []
+
+            if not secrets:
                 return {}
-            decrypted = decrypt_value(secret.value_encrypted)
-            if not decrypted:
+
+            # Prefer explicit "value" secret over "file" secret when both exist
+            secret = next((s for s in secrets if getattr(s, "secret_type", None) == "value"), secrets[0])
+            raw_value: str | None = None
+            if secret.secret_type == "value" and secret.value_encrypted:
+                raw_value = decrypt_value(secret.value_encrypted)
+            elif secret.secret_type == "file" and getattr(secret, "file_content_encrypted", None):
+                raw_bytes = SecretsService(db).get_decrypted_file_content(secret)
+                raw_value = raw_bytes.decode("utf-8", errors="replace")
+
+            if not raw_value:
                 return {}
-            value = decrypted.strip()
+            value = SecretsService._normalize_inline_secret_value("jwt_token", raw_value).strip()
             if not value:
                 return {}
             return {"TF_VAR_jwt_token": value}
@@ -287,6 +319,7 @@ class OpenTofuEngine(DeploymentEngine):
             env = {**env, **self._get_global_tfvar_env(module.project, db)}
 
             from services.workspace_manager import WorkspaceManager
+
             workspace = WorkspaceManager(db)
 
             # Prepare workspace
@@ -409,6 +442,7 @@ class OpenTofuEngine(DeploymentEngine):
             env = {**env, **self._get_global_tfvar_env(module.project, db)}
 
             from services.workspace_manager import WorkspaceManager
+
             workspace = WorkspaceManager(db)
 
             work_dir = engine.prepare_persistent_workspace(module)
@@ -449,9 +483,7 @@ class OpenTofuEngine(DeploymentEngine):
             if on_output:
                 on_output("Running destroy...")
             timeout = engine.get_destroy_timeout(module)
-            destroy_code, destroy_logs = engine.run_destroy_with_retry(
-                work_dir, env, module=module, timeout=timeout
-            )
+            destroy_code, destroy_logs = engine.run_destroy_with_retry(work_dir, env, module=module, timeout=timeout)
             all_logs += "--- DESTROY ---\n" + destroy_logs
 
             if on_output:
@@ -503,6 +535,7 @@ class OpenTofuEngine(DeploymentEngine):
             env = ctx.credentials_env or self._get_credentials_env(module.project, db)
 
             from services.workspace_manager import WorkspaceManager
+
             workspace = WorkspaceManager(db)
             work_dir = workspace.get_workspace_path(module)
 
@@ -530,6 +563,7 @@ class OpenTofuEngine(DeploymentEngine):
 # ---------------------------------------------------------------------------
 # Helpers — parse OpenTofu output for resource counts
 # ---------------------------------------------------------------------------
+
 
 def _parse_plan_summary(output: str) -> tuple:
     """

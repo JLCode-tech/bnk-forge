@@ -678,6 +678,21 @@ def _resolve_active_project_cluster(project, db):
 
     clusters = db.query(KubernetesCluster).filter(KubernetesCluster.project_id == project.id).all()
     if isinstance(clusters, list):
+        if applied_eks_mod is None:
+            try:
+                from models import ProjectModule
+
+                db_mods = db.query(ProjectModule).filter(ProjectModule.project_id == project.id).all()
+                if isinstance(db_mods, list):
+                    for mod in db_mods:
+                        if getattr(mod, "status", None) == "applied" and matches_eks_output_contract(
+                            getattr(mod, "outputs", None)
+                        ):
+                            applied_eks_mod = mod
+                            break
+            except Exception:
+                pass
+
         if applied_eks_mod is not None:
             mod_outputs = applied_eks_mod.outputs or {}
             target_name = _out_val(mod_outputs, "cluster_name")
@@ -701,10 +716,17 @@ def _resolve_active_project_cluster(project, db):
 
         if not clusters:
             return None
-        # Prefer the most recently created/updated cluster record
+
+        # Prefer the most recently updated/created cluster record
+        def _cluster_sort_key(c):
+            updated = getattr(c, "updated_at", None) or getattr(c, "created_at", None)
+            ts = updated.timestamp() if hasattr(updated, "timestamp") else 0.0
+            cid = getattr(c, "id", 0) or 0
+            return (ts, cid)
+
         clusters_sorted = sorted(
             clusters,
-            key=lambda c: getattr(c, "id", 0) or 0,
+            key=_cluster_sort_key,
             reverse=True,
         )
         return clusters_sorted[0]

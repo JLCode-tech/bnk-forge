@@ -642,8 +642,39 @@ def build_variables(
                             ):
                                 _cur_val = _mvars[_sec_key]
                                 break
-                        if isinstance(_cur_val, str) and _cur_val.strip():
-                            break
+            # Check active ProjectSecret records (value or file) when secret_variables was omitted
+            if not (isinstance(_cur_val, str) and _cur_val.strip()) and db is not None and project is not None:
+                try:
+                    from sqlalchemy import or_
+
+                    from models import ProjectSecret
+
+                    _proj_id = getattr(project, "id", None)
+                    if isinstance(_proj_id, int):
+                        _db_secrets = (
+                            db.query(ProjectSecret)
+                            .filter(
+                                ProjectSecret.project_id == _proj_id,
+                                or_(
+                                    ProjectSecret.name == _sec_key,
+                                    ProjectSecret.target_variable_name == _sec_key,
+                                ),
+                                ProjectSecret.is_active.is_(True),
+                            )
+                            .all()
+                        )
+                        if isinstance(_db_secrets, list) and _db_secrets:
+                            _chosen = next(
+                                (s for s in _db_secrets if getattr(s, "secret_type", None) == "value"),
+                                _db_secrets[0],
+                            )
+                            _svc = SecretsService(db)
+                            if getattr(_chosen, "secret_type", None) == "value":
+                                _cur_val = _svc.get_decrypted_value(_chosen)
+                            elif getattr(_chosen, "secret_type", None) == "file":
+                                _cur_val = _svc.get_decrypted_file_content(_chosen).decode("utf-8", errors="replace")
+                except Exception as _sec_exc:
+                    logger.debug(f"Layer 6b ProjectSecret lookup skipped for {_sec_key}: {_sec_exc}")
         if isinstance(_cur_val, str) and _cur_val.strip():
             variables[_sec_key] = SecretsService._normalize_inline_secret_value(_sec_key, _cur_val)
 

@@ -369,7 +369,8 @@ def get_cloud_credentials_env(project: Project, db=None, *, strict: bool = False
                                 template_name=template.name,
                             )
 
-                        env["AWS_ACCESS_KEY_ID"] = template.aws_access_key_id
+                        if template.aws_access_key_id:
+                            env["AWS_ACCESS_KEY_ID"] = template.aws_access_key_id
                         secret = _decrypt_credential(template.aws_secret_access_key_encrypted, "SSO AWS secret key")
                         if secret:
                             env["AWS_SECRET_ACCESS_KEY"] = secret
@@ -383,6 +384,31 @@ def get_cloud_credentials_env(project: Project, db=None, *, strict: bool = False
                     # Set region from template
                     if template.region:
                         env["AWS_DEFAULT_REGION"] = template.region
+
+                    # Non-strict fallback: if template did not yield AWS keys or region,
+                    # check project.project_variables["variable_defaults"] (e.g. wizard inputs)
+                    if not strict:
+                        _proj_vars = getattr(project, "project_variables", None)
+                        _var_defaults = (
+                            _proj_vars.get("variable_defaults")
+                            if isinstance(_proj_vars, dict) and isinstance(_proj_vars.get("variable_defaults"), dict)
+                            else {}
+                        )
+                        if not env.get("AWS_ACCESS_KEY_ID") and not env.get("AWS_PROFILE"):
+                            _ak = _var_defaults.get("aws_access_key_id")
+                            _sk = _var_defaults.get("aws_secret_access_key")
+                            _st = _var_defaults.get("aws_session_token")
+                            if isinstance(_ak, str) and _ak.strip() and isinstance(_sk, str) and _sk.strip():
+                                env["AWS_ACCESS_KEY_ID"] = _ak.strip()
+                                env["AWS_SECRET_ACCESS_KEY"] = _sk.strip()
+                                if isinstance(_st, str) and _st.strip():
+                                    env["AWS_SESSION_TOKEN"] = _st.strip()
+                        if "AWS_DEFAULT_REGION" not in env:
+                            _vreg = _var_defaults.get("aws_region") or _var_defaults.get("region")
+                            if isinstance(_vreg, str) and _vreg.strip():
+                                env["AWS_DEFAULT_REGION"] = _vreg.strip()
+                            elif getattr(project, "region", None):
+                                env["AWS_DEFAULT_REGION"] = project.region
 
                     # Mirror the resolved AWS credentials as Terraform variables so that
                     # module provider blocks using var.aws_access_key_id / var.aws_region
@@ -531,9 +557,35 @@ def get_cloud_credentials_env(project: Project, db=None, *, strict: bool = False
             except Exception as e:
                 logger.error("Error loading is_default credential template fallback: %s", e)
 
+    # Priority 2.8: Non-strict fallback to project.project_variables["variable_defaults"]
+    # when the user provided AWS credentials or region via the Blueprint Deployment Wizard
+    if not strict and getattr(project, "cloud_provider", None) == "aws":
+        _proj_vars = getattr(project, "project_variables", None)
+        _var_defaults = (
+            _proj_vars.get("variable_defaults")
+            if isinstance(_proj_vars, dict) and isinstance(_proj_vars.get("variable_defaults"), dict)
+            else {}
+        )
+        if not env.get("AWS_ACCESS_KEY_ID") and not env.get("AWS_PROFILE"):
+            _ak = _var_defaults.get("aws_access_key_id")
+            _sk = _var_defaults.get("aws_secret_access_key")
+            _st = _var_defaults.get("aws_session_token")
+            if isinstance(_ak, str) and _ak.strip() and isinstance(_sk, str) and _sk.strip():
+                env["AWS_ACCESS_KEY_ID"] = _ak.strip()
+                env["AWS_SECRET_ACCESS_KEY"] = _sk.strip()
+                if isinstance(_st, str) and _st.strip():
+                    env["AWS_SESSION_TOKEN"] = _st.strip()
+        if "AWS_DEFAULT_REGION" not in env:
+            _vreg = _var_defaults.get("aws_region") or _var_defaults.get("region")
+            if isinstance(_vreg, str) and _vreg.strip():
+                env["AWS_DEFAULT_REGION"] = _vreg.strip()
+
     # Priority 3: Set region from project if not already set (AWS projects only)
     if project.cloud_provider == "aws" and project.region and "AWS_DEFAULT_REGION" not in env:
         env["AWS_DEFAULT_REGION"] = project.region
+
+    if getattr(project, "cloud_provider", None) == "aws":
+        _mirror_aws_tf_vars(env)
 
     if global_creds_loaded:
         logger.info(f"Using global credentials from database for project {project.name}")

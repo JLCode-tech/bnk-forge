@@ -48,7 +48,9 @@ def matches_eks_output_contract(outputs: dict) -> bool:
         bool(_out_val(outputs, key))
         for key in ("cluster_name", "cluster_endpoint", "cluster_certificate_authority_data")
     )
-    has_region = any(bool(_out_val(outputs, key)) for key in ("region", "aws_region", "eks_cluster_arn", "cluster_arn"))
+    has_region = any(
+        bool(_out_val(outputs, key)) for key in ("region", "aws_region", "eks_cluster_arn", "cluster_arn", "cluster_id")
+    )
     return has_core and has_region
 
 
@@ -193,13 +195,16 @@ def register_eks_cluster(db: Session, eks_module: ProjectModule) -> KubernetesCl
     logger.info(f"Encrypting kubeconfig for cluster {cluster_name}")
     kubeconfig_encrypted = encrypt_value(kubeconfig_yaml)
 
-    resolved_arn = _out_val(outputs, "cluster_arn") or _out_val(outputs, "eks_cluster_arn")
-    cluster_version = _out_val(outputs, "cluster_version")
+    resolved_arn = (
+        _out_val(outputs, "cluster_arn") or _out_val(outputs, "eks_cluster_arn") or _out_val(outputs, "cluster_id")
+    )
+    cluster_version = _out_val(outputs, "cluster_version") or _out_val(outputs, "eks_cluster_version")
+    oidc_provider_url = _out_val(outputs, "oidc_provider_url") or _out_val(outputs, "cluster_oidc_issuer_url")
     meta_payload = {
         "auto_registered": True,
         "source_module_id": eks_module.id,
         "cluster_arn": resolved_arn,
-        "oidc_provider_url": _out_val(outputs, "oidc_provider_url"),
+        "oidc_provider_url": oidc_provider_url,
         "nodegroup_name": _out_val(outputs, "nodegroup_name"),
         "nodegroup_status": _out_val(outputs, "nodegroup_status"),
     }

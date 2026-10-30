@@ -478,3 +478,194 @@ class TestFix5VariableDefaultsFallback:
         provider_tf = (tmp_path / "bnk_forge_providers.tf").read_text()
         assert 'region = "us-west-2"' in provider_tf
         assert 'name = "defaults-eks-cluster"' in provider_tf
+
+
+class TestSkepticalReviewRegressions:
+    """Regression tests for the 5 backend edge cases uncovered during skeptical review."""
+
+    def test_opentofu_get_global_tfvar_env_supports_file_secret_and_json_wrapper(self, db):
+        from services.execution.opentofu_engine import OpenTofuEngine
+
+        project, _, _ = _create_eks_project_and_module(db)
+        wrapped_jwt = json.dumps({"jwt_token": "  eyJhbGciOiJSUzI1NiJ9.file.sig \n"})
+        s_jwt = ProjectSecret(
+            project_id=project.id,
+            name="f5-license-file",
+            secret_type="file",
+            target_variable_name="jwt_token",
+            file_content_encrypted=encrypt_value(base64.b64encode(wrapped_jwt.encode("utf-8")).decode("utf-8")),
+            filename="jwt.json",
+            is_active=True,
+        )
+        db.add(s_jwt)
+        db.commit()
+
+        env = OpenTofuEngine(lambda: db)._get_global_tfvar_env(project, db)
+        assert env == {"TF_VAR_jwt_token": "eyJhbGciOiJSUzI1NiJ9.file.sig"}
+
+    def test_prepare_secrets_shares_bnk_secrets_across_modules_and_layer6b_queries_db(self, db, tmp_path):
+        project, _, _ = _create_eks_project_and_module(db)
+        raw_docker_json = json.dumps({"auths": {"repo.f5.com": {"auth": base64.b64encode(b"u:p").decode()}}})
+        s_pull = ProjectSecret(
+            project_id=project.id,
+            name="cne_pull_secret",
+            secret_type="file",
+            target_module_path="modules/eks-cluster-install-bnk-prereqs",
+            target_variable_name="cne_pull_secret",
+            file_content_encrypted=encrypt_value(base64.b64encode(raw_docker_json.encode("utf-8")).decode("utf-8")),
+            filename="cne_pull_secret.json",
+            is_active=True,
+        )
+        s_jwt = ProjectSecret(
+            project_id=project.id,
+            name="jwt_token",
+            secret_type="value",
+            target_module_path="modules/eks-cluster-install-bnk-prereqs",
+            target_variable_name="jwt_token",
+            value_encrypted=encrypt_value('{"jwt": "eyJhbGciOiJSUzI1NiJ9.db.sig"}'),
+            is_active=True,
+        )
+        db.add_all([s_pull, s_jwt])
+        db.commit()
+
+        # 1. prepare_secrets_for_execution for flo must still include cne_pull_secret & jwt_token
+        svc = SecretsService(db)
+        val_secrets, _ = svc.prepare_secrets_for_execution(
+            project.id, str(tmp_path), module_path="modules/eks-cluster-install-flo"
+        )
+        assert "cne_pull_secret" in val_secrets
+        assert val_secrets.get("jwt_token") == "eyJhbGciOiJSUzI1NiJ9.db.sig"
+
+        # 2. build_variables called without secret_variables (e.g. workspace_manager) recovers from DB
+        flo_lib = ModuleLibrary(
+            name="eks-cluster-install-flo-db",
+            category="kubernetes",
+            provider="aws",
+            execution_engine="kubernetes",
+            git_source="https://github.com/JLCode-tech/bnk-forge-catalog-aws-eks.git",
+            version="2.4.1",
+            variables_schema=[
+                {"name": "jwt_token", "type": "string", "sensitive": True},
+                {"name": "cne_pull_secret", "type": "string", "sensitive": True},
+            ],
+        )
+        db.add(flo_lib)
+        db.flush()
+        flo_mod = ProjectModule(
+            project_id=project.id,
+            module_library_id=flo_lib.id,
+            path_in_project="6-flo",
+            deployment_order=6,
+            status="pending",
+            variables={},
+            variable_overrides={},
+        )
+        db.add(flo_mod)
+        db.commit()
+        db.refresh(flo_mod)
+
+        assembled = build_variables(db=db, module=flo_mod, secret_variables=None)
+        assert assembled.get("jwt_token") == "eyJhbGciOiJSUzI1NiJ9.db.sig"
+        decoded_pull = base64.b64decode(assembled["cne_pull_secret"]).decode("utf-8")
+        assert json.loads(decoded_pull)["auths"]["repo.f5.com"] is not None
+
+    def test_get_cloud_credentials_env_never_sets_none_and_falls_back_to_variable_defaults(self, db):
+        from models import CloudCredentialTemplate
+        from services.credentials_service import get_cloud_credentials_env
+
+        sso_tmpl = CloudCredentialTemplate(
+            name="unexchanged-aws-sso",
+            provider="aws",
+            aws_auth_method="sso",
+            aws_access_key_id=None,
+            region=None,
+        )
+        db.add(sso_tmpl)
+        db.flush()
+
+        project = Project(
+            name="wizard-creds-proj",
+            cloud_provider="aws",
+            region=None,
+            credential_template_id=sso_tmpl.id,
+            project_variables={
+                "variable_defaults": {
+                    "aws_access_key_id": "AKIA_WIZARD_KEY",
+                    "aws_secret_access_key": "SECRET_WIZARD_KEY",
+                    "aws_session_token": "SESSION_WIZARD_TOK",
+                    "aws_region": "us-west-2",
+                }
+            },
+        )
+        db.add(project)
+        db.commit()
+        db.refresh(project)
+
+        env = get_cloud_credentials_env(project, db, strict=False)
+        assert all(v is not None for v in env.values())
+        assert env.get("AWS_ACCESS_KEY_ID") == "AKIA_WIZARD_KEY"
+        assert env.get("AWS_SECRET_ACCESS_KEY") == "SECRET_WIZARD_KEY"
+        assert env.get("AWS_SESSION_TOKEN") == "SESSION_WIZARD_TOK"
+        assert env.get("AWS_DEFAULT_REGION") == "us-west-2"
+        assert env.get("TF_VAR_aws_access_key_id") == "AKIA_WIZARD_KEY"
+        assert env.get("TF_VAR_aws_region") == "us-west-2"
+
+    def test_register_eks_cluster_supports_eks_cluster_version_oidc_issuer_and_cluster_id(self, db):
+        from services.eks_service import matches_eks_output_contract
+
+        outputs = {
+            "cluster_name": {"value": "contract-eks"},
+            "cluster_endpoint": {"value": "https://CONTRACT.gr7.us-west-2.eks.amazonaws.com"},
+            "cluster_certificate_authority_data": {"value": "Y2E="},
+            "cluster_id": {"value": "arn:aws:eks:us-west-2:123456789012:cluster/contract-eks"},
+            "eks_cluster_version": {"value": "1.32"},
+            "cluster_oidc_issuer_url": {"value": "https://oidc.eks.us-west-2.amazonaws.com/id/ABC123"},
+        }
+        assert matches_eks_output_contract(outputs) is True
+        _, proj_mod, _ = _create_eks_project_and_module(db, project_region=None, outputs=outputs)
+        cluster = register_eks_cluster(db, proj_mod)
+        assert cluster.version == "1.32"
+        assert cluster.region == "us-west-2"
+        assert cluster.meta_data["oidc_provider_url"] == "https://oidc.eks.us-west-2.amazonaws.com/id/ABC123"
+        assert cluster.meta_data["cluster_arn"] == "arn:aws:eks:us-west-2:123456789012:cluster/contract-eks"
+
+    def test_resolve_active_project_cluster_queries_db_modules_and_sorts_by_updated_at(self, db):
+        from datetime import UTC, datetime, timedelta
+
+        from services.execution.engine_router import _resolve_active_project_cluster
+
+        project = Project(name="cluster-sort-proj", cloud_provider="aws", region="us-west-2")
+        db.add(project)
+        db.flush()
+
+        now = datetime.now(UTC)
+        older_id_newer_update = KubernetesCluster(
+            name="cluster-updated-recently",
+            context="cluster-updated-recently",
+            project_id=project.id,
+            cloud_provider="aws",
+            region="us-west-2",
+            api_server="https://NEWER-UPDATE.eks.amazonaws.com",
+            kubeconfig_encrypted=encrypt_value("kc1"),
+            status="active",
+            updated_at=now + timedelta(minutes=5),
+        )
+        newer_id_older_update = KubernetesCluster(
+            name="cluster-older-update",
+            context="cluster-older-update",
+            project_id=project.id,
+            cloud_provider="aws",
+            region="us-west-2",
+            api_server="https://OLDER-UPDATE.eks.amazonaws.com",
+            kubeconfig_encrypted=encrypt_value("kc2"),
+            status="active",
+            updated_at=now - timedelta(minutes=5),
+        )
+        db.add_all([older_id_newer_update, newer_id_older_update])
+        db.commit()
+
+        # Pass a lightweight project namespace without project_modules loaded
+        project_shim = SimpleNamespace(id=project.id, project_modules=None)
+        chosen = _resolve_active_project_cluster(project_shim, db)
+        assert chosen is not None
+        assert chosen.name == "cluster-updated-recently"
