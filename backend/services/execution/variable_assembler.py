@@ -614,6 +614,39 @@ def build_variables(
         variables.update(secret_variables)
         logger.debug(f"Injected {len(secret_variables)} secret variables (overrides user vars)")
 
+    # Layer 6b: Recover & normalize inline BNK secrets (cne_pull_secret, jwt_token)
+    # when a module override left them blank or when a sibling module (e.g.
+    # bnk-prereqs) holds the user-supplied value.
+    from services.secrets_service import SecretsService
+
+    for _sec_key in ("cne_pull_secret", "jwt_token"):
+        _cur_val = variables.get(_sec_key)
+        if not (isinstance(_cur_val, str) and _cur_val.strip()):
+            # Check project.project_variables["variable_defaults"]
+            _proj_vars = getattr(project, "project_variables", None)
+            if isinstance(_proj_vars, dict):
+                _vdefs = _proj_vars.get("variable_defaults")
+                if isinstance(_vdefs, dict) and isinstance(_vdefs.get(_sec_key), str) and _vdefs[_sec_key].strip():
+                    _cur_val = _vdefs[_sec_key]
+            # Check sibling modules in the project (e.g. 5-bnk-prereqs -> 6-flo)
+            if not (isinstance(_cur_val, str) and _cur_val.strip()):
+                _sibling_mods = getattr(project, "project_modules", None)
+                if isinstance(_sibling_mods, list):
+                    for _sib in _sibling_mods:
+                        for _attr in ("variable_overrides", "variables"):
+                            _mvars = getattr(_sib, _attr, None)
+                            if (
+                                isinstance(_mvars, dict)
+                                and isinstance(_mvars.get(_sec_key), str)
+                                and _mvars[_sec_key].strip()
+                            ):
+                                _cur_val = _mvars[_sec_key]
+                                break
+                        if isinstance(_cur_val, str) and _cur_val.strip():
+                            break
+        if isinstance(_cur_val, str) and _cur_val.strip():
+            variables[_sec_key] = SecretsService._normalize_inline_secret_value(_sec_key, _cur_val)
+
     # Layer 7: Variable mappings (rename/transform via VariableMapping records)
     variables = apply_variable_mappings(db, module, variables)
 

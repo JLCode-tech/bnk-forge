@@ -743,8 +743,14 @@ class KubernetesEngine(DeploymentEngine):
             return
 
         try:
-            # Decode the base64-encoded Docker config JSON
-            decoded = base64.b64decode(cne_pull_secret).decode("utf-8")
+            raw_secret = cne_pull_secret.strip()
+            if raw_secret.startswith("{"):
+                decoded = raw_secret
+                b64_secret = base64.b64encode(decoded.encode("utf-8")).decode("utf-8")
+            else:
+                # Decode the base64-encoded Docker config or service-account JSON
+                decoded = base64.b64decode(raw_secret).decode("utf-8")
+                b64_secret = raw_secret
             config = json.loads(decoded)
             auths = config.get("auths", {})
 
@@ -780,7 +786,7 @@ class KubernetesEngine(DeploymentEngine):
                                 logger.warning(f"OCI registry login to {registry_host} failed: {result.stderr}")
                                 return
 
-            # Format A: base64-encoded GCP service account JSON key ({"type": "service_account", ...})
+            # Format A: GCP service account JSON key ({"type": "service_account", ...})
             if (
                 not auths
                 and isinstance(config, dict)
@@ -790,7 +796,7 @@ class KubernetesEngine(DeploymentEngine):
                     return
                 for username, password in (
                     ("_json_key", decoded),
-                    ("_json_key_base64", cne_pull_secret.strip()),
+                    ("_json_key_base64", b64_secret),
                 ):
                     cmd = [
                         "helm",

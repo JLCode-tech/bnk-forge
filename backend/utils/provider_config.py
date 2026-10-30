@@ -46,24 +46,20 @@ def detect_helm_version_syntax(versions_tf_path: str) -> bool:
     # Look for helm provider block and extract its version constraint
     # Use non-greedy matching and look specifically within the helm block
     # Pattern: helm = { ... version = "X.Y.Z" ... }
-    helm_block_match = re.search(
-        r'helm\s*=\s*\{[^}]*version\s*=\s*"([^"]+)"',
-        content,
-        re.IGNORECASE
-    )
+    helm_block_match = re.search(r'helm\s*=\s*\{[^}]*version\s*=\s*"([^"]+)"', content, re.IGNORECASE)
     if helm_block_match:
         version_constraint = helm_block_match.group(1)
         logger.debug(f"Found Helm version constraint: '{version_constraint}'")
 
         # If constraint allows 3.x (>= without upper bound, or explicit 3.x)
-        if '>= 2' in version_constraint and '~>' not in version_constraint:
+        if ">= 2" in version_constraint and "~>" not in version_constraint:
             # >= 2.x without tilde could install 3.x
             logger.debug(f"Helm version constraint '{version_constraint}' may install 3.x, using assignment syntax")
             return True
-        elif '>= 3' in version_constraint or '~> 3' in version_constraint:
+        elif ">= 3" in version_constraint or "~> 3" in version_constraint:
             logger.debug(f"Helm version constraint '{version_constraint}' requires 3.x, using assignment syntax")
             return True
-        elif '~> 2' in version_constraint:
+        elif "~> 2" in version_constraint:
             logger.debug(f"Helm version constraint '{version_constraint}' pins to 2.x, using block syntax")
             return False
 
@@ -78,7 +74,7 @@ def generate_helm_kubernetes_block(
     client_certificate: str = None,
     client_key: str = None,
     config_path: str = None,
-    config_context: str = None
+    config_context: str = None,
 ) -> str:
     """
     Generate the kubernetes configuration block for Helm provider.
@@ -121,7 +117,7 @@ provider "helm" {{
     # Token-based auth (EKS, GKE)
     if token:
         if use_assignment_syntax:
-            return f'''
+            return f"""
 provider "helm" {{
   kubernetes = {{
     host                   = {host}
@@ -129,9 +125,9 @@ provider "helm" {{
     token                  = {token}
   }}
 }}
-'''
+"""
         else:
-            return f'''
+            return f"""
 provider "helm" {{
   kubernetes {{
     host                   = {host}
@@ -139,12 +135,12 @@ provider "helm" {{
     token                  = {token}
   }}
 }}
-'''
+"""
 
     # Certificate-based auth (AKS)
     if client_certificate and client_key:
         if use_assignment_syntax:
-            return f'''
+            return f"""
 provider "helm" {{
   kubernetes = {{
     host                   = {host}
@@ -153,9 +149,9 @@ provider "helm" {{
     cluster_ca_certificate = {cluster_ca_certificate}
   }}
 }}
-'''
+"""
         else:
-            return f'''
+            return f"""
 provider "helm" {{
   kubernetes {{
     host                   = {host}
@@ -164,7 +160,7 @@ provider "helm" {{
     cluster_ca_certificate = {cluster_ca_certificate}
   }}
 }}
-'''
+"""
 
     raise ValueError("Must provide either token, client_certificate+client_key, or config_path")
 
@@ -213,10 +209,7 @@ provider "helm" {{
 
 
 def generate_aws_eks_providers(
-    cluster_name: str,
-    aws_region: str,
-    required_providers: list[str],
-    helm_use_assignment_syntax: bool = False
+    cluster_name: str, aws_region: str, required_providers: list[str], helm_use_assignment_syntax: bool = False
 ) -> tuple[list[str], list[str]]:
     """
     Generate AWS EKS provider configuration.
@@ -248,7 +241,7 @@ data "aws_eks_cluster" "cluster" {{
 ''')
 
     # Kubernetes provider — exec auth so tokens are minted fresh on each operation
-    if 'kubernetes' in required_providers:
+    if "kubernetes" in required_providers:
         provider_blocks.append(f'''
 provider "kubernetes" {{
   host                   = data.aws_eks_cluster.cluster.endpoint
@@ -262,7 +255,7 @@ provider "kubernetes" {{
 ''')
 
     # Helm provider — exec auth (same pattern as kubernetes provider)
-    if 'helm' in required_providers:
+    if "helm" in required_providers:
         helm_config = _generate_helm_kubernetes_exec_block(
             use_assignment_syntax=helm_use_assignment_syntax,
             cluster_name=cluster_name,
@@ -274,10 +267,7 @@ provider "kubernetes" {{
 
 
 def generate_azure_aks_providers(
-    cluster_name: str,
-    resource_group: str,
-    required_providers: list[str],
-    helm_use_assignment_syntax: bool = False
+    cluster_name: str, resource_group: str, required_providers: list[str], helm_use_assignment_syntax: bool = False
 ) -> tuple[list[str], list[str]]:
     """
     Generate Azure AKS provider configuration.
@@ -295,11 +285,11 @@ def generate_azure_aks_providers(
     data_sources = []
 
     # Azure provider
-    provider_blocks.append('''
+    provider_blocks.append("""
 provider "azurerm" {
   features {}
 }
-''')
+""")
 
     # AKS data source
     data_sources.append(f'''
@@ -310,24 +300,24 @@ data "azurerm_kubernetes_cluster" "cluster" {{
 ''')
 
     # Kubernetes provider
-    if 'kubernetes' in required_providers:
-        provider_blocks.append('''
+    if "kubernetes" in required_providers:
+        provider_blocks.append("""
 provider "kubernetes" {
   host                   = data.azurerm_kubernetes_cluster.cluster.kube_config[0].host
   client_certificate     = base64decode(data.azurerm_kubernetes_cluster.cluster.kube_config[0].client_certificate)
   client_key             = base64decode(data.azurerm_kubernetes_cluster.cluster.kube_config[0].client_key)
   cluster_ca_certificate = base64decode(data.azurerm_kubernetes_cluster.cluster.kube_config[0].cluster_ca_certificate)
 }
-''')
+""")
 
     # Helm provider
-    if 'helm' in required_providers:
+    if "helm" in required_providers:
         helm_config = generate_helm_kubernetes_block(
             use_assignment_syntax=helm_use_assignment_syntax,
-            host='data.azurerm_kubernetes_cluster.cluster.kube_config[0].host',
-            cluster_ca_certificate='base64decode(data.azurerm_kubernetes_cluster.cluster.kube_config[0].cluster_ca_certificate)',
-            client_certificate='base64decode(data.azurerm_kubernetes_cluster.cluster.kube_config[0].client_certificate)',
-            client_key='base64decode(data.azurerm_kubernetes_cluster.cluster.kube_config[0].client_key)'
+            host="data.azurerm_kubernetes_cluster.cluster.kube_config[0].host",
+            cluster_ca_certificate="base64decode(data.azurerm_kubernetes_cluster.cluster.kube_config[0].cluster_ca_certificate)",
+            client_certificate="base64decode(data.azurerm_kubernetes_cluster.cluster.kube_config[0].client_certificate)",
+            client_key="base64decode(data.azurerm_kubernetes_cluster.cluster.kube_config[0].client_key)",
         )
         provider_blocks.append(helm_config)
 
@@ -339,7 +329,7 @@ def generate_gcp_gke_providers(
     gcp_project: str,
     gcp_region: str,
     required_providers: list[str],
-    helm_use_assignment_syntax: bool = False
+    helm_use_assignment_syntax: bool = False,
 ) -> tuple[list[str], list[str]]:
     """
     Generate GCP GKE provider configuration.
@@ -376,22 +366,22 @@ data "google_client_config" "default" {{}}
 ''')
 
     # Kubernetes provider
-    if 'kubernetes' in required_providers:
-        provider_blocks.append('''
+    if "kubernetes" in required_providers:
+        provider_blocks.append("""
 provider "kubernetes" {
   host                   = "https://${data.google_container_cluster.cluster.endpoint}"
   token                  = data.google_client_config.default.access_token
   cluster_ca_certificate = base64decode(data.google_container_cluster.cluster.master_auth[0].cluster_ca_certificate)
 }
-''')
+""")
 
     # Helm provider
-    if 'helm' in required_providers:
+    if "helm" in required_providers:
         helm_config = generate_helm_kubernetes_block(
             use_assignment_syntax=helm_use_assignment_syntax,
             host='"https://${data.google_container_cluster.cluster.endpoint}"',
-            cluster_ca_certificate='base64decode(data.google_container_cluster.cluster.master_auth[0].cluster_ca_certificate)',
-            token='data.google_client_config.default.access_token'
+            cluster_ca_certificate="base64decode(data.google_container_cluster.cluster.master_auth[0].cluster_ca_certificate)",
+            token="data.google_client_config.default.access_token",
         )
         provider_blocks.append(helm_config)
 
@@ -434,21 +424,21 @@ data "ibm_container_cluster_config" "cluster" {{
 {resource_group_line}}}
 ''')
 
-    if 'kubernetes' in required_providers:
-        provider_blocks.append('''
+    if "kubernetes" in required_providers:
+        provider_blocks.append("""
 provider "kubernetes" {
   host                   = data.ibm_container_cluster_config.cluster.host
   token                  = data.ibm_container_cluster_config.cluster.token
   cluster_ca_certificate = data.ibm_container_cluster_config.cluster.ca_certificate
 }
-''')
+""")
 
-    if 'helm' in required_providers:
+    if "helm" in required_providers:
         helm_config = generate_helm_kubernetes_block(
             use_assignment_syntax=helm_use_assignment_syntax,
-            host='data.ibm_container_cluster_config.cluster.host',
-            cluster_ca_certificate='data.ibm_container_cluster_config.cluster.ca_certificate',
-            token='data.ibm_container_cluster_config.cluster.token'
+            host="data.ibm_container_cluster_config.cluster.host",
+            cluster_ca_certificate="data.ibm_container_cluster_config.cluster.ca_certificate",
+            token="data.ibm_container_cluster_config.cluster.token",
         )
         provider_blocks.append(helm_config)
 
@@ -459,7 +449,7 @@ def generate_generic_providers(
     kubeconfig_path: str,
     k8s_context: str | None,
     required_providers: list[str],
-    helm_use_assignment_syntax: bool = False
+    helm_use_assignment_syntax: bool = False,
 ) -> tuple[list[str], list[str]]:
     """
     Generate generic kubeconfig-based provider configuration.
@@ -479,7 +469,7 @@ def generate_generic_providers(
     config_context = f'config_context = "{k8s_context}"' if k8s_context else ""
 
     # Kubernetes provider
-    if 'kubernetes' in required_providers:
+    if "kubernetes" in required_providers:
         provider_blocks.append(f'''
 provider "kubernetes" {{
   config_path = "{kubeconfig_path}"
@@ -488,13 +478,13 @@ provider "kubernetes" {{
 ''')
 
     # Helm provider
-    if 'helm' in required_providers:
+    if "helm" in required_providers:
         helm_config = generate_helm_kubernetes_block(
             use_assignment_syntax=helm_use_assignment_syntax,
             host=None,
             cluster_ca_certificate=None,
             config_path=kubeconfig_path,
-            config_context=k8s_context
+            config_context=k8s_context,
         )
         provider_blocks.append(helm_config)
 
@@ -529,15 +519,30 @@ def generate_forge_kubeconfig_local(
 
     if cloud_provider == "aws":
         # AWS EKS: build kubeconfig using exec auth so tokens are minted at kubectl operation time.
-        # cluster_name and region are resolved from variables / project at generation time.
-        cluster_name = (
-            (variables.get("cluster_name") or variables.get("eks_cluster_name") or "")
-            if variables else ""
+        # cluster_name and region are resolved from variables / project variable_defaults / project at generation time.
+        proj_vars = getattr(project, "project_variables", None) if project else None
+        var_defaults = (
+            proj_vars.get("variable_defaults")
+            if isinstance(proj_vars, dict) and isinstance(proj_vars.get("variable_defaults"), dict)
+            else {}
         )
+        cluster_name = (
+            variables.get("cluster_name")
+            or variables.get("eks_cluster_name")
+            or var_defaults.get("cluster_name")
+            or var_defaults.get("eks_cluster_name")
+            or ""
+        )
+        project_region = getattr(project, "region", None) if project else None
+        if not isinstance(project_region, str):
+            project_region = None
         aws_region = (
-            (variables.get("region") or variables.get("aws_region") or
-             (project.region if project else None) or "")
-            if variables or project else ""
+            variables.get("region")
+            or variables.get("aws_region")
+            or var_defaults.get("aws_region")
+            or var_defaults.get("region")
+            or project_region
+            or ""
         )
         cluster_arg = cluster_name or "${data.aws_eks_cluster.cluster.name}"
         region_arg = aws_region or "${var.region}"
@@ -566,16 +571,16 @@ locals {{
 
     elif cloud_provider == "azure":
         # Azure AKS: use kube_config_raw from azurerm_kubernetes_cluster
-        return '''
+        return """
 # Platform-agnostic kubeconfig for kubectl local-exec provisioners
 locals {
   forge_kubeconfig = data.azurerm_kubernetes_cluster.cluster.kube_config_raw
 }
-'''
+"""
 
     elif cloud_provider == "gcp":
         # GCP GKE: build kubeconfig from google_container_cluster data source
-        return '''
+        return """
 # Platform-agnostic kubeconfig for kubectl local-exec provisioners
 locals {
   forge_kubeconfig = yamlencode({
@@ -590,11 +595,11 @@ locals {
     current-context = "default"
   })
 }
-'''
+"""
 
     elif cloud_provider == "ibm":
         # IBM ROKS: build kubeconfig from ibm_container_cluster_config data source
-        return '''
+        return """
 # Platform-agnostic kubeconfig for kubectl local-exec provisioners
 locals {
   forge_kubeconfig = yamlencode({
@@ -609,11 +614,11 @@ locals {
     current-context = "default"
   })
 }
-'''
+"""
 
     else:
         # Generic/on-prem: read kubeconfig from file
-        kubeconfig_path = kubeconfig_path or variables.get('kubeconfig_path') or "/app/kubeconfig"
+        kubeconfig_path = kubeconfig_path or variables.get("kubeconfig_path") or "/app/kubeconfig"
         return f'''
 # Platform-agnostic kubeconfig for kubectl local-exec provisioners
 locals {{
