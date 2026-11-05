@@ -4,6 +4,10 @@ All notable changes to BNK-Forge.
 
 ---
 
+## v4.3.3 (2026-11-05) — patch bump
+
+- fix(bnk): correct BNK 2.4.1 version resolution, blueprint catalog metadata, and dependencies (v4.3.3) (#9)
+
 ## v4.3.2 (2026-10-30) — patch bump
 
 - fix(eks): close E2E secret, credential, and cluster-registration edge cases
