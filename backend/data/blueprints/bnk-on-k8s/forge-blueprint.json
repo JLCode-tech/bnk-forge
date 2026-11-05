@@ -3,9 +3,14 @@
   "blueprint": {
     "id": "bnk-on-k8s",
     "version": "1.0.0",
-    "name": "BNK 2.2 Platform (AWS)",
+    "name": "F5 BNK Platform \u2014 Kubernetes Overlay",
     "description": "Deploys F5 BNK 2.2 on AWS EKS with optimized defaults \u2014 host-device CNI, gp3 storage, ENI secondary IP assignment. Battle-tested and production-ready. Requires jwt_token and cne_pull_secret."
   },
+  "family_id": "bnk-on-k8s",
+  "deployment_pattern": "existing_cluster_overlay",
+  "variant_key": "aws-eks",
+  "variant_label": "AWS EKS Optimized",
+  "is_recommended": false,
   "category": "bnk",
   "cloud_provider": "aws",
   "icon": "shield-check",
@@ -14,15 +19,8 @@
   "estimated_cost": "License-dependent",
   "difficulty": "intermediate",
   "maturity": "production-ready",
-  "bnk_version": "2.2",
-  "tags": [
-    "bnk",
-    "f5",
-    "gateway-api",
-    "2.2",
-    "aws",
-    "eks"
-  ],
+  "bnk_version": "2.2.0",
+  "tags": ["bnk", "f5", "gateway-api", "2.2", "aws", "eks"],
   "outcomes": [
     "F5 Lifecycle Operator (FLO) managing all BNK components",
     "TMM data-plane with full BNK component suite",

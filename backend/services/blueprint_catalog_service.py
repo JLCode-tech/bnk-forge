@@ -14,7 +14,7 @@ from models.enums import BlueprintReleaseState, BlueprintValidationState, Module
 from services.blueprint_default_source_service import is_default_blueprint_source, set_default_blueprint_source
 from services.blueprint_manifest_service import BlueprintManifestValidationError, validate_blueprint_manifest
 from services.defaults_service import get_default
-from utils.catalog_versioning import canonical_json_sha256
+from utils.catalog_versioning import canonical_json_sha256, deactivate_older_active_blueprint_releases
 
 logger = logging.getLogger(__name__)
 
@@ -302,6 +302,12 @@ class BlueprintCatalogService:
 
         self.db.add(release)
         self.db.flush()
+        if release.is_active:
+            deactivate_older_active_blueprint_releases(
+                self.db,
+                blueprint_source_id=source.id,
+                blueprint_id=release.blueprint_id,
+            )
 
         source.release_count = (
             self.db.query(BlueprintRelease)
@@ -371,6 +377,14 @@ class BlueprintCatalogService:
 
         release.release_state = next_release_state
         release.state_reason = state_data.state_reason
+        self.db.flush()
+
+        if release.is_active:
+            deactivate_older_active_blueprint_releases(
+                self.db,
+                blueprint_source_id=release.blueprint_source_id,
+                blueprint_id=release.blueprint_id,
+            )
 
         source = release.source
         source.release_count = (
@@ -471,6 +485,12 @@ class BlueprintCatalogService:
                 BlueprintReleaseState.APPROVED.value,
             }:
                 release.release_state = BlueprintReleaseState.IMPORTED.value
+            self.db.flush()
+            deactivate_older_active_blueprint_releases(
+                self.db,
+                blueprint_source_id=release.blueprint_source_id,
+                blueprint_id=release.blueprint_id,
+            )
         else:
             release.is_active = False
 
@@ -567,7 +587,28 @@ class BlueprintCatalogService:
         )
 
     def _serialize_release(self, release: BlueprintRelease) -> dict[str, Any]:
+        from utils.catalog_versioning import resolve_blueprint_catalog_metadata
+
         manifest = release.manifest or {}
+        catalog_meta = resolve_blueprint_catalog_metadata(
+            release.blueprint_id,
+            manifest,
+            fallback_name=release.blueprint_name,
+            category=manifest.get("category"),
+            raw_bnk_version=manifest.get("bnk_version"),
+        )
+        raw_modules = manifest.get("modules") if isinstance(manifest.get("modules"), list) else []
+        serialized_modules = [
+            {
+                "id": str(m.get("id") or m.get("module") or ""),
+                "name": str(m.get("name") or m.get("id") or m.get("module") or ""),
+                "module": str(m.get("module") or m.get("path") or ""),
+                "version": str(m["version"]) if m.get("version") is not None else None,
+                "optional": bool(m.get("optional", False)),
+            }
+            for m in raw_modules
+            if isinstance(m, dict)
+        ]
         return {
             "id": release.id,
             "blueprint_source_id": release.blueprint_source_id,
@@ -578,8 +619,16 @@ class BlueprintCatalogService:
             "blueprint_name": release.blueprint_name,
             "blueprint_description": release.blueprint_description,
             "category": manifest.get("category"),
-            "cloud_provider": manifest.get("cloud_provider"),
-            "bnk_version": manifest.get("bnk_version"),
+            "cloud_provider": manifest.get("cloud_provider") or catalog_meta.get("cloud_provider"),
+            "bnk_version": catalog_meta["bnk_version"],
+            "family_id": catalog_meta["family_id"],
+            "family_name": catalog_meta["family_name"],
+            "deployment_pattern": catalog_meta["deployment_pattern"],
+            "variant_key": catalog_meta["variant_key"],
+            "variant_label": catalog_meta["variant_label"],
+            "is_recommended": bool(catalog_meta["is_recommended"]),
+            "module_count": len(serialized_modules),
+            "modules": serialized_modules,
             "tags": manifest.get("tags") or [],
             "schema_version": release.schema_version,
             "source_path": release.source_path,

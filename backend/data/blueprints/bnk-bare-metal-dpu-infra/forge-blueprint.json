@@ -3,9 +3,14 @@
   "blueprint": {
     "id": "bnk-bare-metal-dpu-infra",
     "version": "1.0.0",
-    "name": "DPU Infrastructure (BlueField)",
+    "name": "Bare-Metal BlueField DPU \u2014 Cluster Foundation",
     "description": "Flashes a BlueField DPU and bootstraps a single-node K8s cluster on a bare-metal host. Deploy BNK Platform separately as Step 2."
   },
+  "family_id": "bnk-bare-metal-dpu-infra",
+  "deployment_pattern": "cluster_foundation",
+  "variant_key": "standard",
+  "variant_label": "DPU Flash + K8s Bootstrap",
+  "is_recommended": true,
   "category": "bare-metal",
   "cloud_provider": null,
   "icon": "cpu",
@@ -15,13 +20,7 @@
   "difficulty": "intermediate",
   "maturity": "beta",
   "bnk_version": null,
-  "tags": [
-    "bare-metal",
-    "dpu",
-    "bluefield",
-    "k8s",
-    "infrastructure"
-  ],
+  "tags": ["bare-metal", "dpu", "bluefield", "k8s", "infrastructure"],
   "outcomes": [
     "BlueField DPU flashed with target DOCA/BFB image",
     "Single-node K8s cluster bootstrapped on host",

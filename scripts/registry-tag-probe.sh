@@ -104,7 +104,7 @@ _fetch_token() {
 _manifest_status() {
   local url="$1"
   local hdr code
-  hdr="$(mktemp)"
+  hdr="$(mktemp /tmp/probe-hdr.XXXXXX 2>/dev/null || mktemp)"
   code="$(curl -sS --max-time 25 -o /dev/null -D "$hdr" -w '%{http_code}' \
             -H "Accept: ${ACCEPT}" "$url" 2>/dev/null || echo 000)"
   if [ "$code" = "401" ]; then

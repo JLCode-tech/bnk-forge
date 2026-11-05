@@ -3,9 +3,14 @@
   "blueprint": {
     "id": "bnk-241-on-k8s",
     "version": "1.0.0",
-    "name": "BNK 2.4.1 Platform (AWS)",
+    "name": "F5 BNK Platform \u2014 Kubernetes Overlay",
     "description": "Deploys F5 BNK 2.4.1 on AWS EKS with optimized defaults \u2014 host-device CNI, gp3 storage, ENI secondary IP assignment. Battle-tested and production-ready. Requires jwt_token and cne_pull_secret."
   },
+  "family_id": "bnk-on-k8s",
+  "deployment_pattern": "existing_cluster_overlay",
+  "variant_key": "aws-eks",
+  "variant_label": "AWS EKS Optimized (Recommended)",
+  "is_recommended": true,
   "category": "bnk",
   "cloud_provider": "aws",
   "icon": "shield-check",

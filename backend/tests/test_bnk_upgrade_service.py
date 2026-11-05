@@ -155,13 +155,23 @@ class TestVersionMetadata:
         assert info["label"] == "BNK 2.0"
 
     def test_bnk_24_detected(self):
-        """FLO v2.30.x should map to BNK 2.4 GA."""
+        """FLO v2.30.0.x should map to BNK 2.4 GA."""
         from services.bnk_upgrade_service import get_known_version_info
         info = get_known_version_info("v2.30.0-0.5.2")
         assert info is not None
         assert info["label"] == "BNK 2.4 GA"
         assert info["min_k8s"] == "1.30"
         assert info["max_k8s"] == "1.35"
+
+    def test_bnk_241_detected(self):
+        """FLO v2.30.0-0.11+ and v2.30.1+ should map to BNK 2.4.1 GA."""
+        from services.bnk_upgrade_service import get_known_version_info
+        for ver in ("v2.30.0-0.11.4", "2.30.0-0.11.4", "v2.30.1-0.0.8", "2.30.1"):
+            info = get_known_version_info(ver)
+            assert info is not None, f"Failed to resolve {ver}"
+            assert info["label"] == "BNK 2.4.1 GA"
+            assert info["min_k8s"] == "1.30"
+            assert info["max_k8s"] == "1.35"
 
     def test_bnk_23_k8s_range_widened(self):
         """#390: BNK 2.3 GA's max_k8s must be widened past 1.31 to cover

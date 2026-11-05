@@ -3,9 +3,14 @@
   "blueprint": {
     "id": "aws-eks-cluster-demo",
     "version": "1.1.0",
-    "name": "AWS EKS Cluster - Demo",
-    "description": "Streamlined AWS EKS cluster for fast demos — VPC + IAM + EKS only. Skips storage and high-performance nodes. Provide a project name, pick your AWS credentials + region, and click Deploy. Every other setting is pre-defaulted and adjustable later under Advanced."
+    "name": "AWS EKS \u2014 Cluster Foundation",
+    "description": "Streamlined AWS EKS cluster for fast demos \u2014 VPC + IAM + EKS only. Skips storage and high-performance nodes. Provide a project name, pick your AWS credentials + region, and click Deploy. Every other setting is pre-defaulted and adjustable later under Advanced."
   },
+  "family_id": "aws-k8s-foundation",
+  "deployment_pattern": "cluster_foundation",
+  "variant_key": "demo",
+  "variant_label": "Demo (Minimal VPC + EKS)",
+  "is_recommended": false,
   "category": "infrastructure",
   "cloud_provider": "aws",
   "icon": "server-stack",
@@ -15,12 +20,7 @@
   "difficulty": "beginner",
   "maturity": "production-ready",
   "bnk_version": null,
-  "tags": [
-    "kubernetes",
-    "aws",
-    "demo",
-    "production"
-  ],
+  "tags": ["kubernetes", "aws", "demo", "production"],
   "outcomes": [
     "VPC with public + private subnets across two AZs",
     "Jumphost EC2 with SSH key + Elastic IP",
@@ -183,9 +183,7 @@
       "version": "1.0.0",
       "name": "Security",
       "optional": false,
-      "depends_on": [
-        "infra-aws-vpc"
-      ],
+      "depends_on": ["infra-aws-vpc"],
       "inputs": {
         "project_name": "${project_name}",
         "environment": "${environment}",
@@ -202,10 +200,7 @@
       "version": "1.0.0",
       "name": "EKS Cluster",
       "optional": false,
-      "depends_on": [
-        "infra-aws-vpc",
-        "infra-aws-security"
-      ],
+      "depends_on": ["infra-aws-vpc", "infra-aws-security"],
       "inputs": {
         "project_name": "${project_name}",
         "environment": "${environment}",

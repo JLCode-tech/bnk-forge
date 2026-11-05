@@ -2,6 +2,7 @@
 Module Catalog Service
 Syncs official BNK-Forge module library and manages user-added modules
 """
+
 import copy
 import json
 import logging
@@ -39,11 +40,15 @@ def _build_official_source_name(repo_name: str) -> str:
 
 def _ensure_official_module_source(db: Session, *, clean_url: str, repo_name: str, repo_ref: str) -> ModuleSource:
     """Create/reuse canonical ModuleSource row for official module catalog repo."""
-    existing = db.query(ModuleSource).filter(
-        ModuleSource.source_type == "git",
-        ModuleSource.url == clean_url,
-        ModuleSource.is_active,
-    ).first()
+    existing = (
+        db.query(ModuleSource)
+        .filter(
+            ModuleSource.source_type == "git",
+            ModuleSource.url == clean_url,
+            ModuleSource.is_active,
+        )
+        .first()
+    )
     if existing:
         existing.branch = repo_ref
         existing.git_ref = repo_ref
@@ -95,14 +100,18 @@ def _backfill_official_source_association(db: Session, *, clean_url: str, repo_r
     cli-bnkctl) also carry builtin:// git_source values but must not be touched —
     they are excluded by checking execution_engine in _NON_CATALOG_ENGINES.
     """
-    matching_rows = db.query(ModuleLibrary).filter(
-        ModuleLibrary.is_official,
-        ModuleLibrary.is_active,
-        or_(
-            ModuleLibrary.git_source.like(f"git::{clean_url}//%"),
-            ModuleLibrary.git_source.like("builtin://%"),
-        ),
-    ).all()
+    matching_rows = (
+        db.query(ModuleLibrary)
+        .filter(
+            ModuleLibrary.is_official,
+            ModuleLibrary.is_active,
+            or_(
+                ModuleLibrary.git_source.like(f"git::{clean_url}//%"),
+                ModuleLibrary.git_source.like("builtin://%"),
+            ),
+        )
+        .all()
+    )
 
     repaired = 0
     for module in matching_rows:
@@ -146,13 +155,9 @@ def get_module_repo_config(db: Session) -> dict[str, str]:
         Dict with 'url' and 'ref' keys
     """
     # Get settings from database (seeded from .env on startup)
-    git_url_setting = db.query(ApplicationSetting).filter(
-        ApplicationSetting.key == "module_library.git_url"
-    ).first()
+    git_url_setting = db.query(ApplicationSetting).filter(ApplicationSetting.key == "module_library.git_url").first()
 
-    git_ref_setting = db.query(ApplicationSetting).filter(
-        ApplicationSetting.key == "module_library.git_ref"
-    ).first()
+    git_ref_setting = db.query(ApplicationSetting).filter(ApplicationSetting.key == "module_library.git_ref").first()
 
     # Get values from database (must be seeded from .env first)
     if not git_url_setting or not git_url_setting.value:
@@ -161,10 +166,7 @@ def get_module_repo_config(db: Session) -> dict[str, str]:
     git_url = GitAuthService.strip_url_credentials(git_url_setting.value)
     git_ref = git_ref_setting.value if git_ref_setting else "main"
 
-    return {
-        "url": git_url,
-        "ref": git_ref
-    }
+    return {"url": git_url, "ref": git_ref}
 
 
 def sync_module_catalog(db: Session, force: bool = False):
@@ -180,9 +182,9 @@ def sync_module_catalog(db: Session, force: bool = False):
         Dict with sync statistics
     """
     if not force:
-        synced_at_setting = db.query(ApplicationSetting).filter(
-            ApplicationSetting.key == "module_library.last_synced_at"
-        ).first()
+        synced_at_setting = (
+            db.query(ApplicationSetting).filter(ApplicationSetting.key == "module_library.last_synced_at").first()
+        )
         if synced_at_setting and synced_at_setting.value:
             try:
                 last_synced = datetime.fromisoformat(synced_at_setting.value)
@@ -208,6 +210,7 @@ def sync_module_catalog(db: Session, force: bool = False):
                 pass
 
     import git  # noqa: E402 — lazy import: git CLI not available in slim API container
+
     stats = {
         "total_modules": 0,
         "created": 0,
@@ -232,9 +235,10 @@ def sync_module_catalog(db: Session, force: bool = False):
         # Extract repo name from URL dynamically (instead of hardcoding)
         # e.g., "https://github.com/org/my-modules.git" -> "my-modules"
         from urllib.parse import urlparse
+
         parsed_url = urlparse(repo_config["url"])
-        url_path = parsed_url.path.rstrip('/').rstrip('.git')
-        repo_name = url_path.split('/')[-1] if url_path else "modules"
+        url_path = parsed_url.path.rstrip("/").rstrip(".git")
+        repo_name = url_path.split("/")[-1] if url_path else "modules"
         repo_path = os.path.join(catalog_path, repo_name)
 
         # Clone or pull repository
@@ -260,7 +264,7 @@ def sync_module_catalog(db: Session, force: bool = False):
                     repo.git.checkout(git_ref)
                 except git.exc.GitCommandError:
                     # Branch doesn't exist locally, create tracking branch
-                    repo.git.checkout('-b', git_ref, f'origin/{git_ref}')
+                    repo.git.checkout("-b", git_ref, f"origin/{git_ref}")
 
                 # Pull latest changes
                 repo.remotes.origin.pull(git_ref, env=git_env, kill_after_timeout=CATALOG_GIT_TIMEOUT_SECONDS)
@@ -270,17 +274,24 @@ def sync_module_catalog(db: Session, force: bool = False):
                 # Directory exists but is not a valid git repo - remove and clone fresh
                 logger.warning(f"Invalid git repository at {repo_path}, removing and cloning fresh")
                 import shutil
+
                 shutil.rmtree(repo_path)
                 logger.info(f"Cloning {repo_name} (ref: {git_ref})...")
                 repo = git.Repo.clone_from(
-                    repo_config["url"], repo_path, branch=git_ref, env=git_env,
+                    repo_config["url"],
+                    repo_path,
+                    branch=git_ref,
+                    env=git_env,
                     kill_after_timeout=CATALOG_GIT_TIMEOUT_SECONDS,
                 )
                 logger.info(f"Cloned branch '{git_ref}', commit: {repo.head.commit.hexsha[:8]}")
         else:
             logger.info(f"Cloning {repo_name} (ref: {git_ref})...")
             repo = git.Repo.clone_from(
-                repo_config["url"], repo_path, branch=git_ref, env=git_env,
+                repo_config["url"],
+                repo_path,
+                branch=git_ref,
+                env=git_env,
                 kill_after_timeout=CATALOG_GIT_TIMEOUT_SECONDS,
             )
             logger.info(f"Cloned branch '{git_ref}', commit: {repo.head.commit.hexsha[:8]}")
@@ -291,17 +302,17 @@ def sync_module_catalog(db: Session, force: bool = False):
             with open(version_file) as f:
                 module_version = f.read().strip()
             # Store synced version in ApplicationSettings
-            version_setting = db.query(ApplicationSetting).filter(
-                ApplicationSetting.key == "module_library.synced_version"
-            ).first()
+            version_setting = (
+                db.query(ApplicationSetting).filter(ApplicationSetting.key == "module_library.synced_version").first()
+            )
             if version_setting:
                 version_setting.value = module_version
             else:
-                db.add(ApplicationSetting(
-                    key="module_library.synced_version",
-                    value=module_version,
-                    category="module_library"
-                ))
+                db.add(
+                    ApplicationSetting(
+                        key="module_library.synced_version", value=module_version, category="module_library"
+                    )
+                )
             logger.info(f"Module library version: {module_version}")
             stats["synced_version"] = module_version
 
@@ -354,9 +365,8 @@ def sync_module_catalog(db: Session, force: bool = False):
                 # Primary lookup: by git_source (URL+ref).
                 # Path fallback: if git_source changed (e.g. new ref/URL) but the module
                 # path is the same, reuse the existing row instead of inserting a duplicate.
-                existing_module = (
-                    existing_modules_map.get(module_def["git_source"])
-                    or existing_modules_by_path.get(module_def["path"])
+                existing_module = existing_modules_map.get(module_def["git_source"]) or existing_modules_by_path.get(
+                    module_def["path"]
                 )
 
                 result = upsert_module(db, module_def, existing_module)
@@ -374,10 +384,14 @@ def sync_module_catalog(db: Session, force: bool = False):
                     stats["quarantined"] += 1
                     stats["quarantined_paths"].append(module_def["path"])
 
-        official_source.module_count = db.query(ModuleLibrary).filter(
-            ModuleLibrary.module_source_id == official_source.id,
-            ModuleLibrary.is_active,
-        ).count()
+        official_source.module_count = (
+            db.query(ModuleLibrary)
+            .filter(
+                ModuleLibrary.module_source_id == official_source.id,
+                ModuleLibrary.is_active,
+            )
+            .count()
+        )
         official_source.last_synced_at = datetime.now(UTC)
         official_source.sync_status = "success"
         official_source.sync_error = None
@@ -385,18 +399,14 @@ def sync_module_catalog(db: Session, force: bool = False):
         # Record the catalog-level last-sync timestamp that the TTL throttle reads.
         # Written on every successful sync — including content repos with no top-level
         # VERSION file — so the throttle engages and boot doesn't re-clone each restart.
-        synced_at_setting = db.query(ApplicationSetting).filter(
-            ApplicationSetting.key == "module_library.last_synced_at"
-        ).first()
+        synced_at_setting = (
+            db.query(ApplicationSetting).filter(ApplicationSetting.key == "module_library.last_synced_at").first()
+        )
         synced_at = datetime.now(UTC).isoformat()
         if synced_at_setting:
             synced_at_setting.value = synced_at
         else:
-            db.add(ApplicationSetting(
-                key="module_library.last_synced_at",
-                value=synced_at,
-                category="module_library"
-            ))
+            db.add(ApplicationSetting(key="module_library.last_synced_at", value=synced_at, category="module_library"))
         logger.info("Module catalog last_synced_at recorded: %s", synced_at)
 
     except Exception as e:
@@ -408,7 +418,7 @@ def sync_module_catalog(db: Session, force: bool = False):
         logger.error(error_msg)
         stats["errors"].append(error_msg)
     finally:
-        if 'cleanup_git_env' in locals():
+        if "cleanup_git_env" in locals():
             cleanup_git_env()
 
     db.flush()
@@ -477,15 +487,15 @@ def discover_modules(repo_path: str, category: str) -> list[dict]:
             logger.info(f"Discovered module: {repo_relative_path}")
         except Exception as e:
             error_text = str(e)[:1000]
-            logger.warning(
-                f"Quarantining module at {repo_relative_path} due to schema failure: {error_text}"
+            logger.warning(f"Quarantining module at {repo_relative_path} due to schema failure: {error_text}")
+            modules.append(
+                _build_quarantine_stub(
+                    module_name=module_name,
+                    module_path=module_path,
+                    category=category,
+                    error_text=error_text,
+                )
             )
-            modules.append(_build_quarantine_stub(
-                module_name=module_name,
-                module_path=module_path,
-                category=category,
-                error_text=error_text,
-            ))
 
     return modules
 
@@ -553,7 +563,7 @@ def parse_module_definition(
         "workflow_compatibility": ["greenfield"],  # Default
         "version": "latest",
         "provider": None,
-        "tags": [category, module_name]
+        "tags": [category, module_name],
     }
 
     # Try to read README.md for description
@@ -563,7 +573,7 @@ def parse_module_definition(
             readme_content = f.read()
             module_def["readme"] = readme_content
             # Extract description from README (look for ## Description section or first # heading)
-            lines = readme_content.split('\n')
+            lines = readme_content.split("\n")
             in_description = False
             description_lines = []
             for line in lines:
@@ -576,7 +586,7 @@ def parse_module_definition(
                     if line.strip():
                         description_lines.append(line.strip())
             if description_lines:
-                module_def["description"] = ' '.join(description_lines)
+                module_def["description"] = " ".join(description_lines)
             elif lines and lines[0].startswith("#"):
                 module_def["description"] = lines[0].lstrip("#").strip()
 
@@ -585,6 +595,7 @@ def parse_module_definition(
     if os.path.exists(variables_file):
         try:
             from services.variable_parser import VariableParser
+
             with open(variables_file) as f:
                 content = f.read()
                 variables = VariableParser.parse_variables_from_hcl(content)
@@ -594,7 +605,9 @@ def parse_module_definition(
                 dependencies = VariableParser.detect_dependencies_from_variables(variables, module_name)
                 module_def["dependencies"] = dependencies
 
-                logger.debug(f"Parsed {len(variables)} variables and detected {len(dependencies)} dependencies for {module_name}")
+                logger.debug(
+                    f"Parsed {len(variables)} variables and detected {len(dependencies)} dependencies for {module_name}"
+                )
         except Exception as e:
             logger.warning(f"Failed to parse variables.tf for {module_name}: {e}")
 
@@ -641,24 +654,26 @@ def parse_module_definition(
                 )
 
             # Keep git-source/path enrichment from caller; overlay normalized values
-            module_def.update({
-                "name": normalized.get("name") or module_def["name"],
-                "path": module_def["path"],
-                "category": normalized.get("category") or module_def["category"],
-                "description": normalized.get("description") or module_def["description"],
-                "version": normalized.get("version") or module_def["version"],
-                "provider": normalized.get("provider") or module_def.get("provider"),
-                "tags": normalized.get("tags", module_def.get("tags", [])),
-                "module_source_kind": normalized.get("module_source_kind", module_def.get("module_source_kind")),
-                "execution_engine": normalized.get("execution_engine", module_def.get("execution_engine")),
-                "deploy_model": normalized.get("deploy_model", module_def.get("deploy_model")),
-                "engine_type": normalized.get("engine_type"),
-                "pack_manifest": normalized.get("pack_manifest"),
-                "inputs_metadata": normalized.get("inputs_metadata"),
-                "outputs_metadata": normalized.get("outputs_metadata"),
-                "dependencies_metadata": normalized.get("dependencies_metadata"),
-                "dependencies": normalized.get("dependencies", []),
-            })
+            module_def.update(
+                {
+                    "name": normalized.get("name") or module_def["name"],
+                    "path": module_def["path"],
+                    "category": normalized.get("category") or module_def["category"],
+                    "description": normalized.get("description") or module_def["description"],
+                    "version": normalized.get("version") or module_def["version"],
+                    "provider": normalized.get("provider") or module_def.get("provider"),
+                    "tags": normalized.get("tags", module_def.get("tags", [])),
+                    "module_source_kind": normalized.get("module_source_kind", module_def.get("module_source_kind")),
+                    "execution_engine": normalized.get("execution_engine", module_def.get("execution_engine")),
+                    "deploy_model": normalized.get("deploy_model", module_def.get("deploy_model")),
+                    "engine_type": normalized.get("engine_type"),
+                    "pack_manifest": normalized.get("pack_manifest"),
+                    "inputs_metadata": normalized.get("inputs_metadata"),
+                    "outputs_metadata": normalized.get("outputs_metadata"),
+                    "dependencies_metadata": normalized.get("dependencies_metadata"),
+                    "dependencies": normalized.get("dependencies", []),
+                }
+            )
 
             logger.info(f"Loaded metadata from bnkforge.pack.json for {module_name}")
             return module_def
@@ -676,7 +691,7 @@ def parse_module_definition(
             deps = module_metadata.get("dependencies", {})
             module_def["dependencies_metadata"] = {
                 "required": deps.get("required", []),
-                "optional": deps.get("optional", [])
+                "optional": deps.get("optional", []),
             }
 
             # Extract inputs with source mapping + providers metadata
@@ -731,16 +746,18 @@ def upsert_module(db: Session, module_def: dict, existing_module: ModuleLibrary 
     """
     # Check if module exists if not provided
     if existing_module is None:
-        existing_module = db.query(ModuleLibrary).filter(
-            ModuleLibrary.git_source == module_def["git_source"]
-        ).first()
+        existing_module = db.query(ModuleLibrary).filter(ModuleLibrary.git_source == module_def["git_source"]).first()
 
     if existing_module is None and module_def.get("is_official") and module_def.get("path"):
-        existing_module = db.query(ModuleLibrary).filter(
-            ModuleLibrary.is_official,
-            ModuleLibrary.path == module_def["path"],
-            ModuleLibrary.is_active,
-        ).first()
+        existing_module = (
+            db.query(ModuleLibrary)
+            .filter(
+                ModuleLibrary.is_official,
+                ModuleLibrary.path == module_def["path"],
+                ModuleLibrary.is_active,
+            )
+            .first()
+        )
 
     if existing_module:
         if existing_module.content_sha256 is not None:
@@ -783,7 +800,7 @@ def add_user_module(
     git_source: str,
     provider: str | None = None,
     description: str | None = None,
-    version: str = "latest"
+    version: str = "latest",
 ) -> ModuleLibrary:
     """
     Add a user-provided custom module to the catalog
@@ -815,7 +832,7 @@ def add_user_module(
         test_status="not_tested",
         variables_schema={},
         dependencies=[],
-        workflow_compatibility=["greenfield", "partial", "minimal"]
+        workflow_compatibility=["greenfield", "partial", "minimal"],
     )
 
     db.add(module)
@@ -831,7 +848,7 @@ def get_catalog_modules(
     category: str | None = None,
     provider: str | None = None,
     official_only: bool = False,
-    tested_only: bool = False
+    tested_only: bool = False,
 ) -> list[ModuleLibrary]:
     """
     Query modules from the catalog
@@ -862,11 +879,13 @@ def get_catalog_modules(
     if tested_only:
         query = query.filter(ModuleLibrary.is_tested)
 
-    return query.order_by(
-        ModuleLibrary.is_official.desc(),
-        ModuleLibrary.category,
-        ModuleLibrary.name
-    ).all()
+    rows = query.order_by(ModuleLibrary.is_official.desc(), ModuleLibrary.category, ModuleLibrary.name).all()
+
+    paths_with_source = {r.path for r in rows if r.path and r.module_source_id is not None}
+    if not paths_with_source:
+        return rows
+
+    return [r for r in rows if not (r.module_source_id is None and r.path in paths_with_source)]
 
 
 def recalculate_deployment_orders(db: Session):

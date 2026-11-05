@@ -3,9 +3,14 @@
   "blueprint": {
     "id": "bnk-bare-metal-full-poc",
     "version": "1.0.0",
-    "name": "DPU + BNK Full PoC (All-in-One)",
+    "name": "Bare-Metal BlueField DPU \u2014 F5 BNK Full Stack",
     "description": "End-to-end: DPU flash \u2192 K8s cluster \u2192 BNK platform in one blueprint. For step-by-step control, use DPU Infrastructure + BNK Platform separately."
   },
+  "family_id": "bnk-bare-metal-full-poc",
+  "deployment_pattern": "greenfield_full_stack",
+  "variant_key": "all-in-one",
+  "variant_label": "All-in-One DPU + BNK PoC",
+  "is_recommended": true,
   "category": "bare-metal",
   "cloud_provider": null,
   "icon": "cpu",
@@ -14,14 +19,8 @@
   "estimated_cost": "N/A (bare-metal)",
   "difficulty": "advanced",
   "maturity": "alpha",
-  "bnk_version": "2.2",
-  "tags": [
-    "bare-metal",
-    "dpu",
-    "bluefield",
-    "bnk",
-    "on-prem"
-  ],
+  "bnk_version": "2.2.0",
+  "tags": ["bare-metal", "dpu", "bluefield", "bnk", "on-prem"],
   "outcomes": [
     "BlueField DPU flashed with target DOCA version",
     "Single-node K8s cluster on bare-metal host",

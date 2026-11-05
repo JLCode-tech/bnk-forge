@@ -123,18 +123,26 @@ class StackService(BaseService):
         return stack
 
     def _get_template_by_slug(self, slug: str) -> StackTemplate:
-        template = self.db.query(StackTemplate).filter(
-            StackTemplate.slug == slug,
-            StackTemplate.is_active,
-        ).first()
+        template = (
+            self.db.query(StackTemplate)
+            .filter(
+                StackTemplate.slug == slug,
+                StackTemplate.is_active,
+            )
+            .first()
+        )
         if not template:
             raise NotFoundError("stack_template", slug)
         return template
 
     def _get_template_by_id(self, template_id: int) -> StackTemplate:
-        template = self.db.query(StackTemplate).filter(
-            StackTemplate.id == template_id,
-        ).first()
+        template = (
+            self.db.query(StackTemplate)
+            .filter(
+                StackTemplate.id == template_id,
+            )
+            .first()
+        )
         if not template:
             raise NotFoundError("stack_template", template_id)
         return template
@@ -225,10 +233,12 @@ class StackService(BaseService):
         if category:
             query = query.filter(StackTemplate.category == category)
         if cloud_provider:
-            query = query.filter(or_(
-                StackTemplate.cloud_provider == cloud_provider,
-                StackTemplate.cloud_provider == "any",
-            ))
+            query = query.filter(
+                or_(
+                    StackTemplate.cloud_provider == cloud_provider,
+                    StackTemplate.cloud_provider == "any",
+                )
+            )
         if is_featured is not None:
             query = query.filter(StackTemplate.is_featured == is_featured)
         if created_by is not None:
@@ -242,15 +252,46 @@ class StackService(BaseService):
             tag_list = [t.strip() for t in tags.split(",")]
             templates = [t for t in templates if t.tags and any(tag in t.tags for tag in tag_list)]
 
+        from utils.catalog_versioning import resolve_blueprint_catalog_metadata
+
+        for t in templates:
+            meta = resolve_blueprint_catalog_metadata(
+                t.slug,
+                None,
+                fallback_name=t.name,
+                category=t.category,
+                raw_bnk_version=getattr(t, "bnk_version", None),
+            )
+            t.blueprint_id = t.slug
+            t.family_id = meta["family_id"]
+            t.family_name = meta["family_name"]
+            t.deployment_pattern = meta["deployment_pattern"]
+            t.variant_key = meta["variant_key"]
+            t.variant_label = meta["variant_label"]
+            t.is_recommended = bool(meta["is_recommended"])
+            t.bnk_version = meta["bnk_version"]
+            t.source_type = "builtin"
+            t.source_name = "builtin-blueprints"
+
         return templates
 
     def get_template(self, slug: str) -> dict:
         """Get a stack template by slug."""
+        from utils.catalog_versioning import resolve_blueprint_catalog_metadata
+
         template = self._get_template_by_slug(slug)
+        meta = resolve_blueprint_catalog_metadata(
+            template.slug,
+            None,
+            fallback_name=template.name,
+            category=template.category,
+            raw_bnk_version=getattr(template, "bnk_version", None),
+        )
         return {
             "id": template.id,
             "name": template.name,
             "slug": template.slug,
+            "blueprint_id": template.slug,
             "description": template.description,
             "category": template.category,
             "cloud_provider": template.cloud_provider,
@@ -266,6 +307,15 @@ class StackService(BaseService):
             "maturity": template.maturity,
             "outcomes": template.outcomes,
             "platform_defaults": template.platform_defaults,
+            "bnk_version": meta["bnk_version"],
+            "family_id": meta["family_id"],
+            "family_name": meta["family_name"],
+            "deployment_pattern": meta["deployment_pattern"],
+            "variant_key": meta["variant_key"],
+            "variant_label": meta["variant_label"],
+            "is_recommended": bool(meta["is_recommended"]),
+            "source_type": "builtin",
+            "source_name": "builtin-blueprints",
             "is_active": template.is_active,
             "is_featured": template.is_featured,
             "version": template.version,
@@ -311,9 +361,8 @@ class StackService(BaseService):
                 resolve_project_context,
                 transform_for_module,
             )
-            project_ctx = resolve_project_context(
-                self.db, project_id, bare_metal_host_id=bare_metal_host_id
-            )
+
+            project_ctx = resolve_project_context(self.db, project_id, bare_metal_host_id=bare_metal_host_id)
             # Canonical vars available to all modules
             context_defaults = project_ctx.as_low_precedence_vars()
 
@@ -326,14 +375,16 @@ class StackService(BaseService):
 
             if not library_module:
                 logger.warning(f"Module '{module_path}' not found in library, skipping input analysis")
-                missing_modules.append({
-                    "path": str(module_path),
-                    "name": str(module_name),
-                    "message": (
-                        f"Module '{module_path}' is missing from the active module catalog. "
-                        "Required-input analysis for this module is unavailable until the source is synced."
-                    ),
-                })
+                missing_modules.append(
+                    {
+                        "path": str(module_path),
+                        "name": str(module_name),
+                        "message": (
+                            f"Module '{module_path}' is missing from the active module catalog. "
+                            "Required-input analysis for this module is unavailable until the source is synced."
+                        ),
+                    }
+                )
                 continue
 
             inputs_metadata = library_module.inputs_metadata or {}
@@ -411,9 +462,7 @@ class StackService(BaseService):
                     # 3. Dialog-field → context scalar mapping (handles name impedance mismatches,
                     #    e.g. external_selfip (dialog) vs external_self_ips (catalog list))
                     if ctx_val is None:
-                        ctx_val = resolve_dialog_field_default(
-                            inp_name, module_path or "", project_ctx
-                        )
+                        ctx_val = resolve_dialog_field_default(inp_name, module_path or "", project_ctx)
                     if ctx_val is not None:
                         input_def["default"] = ctx_val if isinstance(ctx_val, str) else str(ctx_val)
 
@@ -503,24 +552,32 @@ class StackService(BaseService):
         if slug == "aws-k8s-foundation":
             input_names = {inp["name"] for inp in all_inputs}
             if "user_ip" in input_names:
-                summary.append({
-                    "label": "Why your IP is needed",
-                    "value": "Used to restrict administrative/security-group access to the EKS environment during initial provisioning.",
-                })
+                summary.append(
+                    {
+                        "label": "Why your IP is needed",
+                        "value": "Used to restrict administrative/security-group access to the EKS environment during initial provisioning.",
+                    }
+                )
             if "ecr_registry" in input_names:
-                summary.append({
-                    "label": "About ECR registry",
-                    "value": "This input is still exposed by one of the AWS foundation modules, but the blueprint itself does not clearly demonstrate an active ECR dependency in its template definition. Treat it as suspicious/legacy until the underlying module metadata is reviewed.",
-                })
+                summary.append(
+                    {
+                        "label": "About ECR registry",
+                        "value": "This input is still exposed by one of the AWS foundation modules, but the blueprint itself does not clearly demonstrate an active ECR dependency in its template definition. Treat it as suspicious/legacy until the underlying module metadata is reviewed.",
+                    }
+                )
         elif _template_requires_existing_cluster_guidance(slug):
-            summary.append({
-                "label": "Required BNK project secrets",
-                "value": "Configure jwt_token (license token) and cne_pull_secret (FAR pull secret) in Project Settings → Secrets. They are validated before deploy and not requested as module inputs.",
-            })
-            summary.append({
-                "label": "FAR credential fallback",
-                "value": "If project cne_pull_secret is not set, Forge can use the encrypted global FAR fallback from System → Defaults.",
-            })
+            summary.append(
+                {
+                    "label": "Required BNK project secrets",
+                    "value": "Configure jwt_token (license token) and cne_pull_secret (FAR pull secret) in Project Settings → Secrets. They are validated before deploy and not requested as module inputs.",
+                }
+            )
+            summary.append(
+                {
+                    "label": "FAR credential fallback",
+                    "value": "If project cne_pull_secret is not set, Forge can use the encrypted global FAR fallback from System → Defaults.",
+                }
+            )
 
         return {
             "template_slug": slug,
@@ -551,13 +608,15 @@ class StackService(BaseService):
         template_modules = []
         for module in modules:
             lm = module.library_module
-            template_modules.append({
-                "path": lm.source_path if lm.source_type == "git" else lm.path,
-                "name": lm.name,
-                "required": True,
-                "description": lm.description,
-                "variables": module.variables or {},
-            })
+            template_modules.append(
+                {
+                    "path": lm.source_path if lm.source_type == "git" else lm.path,
+                    "name": lm.name,
+                    "required": True,
+                    "description": lm.description,
+                    "variables": module.variables or {},
+                }
+            )
 
         template = StackTemplate(
             name=template_data["name"],
@@ -704,14 +763,20 @@ class StackService(BaseService):
     # Stack Instances
     # ================================================================
 
-    def create_instance(self, project_id: int, template_id: int, name: str, variables: dict | None = None) -> StackInstance:
+    def create_instance(
+        self, project_id: int, template_id: int, name: str, variables: dict | None = None
+    ) -> StackInstance:
         """Create a new stack instance in a project."""
         project = self._get_project(project_id)
 
-        template = self.db.query(StackTemplate).filter(
-            StackTemplate.id == template_id,
-            StackTemplate.is_active,
-        ).first()
+        template = (
+            self.db.query(StackTemplate)
+            .filter(
+                StackTemplate.id == template_id,
+                StackTemplate.is_active,
+            )
+            .first()
+        )
         if not template:
             raise NotFoundError("stack_template", template_id)
 
@@ -830,7 +895,9 @@ class StackService(BaseService):
         self.db.flush()
         logger.info(
             "Stamped BareMetalHost %s version_profile_id=%s for stack %s deploy",
-            host_id, deployable_release_id, stack.id,
+            host_id,
+            deployable_release_id,
+            stack.id,
         )
 
     def deploy_stack(self, project_id: int, stack_id: int, *, deployable_release_id: int | None = None) -> dict:
@@ -920,10 +987,15 @@ class StackService(BaseService):
             stack_module_ids = [m.id for m in stack.modules]
             has_active_tasks = False
             if stack_module_ids:
-                has_active_tasks = self.db.query(TaskModel).filter(
-                    TaskModel.module_id.in_(stack_module_ids),
-                    TaskModel.status.in_([TaskStatus.PENDING, TaskStatus.QUEUED, TaskStatus.IN_PROGRESS]),
-                ).first() is not None
+                has_active_tasks = (
+                    self.db.query(TaskModel)
+                    .filter(
+                        TaskModel.module_id.in_(stack_module_ids),
+                        TaskModel.status.in_([TaskStatus.PENDING, TaskStatus.QUEUED, TaskStatus.IN_PROGRESS]),
+                    )
+                    .first()
+                    is not None
+                )
 
             in_flight_statuses = {
                 ModuleStatus.INITIALIZING,
@@ -949,7 +1021,8 @@ class StackService(BaseService):
         if template:
             deployment_service = StackDeploymentService(self.db)
             prereq_report = deployment_service.check_prerequisites(
-                project_id, template,
+                project_id,
+                template,
                 stack_variables=stack.variables,
             )
             if not prereq_report.get("all_satisfied", True):
@@ -980,8 +1053,7 @@ class StackService(BaseService):
 
                 if blocking_preflight:
                     blocking_messages = "; ".join(
-                        f"{check.get('title')}: {check.get('message')}"
-                        for check in blocking_preflight
+                        f"{check.get('title')}: {check.get('message')}" for check in blocking_preflight
                     )
                     raise BadRequestError(
                         f"Cluster preflight blockers detected: {blocking_messages}",
@@ -1005,6 +1077,7 @@ class StackService(BaseService):
         # S18-001: For applied modules, check if variables changed — if so, treat
         # them as needing re-plan/re-apply instead of skipping them
         from services.workspace_manager import WorkspaceManager
+
         workspace = WorkspaceManager(self.db)
 
         unchanged_applied = [m for m in modules if m.status == ModuleStatus.APPLIED and not workspace.vars_changed(m)]
@@ -1020,17 +1093,16 @@ class StackService(BaseService):
         # modules (optional bare-metal modules that don't match host topology),
         # and those deploy through exactly this path.
         pending_modules = [
-            m for m in ([m for m in modules if m.status != ModuleStatus.APPLIED] + changed_applied)
-            if m.enabled
+            m for m in ([m for m in modules if m.status != ModuleStatus.APPLIED] + changed_applied) if m.enabled
         ]
         skipped_disabled = [
-            m.id for m in modules
-            if not m.enabled and (m.status != ModuleStatus.APPLIED or m in changed_applied)
+            m.id for m in modules if not m.enabled and (m.status != ModuleStatus.APPLIED or m in changed_applied)
         ]
         if skipped_disabled:
             logger.info(
                 "Stack deploy: skipping %d disabled module(s): %s",
-                len(skipped_disabled), skipped_disabled,
+                len(skipped_disabled),
+                skipped_disabled,
             )
 
         if changed_applied:
@@ -1060,10 +1132,15 @@ class StackService(BaseService):
         skipped_count = len(already_applied)
 
         def _has_active_task(module_id: int) -> bool:
-            return self.db.query(TaskModel).filter(
-                TaskModel.module_id == module_id,
-                TaskModel.status.in_([TaskStatus.PENDING, TaskStatus.QUEUED, TaskStatus.IN_PROGRESS]),
-            ).first() is not None
+            return (
+                self.db.query(TaskModel)
+                .filter(
+                    TaskModel.module_id == module_id,
+                    TaskModel.status.in_([TaskStatus.PENDING, TaskStatus.QUEUED, TaskStatus.IN_PROGRESS]),
+                )
+                .first()
+                is not None
+            )
 
         for module in pending_modules:
             if _has_active_task(module.id):
@@ -1106,7 +1183,13 @@ class StackService(BaseService):
                 queued_count += 1
                 logger.info(f"Queued init task {task.id} for module {module.id}")
 
-            elif module.status in [ModuleStatus.INITIALIZED, ModuleStatus.PLANNED, ModuleStatus.INIT_FAILED, ModuleStatus.PLAN_FAILED, ModuleStatus.APPLY_FAILED]:
+            elif module.status in [
+                ModuleStatus.INITIALIZED,
+                ModuleStatus.PLANNED,
+                ModuleStatus.INIT_FAILED,
+                ModuleStatus.PLAN_FAILED,
+                ModuleStatus.APPLY_FAILED,
+            ]:
                 task = TaskModel(
                     task_type="apply",
                     status=TaskStatus.QUEUED,
@@ -1212,21 +1295,13 @@ class StackService(BaseService):
 
         existing_modules = []
         if stack.deployed_modules:
-            existing_modules = (
-                self.db.query(ProjectModule)
-                .filter(ProjectModule.id.in_(stack.deployed_modules))
-                .all()
-            )
+            existing_modules = self.db.query(ProjectModule).filter(ProjectModule.id.in_(stack.deployed_modules)).all()
 
         if force:
             # Delete all modules belonging to this stack (they have no remote
             # infra state worth preserving — SSH modules are stateless, and
             # force-delete is an explicit user decision to clean up).
-            all_stack_modules = (
-                self.db.query(ProjectModule)
-                .filter(ProjectModule.stack_instance_id == stack_id)
-                .all()
-            )
+            all_stack_modules = self.db.query(ProjectModule).filter(ProjectModule.stack_instance_id == stack_id).all()
             logger.info(f"Force deleting stack {stack_id} with {len(all_stack_modules)} modules")
             for m in all_stack_modules:
                 self.db.delete(m)

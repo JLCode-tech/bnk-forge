@@ -99,6 +99,14 @@ class BlueprintReleaseResponse(BaseModel):
     category: str | None = None
     cloud_provider: str | None = None
     bnk_version: str | None = None
+    family_id: str | None = None
+    family_name: str | None = None
+    deployment_pattern: str | None = None
+    variant_key: str | None = None
+    variant_label: str | None = None
+    is_recommended: bool = False
+    module_count: int = 0
+    modules: list[JSONMetadata] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     schema_version: int
     source_path: str | None
@@ -176,6 +184,24 @@ def sync_blueprint_source(source_id: int, db: Session = Depends(get_db)):
     }
 
 
+@router.get("/discovered", response_model=list[BlueprintReleaseResponse], dependencies=[Depends(require_viewer)])
+def list_discovered_blueprint_releases(
+    source_id: int | None = None,
+    blueprint_id: str | None = None,
+    release_state: str | None = None,
+    validation_state: str | None = None,
+    is_active: bool | None = None,
+    db: Session = Depends(get_db),
+):
+    return BlueprintCatalogService(db).list_releases(
+        source_id=source_id,
+        blueprint_id=blueprint_id,
+        release_state=release_state,
+        validation_state=validation_state,
+        is_active=is_active,
+    )
+
+
 @router.get("/releases", response_model=list[BlueprintReleaseResponse], dependencies=[Depends(require_viewer)])
 def list_blueprint_releases(
     source_id: int | None = None,
@@ -231,7 +257,9 @@ def create_blueprint_release(release_data: BlueprintReleaseCreate = Body(...), d
     return result
 
 
-@router.patch("/releases/{release_id}/state", response_model=BlueprintReleaseResponse, dependencies=[Depends(require_operator)])
+@router.patch(
+    "/releases/{release_id}/state", response_model=BlueprintReleaseResponse, dependencies=[Depends(require_operator)]
+)
 @handle_route_errors("update blueprint release state")
 def update_blueprint_release_state(
     release_id: int,
@@ -299,9 +327,7 @@ def update_blueprint_release_visibility(
     dependencies=[Depends(require_operator)],
 )
 @handle_route_errors("prune blueprint source")
-def prune_blueprint_source_releases(
-    source_id: int, request: PruneRequest, db: Session = Depends(get_db)
-):
+def prune_blueprint_source_releases(source_id: int, request: PruneRequest, db: Session = Depends(get_db)):
     """Retire superseded blueprint releases for this source.
 
     Every edit to a blueprint adds an immutable release, so a source under

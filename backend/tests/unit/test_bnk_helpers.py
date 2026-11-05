@@ -8,7 +8,9 @@ import pytest
 
 from services.bnk.helpers import (
     BNK_RESOURCE_TYPES,
+    _resolve_flo_version_to_bnk,
     calc_severity,
+    extract_bnk_version,
     get_condition_message,
     has_condition,
     make_resource_map,
@@ -269,3 +271,153 @@ class TestBnkResourceTypes:
 
     def test_no_duplicates(self):
         assert len(BNK_RESOURCE_TYPES) == len(set(BNK_RESOURCE_TYPES))
+
+
+# ---------------------------------------------------------------------------
+# _resolve_flo_version_to_bnk
+# ---------------------------------------------------------------------------
+
+
+class TestResolveFloVersionToBnk:
+    def test_flo_230_patch_resolves_to_241(self):
+        assert _resolve_flo_version_to_bnk("2.30.0-0.11.4") == "2.4.1"
+        assert _resolve_flo_version_to_bnk("v2.30.0-0.11.4") == "2.4.1"
+
+    def test_flo_2301_resolves_to_241(self):
+        assert _resolve_flo_version_to_bnk("2.30.1-0.0.8") == "2.4.1"
+        assert _resolve_flo_version_to_bnk("v2.30.1") == "2.4.1"
+
+    def test_flo_230_base_resolves_to_24(self):
+        assert _resolve_flo_version_to_bnk("2.30.0-0.5.2") == "2.4"
+        assert _resolve_flo_version_to_bnk("v2.30.0") == "2.4"
+
+    def test_flo_221_resolves_to_23(self):
+        assert _resolve_flo_version_to_bnk("2.21.13-0.0.28") == "2.3"
+        assert _resolve_flo_version_to_bnk("v2.21.13") == "2.3"
+
+    def test_flo_29_resolves_to_22(self):
+        assert _resolve_flo_version_to_bnk("2.9.27") == "2.2"
+        assert _resolve_flo_version_to_bnk("v2.9.27") == "2.2"
+
+    def test_flo_1198_resolves_to_21(self):
+        assert _resolve_flo_version_to_bnk("1.198.4-0.1.36") == "2.1"
+        assert _resolve_flo_version_to_bnk("v1.198.4") == "2.1"
+
+    def test_direct_semver_passthrough(self):
+        assert _resolve_flo_version_to_bnk("2.5.0") == "2.5.0"
+        assert _resolve_flo_version_to_bnk("v2.5.0") == "2.5.0"
+        assert _resolve_flo_version_to_bnk("1.8.0") == "1.8.0"
+
+    def test_internal_tmos_major_version_filtered(self):
+        assert _resolve_flo_version_to_bnk("10.204.15-0.6.0") is None
+        assert _resolve_flo_version_to_bnk("v14.91.12-0.18.0") is None
+
+    def test_empty_or_none(self):
+        assert _resolve_flo_version_to_bnk("") is None
+        assert _resolve_flo_version_to_bnk(None) is None
+
+
+# ---------------------------------------------------------------------------
+# extract_bnk_version
+# ---------------------------------------------------------------------------
+
+
+class TestExtractBnkVersion:
+    def test_live_cluster_pod_shape_resolves_to_241(self):
+        """Live cluster 51 scenario: TMM pod contains blobd (v1.25.5), FLO pod has v2.30.0-0.11.4."""
+        data = {
+            "classified_pods": {
+                "tmm": [
+                    {
+                        "name": "f5-tmm-6v47c",
+                        "containers": [
+                            {"name": "blobd", "image": "repo.f5.com/images/f5-blobd:v1.25.5-0.0.8"},
+                            {"name": "debug", "image": "repo.f5.com/images/f5-debug-sidecar:v10.146.1-0.0.116"},
+                            {"name": "f5-fluentbit", "image": "repo.f5.com/images/f5-fluentbit:v1.6.8-0.0.3"},
+                            {"name": "f5-tmm", "image": "repo.f5.com/images/tmm-img:v10.204.15-0.6.0"},
+                            {"name": "f5-tmm-routing", "image": "repo.f5.com/images/f5dr-img:v3.33.7-0.0.9"},
+                            {"name": "f5-tmm-tmrouted", "image": "repo.f5.com/images/tmrouted-img:v2.25.7-0.0.6"},
+                            {"name": "observer", "image": "repo.f5.com/images/f5-toda-observer:v5.36.5-0.3.4"},
+                        ],
+                    }
+                ],
+                "flo": [
+                    {
+                        "name": "f5-lifecycle-operator-d76cc756b-f64fc",
+                        "containers": [
+                            {
+                                "name": "f5-lifecycle-operator",
+                                "image": "repo.f5.com/images/f5-lifecycle-operator:v2.30.0-0.11.4",
+                            }
+                        ],
+                    }
+                ],
+                "controller": [
+                    {
+                        "name": "f5-cne-controller-7d695f8585-gs7r9",
+                        "containers": [
+                            {"name": "f5-cne-controller", "image": "repo.f5.com/images/f5ingress:v14.91.12-0.18.0"},
+                            {"name": "f5-fluentbit", "image": "repo.f5.com/images/f5-fluentbit:v1.6.8-0.0.3"},
+                            {"name": "f5-tmm-pod-manager", "image": "repo.f5.com/images/f5ing-tmm-pod-manager:v1.10.11-0.0.7"},
+                        ],
+                    }
+                ],
+            }
+        }
+        assert extract_bnk_version(data) == "2.4.1"
+
+    def test_prioritizes_flo_over_tmm(self):
+        data = {
+            "classified_pods": {
+                "tmm": [
+                    {"name": "f5-tmm-a", "containers": [{"name": "tmm", "image": "f5/spk-tmm:v2.4.0"}]}
+                ],
+                "flo": [
+                    {"name": "flo-operator", "containers": [{"name": "flo", "image": "f5/f5-lifecycle-operator:v2.30.0-0.11.4"}]}
+                ],
+            }
+        }
+        assert extract_bnk_version(data) == "2.4.1"
+
+    def test_ignores_sidecars_in_tmm(self):
+        """When TMM pod only has blobd/debug/observer, blobd's version is NOT returned."""
+        data = {
+            "classified_pods": {
+                "tmm": [
+                    {
+                        "name": "f5-tmm-a",
+                        "containers": [
+                            {"name": "blobd", "image": "repo.f5.com/images/f5-blobd:v1.25.5-0.0.8"},
+                            {"name": "debug", "image": "repo.f5.com/images/f5-debug:v10.146.1"},
+                            {"name": "observer", "image": "repo.f5.com/images/observer:v5.36.5"},
+                        ],
+                    }
+                ]
+            }
+        }
+        assert extract_bnk_version(data) is None
+
+    def test_fallback_to_controller_or_tmm_when_no_flo(self):
+        data = {
+            "classified_pods": {
+                "tmm": [
+                    {"name": "f5-tmm-a", "containers": [{"name": "tmm", "image": "f5/spk-tmm:v2.4.1"}]}
+                ]
+            }
+        }
+        assert extract_bnk_version(data) == "2.4.1"
+
+    def test_accepts_direct_classified_pods_dict(self):
+        classified = {
+            "flo": [
+                {"name": "flo", "containers": [{"name": "flo", "image": "repo.f5.com/flo:v2.30.1-0.0.8"}]}
+            ]
+        }
+        assert extract_bnk_version(classified) == "2.4.1"
+
+    def test_empty_and_invalid_inputs(self):
+        assert extract_bnk_version(None) is None
+        assert extract_bnk_version({}) is None
+        assert extract_bnk_version({"classified_pods": None}) is None
+        assert extract_bnk_version({"classified_pods": "invalid"}) is None
+        assert extract_bnk_version({"classified_pods": {"flo": []}}) is None
