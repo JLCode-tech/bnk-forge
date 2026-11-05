@@ -110,7 +110,10 @@ export default function Catalog() {
       className="flex min-h-[calc(100vh-3rem)]"
     >
       {/* Left Flush Inner Sub-Sidebar */}
-      <CollapsibleInnerSidebar className="w-52 shrink-0 border-r border-border bg-card/30 p-3 space-y-4">
+      <CollapsibleInnerSidebar
+        defaultCollapsed={false}
+        className="w-56 shrink-0 border-r border-border bg-card/30 p-3 space-y-4"
+      >
         <div className="border-b border-border pb-3 px-1">
           <h1 className="text-sm font-semibold tracking-tight text-foreground">
             Catalog &amp; Blueprints
@@ -121,19 +124,21 @@ export default function Catalog() {
           </p>
         </div>
 
-        <div className="space-y-1">
+        <div className="space-y-1" data-sidebar-keep-open>
           <div className="px-2.5 py-1 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
-            CATALOG
+            CATALOG SECTIONS
           </div>
           <TabsList
             aria-label="Catalog sections"
+            data-sidebar-keep-open
             className="flex flex-col items-stretch h-auto bg-transparent p-0 gap-1"
           >
             {tabs.map(({ key, label, icon: Icon }) => (
               <TabsTrigger
                 key={key}
                 value={key}
-                className="w-full justify-start gap-2 px-2.5 py-1.5 text-xs font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none"
+                data-sidebar-keep-open
+                className="w-full justify-start gap-2.5 px-2.5 py-2 text-xs font-medium rounded-md data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:shadow-none"
               >
                 <Icon className="h-3.5 w-3.5 shrink-0" />
                 <span className="truncate">{label}</span>
@@ -147,7 +152,7 @@ export default function Catalog() {
       <div className="flex-1 min-w-0 p-6 space-y-4">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-base font-semibold tracking-tight text-foreground">
+            <h2 className="text-lg font-semibold tracking-tight text-foreground">
               {tabs.find((t) => t.key === activeTab)?.label ??
                 "Catalog & Blueprints"}
             </h2>

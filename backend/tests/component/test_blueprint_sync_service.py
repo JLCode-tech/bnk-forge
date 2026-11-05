@@ -594,10 +594,15 @@ def test_sync_git_source_auto_imports_valid_releases_and_promotes_discovered(db)
     assert len(releases) == 2
     for r in releases:
         assert r.release_state == "imported"
-        assert r.is_active is True
         assert r.imported_at is not None
-        assert r.state_reason == "Auto-imported from default catalog source"
-    assert source.release_count == 2
+    # 1.0.0 was promoted to imported and then auto-deactivated because 2.0.0 of the same blueprint_id superseded it
+    assert releases[0].blueprint_version == "1.0.0"
+    assert releases[0].is_active is False
+    assert releases[0].state_reason == "Superseded by v2.0.0"
+    assert releases[1].blueprint_version == "2.0.0"
+    assert releases[1].is_active is True
+    assert releases[1].state_reason == "Auto-imported from default catalog source"
+    assert source.release_count == 1
 
 
 def test_sync_git_source_auto_import_falls_back_to_discovered_for_invalid_manifest(db):

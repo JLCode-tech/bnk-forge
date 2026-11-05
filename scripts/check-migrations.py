@@ -6,6 +6,8 @@ Validates chain linearity, filename consistency, and sequence ordering.
 
 Exit 0 = clean chain. Exit 1 = errors found (printed to stderr).
 """
+from __future__ import annotations
+
 import ast
 import re
 import subprocess

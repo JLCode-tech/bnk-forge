@@ -24,7 +24,7 @@ from services.blueprint_manifest_service import (
 )
 from services.git_auth_service import GitAuthService
 from services.module_sync_service import ModuleSyncService
-from utils.catalog_versioning import canonical_json_sha256
+from utils.catalog_versioning import canonical_json_sha256, deactivate_older_active_blueprint_releases
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +137,7 @@ class BlueprintSyncService:
                     logger.warning("Blueprint sync skipped manifest %s: %s", manifest_path, e)
                     results["errors"].append(f"{manifest_path}: {e}")
 
+            deactivate_older_active_blueprint_releases(self.db, blueprint_source_id=source.id)
             source.sync_status = "success"
             source.sync_error = None if results["blueprints_found"] > 0 else "No forge-blueprint.json manifests found"
             source.last_synced_at = func.now()

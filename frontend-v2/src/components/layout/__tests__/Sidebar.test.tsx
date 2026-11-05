@@ -30,7 +30,7 @@ describe("Sidebar Brand Typography & Color Alignment", () => {
     delete window.__BRAND__;
   });
 
-  it("matches sidebar navigation muted-foreground color and uses larger bold tracking for BNK Forge brand", () => {
+  it("matches sidebar brand typography and color alignment for BNK Forge brand", () => {
     act(() => {
       useAuthStore.getState().login("token", mockAdmin);
     });
@@ -38,18 +38,18 @@ describe("Sidebar Brand Typography & Color Alignment", () => {
 
     const brandTitle = screen.getByRole("heading", { name: "BNK Forge" });
     expect(brandTitle).toHaveClass(
-      "text-xl",
-      "font-extrabold",
-      "tracking-wide",
-      "text-muted-foreground",
+      "text-base",
+      "font-bold",
+      "tracking-tight",
+      "text-foreground",
     );
-    expect(brandTitle).not.toHaveClass("text-foreground");
+    expect(brandTitle).not.toHaveClass("text-muted-foreground");
 
     const buildSectionHeader = screen.getByText("Build").closest("button");
     expect(buildSectionHeader).toHaveClass("text-muted-foreground");
   });
 
-  it("matches sidebar navigation muted-foreground color and uses larger bold tracking for Forge brand (f5)", () => {
+  it("matches sidebar brand typography and color alignment for Forge brand (f5)", () => {
     window.__BRAND__ = "f5";
     act(() => {
       useAuthStore.getState().login("token", mockAdmin);
@@ -58,11 +58,11 @@ describe("Sidebar Brand Typography & Color Alignment", () => {
 
     const brandTitle = screen.getByRole("heading", { name: "Forge" });
     expect(brandTitle).toHaveClass(
-      "text-xl",
-      "font-extrabold",
-      "tracking-wide",
-      "text-muted-foreground",
+      "text-base",
+      "font-bold",
+      "tracking-tight",
+      "text-foreground",
     );
-    expect(brandTitle).not.toHaveClass("text-foreground");
+    expect(brandTitle).not.toHaveClass("text-muted-foreground");
   });
 });

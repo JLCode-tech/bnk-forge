@@ -3,9 +3,14 @@
   "blueprint": {
     "id": "ubuntu-kind-foundation",
     "version": "1.0.0",
-    "name": "Kind Dev Cluster (Ubuntu)",
+    "name": "Ubuntu Kind \u2014 Local Dev Cluster",
     "description": "Provisions a kind Kubernetes cluster on Ubuntu for BNK development and testing. Ideal for local dev, CI pipelines, and quick demos."
   },
+  "family_id": "ubuntu-kind-foundation",
+  "deployment_pattern": "cluster_foundation",
+  "variant_key": "standard",
+  "variant_label": "Single-Host Kind Cluster",
+  "is_recommended": true,
   "category": "infrastructure",
   "cloud_provider": "any",
   "icon": "server",
@@ -15,13 +20,7 @@
   "difficulty": "beginner",
   "maturity": "beta",
   "bnk_version": null,
-  "tags": [
-    "ubuntu",
-    "kind",
-    "development",
-    "on-prem",
-    "local"
-  ],
+  "tags": ["ubuntu", "kind", "development", "on-prem", "local"],
   "outcomes": [
     "Kind Kubernetes cluster running on Ubuntu",
     "Kubeconfig ready for BNK module deployment",

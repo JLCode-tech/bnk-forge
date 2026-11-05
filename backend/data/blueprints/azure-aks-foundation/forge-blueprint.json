@@ -3,9 +3,14 @@
   "blueprint": {
     "id": "azure-aks-foundation",
     "version": "1.0.0",
-    "name": "Azure AKS Cluster",
+    "name": "Azure AKS \u2014 Cluster Foundation",
     "description": "Provisions an Azure AKS cluster with managed node pools for BNK deployment. Creates resource group and cluster with configurable VM sizes."
   },
+  "family_id": "azure-aks-foundation",
+  "deployment_pattern": "cluster_foundation",
+  "variant_key": "standard",
+  "variant_label": "Standard AKS Foundation",
+  "is_recommended": true,
   "category": "infrastructure",
   "cloud_provider": "azure",
   "icon": "cloud",
@@ -15,12 +20,7 @@
   "difficulty": "intermediate",
   "maturity": "alpha",
   "bnk_version": null,
-  "tags": [
-    "azure",
-    "aks",
-    "cloud",
-    "infrastructure"
-  ],
+  "tags": ["azure", "aks", "cloud", "infrastructure"],
   "outcomes": [
     "Azure AKS cluster with managed identity",
     "Configurable node pool with Azure CNI networking",

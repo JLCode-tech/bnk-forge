@@ -281,8 +281,13 @@ export const router = createBrowserRouter(
           handle: ROUTE_HANDLES["/cnf"],
         },
         {
-          // Blueprints (/stacks) collated into Catalog & Blueprints (/catalog)
+          // Blueprints (/stacks and /blueprints) collated into Catalog & Blueprints (/catalog)
           path: "stacks",
+          element: <Navigate to="/catalog" replace />,
+          handle: ROUTE_HANDLES["/stacks"],
+        },
+        {
+          path: "blueprints",
           element: <Navigate to="/catalog" replace />,
           handle: ROUTE_HANDLES["/stacks"],
         },

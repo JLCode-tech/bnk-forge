@@ -41,7 +41,7 @@ describe("Sidebar", () => {
     localStorage.clear();
   });
 
-  it("renders the BNK Forge logo text with harmonized muted-foreground typography", () => {
+  it("renders the BNK Forge logo text with harmonized typography", () => {
     act(() => {
       useAuthStore.getState().login("token", mockAdmin);
     });
@@ -50,15 +50,15 @@ describe("Sidebar", () => {
     const heading = screen.getByRole("heading", { name: "BNK Forge" });
     expect(heading).toBeInTheDocument();
     expect(heading).toHaveClass(
-      "text-xl",
-      "font-extrabold",
-      "tracking-wide",
-      "text-muted-foreground",
+      "text-base",
+      "font-bold",
+      "tracking-tight",
+      "text-foreground",
     );
-    expect(heading).not.toHaveClass("text-foreground");
+    expect(heading).not.toHaveClass("text-muted-foreground");
   });
 
-  it("renders the Forge brand title with muted-foreground typography when window.__BRAND__ is f5", () => {
+  it("renders the Forge brand title with typography when window.__BRAND__ is f5", () => {
     window.__BRAND__ = "f5";
     try {
       act(() => {
@@ -69,12 +69,12 @@ describe("Sidebar", () => {
       const heading = screen.getByRole("heading", { name: "Forge" });
       expect(heading).toBeInTheDocument();
       expect(heading).toHaveClass(
-        "text-xl",
-        "font-extrabold",
-        "tracking-wide",
-        "text-muted-foreground",
+        "text-base",
+        "font-bold",
+        "tracking-tight",
+        "text-foreground",
       );
-      expect(heading).not.toHaveClass("text-foreground");
+      expect(heading).not.toHaveClass("text-muted-foreground");
     } finally {
       delete window.__BRAND__;
     }

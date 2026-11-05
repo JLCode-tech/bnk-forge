@@ -3,9 +3,14 @@
   "blueprint": {
     "id": "aws-k8s-foundation",
     "version": "1.0.1",
-    "name": "AWS EKS Cluster",
+    "name": "AWS EKS \u2014 Cluster Foundation",
     "description": "Provisions AWS VPC, IAM, and an EKS cluster with optional high-performance nodes for BNK. Use this first, then deploy BNK Platform on top."
   },
+  "family_id": "aws-k8s-foundation",
+  "deployment_pattern": "cluster_foundation",
+  "variant_key": "standard",
+  "variant_label": "Production Foundation (Recommended)",
+  "is_recommended": true,
   "category": "infrastructure",
   "cloud_provider": "aws",
   "icon": "server-stack",
@@ -15,12 +20,7 @@
   "difficulty": "intermediate",
   "maturity": "beta",
   "bnk_version": null,
-  "tags": [
-    "kubernetes",
-    "aws",
-    "production",
-    "foundation"
-  ],
+  "tags": ["kubernetes", "aws", "production", "foundation"],
   "outcomes": [
     "VPC with public and private subnets across two AZs",
     "EKS cluster with configurable node count and instance type",

@@ -17,6 +17,13 @@ if ! command -v helm >/dev/null 2>&1; then
   echo "----"; echo "ALL PASS"; exit 0
 fi
 
+# Ensure hermetic helm runs without requiring host ~/.docker or ~/Library access
+export DOCKER_CONFIG="${DOCKER_CONFIG:-/tmp/docker}"
+export HELM_CACHE_HOME="${HELM_CACHE_HOME:-/tmp/helm/cache}"
+export HELM_CONFIG_HOME="${HELM_CONFIG_HOME:-/tmp/helm/config}"
+export HELM_DATA_HOME="${HELM_DATA_HOME:-/tmp/helm/data}"
+mkdir -p "$DOCKER_CONFIG" "$HELM_CACHE_HOME" "$HELM_CONFIG_HOME" "$HELM_DATA_HOME"
+
 # ALLOWED_ORIGINS override keeps the M-10 production+localhost render guard from firing.
 COMMON=(--set api.env.ALLOWED_ORIGINS=https://forge.example.com)
 cksum() { helm template rel "$CHART" "$@" 2>/dev/null | grep -m1 'checksum/secret:' | awk '{print $2}'; }

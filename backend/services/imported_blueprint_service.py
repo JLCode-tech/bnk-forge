@@ -52,9 +52,7 @@ class ImportedBlueprintService:
             raise NotFoundError("blueprint_release", release_id)
         return release
 
-    def _resolve_library_module(
-        self, module_ref: str, pinned_version: str | None = None
-    ) -> ModuleLibrary | None:
+    def _resolve_library_module(self, module_ref: str, pinned_version: str | None = None) -> ModuleLibrary | None:
         """Resolve a blueprint module reference against the module library.
 
         D-033: when the blueprint pins a version, resolution is EXACT — never a
@@ -67,9 +65,7 @@ class ImportedBlueprintService:
         pinned-version contract) resolve to the is_latest row, newest id as
         tiebreak.
         """
-        query = self.db.query(ModuleLibrary).filter(
-            ModuleLibrary.path == module_ref, ModuleLibrary.is_active
-        )
+        query = self.db.query(ModuleLibrary).filter(ModuleLibrary.path == module_ref, ModuleLibrary.is_active)
         if pinned_version:
             # D-033 identity is (module_source_id, path, version), but a blueprint
             # pin carries no source -- so if two sources catalog the same
@@ -90,9 +86,7 @@ class ImportedBlueprintService:
             # ANY hashed version exists, a missed pin is a hard miss; silently
             # substituting a legacy row's (different) content is exactly the
             # drift D-033 forbids.
-            has_hashed = (
-                query.filter(ModuleLibrary.content_sha256.isnot(None)).first() is not None
-            )
+            has_hashed = query.filter(ModuleLibrary.content_sha256.isnot(None)).first() is not None
             if has_hashed:
                 return None
             return (
@@ -114,17 +108,30 @@ class ImportedBlueprintService:
         return None
 
     def get_template_like(self, release_id: int) -> dict[str, Any]:
+        from utils.catalog_versioning import resolve_blueprint_catalog_metadata
+
         release = self.get_release(release_id)
         manifest = release.manifest or {}
         modules = manifest.get("modules") or []
+        category = _resolve_category(manifest)
+        meta = resolve_blueprint_catalog_metadata(
+            release.blueprint_id,
+            manifest,
+            fallback_name=release.blueprint_name,
+            category=category,
+            raw_bnk_version=manifest.get("bnk_version"),
+        )
 
         return {
             "id": 1000000 + release.id,
             "name": release.blueprint_name,
             "slug": f"release-{release.id}",
+            "blueprint_id": release.blueprint_id,
             "description": release.blueprint_description,
-            "category": _resolve_category(manifest),
-            "cloud_provider": manifest.get("cloud_provider") or self._infer_cloud_provider(modules),
+            "category": category,
+            "cloud_provider": manifest.get("cloud_provider")
+            or meta.get("cloud_provider")
+            or self._infer_cloud_provider(modules),
             "icon": manifest.get("icon") or "Layers",
             "color": manifest.get("color") or "blue",
             "estimated_time": manifest.get("estimated_time") or "Varies",
@@ -137,6 +144,15 @@ class ImportedBlueprintService:
             "maturity": manifest.get("maturity") or "reference",
             "outcomes": manifest.get("outcomes") or [],
             "platform_defaults": manifest.get("platform_defaults") or {},
+            "bnk_version": meta["bnk_version"],
+            "family_id": meta["family_id"],
+            "family_name": meta["family_name"],
+            "deployment_pattern": meta["deployment_pattern"],
+            "variant_key": meta["variant_key"],
+            "variant_label": meta["variant_label"],
+            "is_recommended": bool(meta["is_recommended"]),
+            "source_type": release.source.source_type if release.source else None,
+            "source_name": release.source.name if release.source else None,
             "is_active": release.is_active,
             "is_featured": False,
             "version": release.blueprint_version,
@@ -266,7 +282,7 @@ class ImportedBlueprintService:
                 continue
             module_inputs_literal = module_def.get("inputs") if isinstance(module_def.get("inputs"), dict) else {}
             module_vars: list[dict[str, Any]] = []
-            for var_def in (library_module.variables_schema or []):
+            for var_def in library_module.variables_schema or []:
                 if not isinstance(var_def, dict):
                     continue
                 vname = var_def.get("name")
@@ -333,13 +349,13 @@ class ImportedBlueprintService:
                     "label": "Blueprint source",
                     "value": release.source_path or release.source_name or "Imported release",
                 },
-                *(
-                    manifest.get("input_summary") or []
-                ),
+                *(manifest.get("input_summary") or []),
             ],
         }
 
-    def create_project_from_release(self, release_id: int, request: Any, *, user_id: int | None = None) -> dict[str, Any]:
+    def create_project_from_release(
+        self, release_id: int, request: Any, *, user_id: int | None = None
+    ) -> dict[str, Any]:
         release = self._validate_release(release_id)
         manifest = release.manifest or {}
         modules = manifest.get("modules") or []
@@ -415,7 +431,9 @@ class ImportedBlueprintService:
             "message": f"Created project '{created_project['name']}' from imported blueprint release.",
         }
 
-    def add_release_to_project(self, release_id: int, project_id: int, request: Any, *, user_id: int | None = None) -> dict[str, Any]:
+    def add_release_to_project(
+        self, release_id: int, project_id: int, request: Any, *, user_id: int | None = None
+    ) -> dict[str, Any]:
         """Add imported blueprint release modules to an existing project."""
         release = self._validate_release(release_id)
         manifest = release.manifest or {}
@@ -426,11 +444,7 @@ class ImportedBlueprintService:
         prerequisites = manifest.get("prerequisites") or []
         needs_cluster = any(p.get("type") == "kubernetes_cluster" for p in prerequisites)
         if needs_cluster:
-            cluster_count = (
-                self.db.query(KubernetesCluster)
-                .filter(KubernetesCluster.project_id == project_id)
-                .count()
-            )
+            cluster_count = self.db.query(KubernetesCluster).filter(KubernetesCluster.project_id == project_id).count()
             if cluster_count == 0:
                 raise BadRequestError(
                     "This blueprint requires a registered Kubernetes cluster in the target project. "
@@ -482,9 +496,14 @@ class ImportedBlueprintService:
         """Validate a blueprint release is ready for deployment and return it."""
         release = self.get_release(release_id)
         if release.validation_state != "valid":
-            raise BadRequestError("Blueprint release must be valid before project creation", code="BLUEPRINT_RELEASE_INVALID")
+            raise BadRequestError(
+                "Blueprint release must be valid before project creation", code="BLUEPRINT_RELEASE_INVALID"
+            )
         if release.release_state not in {"imported", "approved"}:
-            raise BadRequestError("Blueprint release must be imported or approved before deployment", code="BLUEPRINT_RELEASE_NOT_DEPLOYABLE")
+            raise BadRequestError(
+                "Blueprint release must be imported or approved before deployment",
+                code="BLUEPRINT_RELEASE_NOT_DEPLOYABLE",
+            )
 
         manifest = release.manifest or {}
         modules = manifest.get("modules") or []
@@ -527,13 +546,8 @@ class ImportedBlueprintService:
         _manifest_inputs = manifest.get("inputs") or {}
         blueprint_context_resolved_names: set[str] = {
             item["name"]
-            for item in (
-                (_manifest_inputs.get("required") or [])
-                + (_manifest_inputs.get("optional") or [])
-            )
-            if isinstance(item, dict)
-            and item.get("source") in _CONTEXT_RESOLVED_SOURCES
-            and item.get("name")
+            for item in ((_manifest_inputs.get("required") or []) + (_manifest_inputs.get("optional") or []))
+            if isinstance(item, dict) and item.get("source") in _CONTEXT_RESOLVED_SOURCES and item.get("name")
         }
 
         project_module_service = ProjectModuleService(self.db)
@@ -560,7 +574,7 @@ class ImportedBlueprintService:
 
             module_inputs = module_def.get("inputs") if isinstance(module_def.get("inputs"), dict) else {}
             resolved_inputs = self._resolve_module_inputs(module_inputs, variables)
-            for var_def in (library_module.variables_schema or []):
+            for var_def in library_module.variables_schema or []:
                 if not isinstance(var_def, dict):
                     continue
                 vname = var_def.get("name")
@@ -588,7 +602,11 @@ class ImportedBlueprintService:
                 # Optional module was absent and skipped — no row to wire dependencies for.
                 continue
             module_id = module_id_by_blueprint_id[bp_id]
-            dependency_ids = [module_id_by_blueprint_id[dep] for dep in module_def.get("depends_on", []) if dep in module_id_by_blueprint_id]
+            dependency_ids = [
+                module_id_by_blueprint_id[dep]
+                for dep in module_def.get("depends_on", [])
+                if dep in module_id_by_blueprint_id
+            ]
             if dependency_ids:
                 project_module_service.set_dependencies(module_id, dependency_ids)
 
@@ -633,8 +651,7 @@ class ImportedBlueprintService:
                     f"active module catalog. Available versions: {', '.join(available)}."
                 )
             return (
-                f"Module '{module_ref}' (pinned version {pinned_version}) is not present "
-                f"in the active module catalog."
+                f"Module '{module_ref}' (pinned version {pinned_version}) is not present in the active module catalog."
             )
         return f"Module '{module_ref}' is not present in the active module catalog."
 
@@ -750,9 +767,7 @@ class ImportedBlueprintService:
             return resolved
 
         template = (
-            self.db.query(CloudCredentialTemplate)
-            .filter(CloudCredentialTemplate.id == credential_template_id)
-            .first()
+            self.db.query(CloudCredentialTemplate).filter(CloudCredentialTemplate.id == credential_template_id).first()
         )
         if template is None or template.provider != "ibm":
             return resolved
@@ -763,7 +778,9 @@ class ImportedBlueprintService:
             fill("ibmcloud_api_key", decrypt_value_or_none(template.ibmcloud_api_key_encrypted))
         return resolved
 
-    def _apply_explicit_input_source_mappings(self, manifest: dict[str, Any], request: Any, variables: dict[str, Any]) -> dict[str, Any]:
+    def _apply_explicit_input_source_mappings(
+        self, manifest: dict[str, Any], request: Any, variables: dict[str, Any]
+    ) -> dict[str, Any]:
         resolved = dict(variables)
         inputs = manifest.get("inputs") or {}
         all_inputs = [*(inputs.get("required") or []), *(inputs.get("optional") or [])]

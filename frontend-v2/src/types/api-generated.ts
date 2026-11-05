@@ -8511,6 +8511,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/blueprint-catalog/discovered": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Discovered Blueprint Releases */
+        get: operations["list_discovered_blueprint_releases_api_blueprint_catalog_discovered_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/blueprint-catalog/releases": {
         parameters: {
             query?: never;
@@ -16032,6 +16049,32 @@ export interface components {
             cloud_provider?: string | null;
             /** Bnk Version */
             bnk_version?: string | null;
+            /** Family Id */
+            family_id?: string | null;
+            /** Family Name */
+            family_name?: string | null;
+            /** Deployment Pattern */
+            deployment_pattern?: string | null;
+            /** Variant Key */
+            variant_key?: string | null;
+            /** Variant Label */
+            variant_label?: string | null;
+            /**
+             * Is Recommended
+             * @default false
+             */
+            is_recommended: boolean;
+            /**
+             * Module Count
+             * @default 0
+             */
+            module_count: number;
+            /** Modules */
+            modules?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                } | unknown[] | string | number | boolean | null;
+            }[];
             /** Tags */
             tags?: string[];
             /** Schema Version */
@@ -26456,6 +26499,27 @@ export interface components {
             } | null;
             /** Bnk Version */
             bnk_version?: string | null;
+            /** Blueprint Id */
+            blueprint_id?: string | null;
+            /** Family Id */
+            family_id?: string | null;
+            /** Family Name */
+            family_name?: string | null;
+            /** Deployment Pattern */
+            deployment_pattern?: string | null;
+            /** Variant Key */
+            variant_key?: string | null;
+            /** Variant Label */
+            variant_label?: string | null;
+            /**
+             * Is Recommended
+             * @default false
+             */
+            is_recommended: boolean;
+            /** Source Type */
+            source_type?: string | null;
+            /** Source Name */
+            source_name?: string | null;
             /** Is Active */
             is_active: boolean;
             /** Is Featured */
@@ -26563,6 +26627,27 @@ export interface components {
             } | null;
             /** Bnk Version */
             bnk_version?: string | null;
+            /** Blueprint Id */
+            blueprint_id?: string | null;
+            /** Family Id */
+            family_id?: string | null;
+            /** Family Name */
+            family_name?: string | null;
+            /** Deployment Pattern */
+            deployment_pattern?: string | null;
+            /** Variant Key */
+            variant_key?: string | null;
+            /** Variant Label */
+            variant_label?: string | null;
+            /**
+             * Is Recommended
+             * @default false
+             */
+            is_recommended: boolean;
+            /** Source Type */
+            source_type?: string | null;
+            /** Source Name */
+            source_name?: string | null;
             /** Is Active */
             is_active: boolean;
             /** Is Featured */
@@ -42442,6 +42527,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BlueprintSourceSyncResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_discovered_blueprint_releases_api_blueprint_catalog_discovered_get: {
+        parameters: {
+            query?: {
+                source_id?: number | null;
+                blueprint_id?: string | null;
+                release_state?: string | null;
+                validation_state?: string | null;
+                is_active?: boolean | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlueprintReleaseResponse"][];
                 };
             };
             /** @description Validation Error */

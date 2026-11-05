@@ -3,9 +3,14 @@
   "blueprint": {
     "id": "ocp-connection",
     "version": "1.0.0",
-    "name": "OpenShift Cluster Connection",
+    "name": "Red Hat OpenShift \u2014 Cluster Connection",
     "description": "Connects and validates an existing OpenShift/OKD cluster for BNK deployment. Detects platform capabilities automatically."
   },
+  "family_id": "ocp-connection",
+  "deployment_pattern": "cluster_foundation",
+  "variant_key": "standard",
+  "variant_label": "Existing OpenShift Cluster",
+  "is_recommended": true,
   "category": "infrastructure",
   "cloud_provider": "openshift",
   "icon": "shield-check",
@@ -15,12 +20,7 @@
   "difficulty": "intermediate",
   "maturity": "beta",
   "bnk_version": null,
-  "tags": [
-    "openshift",
-    "ocp",
-    "enterprise",
-    "on-prem"
-  ],
+  "tags": ["openshift", "ocp", "enterprise", "on-prem"],
   "outcomes": [
     "Validated connectivity to OpenShift cluster",
     "Kubeconfig configured for BNK module deployment",

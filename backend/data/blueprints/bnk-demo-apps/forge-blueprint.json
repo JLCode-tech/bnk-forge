@@ -3,9 +3,14 @@
   "blueprint": {
     "id": "bnk-demo-apps",
     "version": "4.0.0",
-    "name": "GenAI Gateway Solution",
+    "name": "F5 BNK \u2014 GenAI Gateway & Demo Workloads",
     "description": "Deploys demo applications, gateway/routes, security policies, observability, and optional AI proxy/analyzer components on top of an existing BNK platform."
   },
+  "family_id": "bnk-demo-apps",
+  "deployment_pattern": "workload_validation",
+  "variant_key": "genai-gateway",
+  "variant_label": "GenAI Gateway Suite (Recommended)",
+  "is_recommended": true,
   "category": "solution",
   "cloud_provider": "aws",
   "icon": "rocket",
@@ -14,7 +19,7 @@
   "estimated_cost": "Minimal (lightweight containers + Bedrock pay-per-use)",
   "difficulty": "beginner",
   "maturity": "reference",
-  "bnk_version": "2.2",
+  "bnk_version": "2.2.0",
   "tags": [
     "genai",
     "bnk",
@@ -139,12 +144,8 @@
       "inputs": {
         "gateway_name": "demo-gw",
         "gateway_namespace": "bnk-gw",
-        "allowed_source_ranges": [
-          "10.0.0.0/8"
-        ],
-        "blocked_source_ranges": [
-          "198.51.100.0/24"
-        ]
+        "allowed_source_ranges": ["10.0.0.0/8"],
+        "blocked_source_ranges": ["198.51.100.0/24"]
       },
       "optional": false,
       "depends_on": [],

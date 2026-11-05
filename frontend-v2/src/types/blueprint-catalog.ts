@@ -1,11 +1,11 @@
 export interface BlueprintSource {
   id: number;
   name: string;
-  source_type: 'git' | 'builtin';
+  source_type: "git" | "builtin";
   url: string;
   branch?: string | null;
   git_ref?: string | null;
-  sync_status: 'pending' | 'syncing' | 'success' | 'failed';
+  sync_status: "pending" | "syncing" | "success" | "failed";
   sync_error?: string | null;
   last_synced_at?: string | null;
   release_count: number;
@@ -18,7 +18,7 @@ export interface BlueprintSource {
 
 export interface BlueprintSourceCreate {
   name: string;
-  source_type: 'git' | 'builtin';
+  source_type: "git" | "builtin";
   url: string;
   branch?: string;
   git_ref?: string;
@@ -37,6 +37,14 @@ export interface BlueprintSourceUpdate {
   make_default?: boolean;
 }
 
+export interface BlueprintReleaseModuleSummary {
+  id: string;
+  name: string;
+  module: string;
+  version?: string | null;
+  optional?: boolean;
+}
+
 export interface BlueprintRelease {
   id: number;
   blueprint_source_id: number;
@@ -49,6 +57,14 @@ export interface BlueprintRelease {
   category?: string | null;
   cloud_provider?: string | null;
   bnk_version?: string | null;
+  family_id?: string | null;
+  family_name?: string | null;
+  deployment_pattern?: string | null;
+  variant_key?: string | null;
+  variant_label?: string | null;
+  is_recommended?: boolean;
+  module_count?: number;
+  modules?: BlueprintReleaseModuleSummary[];
   tags?: string[];
   schema_version: number;
   source_path?: string | null;

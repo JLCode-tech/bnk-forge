@@ -12,9 +12,7 @@ SUPPORTED_BLUEPRINT_SCHEMA_VERSION = 1
 # versions in pack manifests are free-form, so the pin contract must accept
 # any concrete version the catalog can hold) and optional pre-release/build
 # suffixes. 'latest', ranges, and wildcards remain rejected.
-PINNED_MODULE_VERSION_PATTERN = re.compile(
-    r"^v?\d+\.\d+\.\d+(?:\.\d+)*(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$"
-)
+PINNED_MODULE_VERSION_PATTERN = re.compile(r"^v?\d+\.\d+\.\d+(?:\.\d+)*(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
 
 
 class BlueprintIdentity(BaseModel):
@@ -24,6 +22,15 @@ class BlueprintIdentity(BaseModel):
     version: str = Field(..., min_length=1)
     name: str = Field(..., min_length=1)
     description: str | None = None
+    family_id: str | None = None
+    deployment_pattern: str | None = None
+    variant_key: str | None = None
+    variant_label: str | None = None
+    bnk_version: str | None = None
+    is_recommended: bool | None = None
+    cloud: str | None = None
+    platform: str | None = None
+    maturity: str | None = None
 
 
 class BlueprintCompatibilityMetadata(BaseModel):
@@ -99,7 +106,6 @@ class BlueprintModuleDisplayMetadata(BaseModel):
     depends_on: list[str] = Field(default_factory=list)
     inputs: dict[str, Any] = Field(default_factory=dict)
 
-
     @field_validator("version")
     @classmethod
     def _validate_pinned_module_version(cls, value: str) -> str:
@@ -136,6 +142,11 @@ class BlueprintManifest(BaseModel):
     schema_version: int
     blueprint: BlueprintIdentity
     compatibility: BlueprintCompatibilityMetadata = Field(default_factory=BlueprintCompatibilityMetadata)
+    family_id: str | None = None
+    deployment_pattern: str | None = None
+    variant_key: str | None = None
+    variant_label: str | None = None
+    is_recommended: bool = False
     category: str | None = None
     cloud_provider: str | None = None
     icon: str | None = None

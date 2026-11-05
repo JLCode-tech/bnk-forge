@@ -3,9 +3,14 @@
   "blueprint": {
     "id": "eks-bnk-smartllm-demo",
     "version": "1.0.0",
-    "name": "Intelligent AI Load Balancing Demo",
+    "name": "F5 BNK \u2014 GenAI Gateway & Demo Workloads",
     "description": "3-model Bedrock backend behind a BNK Gateway with F5BigAnalyzer for live traffic-weighted routing. Includes a load generator so weight shifts are visible in real time. Requires BNK 2.2 platform deployed."
   },
+  "family_id": "bnk-demo-apps",
+  "deployment_pattern": "workload_validation",
+  "variant_key": "smartllm-router",
+  "variant_label": "SmartLLM Traffic-Weighted Router",
+  "is_recommended": false,
   "category": "solution",
   "cloud_provider": "aws",
   "icon": "brain-circuit",
@@ -14,7 +19,7 @@
   "estimated_cost": "Pay-per-use Bedrock (~$0.035/M input tokens on Nova Micro)",
   "difficulty": "intermediate",
   "maturity": "beta",
-  "bnk_version": "2.2",
+  "bnk_version": "2.2.0",
   "tags": [
     "eks",
     "bnk",
