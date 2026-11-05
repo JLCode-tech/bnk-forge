@@ -97,6 +97,7 @@
     "vitest": "^4.1.0"
   },
   "overrides": {
-    "dompurify": "^3.4.17"
+    "dompurify": "^3.4.17",
+    "follow-redirects": "^1.16.2"
   }
 }
