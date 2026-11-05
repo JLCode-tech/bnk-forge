@@ -3,9 +3,14 @@
   "blueprint": {
     "id": "gcp-gke-foundation",
     "version": "1.0.0",
-    "name": "GCP GKE Cluster",
+    "name": "GCP GKE \u2014 Cluster Foundation",
     "description": "Provisions a GCP GKE cluster with VPC-native networking and a default node pool for BNK deployment. Configurable region, machine type, and node count."
   },
+  "family_id": "gcp-gke-foundation",
+  "deployment_pattern": "cluster_foundation",
+  "variant_key": "standard",
+  "variant_label": "Standard GKE Foundation",
+  "is_recommended": true,
   "category": "infrastructure",
   "cloud_provider": "gcp",
   "icon": "cloud",
@@ -15,12 +20,7 @@
   "difficulty": "intermediate",
   "maturity": "alpha",
   "bnk_version": null,
-  "tags": [
-    "gcp",
-    "gke",
-    "cloud",
-    "infrastructure"
-  ],
+  "tags": ["gcp", "gke", "cloud", "infrastructure"],
   "outcomes": [
     "GCP GKE cluster with VPC-native networking",
     "Default node pool with configurable machine type",

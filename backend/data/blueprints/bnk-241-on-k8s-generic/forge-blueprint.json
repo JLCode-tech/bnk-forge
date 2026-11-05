@@ -3,9 +3,14 @@
   "blueprint": {
     "id": "bnk-241-on-k8s-generic",
     "version": "1.0.0",
-    "name": "BNK 2.4.1 Platform (Multi-Platform)",
+    "name": "F5 BNK Platform \u2014 Kubernetes Overlay",
     "description": "Deploys F5 BNK 2.4.1 on any Kubernetes cluster \u2014 on-prem, AKS, GKE, or OpenShift. Uses generic defaults (SR-IOV CNI, no cloud-specific ENI management). Requires manual network and storage configuration for your environment."
   },
+  "family_id": "bnk-on-k8s",
+  "deployment_pattern": "existing_cluster_overlay",
+  "variant_key": "generic",
+  "variant_label": "Multi-Platform Generic (SR-IOV)",
+  "is_recommended": false,
   "category": "bnk",
   "cloud_provider": "any",
   "icon": "shield-check",

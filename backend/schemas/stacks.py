@@ -43,6 +43,15 @@ class StackTemplateResponse(BaseModel):
     outcomes: list | None = None
     platform_defaults: dict | None = None
     bnk_version: str | None = None
+    blueprint_id: str | None = None
+    family_id: str | None = None
+    family_name: str | None = None
+    deployment_pattern: str | None = None
+    variant_key: str | None = None
+    variant_label: str | None = None
+    is_recommended: bool = False
+    source_type: str | None = None
+    source_name: str | None = None
     is_active: bool
     is_featured: bool
     version: str | None = "1.0.0"
@@ -79,6 +88,15 @@ class StackTemplateListResponse(BaseModel):
     maturity: str | None = None
     platform_defaults: dict | None = None
     bnk_version: str | None = None
+    blueprint_id: str | None = None
+    family_id: str | None = None
+    family_name: str | None = None
+    deployment_pattern: str | None = None
+    variant_key: str | None = None
+    variant_label: str | None = None
+    is_recommended: bool = False
+    source_type: str | None = None
+    source_name: str | None = None
     is_active: bool
     is_featured: bool
     version: str | None = "1.0.0"

@@ -115,9 +115,14 @@ class VersionUpdate(BaseModel):
 
 
 def _serialize_module_item(m: ModuleLibrary, include_details: bool = False) -> dict:
+    from utils.catalog_versioning import resolve_canonical_module_metadata
+
+    canonical_meta = resolve_canonical_module_metadata(m.path, m.name)
     item = {
         "id": m.id,
-        "name": m.name,
+        "name": canonical_meta["display_name"],
+        "raw_name": m.name,
+        "module_slug": canonical_meta["module_slug"],
         "category": m.category,
         "provider": m.provider,
         "description": m.description,
@@ -181,9 +186,7 @@ def list_modules(
     """
 
     # Build cache key from query parameters
-    cache_key = (
-        f"module_library:list:{category or 'all'}:{provider or 'all'}:{official_only}:{tested_only}:{include_details}"
-    )
+    cache_key = f"module_library:v2:list:{category or 'all'}:{provider or 'all'}:{official_only}:{tested_only}:{include_details}"
 
     # Try to get from cache (15 minute TTL - module library rarely changes)
     cached_result = cache.get(cache_key)

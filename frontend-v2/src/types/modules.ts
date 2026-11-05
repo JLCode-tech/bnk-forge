@@ -1,8 +1,14 @@
 // Module Library & Project Module types
 
-import type { JsonValue } from './common';
+import type { JsonValue } from "./common";
 
-export type DeploymentEngineType = 'kubernetes' | 'opentofu' | 'ansible' | 'script' | 'ssh' | 'container';
+export type DeploymentEngineType =
+  | "kubernetes"
+  | "opentofu"
+  | "ansible"
+  | "script"
+  | "ssh"
+  | "container";
 
 export interface LifecycleCapabilities {
   supports_init: boolean;
@@ -52,7 +58,10 @@ export interface ModuleInputsMetadata {
 export interface ModulePlatformCompatibility {
   supported_profiles: string[];
   required_capabilities: string[];
-  compatibility_scope: 'declared_subset' | 'declared_all_profiles' | 'unspecified';
+  compatibility_scope:
+    | "declared_subset"
+    | "declared_all_profiles"
+    | "unspecified";
   declared_any: boolean;
   unmapped_supported_platforms: string[];
 }
@@ -60,6 +69,8 @@ export interface ModulePlatformCompatibility {
 export interface ModuleLibrary {
   id: number;
   name: string;
+  raw_name?: string;
+  module_slug?: string;
   description?: string;
   category: string;
   provider: string;
@@ -86,7 +97,7 @@ export interface ModuleLibrary {
   tarball_sha256?: string;
   upstream_source_url?: string;
   upstream_subpath?: string;
-  last_smoke_test_status?: 'pending' | 'passed' | 'warned' | 'failed';
+  last_smoke_test_status?: "pending" | "passed" | "warned" | "failed";
   last_smoke_test_output?: string;
   last_smoke_test_at?: string;
   // Multi-source support (P2-1 / UX-002)
@@ -102,7 +113,14 @@ export interface ModuleLibrary {
   engine_type?: DeploymentEngineType;
   lifecycle_capabilities?: LifecycleCapabilities;
   is_builtin?: boolean;
-  module_type?: 'manifest' | 'helm_chart' | 'terraform' | 'opentofu' | 'ansible' | 'script';
+  is_official?: boolean;
+  module_type?:
+    | "manifest"
+    | "helm_chart"
+    | "terraform"
+    | "opentofu"
+    | "ansible"
+    | "script";
 }
 
 export interface ModuleVariable {

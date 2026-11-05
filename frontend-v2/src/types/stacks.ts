@@ -1,7 +1,7 @@
 // Stack Template & Instance types
 
-import type { JsonValue } from './common';
-import type { DeploymentEngineType, LifecycleCapabilities } from './modules';
+import type { JsonValue } from "./common";
+import type { DeploymentEngineType, LifecycleCapabilities } from "./modules";
 
 export interface StackTemplateModule {
   path: string;
@@ -13,7 +13,7 @@ export interface StackTemplateModule {
   version?: string | null;
   engine_type?: DeploymentEngineType;
   lifecycle_capabilities?: LifecycleCapabilities;
-  module_catalog_status?: 'available' | 'missing';
+  module_catalog_status?: "available" | "missing";
   module_catalog_message?: string;
   /** True if this module may disrupt SSH connectivity during execution */
   connectivity_risk?: boolean;
@@ -30,17 +30,17 @@ export interface StackPrerequisiteSecretStatus {
   name: string;
   description: string;
   exists: boolean;
-  source?: 'project' | 'stack_variable' | 'system_default' | null;
+  source?: "project" | "stack_variable" | "system_default" | null;
   valid?: boolean;
   validation_error?: string;
-  validated_source?: 'project' | 'stack_variable' | 'system_default';
+  validated_source?: "project" | "stack_variable" | "system_default";
   guidance?: string;
 }
 
 export interface StackPreflightCheck {
   id: string;
   title: string;
-  status: 'pass' | 'warn' | 'fail';
+  status: "pass" | "warn" | "fail";
   blocking: boolean;
   message: string;
   guidance?: string;
@@ -77,6 +77,15 @@ export interface StackTemplate {
   outcomes?: string[];
   platform_defaults?: Record<string, Record<string, unknown>> | null;
   bnk_version?: string | null;
+  blueprint_id?: string | null;
+  family_id?: string | null;
+  family_name?: string | null;
+  deployment_pattern?: string | null;
+  variant_key?: string | null;
+  variant_label?: string | null;
+  is_recommended?: boolean;
+  source_type?: string | null;
+  source_name?: string | null;
   is_active: boolean;
   is_featured: boolean;
   // Phase 4: Versioning and custom stacks
@@ -84,7 +93,7 @@ export interface StackTemplate {
   created_by?: string;
   is_public?: boolean;
   forked_from?: number;
-  source_kind?: 'stack_template' | 'blueprint_release';
+  source_kind?: "stack_template" | "blueprint_release";
   blueprint_release_id?: number;
   blueprint_source_id?: number;
   release_state?: string;
@@ -95,7 +104,7 @@ export interface StackTemplate {
 }
 
 /** Discriminant for deploy-path routing in Stacks.tsx */
-export type StackDeployKind = 'builtin-release' | 'git-release' | 'template';
+export type StackDeployKind = "builtin-release" | "git-release" | "template";
 
 export interface StackTemplateList {
   id: number;
@@ -115,12 +124,22 @@ export interface StackTemplateList {
   is_featured: boolean;
   platform_defaults?: Record<string, Record<string, unknown>> | null;
   bnk_version?: string | null;
+  blueprint_id?: string | null;
+  family_id?: string | null;
+  family_name?: string | null;
+  deployment_pattern?: string | null;
+  variant_key?: string | null;
+  variant_label?: string | null;
+  is_recommended?: boolean;
+  source_type?: string | null;
+  source_name?: string | null;
+  module_count?: number;
   // Phase 4: Versioning and custom stacks
   version?: string;
   created_by?: string;
   is_public?: boolean;
   forked_from?: number;
-  source_kind?: 'stack_template' | 'blueprint_release';
+  source_kind?: "stack_template" | "blueprint_release";
   blueprint_release_id?: number;
   blueprint_source_id?: number;
   release_state?: string;
@@ -167,7 +186,7 @@ export interface StackInstanceCreate {
 export interface VariableValidation {
   pattern?: string;
   error_message?: string;
-  type?: 'file_path' | 'regex' | 'range';  // Validation type hint
+  type?: "file_path" | "regex" | "range"; // Validation type hint
   min?: number;
   max?: number;
 }

@@ -10,7 +10,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PROBE="$HERE/../registry-tag-probe.sh"
-WORK="$(mktemp -d)"
+WORK="$(mktemp -d /tmp/probe-work.XXXXXX 2>/dev/null || mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 # ─── fake curl ───────────────────────────────────────────────────────────────

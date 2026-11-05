@@ -379,19 +379,122 @@ BNK_RESOURCE_TYPES: list[str] = [
 
 BNK_RESOURCE_KEYS: list[str] = BNK_RESOURCE_TYPES
 
+# Sidecars, debug containers, logging, and helpers that must NOT be mistaken for the primary BNK version
+_NON_VERSION_CONTAINER_NAMES: frozenset[str] = frozenset(
+    {
+        "blobd",
+        "debug",
+        "f5-debug",
+        "f5-debug-sidecar",
+        "f5-fluentbit",
+        "fluentbit",
+        "observer",
+        "f5-toda-observer",
+        "pause",
+        "crd-installer",
+        "observer-crdinstaller",
+    }
+)
+
+_FLO_PREFIX_TO_BNK: list[tuple[str, str]] = [
+    ("2.30.1", "2.4.1"),
+    ("2.30.0-0.11", "2.4.1"),
+    ("2.30", "2.4"),
+    ("2.21", "2.3"),
+    ("2.20", "2.3"),
+    ("2.9", "2.2"),
+    ("1.198", "2.1"),
+    ("1.197", "2.0"),
+]
+
+
+def _resolve_flo_version_to_bnk(tag: str) -> str | None:
+    """Resolve a FLO chart version / image tag to a human BNK release version string."""
+    if not tag:
+        return None
+    cleaned = tag.lstrip("v").strip()
+    if not cleaned:
+        return None
+
+    # 1. Match known FLO chart release prefixes (e.g. 2.30.0-0.11 -> 2.4.1, 2.9 -> 2.2)
+    for prefix, bnk_ver in _FLO_PREFIX_TO_BNK:
+        if cleaned.startswith(prefix):
+            return bnk_ver
+
+    # 2. DB ReleaseRegistryService if database is reachable
+    try:
+        from database import SessionLocal
+        from services.release_registry_service import ReleaseRegistryService
+
+        with SessionLocal() as db:
+            info = ReleaseRegistryService(db).resolve_ga(flo_version=cleaned)
+            if info and info.label:
+                m = re.search(r"(\d+\.\d+(?:\.\d+)?)", info.label)
+                if m:
+                    return m.group(1)
+    except Exception:
+        pass
+
+    # 3. In-memory bnk_upgrade_service version ranges (only for known FLO chart prefixes)
+    if cleaned.startswith("1.19") or cleaned.startswith("2.9.") or cleaned.startswith("2.2") or cleaned.startswith("2.30."):
+        try:
+            from services.bnk_upgrade_service import get_known_version_info
+
+            info = get_known_version_info(cleaned)
+            if info and info.get("label"):
+                m = re.search(r"(\d+\.\d+(?:\.\d+)?)", info["label"])
+                if m:
+                    return m.group(1)
+        except Exception:
+            pass
+
+    # 4. Direct semver if tag is already a BNK version (e.g. 2.4.1, 2.5.0)
+    # Exclude internal TMOS kernel versions (10.x.x+) and ingress controller versions (14.x.x+)
+    m = re.match(r"^(\d+\.\d+(?:\.\d+)?)", cleaned)
+    if m:
+        major = int(m.group(1).split(".")[0])
+        if major < 10:
+            return m.group(1)
+
+    return None
+
 
 def extract_bnk_version(data: dict[str, Any] | None) -> str | None:
     """
-    Extract BNK version from TMM, FLO, or controller container images.
+    Extract BNK version from FLO, controller, or TMM container images.
 
     Accepts either a full cluster BNK data dict or a classified_pods mapping directly.
+    Prioritizes FLO operator (f5-lifecycle-operator), which is the authoritative source
+    of the BNK platform release line. Filters out internal sidecars (blobd, debug,
+    fluentbit, observer) and internal TMOS kernel versions.
     """
     if not data or not isinstance(data, dict):
         return None
     classified = data.get("classified_pods", data)
     if not isinstance(classified, dict):
         return None
-    for role in ("tmm", "flo", "controller"):
+
+    # 1. FLO role is primary source of truth for BNK platform version
+    flo_pods = classified.get("flo", [])
+    if isinstance(flo_pods, list):
+        for pod in flo_pods:
+            if not isinstance(pod, dict):
+                continue
+            for container in pod.get("containers", []):
+                if not isinstance(container, dict):
+                    continue
+                cname = container.get("name", "").lower()
+                if cname in _NON_VERSION_CONTAINER_NAMES:
+                    continue
+                image = container.get("image", "")
+                if ":" in image:
+                    tag = image.rsplit(":", 1)[-1].split("@")[0].strip()
+                    ver = _resolve_flo_version_to_bnk(tag)
+                    if ver:
+                        return ver
+
+    # 2. Fallback to controller and tmm roles
+    for role in ("controller", "tmm"):
         pods = classified.get(role, [])
         if not isinstance(pods, list):
             continue
@@ -401,8 +504,18 @@ def extract_bnk_version(data: dict[str, Any] | None) -> str | None:
             for container in pod.get("containers", []):
                 if not isinstance(container, dict):
                     continue
+                cname = container.get("name", "").lower()
+                if cname in _NON_VERSION_CONTAINER_NAMES:
+                    continue
                 image = container.get("image", "")
-                m = re.search(r":v?(\d+\.\d+\.\d+)", image)
+                m = re.search(r":v?(\d+\.\d+(?:\.\d+)?)", image)
                 if m:
-                    return m.group(1)
+                    ver_str = m.group(1)
+                    major = int(ver_str.split(".")[0])
+                    # Skip internal TMOS (10.x.x+), ingress controller (14.x.x+)
+                    if major >= 10:
+                        continue
+                    resolved = _resolve_flo_version_to_bnk(ver_str)
+                    return resolved or ver_str
+
     return None

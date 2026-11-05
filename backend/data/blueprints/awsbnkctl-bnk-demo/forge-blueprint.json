@@ -3,9 +3,14 @@
   "blueprint": {
     "id": "awsbnkctl-bnk-demo",
     "version": "1.4.1",
-    "name": "AWS BNK Demo (CLI Deploy)",
+    "name": "AWS EKS \u2014 CLI Demo Reference (awsbnkctl)",
     "description": "Deploy the awsbnkctl bnk-demo topology from the Forge UI. Choose your sizing and interface pattern, then Plan to validate the rendered cluster.yaml with awsbnkctl up --dry-run (zero AWS spend), or Deploy to provision the real AWS infrastructure with awsbnkctl up --auto. Optional demo add-ons and post-deploy use-cases are available under Advanced."
   },
+  "family_id": "awsbnkctl-bnk-demo",
+  "deployment_pattern": "greenfield_full_stack",
+  "variant_key": "cli-demo",
+  "variant_label": "CLI Reference Topology",
+  "is_recommended": false,
   "category": "infrastructure",
   "cloud_provider": "aws",
   "icon": "cloud",
@@ -15,14 +20,7 @@
   "difficulty": "beginner",
   "maturity": "reference",
   "bnk_version": "2.2+",
-  "tags": [
-    "awsbnkctl",
-    "cli",
-    "demo",
-    "aws",
-    "bnk",
-    "infrastructure"
-  ],
+  "tags": ["awsbnkctl", "cli", "demo", "aws", "bnk", "infrastructure"],
   "outcomes": [
     "Rendered awsbnkctl cluster.yaml with your chosen topology",
     "Plan validates the config with awsbnkctl up --dry-run (zero AWS spend)",
@@ -97,7 +95,10 @@
           { "label": "m6i.2xlarge (8 vCPU / 32 GiB)", "value": "m6i.2xlarge" },
           { "label": "m6i.4xlarge (16 vCPU / 64 GiB)", "value": "m6i.4xlarge" },
           { "label": "c5.2xlarge (8 vCPU / 16 GiB)", "value": "c5.2xlarge" },
-          { "label": "t3.xlarge (4 vCPU / 16 GiB — dev only)", "value": "t3.xlarge" }
+          {
+            "label": "t3.xlarge (4 vCPU / 16 GiB — dev only)",
+            "value": "t3.xlarge"
+          }
         ]
       },
       {
@@ -217,7 +218,10 @@
         "required": false,
         "order": 15,
         "options": [
-          { "label": "c5n.2xlarge (8 vCPU / 21 GiB — recommended minimum)", "value": "c5n.2xlarge" },
+          {
+            "label": "c5n.2xlarge (8 vCPU / 21 GiB — recommended minimum)",
+            "value": "c5n.2xlarge"
+          },
           { "label": "c5n.4xlarge (16 vCPU / 42 GiB)", "value": "c5n.4xlarge" }
         ]
       },
@@ -290,15 +294,36 @@
           { "label": "Demo: Diameter", "value": "diameter" },
           { "label": "Demo: Ingress Migration", "value": "ingress-migration" },
           { "label": "Demo: BIG-IP CIS", "value": "bigip-cis" },
-          { "label": "Scenario: HTTP Routing E2E", "value": "http-routing-e2e" },
-          { "label": "Scenario: HTTP Traffic Split", "value": "http-traffic-split" },
-          { "label": "Scenario: Proxy Protocol L4", "value": "proxy-protocol-l4" },
+          {
+            "label": "Scenario: HTTP Routing E2E",
+            "value": "http-routing-e2e"
+          },
+          {
+            "label": "Scenario: HTTP Traffic Split",
+            "value": "http-traffic-split"
+          },
+          {
+            "label": "Scenario: Proxy Protocol L4",
+            "value": "proxy-protocol-l4"
+          },
           { "label": "Scenario: Multi-VIP", "value": "multi-vip" },
-          { "label": "Scenario: External Resource Pool", "value": "external-resource-pool" },
-          { "label": "Scenario: AI Inference E2E", "value": "ai-inference-e2e" },
+          {
+            "label": "Scenario: External Resource Pool",
+            "value": "external-resource-pool"
+          },
+          {
+            "label": "Scenario: AI Inference E2E",
+            "value": "ai-inference-e2e"
+          },
           { "label": "Scenario: Egress SNAT (amber)", "value": "egress-snat" },
-          { "label": "Scenario: AI Token Counting (amber)", "value": "ai-token-counting" },
-          { "label": "Scenario: AI Semantic Cache (amber)", "value": "ai-semantic-cache" }
+          {
+            "label": "Scenario: AI Token Counting (amber)",
+            "value": "ai-token-counting"
+          },
+          {
+            "label": "Scenario: AI Semantic Cache (amber)",
+            "value": "ai-semantic-cache"
+          }
         ]
       }
     ]

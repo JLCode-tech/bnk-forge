@@ -21,6 +21,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -38,6 +45,15 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { usePageRefresh } from "@/hooks/usePageRefresh";
 import { cn } from "@/lib/utils";
 import { Search, Rocket, MoreVertical, Eye, EyeOff } from "lucide-react";
+import {
+  compareBlueprintVersions,
+  DEPLOYMENT_PATTERN_LABELS,
+  type DeploymentPatternKey,
+  formatVariantOptionLabel,
+  resolveBlueprintFamilyMeta,
+  shouldAutoSuppressBlueprint,
+  sortVersionsDesc,
+} from "@/components/catalog/blueprintVersionUtils";
 import type { StackDeployKind, StackTemplateList } from "@/types";
 
 const INITIAL_STACKS_LIMIT = 20;
@@ -112,6 +128,21 @@ const categorySortOrder: Record<string, number> = {
   custom: 4,
 };
 
+interface StackFamilyGroup {
+  key: string;
+  family_id: string;
+  family_name: string | null;
+  items: StackTemplateList[];
+  defaultStack: StackTemplateList;
+  bnkVersions: string[];
+  variants: Array<{
+    variant_key: string;
+    variant_label: string;
+    is_recommended: boolean;
+    deployment_pattern: DeploymentPatternKey;
+  }>;
+}
+
 export default function Stacks() {
   const navigate = useNavigate();
 
@@ -122,6 +153,16 @@ export default function Stacks() {
     useState<StackDeployKind>("template");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [showAllStacks, setShowAllStacks] = useState(false);
+  const [showLegacy, setShowLegacy] = useState(false);
+  const [selectedBnkByFamily, setSelectedBnkByFamily] = useState<
+    Record<string, string>
+  >({});
+  const [selectedVariantByFamily, setSelectedVariantByFamily] = useState<
+    Record<string, string>
+  >({});
+  const [selectedVersionByFamily, setSelectedVersionByFamily] = useState<
+    Record<string, string>
+  >({});
 
   const {
     data: stacks,
@@ -134,13 +175,44 @@ export default function Stacks() {
   });
   const visibilityMutation = useSetBlueprintReleaseVisibility();
 
+  const allBlueprintIds = useMemo(() => {
+    return new Set(
+      (stacks || []).map((s) => s.blueprint_id || s.deploy_slug || s.slug),
+    );
+  }, [stacks]);
+
+  const suppressedCount = useMemo(() => {
+    return (stacks || []).filter((s) =>
+      shouldAutoSuppressBlueprint(
+        s.blueprint_id || s.deploy_slug || s.slug,
+        allBlueprintIds,
+      ),
+    ).length;
+  }, [stacks, allBlueprintIds]);
+
   const filteredStacks = useMemo(() => {
     return (stacks || [])
       .filter((stack) => {
+        const bpId = stack.blueprint_id || stack.deploy_slug || stack.slug;
+        if (!showLegacy && shouldAutoSuppressBlueprint(bpId, allBlueprintIds)) {
+          return false;
+        }
         if (!searchQuery) return true;
         const q = searchQuery.toLowerCase();
+        const meta = resolveBlueprintFamilyMeta({
+          blueprint_id: bpId,
+          family_id: stack.family_id,
+          family_name: stack.family_name,
+          deployment_pattern: stack.deployment_pattern,
+          variant_key: stack.variant_key,
+          variant_label: stack.variant_label,
+          is_recommended: stack.is_recommended,
+          bnk_version: stack.bnk_version,
+        });
         return (
           stack.name.toLowerCase().includes(q) ||
+          (meta.family_name || "").toLowerCase().includes(q) ||
+          meta.variant_label.toLowerCase().includes(q) ||
           stack.description?.toLowerCase().includes(q) ||
           stack.tags?.some((tag) => tag.toLowerCase().includes(q))
         );
@@ -154,7 +226,120 @@ export default function Stacks() {
         if (a.is_featured !== b.is_featured) return a.is_featured ? -1 : 1;
         return a.name.localeCompare(b.name);
       });
-  }, [stacks, searchQuery]);
+  }, [stacks, searchQuery, showLegacy, allBlueprintIds]);
+
+  const stackFamilyGroups = useMemo((): StackFamilyGroup[] => {
+    const grouped = new Map<string, StackTemplateList[]>();
+    for (const stack of filteredStacks) {
+      const bpId = stack.blueprint_id || stack.deploy_slug || stack.slug;
+      const meta = resolveBlueprintFamilyMeta({
+        blueprint_id: bpId,
+        family_id: stack.family_id,
+        family_name: stack.family_name,
+        deployment_pattern: stack.deployment_pattern,
+        variant_key: stack.variant_key,
+        variant_label: stack.variant_label,
+        is_recommended: stack.is_recommended,
+        bnk_version: stack.bnk_version,
+      });
+      const key = meta.family_id && meta.family_name ? meta.family_id : bpId;
+      const bucket = grouped.get(key) ?? [];
+      bucket.push(stack);
+      grouped.set(key, bucket);
+    }
+
+    const groups: StackFamilyGroup[] = [];
+    for (const [key, bucket] of grouped) {
+      const sorted = sortVersionsDesc(bucket, (s) => s.version || "1.0.0");
+      const bnkSet = new Set<string>();
+      const variantMap = new Map<
+        string,
+        {
+          variant_key: string;
+          variant_label: string;
+          is_recommended: boolean;
+          deployment_pattern: DeploymentPatternKey;
+        }
+      >();
+
+      for (const s of sorted) {
+        const bpId = s.blueprint_id || s.deploy_slug || s.slug;
+        const m = resolveBlueprintFamilyMeta({
+          blueprint_id: bpId,
+          family_id: s.family_id,
+          family_name: s.family_name,
+          deployment_pattern: s.deployment_pattern,
+          variant_key: s.variant_key,
+          variant_label: s.variant_label,
+          is_recommended: s.is_recommended,
+          bnk_version: s.bnk_version,
+        });
+        if (m.bnk_version) bnkSet.add(m.bnk_version);
+        if (!variantMap.has(m.variant_key)) {
+          variantMap.set(m.variant_key, {
+            variant_key: m.variant_key,
+            variant_label: m.variant_label,
+            is_recommended: m.is_recommended,
+            deployment_pattern: m.deployment_pattern,
+          });
+        } else if (m.is_recommended) {
+          variantMap.get(m.variant_key)!.is_recommended = true;
+        }
+      }
+
+      const bnkVersions = Array.from(bnkSet).sort((a, b) =>
+        compareBlueprintVersions(b, a),
+      );
+      const variants = Array.from(variantMap.values()).sort((a, b) => {
+        if (a.is_recommended !== b.is_recommended) {
+          return a.is_recommended ? -1 : 1;
+        }
+        return a.variant_label.localeCompare(b.variant_label);
+      });
+
+      const defaultBnk = bnkVersions[0] ?? null;
+      const bnkPool = defaultBnk
+        ? sorted.filter((s) => {
+            const bpId = s.blueprint_id || s.deploy_slug || s.slug;
+            return (
+              resolveBlueprintFamilyMeta({
+                blueprint_id: bpId,
+                bnk_version: s.bnk_version,
+              }).bnk_version === defaultBnk
+            );
+          })
+        : sorted;
+      const activePool = bnkPool.length > 0 ? bnkPool : sorted;
+      const recPool = activePool.filter((s) => {
+        const bpId = s.blueprint_id || s.deploy_slug || s.slug;
+        return resolveBlueprintFamilyMeta({
+          blueprint_id: bpId,
+          is_recommended: s.is_recommended,
+        }).is_recommended;
+      });
+      const defaultStack = recPool.length > 0 ? recPool[0] : activePool[0];
+      const defaultBpId =
+        defaultStack.blueprint_id ||
+        defaultStack.deploy_slug ||
+        defaultStack.slug;
+      const defaultMeta = resolveBlueprintFamilyMeta({
+        blueprint_id: defaultBpId,
+        family_id: defaultStack.family_id,
+        family_name: defaultStack.family_name,
+      });
+
+      groups.push({
+        key,
+        family_id: defaultMeta.family_id,
+        family_name: defaultMeta.family_name,
+        items: sorted,
+        defaultStack,
+        bnkVersions,
+        variants,
+      });
+    }
+    return groups;
+  }, [filteredStacks]);
 
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = { all: stacks?.length || 0 };
@@ -165,10 +350,10 @@ export default function Stacks() {
     return counts;
   }, [stacks]);
 
-  const limitedStacks = showAllStacks
-    ? filteredStacks
-    : filteredStacks.slice(0, INITIAL_STACKS_LIMIT);
-  const hasMoreStacks = filteredStacks.length > INITIAL_STACKS_LIMIT;
+  const limitedGroups = showAllStacks
+    ? stackFamilyGroups
+    : stackFamilyGroups.slice(0, INITIAL_STACKS_LIMIT);
+  const hasMoreStacks = stackFamilyGroups.length > INITIAL_STACKS_LIMIT;
 
   const handleDeploy = (stack: StackTemplateList) => {
     const kind = stack.deploy_kind ?? "template";
@@ -210,57 +395,82 @@ export default function Stacks() {
 
       {/* Filter chips + search */}
       <div className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {chipKeys.map((key) => {
-            const isAll = key === "all";
-            const cfg = isAll ? null : categoryConfig[key];
-            const selected = isAll
-              ? selectedCategory === null
-              : selectedCategory === key;
-            const count = categoryCounts[key] || 0;
-            const label = isAll ? "All" : cfg?.label || key;
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => {
-                  setSelectedCategory(isAll ? null : key);
-                  setShowAllStacks(false);
-                }}
-                className={cn(
-                  "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm transition-colors",
-                  selected
-                    ? "bg-foreground text-background border-foreground"
-                    : "bg-card text-muted-foreground border-border hover:text-foreground",
-                )}
-                aria-pressed={selected}
-              >
-                {!isAll && cfg?.step && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {chipKeys.map((key) => {
+              const isAll = key === "all";
+              const cfg = isAll ? null : categoryConfig[key];
+              const selected = isAll
+                ? selectedCategory === null
+                : selectedCategory === key;
+              const count = categoryCounts[key] || 0;
+              const label = isAll ? "All" : cfg?.label || key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => {
+                    setSelectedCategory(isAll ? null : key);
+                    setShowAllStacks(false);
+                  }}
+                  className={cn(
+                    "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm transition-colors",
+                    selected
+                      ? "bg-foreground text-background border-foreground"
+                      : "bg-card text-muted-foreground border-border hover:text-foreground",
+                  )}
+                  aria-pressed={selected}
+                >
+                  {!isAll && cfg?.step && (
+                    <span
+                      className={cn(
+                        "inline-flex items-center justify-center h-4 w-4 rounded-full text-[10px] font-semibold tabular-nums",
+                        selected
+                          ? "bg-background/20 text-background"
+                          : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {cfg.step}
+                    </span>
+                  )}
+                  <span>{label}</span>
                   <span
                     className={cn(
-                      "inline-flex items-center justify-center h-4 w-4 rounded-full text-[10px] font-semibold tabular-nums",
+                      "text-xs tabular-nums",
                       selected
-                        ? "bg-background/20 text-background"
-                        : "bg-muted text-muted-foreground",
+                        ? "text-background/70"
+                        : "text-muted-foreground/70",
                     )}
                   >
-                    {cfg.step}
+                    {count}
                   </span>
-                )}
-                <span>{label}</span>
-                <span
-                  className={cn(
-                    "text-xs tabular-nums",
-                    selected
-                      ? "text-background/70"
-                      : "text-muted-foreground/70",
-                  )}
-                >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
+                </button>
+              );
+            })}
+          </div>
+
+          {suppressedCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowLegacy((v) => !v)}
+              className={cn(
+                "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition-colors",
+                showLegacy
+                  ? "bg-foreground text-background border-foreground"
+                  : "bg-card text-muted-foreground border-border hover:text-foreground",
+              )}
+              aria-pressed={showLegacy}
+            >
+              {showLegacy ? (
+                <Eye className="h-3.5 w-3.5" />
+              ) : (
+                <EyeOff className="h-3.5 w-3.5" />
+              )}
+              {showLegacy
+                ? `Legacy visible (${suppressedCount})`
+                : `Show legacy & superseded (${suppressedCount})`}
+            </button>
+          )}
         </div>
 
         <div className="relative max-w-md">
@@ -290,7 +500,7 @@ export default function Stacks() {
             ))}
           </div>
         </SectionCard>
-      ) : filteredStacks.length === 0 ? (
+      ) : stackFamilyGroups.length === 0 ? (
         <EmptyState
           icon={Rocket}
           title="No blueprints found"
@@ -302,7 +512,7 @@ export default function Stacks() {
         />
       ) : (
         <SectionCard
-          title={`${filteredStacks.length} ${filteredStacks.length === 1 ? "blueprint" : "blueprints"}`}
+          title={`${stackFamilyGroups.length} ${stackFamilyGroups.length === 1 ? "blueprint" : "blueprints"}`}
           compact
         >
           <div className="overflow-x-auto -mx-4">
@@ -348,7 +558,122 @@ export default function Stacks() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {limitedStacks.map((stack) => {
+                {limitedGroups.map((group) => {
+                  const activeBnk =
+                    selectedBnkByFamily[group.key] ??
+                    group.bnkVersions[0] ??
+                    null;
+                  const bnkPool =
+                    group.bnkVersions.length > 1 && activeBnk
+                      ? group.items.filter((s) => {
+                          const bpId =
+                            s.blueprint_id || s.deploy_slug || s.slug;
+                          const m = resolveBlueprintFamilyMeta({
+                            blueprint_id: bpId,
+                            bnk_version: s.bnk_version,
+                          });
+                          return !m.bnk_version || m.bnk_version === activeBnk;
+                        })
+                      : group.items;
+                  const effectiveBnkPool =
+                    bnkPool.length > 0 ? bnkPool : group.items;
+
+                  const variantsForBnkMap = new Map<
+                    string,
+                    {
+                      variant_key: string;
+                      variant_label: string;
+                      is_recommended: boolean;
+                      deployment_pattern: DeploymentPatternKey;
+                    }
+                  >();
+                  for (const s of effectiveBnkPool) {
+                    const bpId = s.blueprint_id || s.deploy_slug || s.slug;
+                    const m = resolveBlueprintFamilyMeta({
+                      blueprint_id: bpId,
+                      family_id: s.family_id,
+                      family_name: s.family_name,
+                      deployment_pattern: s.deployment_pattern,
+                      variant_key: s.variant_key,
+                      variant_label: s.variant_label,
+                      is_recommended: s.is_recommended,
+                      bnk_version: s.bnk_version,
+                    });
+                    if (!variantsForBnkMap.has(m.variant_key)) {
+                      variantsForBnkMap.set(m.variant_key, {
+                        variant_key: m.variant_key,
+                        variant_label: m.variant_label,
+                        is_recommended: m.is_recommended,
+                        deployment_pattern: m.deployment_pattern,
+                      });
+                    }
+                  }
+                  const variantsForBnk = Array.from(
+                    variantsForBnkMap.values(),
+                  ).sort((a, b) => {
+                    if (a.is_recommended !== b.is_recommended) {
+                      return a.is_recommended ? -1 : 1;
+                    }
+                    return a.variant_label.localeCompare(b.variant_label);
+                  });
+
+                  const preferredVariantKey =
+                    selectedVariantByFamily[group.key] &&
+                    variantsForBnkMap.has(selectedVariantByFamily[group.key])
+                      ? selectedVariantByFamily[group.key]
+                      : (variantsForBnk.find((v) => v.is_recommended)
+                          ?.variant_key ?? variantsForBnk[0]?.variant_key);
+
+                  const variantPool = preferredVariantKey
+                    ? effectiveBnkPool.filter((s) => {
+                        const bpId = s.blueprint_id || s.deploy_slug || s.slug;
+                        return (
+                          resolveBlueprintFamilyMeta({
+                            blueprint_id: bpId,
+                            family_id: s.family_id,
+                            family_name: s.family_name,
+                            deployment_pattern: s.deployment_pattern,
+                            variant_key: s.variant_key,
+                            variant_label: s.variant_label,
+                            is_recommended: s.is_recommended,
+                            bnk_version: s.bnk_version,
+                          }).variant_key === preferredVariantKey
+                        );
+                      })
+                    : effectiveBnkPool;
+                  const activeVariantPool =
+                    variantPool.length > 0 ? variantPool : effectiveBnkPool;
+                  const selectableVersions = sortVersionsDesc(
+                    activeVariantPool,
+                    (s) => s.version || "1.0.0",
+                  );
+                  const selectedVer = selectedVersionByFamily[group.key];
+                  const stack =
+                    (selectedVer &&
+                      selectableVersions.find(
+                        (s) => (s.version || "1.0.0") === selectedVer,
+                      )) ||
+                    selectableVersions[0] ||
+                    effectiveBnkPool[0];
+
+                  const bpId =
+                    stack.blueprint_id || stack.deploy_slug || stack.slug;
+                  const activeMeta = resolveBlueprintFamilyMeta({
+                    blueprint_id: bpId,
+                    family_id: stack.family_id,
+                    family_name: stack.family_name,
+                    deployment_pattern: stack.deployment_pattern,
+                    variant_key: stack.variant_key,
+                    variant_label: stack.variant_label,
+                    is_recommended: stack.is_recommended,
+                    bnk_version: stack.bnk_version,
+                  });
+                  const hasMulti =
+                    group.bnkVersions.length > 1 || group.variants.length > 1;
+                  const displayTitle = hasMulti
+                    ? group.family_name || stack.name
+                    : stack.name;
+
                   const categoryKey = (
                     stack.category || "custom"
                   ).toLowerCase();
@@ -363,21 +688,31 @@ export default function Stacks() {
 
                   return (
                     <TableRow
-                      key={stack.slug}
+                      key={group.key}
                       className="border-t border-border cursor-pointer hover:bg-muted/40 transition-colors"
                       onClick={() => handleDeploy(stack)}
                     >
                       <TableCell className="px-4 py-3">
                         <div className="flex flex-col">
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <span className="font-medium text-foreground">
-                              {stack.name}
+                              {displayTitle}
                             </span>
                             {stack.version && (
                               <span className="text-xs text-muted-foreground tabular-nums">
                                 v{stack.version}
                               </span>
                             )}
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] text-muted-foreground"
+                            >
+                              {
+                                DEPLOYMENT_PATTERN_LABELS[
+                                  activeMeta.deployment_pattern
+                                ]
+                              }
+                            </Badge>
                             {stack.source_kind === "blueprint_release" && (
                               <Badge variant="muted" className="text-[10px]">
                                 Catalog
@@ -388,6 +723,135 @@ export default function Stacks() {
                             <span className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
                               {stack.description}
                             </span>
+                          )}
+                          {(group.bnkVersions.length > 1 ||
+                            variantsForBnk.length > 1 ||
+                            selectableVersions.length > 1) && (
+                            <div
+                              className="mt-2 flex flex-wrap items-center gap-3 rounded-md border border-border/60 bg-muted/20 px-2.5 py-1.5"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {group.bnkVersions.length > 1 && (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                                    BNK:
+                                  </span>
+                                  <div className="inline-flex rounded-md border border-border bg-card p-0.5">
+                                    {group.bnkVersions.map((bnkVer, idx) => {
+                                      const selected = activeBnk === bnkVer;
+                                      return (
+                                        <button
+                                          key={bnkVer}
+                                          type="button"
+                                          onClick={() => {
+                                            setSelectedBnkByFamily((prev) => ({
+                                              ...prev,
+                                              [group.key]: bnkVer,
+                                            }));
+                                            setSelectedVersionByFamily(
+                                              (prev) => {
+                                                if (!(group.key in prev))
+                                                  return prev;
+                                                const next = { ...prev };
+                                                delete next[group.key];
+                                                return next;
+                                              },
+                                            );
+                                          }}
+                                          className={cn(
+                                            "rounded px-2 py-0.5 text-xs font-mono transition-colors",
+                                            selected
+                                              ? "bg-primary text-primary-foreground font-semibold"
+                                              : "text-muted-foreground hover:text-foreground",
+                                          )}
+                                        >
+                                          {bnkVer}
+                                          {idx === 0 ? " (Latest)" : ""}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                              {variantsForBnk.length > 1 && (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                                    Topology:
+                                  </span>
+                                  <Select
+                                    value={preferredVariantKey || ""}
+                                    onValueChange={(nextVariant) => {
+                                      setSelectedVariantByFamily((prev) => ({
+                                        ...prev,
+                                        [group.key]: nextVariant,
+                                      }));
+                                      setSelectedVersionByFamily((prev) => {
+                                        if (!(group.key in prev)) return prev;
+                                        const next = { ...prev };
+                                        delete next[group.key];
+                                        return next;
+                                      });
+                                    }}
+                                  >
+                                    <SelectTrigger
+                                      aria-label={`Topology variant for ${displayTitle}`}
+                                      className="h-6 w-auto gap-1 rounded border border-border bg-card px-2 py-0 text-xs text-foreground focus:ring-1 focus:ring-primary"
+                                    >
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {variantsForBnk.map((v) => (
+                                        <SelectItem
+                                          key={v.variant_key}
+                                          value={v.variant_key}
+                                          className="text-xs"
+                                        >
+                                          {formatVariantOptionLabel(
+                                            v.variant_label,
+                                            v.is_recommended,
+                                          )}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              )}
+                              {selectableVersions.length > 1 && (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                                    Version:
+                                  </span>
+                                  <Select
+                                    value={stack.version || "1.0.0"}
+                                    onValueChange={(val) =>
+                                      setSelectedVersionByFamily((prev) => ({
+                                        ...prev,
+                                        [group.key]: val,
+                                      }))
+                                    }
+                                  >
+                                    <SelectTrigger
+                                      aria-label={`Blueprint version for ${displayTitle}`}
+                                      className="h-6 w-auto gap-1 rounded border border-border bg-card px-2 py-0 text-xs font-mono text-foreground focus:ring-1 focus:ring-primary"
+                                    >
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {selectableVersions.map((s, idx) => (
+                                        <SelectItem
+                                          key={s.slug}
+                                          value={s.version || "1.0.0"}
+                                          className="text-xs font-mono"
+                                        >
+                                          {s.version || "1.0.0"}
+                                          {idx === 0 ? " (Latest)" : ""}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              )}
+                            </div>
                           )}
                         </div>
                       </TableCell>
@@ -408,9 +872,9 @@ export default function Stacks() {
                         )}
                       </TableCell>
                       <TableCell className="px-4 py-3">
-                        {stack.bnk_version ? (
+                        {activeMeta.bnk_version || stack.bnk_version ? (
                           <span className="text-sm font-mono text-foreground/80">
-                            BNK {stack.bnk_version}
+                            BNK {activeMeta.bnk_version || stack.bnk_version}
                           </span>
                         ) : (
                           <span className="text-xs text-muted-foreground">
@@ -502,7 +966,7 @@ export default function Stacks() {
                 size="sm"
                 onClick={() => setShowAllStacks(true)}
               >
-                Show {filteredStacks.length - INITIAL_STACKS_LIMIT} more
+                Show {stackFamilyGroups.length - INITIAL_STACKS_LIMIT} more
               </Button>
             </div>
           )}
