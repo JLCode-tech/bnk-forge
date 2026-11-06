@@ -2480,6 +2480,7 @@ export default function LlmDashboard() {
                                 k.cluster_id === p.cluster_id),
                           );
                           const pBudget =
+                            p.monthly_budget_usd != null &&
                             p.monthly_budget_usd > 0
                               ? p.monthly_budget_usd
                               : pVks.reduce(

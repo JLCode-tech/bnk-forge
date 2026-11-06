@@ -186,6 +186,7 @@ export interface DssmOrganization {
   id: string;
   name: string;
   cluster_id: number;
+  cluster_name?: string | null;
   tenant_ref: string;
   monthly_budget_usd: number;
   current_spend_usd: number;
@@ -200,6 +201,7 @@ export interface DssmTeam {
   org_id: string;
   org_name: string;
   cluster_id: number;
+  cluster_name?: string | null;
   monthly_budget_usd: number;
   current_spend_usd: number;
   rpm_limit: number;
@@ -216,6 +218,8 @@ export interface DssmPrincipal {
   org_id: string;
   org_name?: string;
   cluster_id: number;
+  cluster_name?: string | null;
+  monthly_budget_usd?: number;
   rpm_limit: number;
   tpm_limit: number;
   current_spend_usd?: number;
@@ -233,6 +237,7 @@ export interface DssmVirtualKey {
   team_name: string;
   org_name: string;
   cluster_id: number;
+  cluster_name?: string | null;
   allowed_models: string[];
   rpm_limit: number;
   tpm_limit: number;
