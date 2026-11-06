@@ -109,16 +109,93 @@ def _proxy_path(scheme: str, namespace: str, service: str, port: int, sub_path: 
 
 
 def _provider_for(model: str) -> str:
-    """Infer provider from model name. gpt/o1/o3/o4→openai, claude→anthropic,
-    gemini→google, else unknown. Best-effort only — the stream has no identity."""
-    m = (model or "").lower()
-    if m.startswith(("gpt", "o1", "o3", "o4")):
-        return "openai"
-    if m.startswith("claude"):
+    """Infer provider from model name, prefix, or known model families."""
+    m = (model or "").lower().strip()
+    if not m:
+        return "unknown"
+
+    # 1. Handle common vendor/route prefixes e.g. "azure/gpt-4o", "bedrock/anthropic.claude", "vertex/gemini-1.5-flash"
+    if "/" in m:
+        prefix, remainder = m.split("/", 1)
+        if prefix in ("openai", "azure", "anthropic", "google", "meta", "mistral", "deepseek", "cohere", "qwen"):
+            return prefix
+        if prefix in ("bedrock", "aws"):
+            sub = _provider_for(remainder)
+            return sub if sub != "unknown" else "aws"
+        if prefix in ("vertex", "gcp"):
+            sub = _provider_for(remainder)
+            return sub if sub != "unknown" else "google"
+        m = remainder
+
+    # 2. Check vendor dots e.g. "amazon.titan", "anthropic.claude", "meta.llama"
+    if m.startswith("amazon.") or m.startswith("titan") or m.startswith("bedrock"):
+        return "aws"
+    if m.startswith("anthropic.") or m.startswith("claude"):
         return "anthropic"
-    if m.startswith("gemini"):
+    if m.startswith("meta.") or m.startswith("llama"):
+        return "meta"
+    if m.startswith("mistral.") or m.startswith("mistral") or m.startswith("mixtral") or m.startswith("codestral"):
+        return "mistral"
+    if m.startswith("deepseek.") or m.startswith("deepseek"):
+        return "deepseek"
+    if m.startswith("qwen.") or m.startswith("qwen"):
+        return "qwen"
+    if m.startswith("cohere.") or m.startswith("command"):
+        return "cohere"
+    if m.startswith("azure.") or m.startswith("azureopenai") or m.startswith("phi") or m.startswith("ms-"):
+        return "azure"
+    if m.startswith("google.") or m.startswith("gemini") or m.startswith("gemma") or m.startswith("medlm") or m.startswith("imagen") or m.startswith("vertex"):
         return "google"
+    if m.startswith(("openai.", "gpt", "o1", "o3", "o4", "text-embedding", "dall-e")):
+        return "openai"
+
+    # 3. Keyword / substring checks for embedded model family names
+    if "claude" in m:
+        return "anthropic"
+    if "gemini" in m or "gemma" in m:
+        return "google"
+    if "llama" in m:
+        return "meta"
+    if "mistral" in m or "mixtral" in m:
+        return "mistral"
+    if "deepseek" in m:
+        return "deepseek"
+    if "qwen" in m:
+        return "qwen"
+    if "titan" in m:
+        return "aws"
+    if "phi-" in m or "phi3" in m or "phi4" in m:
+        return "azure"
+
     return "unknown"
+
+
+def _normalize_provider(provider_or_model: str) -> str:
+    """Normalize a provider or model identifier into a canonical provider key."""
+    p = (provider_or_model or "").lower().strip()
+    if not p:
+        return "unknown"
+    if p.startswith("bedrock") or p.startswith("aws") or p.startswith("amazon"):
+        return "aws"
+    if p.startswith("azure") or "foundry" in p:
+        return "azure"
+    if p.startswith("vertex") or p.startswith("gcp") or p.startswith("google"):
+        return "google"
+    if p.startswith("openai"):
+        return "openai"
+    if p.startswith("anthropic"):
+        return "anthropic"
+    if p.startswith("meta"):
+        return "meta"
+    if p.startswith("mistral") or p.startswith("mixtral"):
+        return "mistral"
+    if p.startswith("deepseek"):
+        return "deepseek"
+    if p.startswith("qwen"):
+        return "qwen"
+    if p.startswith("cohere"):
+        return "cohere"
+    return _provider_for(p)
 
 
 def _iso(epoch_s: float) -> str:
@@ -418,14 +495,14 @@ class LlmObservabilityService:
             total_requests = sum(v.get("total_requests", 0) for v in valid)
             total_tokens = sum(v.get("total_tokens", 0) for v in valid)
             total_cost = sum(v.get("total_cost", 0.0) for v in valid)
-            # Per-cluster `models` is already a COUNT of distinct models on that
-            # cluster, so a true distinct union across the fleet is not computable
-            # from these inputs (we'd need the model names, which stats does not
-            # return). Summing gives an upper bound of "models in use across the
-            # fleet" (overcounts when clusters share models); it matches the
-            # generic "Models" stat-tile far better than max(), which silently
-            # understated the fleet whenever clusters ran disjoint model sets.
-            total_models = sum(v.get("models", 0) for v in valid)
+            # Collect and deduplicate model names across all active clusters.
+            all_model_names: set[str] = set()
+            for v in valid:
+                all_model_names.update(v.get("model_names") or [])
+            if all_model_names:
+                total_models = len(all_model_names)
+            else:
+                total_models = sum(v.get("models", 0) for v in valid)
             if total_requests > 0:
                 success_rate = (
                     sum(v.get("success_rate", 0.0) * v.get("total_requests", 0) for v in valid) / total_requests
@@ -443,6 +520,7 @@ class LlmObservabilityService:
                 total_tokens=int(total_tokens),
                 total_cost=total_cost,
                 models=int(total_models),
+                model_names=sorted(all_model_names),
                 errors=errors,
             )
 
@@ -464,16 +542,20 @@ class LlmObservabilityService:
             "avg_latency_ms": f"avg(avg_over_time({sel} | json | unwrap latency_ms [{rng}]))",
             "total_tokens": f"sum(sum_over_time({sel} | json | unwrap total_tk [{rng}]))",
             "total_cost": f"sum(sum_over_time({sel} | json | unwrap cost [{rng}]))",
-            "models": f"count(count by (model)(count_over_time({sel}[{rng}])))",
+            "models_by_name": f"count by (model)(count_over_time({sel}[{rng}]))",
         }
 
         keys = list(queries)
         results = _run_parallel([lambda q=queries[k]: self._instant(api_client, q, end_ns) for k in keys])
         errors: dict[str, str] = {}
         values: dict[str, float] = {}
+        model_names: list[str] = []
         for key, (data, err) in zip(keys, results, strict=True):
             if err:
                 errors[key] = err
+            elif key == "models_by_name":
+                model_names = sorted(list(_by_label(data, "model").keys()))
+                values["models"] = float(len(model_names))
             else:
                 values[key] = _scalar(data)
 
@@ -492,6 +574,7 @@ class LlmObservabilityService:
             total_tokens=int(values.get("total_tokens", 0.0)),
             total_cost=values.get("total_cost", 0.0),
             models=int(values.get("models", 0.0)),
+            model_names=model_names,
             errors=errors,
         )
 
@@ -672,7 +755,12 @@ class LlmObservabilityService:
         agg: dict[str, dict[str, list[float]]] = {}
         for labels, points in matrix:
             model = labels.get("model", "unknown")
-            key = _provider_for(model) if by_provider else model
+            if by_provider:
+                raw_prov = labels.get("provider") or ""
+                prov = _normalize_provider(raw_prov) if raw_prov else _provider_for(model)
+                key = prov if prov != "unknown" else _provider_for(model)
+            else:
+                key = model
             bucket = agg.setdefault(key, {})
             for p in points:
                 bucket.setdefault(p["ts"], []).append(p["value"])
@@ -1296,7 +1384,8 @@ class LlmObservabilityService:
             "avgOrDefault(latency_ms) AS avg_latency_ms, "
             "sum(total_tokens) AS total_tokens, "
             "sum(cost_usd_micros) / 1000000.0 AS total_cost, "
-            "uniqExact(model) AS models "
+            "uniqExact(model) AS models, "
+            "groupUniqArray(model) AS model_names "
             f"FROM otel.aigw_requests WHERE {where}"
         )
         rows, err = self._ch_query(cluster_id, api_client, sql)
@@ -1305,13 +1394,19 @@ class LlmObservabilityService:
         r = rows[0]
         total = int(r.get("total_requests") or 0)
         success = int(r.get("success") or 0)
+        raw_models = r.get("model_names")
+        if isinstance(raw_models, list):
+            model_names = [str(m) for m in raw_models if m]
+        else:
+            model_names = []
         return self._ok_ch(
             total_requests=total,
             success_rate=(success / total) if total else 0.0,
             avg_latency_ms=float(r.get("avg_latency_ms") or 0.0),
             total_tokens=int(r.get("total_tokens") or 0),
             total_cost=float(r.get("total_cost") or 0.0),
-            models=int(r.get("models") or 0),
+            models=int(r.get("models") or (len(model_names) if model_names else 0)),
+            model_names=model_names,
             errors={},
         )
 
@@ -1457,9 +1552,9 @@ class LlmObservabilityService:
         if metric not in agg_map:
             return None
         sql = (
-            f"SELECT {bucket_expr} AS bucket_s, model, {agg_map[metric]} AS val "
+            f"SELECT {bucket_expr} AS bucket_s, model, provider, {agg_map[metric]} AS val "
             f"FROM otel.aigw_requests WHERE {where} "
-            "GROUP BY bucket_s, model ORDER BY bucket_s ASC"
+            "GROUP BY bucket_s, model, provider ORDER BY bucket_s ASC"
         )
         rows, err = self._ch_query(cluster_id, api_client, sql)
         if err or rows is None:
@@ -1469,13 +1564,14 @@ class LlmObservabilityService:
         min_b = min(int(r["bucket_s"]) for r in rows)
         max_b = max(end_s, max(int(r["bucket_s"]) for r in rows))
         buckets = list(range(min_b, max_b + 1, step_s))
-        by_m: dict[str, dict[int, float]] = {}
+        by_mp: dict[tuple[str, str], dict[int, float]] = {}
         for r in rows:
             m = str(r.get("model") or "unknown")
+            p = str(r.get("provider") or "")
             b = int(r["bucket_s"])
-            by_m.setdefault(m, {})[b] = float(r.get("val") or 0.0)
+            by_mp.setdefault((m, p), {})[b] = float(r.get("val") or 0.0)
         matrix = []
-        for m, bmap in by_m.items():
+        for (m, p), bmap in by_mp.items():
             pts = []
             last_v = 0.0
             for b in buckets:
@@ -1486,7 +1582,10 @@ class LlmObservabilityService:
                     else:
                         v = last_v
                 pts.append({"ts": _iso(float(b)), "value": v})
-            matrix.append(({"model": m}, pts))
+            labels: dict[str, str] = {"model": m}
+            if p:
+                labels["provider"] = p
+            matrix.append((labels, pts))
         series = self._fold(matrix, by_provider=True, mean=(metric == "latency"))
         return self._ok_ch(metric=metric, step_s=step_s, series=series, errors={})
 

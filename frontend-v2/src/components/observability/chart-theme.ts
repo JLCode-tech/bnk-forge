@@ -43,6 +43,13 @@ export const PROVIDER_COLORS: Record<string, string> = {
   openai: "#10b981",
   anthropic: "#d97757",
   google: "#4285f4",
+  azure: "#0078d4",
+  aws: "#ff9900",
+  meta: "#0668e1",
+  mistral: "#f97316",
+  deepseek: "#4f46e5",
+  qwen: "#8b5cf6",
+  cohere: "#3b82f6",
   unknown: "#a3a3a3",
 };
 

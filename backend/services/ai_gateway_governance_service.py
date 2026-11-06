@@ -1467,13 +1467,46 @@ class AiGatewayGovernanceService:
             ns_models = self._filter_by_namespace(state["models"], namespace)
             ns_routes = self._filter_by_namespace(state["routes"], namespace)
             tenants.extend(AiTenantSummary(**t) for t in state["tenants"])
-            providers.extend(AiProviderSummary(**p) for p in ns_providers)
-            models.extend(AiModelSummary(**m) for m in ns_models)
-            routes.extend(AiGatewayRouteSummary(**r) for r in ns_routes)
-            orgs.extend(GovernanceOrgItem(**o) for o in state["orgs"])
-            teams.extend(GovernanceTeamItem(**tm) for tm in state["teams"])
-            principals.extend(GovernancePrincipalItem(**pr) for pr in state["principals"])
-            virtual_keys.extend(GovernanceVirtualKeyItem(**vk) for vk in state["virtual_keys"])
+            providers.extend(AiProviderSummary(**{**p, "cluster_id": p.get("cluster_id") or cid, "cluster_name": p.get("cluster_name") or cname}) for p in ns_providers)
+            models.extend(AiModelSummary(**{**m, "cluster_id": m.get("cluster_id") or cid, "cluster_name": m.get("cluster_name") or cname}) for m in ns_models)
+            routes.extend(AiGatewayRouteSummary(**{**r, "cluster_id": r.get("cluster_id") or cid, "cluster_name": r.get("cluster_name") or cname}) for r in ns_routes)
+
+            seen_org_ids: set[str] = set()
+            for o in state["orgs"]:
+                oid = str(o.get("id") or o.get("name") or "")
+                if oid and oid in seen_org_ids:
+                    continue
+                if oid:
+                    seen_org_ids.add(oid)
+                orgs.append(GovernanceOrgItem(**{**o, "cluster_id": o.get("cluster_id") or cid, "cluster_name": o.get("cluster_name") or cname}))
+
+            seen_team_ids: set[str] = set()
+            for tm in state["teams"]:
+                tid = str(tm.get("id") or tm.get("name") or "")
+                if tid and tid in seen_team_ids:
+                    continue
+                if tid:
+                    seen_team_ids.add(tid)
+                teams.append(GovernanceTeamItem(**{**tm, "cluster_id": tm.get("cluster_id") or cid, "cluster_name": tm.get("cluster_name") or cname}))
+
+            seen_prin_ids: set[str] = set()
+            for pr in state["principals"]:
+                pid = str(pr.get("id") or pr.get("name") or "")
+                if pid and pid in seen_prin_ids:
+                    continue
+                if pid:
+                    seen_prin_ids.add(pid)
+                principals.append(GovernancePrincipalItem(**{**pr, "cluster_id": pr.get("cluster_id") or cid, "cluster_name": pr.get("cluster_name") or cname}))
+
+            seen_vk_ids: set[str] = set()
+            for vk in state["virtual_keys"]:
+                vid = str(vk.get("id") or vk.get("name") or "")
+                if vid and vid in seen_vk_ids:
+                    continue
+                if vid:
+                    seen_vk_ids.add(vid)
+                virtual_keys.append(GovernanceVirtualKeyItem(**{**vk, "cluster_id": vk.get("cluster_id") or cid, "cluster_name": vk.get("cluster_name") or cname}))
+
             readiness_checks.extend(self._build_readiness_checks(state))
             request_audit_logs.extend(ClickHouseRequestAuditItem(**log) for log in state.get("request_audit_logs", []))
 

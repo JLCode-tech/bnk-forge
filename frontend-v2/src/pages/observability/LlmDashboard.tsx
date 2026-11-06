@@ -223,11 +223,13 @@ function buildRankingsFromGovernance(
   >();
 
   for (const log of logs) {
+    const inferred =
+      inferProvider(log.provider_name) !== "unknown"
+        ? inferProvider(log.provider_name)
+        : inferProvider(log.model_id);
     const cur = byModel.get(log.model_id) ?? {
       provider:
-        inferProvider(log.model_id) !== "unknown"
-          ? inferProvider(log.model_id)
-          : log.provider_name || "openai",
+        inferred !== "unknown" ? inferred : log.provider_name || "unknown",
       requests: 0,
       ok: 0,
       tokens: 0,
@@ -246,9 +248,12 @@ function buildRankingsFromGovernance(
     if (modelFilter && m.model_id !== modelFilter) continue;
     if (!byModel.has(m.model_id)) {
       const provRef = m.deployments?.[0]?.provider_ref ?? "";
-      const inferred = inferProvider(m.model_id);
+      const inferred =
+        inferProvider(m.model_id) !== "unknown"
+          ? inferProvider(m.model_id)
+          : inferProvider(provRef);
       byModel.set(m.model_id, {
-        provider: inferred !== "unknown" ? inferred : provRef || "openai",
+        provider: inferred !== "unknown" ? inferred : provRef || "unknown",
         requests: 0,
         ok: 0,
         tokens: 0,
@@ -779,7 +784,7 @@ export default function LlmDashboard() {
   const modelsCount = unifiedLive
     ? unifiedLive.models
     : (govOverview?.models?.length ?? 0) > 0
-      ? govOverview!.models.length
+      ? new Set(govOverview!.models.map((m) => m.model_id || m.name)).size
       : "—";
 
   const benchP50 =
@@ -1455,17 +1460,28 @@ export default function LlmDashboard() {
                             )
                           : 0;
                       const orgTeams = (govOverview?.teams ?? []).filter(
-                        (t) => t.org_id === o.id || t.org_name === o.name,
+                        (t) =>
+                          (t.org_id === o.id || t.org_name === o.name) &&
+                          (o.cluster_id == null || t.cluster_id == null || t.cluster_id === o.cluster_id),
                       );
                       const orgPrincipals = (
                         govOverview?.principals ?? []
                       ).filter(
-                        (p) => p.org_id === o.id || p.org_name === o.name,
+                        (p) =>
+                          (p.org_id === o.id || p.org_name === o.name) &&
+                          (o.cluster_id == null || p.cluster_id == null || p.cluster_id === o.cluster_id),
                       );
                       return (
-                        <TableRow key={`tenant-org-${o.id}`}>
+                        <TableRow key={`tenant-org-${o.cluster_id ?? "all"}-${o.id}`}>
                           <TableCell className="text-xs">
-                            <div className="font-semibold">{o.name}</div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold">{o.name}</span>
+                              {f.clusterId == null && o.cluster_name && (
+                                <Badge variant="outline" className="text-2xs font-mono">
+                                  {o.cluster_name}
+                                </Badge>
+                              )}
+                            </div>
                             <div className="text-2xs font-mono text-muted-foreground">
                               AITenant: {o.tenant_ref}
                             </div>
@@ -2185,9 +2201,16 @@ export default function LlmDashboard() {
                             )
                           : 0;
                       return (
-                        <TableRow key={vk.id}>
+                        <TableRow key={`vk-${vk.cluster_id ?? "all"}-${vk.id}`}>
                           <TableCell className="text-xs font-semibold">
-                            {vk.name}
+                            <div className="flex items-center gap-1.5">
+                              <span>{vk.name}</span>
+                              {f.clusterId == null && vk.cluster_name && (
+                                <Badge variant="outline" className="text-2xs font-mono">
+                                  {vk.cluster_name}
+                                </Badge>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="text-xs font-mono text-muted-foreground">
                             {vk.masked_key}
@@ -2316,9 +2339,16 @@ export default function LlmDashboard() {
                               )
                             : 0;
                         return (
-                          <TableRow key={o.id}>
+                          <TableRow key={`gov-org-${o.cluster_id ?? "all"}-${o.id}`}>
                             <TableCell className="text-xs font-semibold">
-                              <div>{o.name}</div>
+                              <div className="flex items-center gap-1.5">
+                                <span>{o.name}</span>
+                                {f.clusterId == null && o.cluster_name && (
+                                  <Badge variant="outline" className="text-2xs font-mono">
+                                    {o.cluster_name}
+                                  </Badge>
+                                )}
+                              </div>
                               <div className="text-2xs font-normal text-muted-foreground">
                                 {o.teams_count} team(s)
                               </div>
@@ -2397,9 +2427,16 @@ export default function LlmDashboard() {
                                 )
                               : 0;
                           return (
-                            <TableRow key={`team-${t.id}`}>
+                            <TableRow key={`team-${t.cluster_id ?? "all"}-${t.id}`}>
                               <TableCell className="text-xs font-semibold">
-                                <div>{t.name}</div>
+                                <div className="flex items-center gap-1.5">
+                                  <span>{t.name}</span>
+                                  {f.clusterId == null && t.cluster_name && (
+                                    <Badge variant="outline" className="text-2xs font-mono">
+                                      {t.cluster_name}
+                                    </Badge>
+                                  )}
+                                </div>
                                 <div className="text-2xs font-normal text-muted-foreground">
                                   {t.org_name}
                                 </div>
@@ -2436,19 +2473,28 @@ export default function LlmDashboard() {
                         {(govOverview?.principals ?? []).map((p) => {
                           const pVks = (govOverview?.virtual_keys ?? []).filter(
                             (k) =>
-                              k.principal_id === p.id ||
-                              k.principal_name === p.name,
+                              (k.principal_id === p.id ||
+                                k.principal_name === p.name) &&
+                              (p.cluster_id == null ||
+                                k.cluster_id == null ||
+                                k.cluster_id === p.cluster_id),
                           );
                           const pBudget =
-                            pVks.reduce(
-                              (acc, k) => acc + (k.monthly_budget_usd || 0),
-                              0,
-                            ) ||
-                            (govOverview?.teams ?? []).find(
-                              (t) =>
-                                t.id === p.team_id || t.name === p.team_name,
-                            )?.monthly_budget_usd ||
-                            500;
+                            p.monthly_budget_usd > 0
+                              ? p.monthly_budget_usd
+                              : pVks.reduce(
+                                  (acc, k) => acc + (k.monthly_budget_usd || 0),
+                                  0,
+                                ) ||
+                                (govOverview?.teams ?? []).find(
+                                  (t) =>
+                                    (t.id === p.team_id ||
+                                      t.name === p.team_name) &&
+                                    (p.cluster_id == null ||
+                                      t.cluster_id == null ||
+                                      t.cluster_id === p.cluster_id),
+                                )?.monthly_budget_usd ||
+                                50;
                           const pSpend =
                             p.current_spend_usd ||
                             pVks.reduce(
@@ -2460,9 +2506,16 @@ export default function LlmDashboard() {
                               ? Math.round((pSpend / pBudget) * 100)
                               : 0;
                           return (
-                            <TableRow key={p.id}>
+                            <TableRow key={`prin-${p.cluster_id ?? "all"}-${p.id}`}>
                               <TableCell className="text-xs font-semibold">
-                                <div>{p.name}</div>
+                                <div className="flex items-center gap-1.5">
+                                  <span>{p.name}</span>
+                                  {f.clusterId == null && p.cluster_name && (
+                                    <Badge variant="outline" className="text-2xs font-mono">
+                                      {p.cluster_name}
+                                    </Badge>
+                                  )}
+                                </div>
                                 <div className="text-2xs font-normal text-muted-foreground">
                                   {p.team_name}
                                 </div>
@@ -3273,7 +3326,11 @@ function ProviderCard({
     if (auditLogs.length === 0) return [];
     const byProv = new Map<string, Array<{ ts: string; value: number }>>();
     for (const l of auditLogs) {
-      const pName = l.provider_name || inferProvider(l.model_id);
+      const inferred =
+        inferProvider(l.provider_name) !== "unknown"
+          ? inferProvider(l.provider_name)
+          : inferProvider(l.model_id);
+      const pName = inferred !== "unknown" ? inferred : l.provider_name || "unknown";
       const list = byProv.get(pName) ?? [];
       const val =
         metric === "cost"
