@@ -142,6 +142,12 @@ def _provider_for(model: str) -> str:
         return "qwen"
     if m.startswith("cohere.") or m.startswith("command"):
         return "cohere"
+    if m.startswith("mcp") or m.startswith("tool"):
+        return "mcp"
+    if m.startswith("ollama"):
+        return "ollama"
+    if m.startswith("vllm"):
+        return "vllm"
     if m.startswith("azure.") or m.startswith("azureopenai") or m.startswith("phi") or m.startswith("ms-"):
         return "azure"
     if m.startswith("google.") or m.startswith("gemini") or m.startswith("gemma") or m.startswith("medlm") or m.startswith("imagen") or m.startswith("vertex"):
@@ -175,6 +181,18 @@ def _normalize_provider(provider_or_model: str) -> str:
     p = (provider_or_model or "").lower().strip()
     if not p:
         return "unknown"
+    if "/" in p:
+        prefix, remainder = p.split("/", 1)
+        if prefix in ("openai", "azure", "anthropic", "google", "meta", "mistral", "deepseek", "cohere", "qwen", "mcp", "ollama", "vllm"):
+            return prefix
+        if prefix in ("bedrock", "aws"):
+            return "aws"
+        if prefix in ("vertex", "gcp"):
+            return "google"
+        sub = _normalize_provider(remainder)
+        if sub != "unknown":
+            return sub
+        p = remainder
     if p.startswith("bedrock") or p.startswith("aws") or p.startswith("amazon"):
         return "aws"
     if p.startswith("azure") or "foundry" in p:
@@ -525,7 +543,7 @@ class LlmObservabilityService:
             )
 
         api_client = _api_client if _api_client is not None else self._client(cluster_id)
-        if cluster_id in _CH_PW_CACHE:
+        if self._ch_password(cluster_id, api_client):
             ch_res = self._stats_clickhouse(cluster_id, api_client, range_, model, status)
             if ch_res is not None:
                 return ch_res
@@ -694,7 +712,7 @@ class LlmObservabilityService:
         if metric not in specs:
             return self._unavailable(f"unknown metric: {metric}")
 
-        if cluster_id in _CH_PW_CACHE:
+        if self._ch_password(cluster_id, api_client):
             ch_res = self._histogram_clickhouse(cluster_id, api_client, range_, metric, model, status)
             if ch_res is not None:
                 return ch_res
@@ -754,11 +772,15 @@ class LlmObservabilityService:
         # key -> ts -> list of values (list so we can mean or sum)
         agg: dict[str, dict[str, list[float]]] = {}
         for labels, points in matrix:
-            model = labels.get("model", "unknown")
+            model = (labels.get("model") or "").strip()
+            if not model or model == "unknown":
+                continue
             if by_provider:
-                raw_prov = labels.get("provider") or ""
+                raw_prov = (labels.get("provider") or "").strip()
                 prov = _normalize_provider(raw_prov) if raw_prov else _provider_for(model)
                 key = prov if prov != "unknown" else _provider_for(model)
+                if not key or key == "unknown":
+                    continue
             else:
                 key = model
             bucket = agg.setdefault(key, {})
@@ -874,7 +896,7 @@ class LlmObservabilityService:
         if metric not in by_model:
             return self._unavailable(f"unknown metric: {metric}")
 
-        if cluster_id in _CH_PW_CACHE:
+        if self._ch_password(cluster_id, api_client):
             ch_res = self._provider_usage_clickhouse(cluster_id, api_client, range_, metric, model, status)
             if ch_res is not None:
                 return ch_res
@@ -934,11 +956,16 @@ class LlmObservabilityService:
             models_acc: dict[str, dict[str, Any]] = {}
             for r in valid:
                 for row in r.get("rows", []):
-                    m = row["model"]
+                    m = str(row.get("model") or "").strip()
+                    if not m or m == "unknown":
+                        continue
+                    prov = str(row.get("provider") or "").strip()
+                    if not prov or prov == "unknown":
+                        prov = _provider_for(m)
                     if m not in models_acc:
                         models_acc[m] = {
                             "model": m,
-                            "provider": row["provider"],
+                            "provider": prov,
                             "requests": 0,
                             "tokens": 0,
                             "cost": 0.0,
@@ -972,7 +999,7 @@ class LlmObservabilityService:
             return self._ok(rows=rows, errors=errors)
 
         api_client = _api_client if _api_client is not None else self._client(cluster_id)
-        if cluster_id in _CH_PW_CACHE:
+        if self._ch_password(cluster_id, api_client):
             ch_res = self._rankings_clickhouse(cluster_id, api_client, range_, model, status)
             if ch_res is not None:
                 return ch_res
@@ -1026,12 +1053,15 @@ class LlmObservabilityService:
         models = sorted(cur.get("requests", {}))
         rows: list[dict[str, Any]] = []
         for m in models:
+            m_clean = str(m or "").strip()
+            if not m_clean or m_clean == "unknown":
+                continue
             requests = cur.get("requests", {}).get(m, 0.0)
             success = cur.get("success", {}).get(m, 0.0)
             rows.append(
                 {
-                    "model": m,
-                    "provider": _provider_for(m),
+                    "model": m_clean,
+                    "provider": _provider_for(m_clean),
                     "requests": int(requests),
                     "success_rate": (success / requests) if requests else 0.0,
                     "tokens": int(cur.get("tokens", {}).get(m, 0.0)),
@@ -1384,9 +1414,10 @@ class LlmObservabilityService:
             "avgOrDefault(latency_ms) AS avg_latency_ms, "
             "sum(total_tokens) AS total_tokens, "
             "sum(cost_usd_micros) / 1000000.0 AS total_cost, "
-            "uniqExact(model) AS models, "
-            "groupUniqArray(model) AS model_names "
-            f"FROM otel.aigw_requests WHERE {where}"
+            "uniqExact(if(model != '', model, if(served_model != '', served_model, ''))) AS models, "
+            "groupUniqArray(if(model != '', model, if(served_model != '', served_model, ''))) AS model_names "
+            f"FROM otel.aigw_requests WHERE {where} "
+            "AND if(model != '', model, if(served_model != '', served_model, '')) != ''"
         )
         rows, err = self._ch_query(cluster_id, api_client, sql)
         if err or not rows:
@@ -1483,9 +1514,12 @@ class LlmObservabilityService:
         if metric in ("cost", "models"):
             agg = "sum(cost_usd_micros) / 1000000.0" if metric == "cost" else "count()"
             sql = (
-                f"SELECT {bucket_expr} AS bucket_s, model, {agg} AS val "
+                f"SELECT {bucket_expr} AS bucket_s, "
+                "if(model != '', model, if(served_model != '', served_model, '')) AS eff_model, "
+                f"{agg} AS val "
                 f"FROM otel.aigw_requests WHERE {where} "
-                "GROUP BY bucket_s, model ORDER BY bucket_s ASC"
+                "AND if(model != '', model, if(served_model != '', served_model, '')) != '' "
+                "GROUP BY bucket_s, eff_model ORDER BY bucket_s ASC"
             )
             rows, err = self._ch_query(cluster_id, api_client, sql)
             if err or rows is None:
@@ -1493,7 +1527,9 @@ class LlmObservabilityService:
             buckets = _all_buckets(rows)
             by_m: dict[str, dict[int, float]] = {}
             for r in rows:
-                m = str(r.get("model") or "unknown")
+                m = str(r.get("eff_model") or r.get("model") or "")
+                if not m or m == "unknown":
+                    continue
                 b = int(r["bucket_s"])
                 by_m.setdefault(m, {})[b] = by_m.get(m, {}).get(b, 0.0) + float(r.get("val") or 0.0)
             series = [
@@ -1551,10 +1587,11 @@ class LlmObservabilityService:
         }
         if metric not in agg_map:
             return None
+        eff_model_expr = "if(model != '', model, if(served_model != '', served_model, ''))"
         sql = (
-            f"SELECT {bucket_expr} AS bucket_s, model, provider, {agg_map[metric]} AS val "
-            f"FROM otel.aigw_requests WHERE {where} "
-            "GROUP BY bucket_s, model, provider ORDER BY bucket_s ASC"
+            f"SELECT {bucket_expr} AS bucket_s, {eff_model_expr} AS eff_model, provider, {agg_map[metric]} AS val "
+            f"FROM otel.aigw_requests WHERE {where} AND {eff_model_expr} != '' AND http_status > 0 "
+            "GROUP BY bucket_s, eff_model, provider ORDER BY bucket_s ASC"
         )
         rows, err = self._ch_query(cluster_id, api_client, sql)
         if err or rows is None:
@@ -1566,8 +1603,13 @@ class LlmObservabilityService:
         buckets = list(range(min_b, max_b + 1, step_s))
         by_mp: dict[tuple[str, str], dict[int, float]] = {}
         for r in rows:
-            m = str(r.get("model") or "unknown")
-            p = str(r.get("provider") or "")
+            m = str(r.get("eff_model") or "").strip()
+            if not m or m == "unknown":
+                continue
+            raw_p = str(r.get("provider") or "").strip()
+            p = _normalize_provider(raw_p) if raw_p else _provider_for(m)
+            if not p or p == "unknown":
+                p = _provider_for(m)
             b = int(r["bucket_s"])
             by_mp.setdefault((m, p), {})[b] = float(r.get("val") or 0.0)
         matrix = []
@@ -1604,14 +1646,15 @@ class LlmObservabilityService:
 
         def _query_window(s_ms: int, e_ms: int) -> dict[str, dict[str, float]] | None:
             where = self._ch_where(range_, model=model, status=status, start_ms=s_ms, end_ms=e_ms)
+            eff_model_expr = "if(model != '', model, if(served_model != '', served_model, ''))"
             sql = (
-                "SELECT model, "
+                f"SELECT {eff_model_expr} AS eff_model, "
                 "count() AS requests, "
                 "sum(total_tokens) AS tokens, "
                 "sum(cost_usd_micros) / 1000000.0 AS cost, "
                 "avgOrDefault(latency_ms) AS latency, "
                 "countIf(http_status >= 200 AND http_status < 300) AS success "
-                f"FROM otel.aigw_requests WHERE {where} GROUP BY model"
+                f"FROM otel.aigw_requests WHERE {where} AND {eff_model_expr} != '' AND http_status > 0 GROUP BY eff_model"
             )
             rows, err = self._ch_query(cluster_id, api_client, sql)
             if err or rows is None:
@@ -1624,8 +1667,8 @@ class LlmObservabilityService:
                 "success": {},
             }
             for r in rows:
-                m = str(r.get("model") or "")
-                if not m:
+                m = str(r.get("eff_model") or "").strip()
+                if not m or m == "unknown":
                     continue
                 for k in out:
                     out[k][m] = float(r.get(k) or 0.0)
@@ -1737,10 +1780,11 @@ class LlmObservabilityService:
         range_: str,
     ) -> dict[str, Any] | None:
         where = self._ch_where(range_)
-        sql = f"SELECT DISTINCT model, toString(http_status) AS status FROM otel.aigw_requests WHERE {where}"
+        eff_model_expr = "if(model != '', model, if(served_model != '', served_model, ''))"
+        sql = f"SELECT DISTINCT {eff_model_expr} AS eff_model, toString(http_status) AS status FROM otel.aigw_requests WHERE {where} AND {eff_model_expr} != '' AND http_status > 0"
         rows, err = self._ch_query(cluster_id, api_client, sql)
         if err or rows is None:
             return None
-        models = sorted({str(r.get("model")) for r in rows if r.get("model")})
-        statuses = sorted({str(r.get("status")) for r in rows if r.get("status")})
+        models = sorted({str(r.get("eff_model")).strip() for r in rows if r.get("eff_model") and str(r.get("eff_model")).strip() != "unknown"})
+        statuses = sorted({str(r.get("status")) for r in rows if r.get("status") and str(r.get("status")) != "0"})
         return self._ok_ch(models=models, statuses=statuses, errors={})

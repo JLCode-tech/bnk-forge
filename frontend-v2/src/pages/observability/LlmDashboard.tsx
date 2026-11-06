@@ -120,7 +120,9 @@ function filterAuditLogs(
   statusFilter: string,
 ): AiGatewayRequestLogItem[] {
   return logs.filter((log) => {
-    if (modelFilter && log.model_id !== modelFilter) return false;
+    const mid = (log.model_id || log.model || "").trim();
+    if (!mid || mid === "unknown") return false;
+    if (modelFilter && mid !== modelFilter) return false;
     if (statusFilter) {
       const s = statusFilter.toLowerCase();
       if (s === "success" || s === "200") {
@@ -181,9 +183,11 @@ function buildHistogramSeriesFromAuditLogs(
   if (metric === "models") {
     const byModel = new Map<string, Array<{ ts: string; value: number }>>();
     for (const l of logs) {
-      const list = byModel.get(l.model_id) ?? [];
+      const mid = (l.model_id || l.model || "").trim();
+      if (!mid || mid === "unknown") continue;
+      const list = byModel.get(mid) ?? [];
       list.push({ ts: l.timestamp, value: 1 });
-      byModel.set(l.model_id, list);
+      byModel.set(mid, list);
     }
     return Array.from(byModel.entries()).map(([name, points]) => ({
       name,
@@ -223,13 +227,16 @@ function buildRankingsFromGovernance(
   >();
 
   for (const log of logs) {
+    const mid = (log.model_id || log.model || "").trim();
+    if (!mid || mid === "unknown") continue;
+    const rawProv = (log.provider_name || log.provider || "").trim();
     const inferred =
-      inferProvider(log.provider_name) !== "unknown"
-        ? inferProvider(log.provider_name)
-        : inferProvider(log.model_id);
-    const cur = byModel.get(log.model_id) ?? {
+      inferProvider(rawProv) !== "unknown"
+        ? inferProvider(rawProv)
+        : inferProvider(mid);
+    const cur = byModel.get(mid) ?? {
       provider:
-        inferred !== "unknown" ? inferred : log.provider_name || "unknown",
+        inferred !== "unknown" ? inferred : (rawProv || "custom"),
       requests: 0,
       ok: 0,
       tokens: 0,
@@ -241,19 +248,21 @@ function buildRankingsFromGovernance(
     cur.tokens += log.prompt_tokens + log.completion_tokens;
     cur.cost += log.cost_usd;
     cur.latencySum += log.latency_ms;
-    byModel.set(log.model_id, cur);
+    byModel.set(mid, cur);
   }
 
   for (const m of govOverview.models ?? []) {
-    if (modelFilter && m.model_id !== modelFilter) continue;
-    if (!byModel.has(m.model_id)) {
+    const mid = (m.model_id || "").trim();
+    if (!mid || mid === "unknown") continue;
+    if (modelFilter && mid !== modelFilter) continue;
+    if (!byModel.has(mid)) {
       const provRef = m.deployments?.[0]?.provider_ref ?? "";
       const inferred =
-        inferProvider(m.model_id) !== "unknown"
-          ? inferProvider(m.model_id)
-          : inferProvider(provRef);
-      byModel.set(m.model_id, {
-        provider: inferred !== "unknown" ? inferred : provRef || "unknown",
+        inferProvider(provRef) !== "unknown"
+          ? inferProvider(provRef)
+          : inferProvider(mid);
+      byModel.set(mid, {
+        provider: inferred !== "unknown" ? inferred : (provRef || "custom"),
         requests: 0,
         ok: 0,
         tokens: 0,
@@ -2921,8 +2930,8 @@ function HistogramCard({
     [auditLogs, metric],
   );
   const series = useMemo(() => {
-    if (lokiSeries.length > 0) return lokiSeries;
-    return auditSeries;
+    const raw = lokiSeries.length > 0 ? lokiSeries : auditSeries;
+    return raw.filter((s) => s.name && s.name !== "unknown");
   }, [lokiSeries, auditSeries]);
   const available = (data?.available ?? true) || auditSeries.length > 0;
   const colors = series.map((s, i) =>
@@ -2996,21 +3005,28 @@ function RankingsTab({
   const rows = useMemo(() => {
     const map = new Map<string, LlmRankingRow>();
     for (const r of data?.rows ?? []) {
-      map.set(r.model, { ...r });
+      const mid = (r.model || "").trim();
+      if (!mid || mid === "unknown") continue;
+      const prov = r.provider && r.provider !== "unknown" ? r.provider : inferProvider(mid);
+      map.set(mid, { ...r, model: mid, provider: prov !== "unknown" ? prov : "custom" });
     }
     for (const gr of govRows) {
-      const existing = map.get(gr.model);
+      const mid = (gr.model || "").trim();
+      if (!mid || mid === "unknown") continue;
+      const existing = map.get(mid);
       if (!existing) {
-        map.set(gr.model, gr);
+        map.set(mid, gr);
       } else if (existing.requests === 0 && gr.requests > 0) {
-        map.set(gr.model, gr);
+        map.set(mid, gr);
       }
     }
     return Array.from(map.values()).sort((a, b) => b[sortKey] - a[sortKey]);
   }, [data?.rows, govRows, sortKey]);
 
   const topSeries = useMemo(() => {
-    const histSeries = modelsHist?.series ?? [];
+    const histSeries = (modelsHist?.series ?? []).filter(
+      (s) => s.name && s.name !== "unknown",
+    );
     if (histSeries.length > 0) {
       return [...histSeries]
         .sort((a, b) => sumSeries([b]) - sumSeries([a]))
@@ -3232,12 +3248,15 @@ function ProviderUsageTab({
   const [provider, setProvider] = useState("");
 
   const providerOptions = useMemo(() => {
-    const s = new Set<string>(["openai", "anthropic", "google", "unknown"]);
+    const s = new Set<string>(["openai", "anthropic", "google"]);
     for (const p of govOverview?.providers ?? []) {
-      if (p.name) s.add(p.name);
+      const norm = p.name ? inferProvider(p.name) : "";
+      if (norm && norm !== "unknown") s.add(norm);
     }
     for (const l of auditLogs) {
-      if (l.provider_name) s.add(l.provider_name);
+      const p = l.provider_name || l.provider;
+      const norm = p ? inferProvider(p) : inferProvider(l.model_id || l.model || "");
+      if (norm && norm !== "unknown") s.add(norm);
     }
     return Array.from(s);
   }, [govOverview?.providers, auditLogs]);
@@ -3327,11 +3346,13 @@ function ProviderCard({
     if (auditLogs.length === 0) return [];
     const byProv = new Map<string, Array<{ ts: string; value: number }>>();
     for (const l of auditLogs) {
+      const rawProv = (l.provider_name || l.provider || "").trim();
+      const mid = (l.model_id || l.model || "").trim();
       const inferred =
-        inferProvider(l.provider_name) !== "unknown"
-          ? inferProvider(l.provider_name)
-          : inferProvider(l.model_id);
-      const pName = inferred !== "unknown" ? inferred : l.provider_name || "unknown";
+        inferProvider(rawProv) !== "unknown"
+          ? inferProvider(rawProv)
+          : inferProvider(mid);
+      const pName = inferred !== "unknown" ? inferred : "custom";
       const list = byProv.get(pName) ?? [];
       const val =
         metric === "cost"
@@ -3356,7 +3377,9 @@ function ProviderCard({
 
   const series = rawSeries.filter(
     (s) =>
-      !provider || inferProvider(s.name) === provider || s.name === provider,
+      s.name &&
+      s.name !== "unknown" &&
+      (!provider || inferProvider(s.name) === provider || s.name === provider),
   );
   const available = (data?.available ?? true) || auditSeries.length > 0;
   const colors = series.map((s, i) => {

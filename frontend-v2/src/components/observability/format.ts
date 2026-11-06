@@ -54,11 +54,14 @@ export function inferProvider(modelOrProvider: string): string {
   if (m.startsWith('deepseek.') || m.startsWith('deepseek')) return 'deepseek';
   if (m.startsWith('qwen.') || m.startsWith('qwen')) return 'qwen';
   if (m.startsWith('cohere.') || m.startsWith('command')) return 'cohere';
+  if (m.startsWith('mcp') || m.startsWith('tool')) return 'mcp';
+  if (m.startsWith('ollama')) return 'ollama';
+  if (m.startsWith('vllm')) return 'vllm';
 
   // 2. Handle prefix with slash e.g. "azure/gpt-4o", "bedrock/anthropic.claude"
   if (m.includes('/')) {
     const [prefix, remainder] = m.split('/', 2);
-    if (['openai', 'azure', 'anthropic', 'google', 'meta', 'mistral', 'deepseek', 'cohere', 'qwen'].includes(prefix)) {
+    if (['openai', 'azure', 'anthropic', 'google', 'meta', 'mistral', 'deepseek', 'cohere', 'qwen', 'mcp', 'ollama', 'vllm'].includes(prefix)) {
       return prefix;
     }
     if (prefix === 'bedrock' || prefix === 'aws') {

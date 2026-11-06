@@ -1144,7 +1144,11 @@ class AiGatewayGovernanceService:
 
         # Sync ClickHouse otel.aigw_requests audit logs and live DSSM spend when available
         try:
-            from services.llm_observability_service import LlmObservabilityService
+            from services.llm_observability_service import (
+                LlmObservabilityService,
+                _normalize_provider,
+                _provider_for,
+            )
 
             obs_svc = LlmObservabilityService(self.db)
             api_client = obs_svc._client(cid)
@@ -1161,7 +1165,7 @@ class AiGatewayGovernanceService:
                         team_id,
                         principal_id,
                         vk_id,
-                        model,
+                        if(model != '', model, if(served_model != '', served_model, '')) AS eff_model,
                         provider,
                         toUInt16OrZero(toString(http_status)) AS status_code,
                         round(latency_ms, 2) AS latency_ms,
@@ -1171,6 +1175,8 @@ class AiGatewayGovernanceService:
                         total_tokens,
                         round(cost_usd_micros / 1000000.0, 6) AS cost_usd
                     FROM otel.aigw_requests
+                    WHERE if(model != '', model, if(served_model != '', served_model, '')) != ''
+                      AND toUInt16OrZero(toString(http_status)) > 0
                     ORDER BY ts_ms DESC
                     LIMIT 30
                     """,
@@ -1186,6 +1192,11 @@ class AiGatewayGovernanceService:
                         vk_id = str(r.get("vk_id") or "")
                         sc = "HIT" if int(r.get("cached_tokens") or 0) > 0 else "MISS"
                         status_code = int(r.get("status_code") or 200)
+                        model_name = str(r.get("eff_model") or "").strip()
+                        raw_prov = str(r.get("provider") or "").strip()
+                        prov_name = _normalize_provider(raw_prov) if raw_prov else _provider_for(model_name)
+                        if not prov_name or prov_name == "unknown":
+                            prov_name = _provider_for(model_name)
                         audit_logs.append(
                             {
                                 "id": req_id,
@@ -1202,8 +1213,10 @@ class AiGatewayGovernanceService:
                                 "virtual_key_name": vk_name_by_id.get(vk_id, vk_id),
                                 "method": "POST",
                                 "path": "/v1/chat/completions",
-                                "model": str(r.get("model") or ""),
-                                "provider": str(r.get("provider") or ""),
+                                "model": model_name,
+                                "model_id": model_name,
+                                "provider": prov_name,
+                                "provider_name": prov_name,
                                 "status_code": status_code,
                                 "latency_ms": float(r.get("latency_ms") or 0.0),
                                 "prompt_tokens": int(r.get("prompt_tokens") or 0),
@@ -1218,6 +1231,12 @@ class AiGatewayGovernanceService:
                             }
                         )
                     state["request_audit_logs"] = audit_logs
+                else:
+                    state["request_audit_logs"] = [
+                        log
+                        for log in state.get("request_audit_logs", [])
+                        if log.get("model") and str(log.get("model")).strip() != "unknown" and int(log.get("status_code") or 0) > 0
+                    ]
 
                 spend_rows, _ = obs_svc._ch_query(
                     cid,
@@ -1508,7 +1527,11 @@ class AiGatewayGovernanceService:
                 virtual_keys.append(GovernanceVirtualKeyItem(**{**vk, "cluster_id": vk.get("cluster_id") or cid, "cluster_name": vk.get("cluster_name") or cname}))
 
             readiness_checks.extend(self._build_readiness_checks(state))
-            request_audit_logs.extend(ClickHouseRequestAuditItem(**log) for log in state.get("request_audit_logs", []))
+            request_audit_logs.extend(
+                ClickHouseRequestAuditItem(**log)
+                for log in state.get("request_audit_logs", [])
+                if log.get("model") and str(log.get("model")).strip() != "unknown" and int(log.get("status_code") or 0) > 0
+            )
 
             filtered_state = {
                 **state,
