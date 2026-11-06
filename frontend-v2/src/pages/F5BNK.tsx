@@ -540,6 +540,7 @@ export default function F5BNK() {
 
   const [selectedProject, setSelectedProject] = useState<number | null>(() => {
     const fromUrl = searchParams.get("project");
+    if (fromUrl === "all") return null;
     if (fromUrl) {
       const parsed = parseInt(fromUrl);
       if (!Number.isNaN(parsed)) return parsed;
@@ -549,6 +550,7 @@ export default function F5BNK() {
   });
   const [selectedCluster, setSelectedCluster] = useState<number | null>(() => {
     const fromUrl = searchParams.get("cluster");
+    if (fromUrl === "all") return null;
     if (fromUrl) {
       const parsed = parseInt(fromUrl);
       if (!Number.isNaN(parsed)) return parsed;
@@ -588,6 +590,10 @@ export default function F5BNK() {
     );
   }, [selectedProject, allClusters]);
 
+  const isExplicitAll =
+    searchParams.get("cluster") === "all" ||
+    searchParams.get("project") === "all";
+
   useAutoSelectProjectCluster({
     projects,
     allClusters,
@@ -596,6 +602,7 @@ export default function F5BNK() {
     selectedCluster,
     setSelectedProject,
     setSelectedCluster,
+    enabled: !isExplicitAll,
   });
 
   const { linkPending } = useLinkedClusterProject(
@@ -671,10 +678,21 @@ export default function F5BNK() {
   // Sync state when URL searchParams change
   useEffect(() => {
     const urlCluster = searchParams.get("cluster");
-    if (urlCluster) {
+    if (urlCluster === "all") {
+      setSelectedCluster((prev) => (prev !== null ? null : prev));
+    } else if (urlCluster) {
       const parsed = parseInt(urlCluster);
       if (!Number.isNaN(parsed)) {
         setSelectedCluster((prev) => (prev !== parsed ? parsed : prev));
+      }
+    }
+    const urlProject = searchParams.get("project");
+    if (urlProject === "all") {
+      setSelectedProject((prev) => (prev !== null ? null : prev));
+    } else if (urlProject) {
+      const parsed = parseInt(urlProject);
+      if (!Number.isNaN(parsed)) {
+        setSelectedProject((prev) => (prev !== parsed ? parsed : prev));
       }
     }
     const targetViewOrResource = mapParamToViewOrResource(
@@ -1329,7 +1347,7 @@ export default function F5BNK() {
             active={activeCategory}
             onChange={(cat) => {
               handleSelectCategory(cat);
-              if (!selectedCluster && visibleClusters.length > 0) {
+              if (cat !== "Overview" && !selectedCluster && visibleClusters.length > 0) {
                 setSelectedCluster(visibleClusters[0].id);
               }
             }}
@@ -1412,7 +1430,7 @@ export default function F5BNK() {
                         : pending}
                     </TableCell>
                     <TableCell className="text-xs text-right tabular-nums">
-                      {bnk?.node_count ?? pending}
+                      {bnk?.node_count ?? cluster.node_count ?? pending}
                     </TableCell>
                   </>
                 );

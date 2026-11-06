@@ -178,6 +178,22 @@ class SystemService:
                     reachable = False
 
                 if reachable and bnk_data is not None:
+                    discovered_nodes = bnk_data.get("nodes") or {}
+                    if (node_count is None or node_count == 0) and discovered_nodes:
+                        discovered_count = len(discovered_nodes)
+                        node_count = discovered_count
+                        try:
+                            cluster_obj = (
+                                thread_db.query(KubernetesCluster)
+                                .filter(KubernetesCluster.id == cluster_id)
+                                .first()
+                            )
+                            if cluster_obj and (cluster_obj.node_count is None or cluster_obj.node_count == 0):
+                                cluster_obj.node_count = discovered_count
+                                thread_db.commit()
+                        except Exception as update_err:
+                            logger.debug(f"Failed to backfill node_count on cluster {cluster_id}: {update_err}")
+
                     try:
                         pod_metrics_response = thread_k8s_svc.get_pod_metrics(cluster_id)
                     except Exception as exc:
