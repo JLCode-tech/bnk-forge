@@ -116,6 +116,10 @@ export interface K8sCluster {
   ssh_host_override?: string | null;
   /** Per-cluster prereq selection — null means use defaults; locked entries (multus) are always included on read */
   enabled_prerequisites?: string[] | null;
+  /** Access method: 'kubeconfig' (legacy pull) vs 'agent_push' (PoV push agent) */
+  access_method?: string | null;
+  integration_status?: string | null;
+  connectivity_status?: string | null;
   /** ADR-424: Side-table BNK cluster configuration summary */
   bnk_config?: BnkClusterConfigSummary | null;
 }

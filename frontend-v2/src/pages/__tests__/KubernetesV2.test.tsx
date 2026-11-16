@@ -4,7 +4,7 @@
  * Covers: renders page, project/cluster selection, empty state, search input.
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, fireEvent } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "@/test/mocks/server";
 import { render } from "@/test/test-utils";
@@ -70,12 +70,16 @@ interface TestCluster {
   ssh_host_override: string | null;
   last_synced_at: string | null;
   created_at: string | null;
+  access_method?: string;
+  integration_status?: string;
+  connectivity_status?: string;
 }
 
 function buildCluster(
   id: number,
   projectId: number,
   name: string,
+  extra?: Partial<TestCluster>,
 ): TestCluster {
   return {
     id,
@@ -99,6 +103,7 @@ function buildCluster(
     ssh_host_override: null,
     last_synced_at: null,
     created_at: null,
+    ...extra,
   };
 }
 
@@ -386,6 +391,68 @@ describe("KubernetesV2", () => {
 
     await waitFor(() => {
       expect(window.localStorage.getItem(STORAGE_KEYS.K8S_CLUSTER)).toBe("101");
+    });
+  });
+
+  it("switches to telemetry view when Live Telemetry sidebar tab is clicked", async () => {
+    const singleProject = [{ id: 1, name: "project-one" }];
+    const singleCluster = [
+      buildCluster(101, 1, "cluster-one", {
+        access_method: "agent_push",
+        integration_status: "agent_connected",
+      }),
+    ];
+    mockKubernetesPageApis({
+      projects: singleProject,
+      allClusters: singleCluster,
+      clustersByProject: { 1: singleCluster },
+    });
+
+    render(<KubernetesV2 />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("tab", { name: /Live Telemetry/i }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: /Live Telemetry/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Strangler Push Active/i),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows Push Agent Active badge in header and switches to telemetry view when clicked", async () => {
+    const singleProject = [{ id: 1, name: "project-one" }];
+    const singleCluster = [
+      buildCluster(101, 1, "cluster-one", {
+        access_method: "agent_push",
+        integration_status: "agent_connected",
+      }),
+    ];
+    mockKubernetesPageApis({
+      projects: singleProject,
+      allClusters: singleCluster,
+      clustersByProject: { 1: singleCluster },
+    });
+
+    render(<KubernetesV2 />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Push Agent Active/i }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Push Agent Active/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Strangler Push Active/i),
+      ).toBeInTheDocument();
     });
   });
 });

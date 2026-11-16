@@ -44,6 +44,7 @@ import { BnkClusterMemberDialog } from "./BnkClusterMemberDialog";
 import { DetectClustersConfirmDialog } from "./DetectClustersConfirmDialog";
 import { AddClusterFlowDialog } from "./AddClusterFlowDialog";
 import { AgentEnrollmentWizard } from "../fleet/AgentEnrollmentWizard";
+import { ClusterTelemetryDialog } from "./ClusterTelemetryDialog";
 import type { K8sCluster, ClusterConnectivityResult } from "@/types";
 import { api } from "@/lib/api";
 import { notify } from "@/lib/notify";
@@ -71,6 +72,7 @@ import {
   Unplug,
   Network,
   Zap,
+  Activity,
 } from "lucide-react";
 
 interface K8sClusterListProps {
@@ -148,6 +150,7 @@ export function K8sClusterList({
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
   const [addClusterFlowOpen, setAddClusterFlowOpen] = useState(false);
   const [enrollWizardOpen, setEnrollWizardOpen] = useState(false);
+  const [telemetryCluster, setTelemetryCluster] = useState<K8sCluster | null>(null);
   const [selectedCluster, setSelectedCluster] = useState<K8sCluster | null>(
     null,
   );
@@ -338,11 +341,11 @@ export function K8sClusterList({
               )}
             </Button>
           )}
-          <Button variant="outline" onClick={() => setEnrollWizardOpen(true)}>
-            <Zap className="mr-2 h-4 w-4 text-primary" />
+          <Button variant="default" onClick={() => setEnrollWizardOpen(true)}>
+            <Zap className="mr-2 h-4 w-4" />
             Enroll Agent (:17543)
           </Button>
-          <Button onClick={handleAddCluster}>
+          <Button variant="outline" onClick={handleAddCluster}>
             <Plus className="mr-2 h-4 w-4" />
             Add Cluster
           </Button>
@@ -359,7 +362,7 @@ export function K8sClusterList({
               <p className="text-sm text-muted-foreground mt-1">
                 {projectSshCredentialId
                   ? "Click below to auto-discover clusters via SSH"
-                  : "Add a Kubernetes cluster to monitor deployed resources"}
+                  : "Connect clusters via push agent on :17543 or legacy direct kubeconfig"}
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-center gap-2">
@@ -381,12 +384,15 @@ export function K8sClusterList({
                   )}
                 </Button>
               )}
-              <Button onClick={() => setEnrollWizardOpen(true)}>
+              <Button
+                variant="default"
+                onClick={() => setEnrollWizardOpen(true)}
+              >
                 <Zap className="mr-2 h-4 w-4" />
                 Enroll Edge Agent (:17543)
               </Button>
               <Button
-                variant={projectSshCredentialId ? "outline" : "default"}
+                variant="outline"
                 onClick={handleAddCluster}
               >
                 <Plus className="mr-2 h-4 w-4" />
@@ -500,6 +506,12 @@ export function K8sClusterList({
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuItem
+                      onClick={() => setTelemetryCluster(cluster)}
+                    >
+                      <Activity className="mr-2 h-4 w-4 text-emerald-500" />
+                      Live Strangler Telemetry
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
                       onClick={() => handleDeleteClick(cluster)}
                       className="text-destructive"
                     >
@@ -513,6 +525,22 @@ export function K8sClusterList({
               {/* Status + Connectivity */}
               <div className="flex items-center gap-2 flex-wrap">
                 <ClusterStatusBadge cluster={cluster} />
+                {(cluster.access_method === "agent_push" || cluster.integration_status === "agent_connected") && (
+                  <button
+                    type="button"
+                    onClick={() => setTelemetryCluster(cluster)}
+                    className="inline-flex focus:outline-hidden"
+                    title="View live eBPF flows and TMM DPDK metrics"
+                  >
+                    <Badge
+                      variant="outline"
+                      className="text-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 flex items-center gap-1 font-medium hover:bg-emerald-500/20 cursor-pointer transition-colors"
+                    >
+                      <Zap className="h-3 w-3 fill-emerald-500/20" />
+                      Push Agent Active
+                    </Badge>
+                  </button>
+                )}
                 {cluster.version && (
                   <Badge variant="secondary" className="text-xs">
                     v{cluster.version}
@@ -691,6 +719,15 @@ export function K8sClusterList({
         open={enrollWizardOpen}
         onOpenChange={setEnrollWizardOpen}
         defaultProjectId={projectId}
+      />
+
+      {/* Live Cluster Strangler Telemetry Dialog */}
+      <ClusterTelemetryDialog
+        open={telemetryCluster !== null}
+        onOpenChange={(open: boolean) => !open && setTelemetryCluster(null)}
+        clusterId={telemetryCluster?.id ?? null}
+        clusterName={telemetryCluster?.name}
+        projectId={projectId}
       />
 
       {/* Add Cluster Flow (Push Agent or Direct Kubeconfig) */}

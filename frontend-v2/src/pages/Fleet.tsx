@@ -59,6 +59,8 @@ import {
   Send,
   FileCode,
   CheckSquare,
+  ShieldCheck,
+  Zap,
 } from "lucide-react";
 import {
   useFleetHealth,
@@ -118,6 +120,8 @@ import {
   EstateSummaryBar,
 } from "@/components/fleet/FleetTrafficLights";
 import { AddClusterFlowDialog } from "@/components/k8s/AddClusterFlowDialog";
+import { AgentEnrollmentWizard } from "@/components/fleet/AgentEnrollmentWizard";
+import { ClusterTelemetryDialog } from "@/components/k8s/ClusterTelemetryDialog";
 import { usePageRefresh } from "@/hooks/usePageRefresh";
 import { useBnkConsumption } from "@/hooks/useSystem";
 import { BnkResourcesPanel } from "@/components/system/BnkResourcesPanel";
@@ -348,6 +352,7 @@ interface ClusterRowProps {
   onViewHealth: (op: FleetOperatorHealth) => void;
   onViewConfig: (op: FleetOperatorHealth) => void;
   onViewDpf: (op: FleetOperatorHealth) => void;
+  onViewTelemetry?: (op: FleetOperatorHealth) => void;
 }
 
 const ClusterRow = memo(function ClusterRow({
@@ -357,6 +362,7 @@ const ClusterRow = memo(function ClusterRow({
   onViewHealth,
   onViewConfig,
   onViewDpf,
+  onViewTelemetry,
 }: ClusterRowProps) {
   const isOffline = op.status === "offline";
   const bnkSeverity =
@@ -528,6 +534,17 @@ const ClusterRow = memo(function ClusterRow({
         )}
       </div>
       <div className="flex items-center gap-1 shrink-0">
+        {onViewTelemetry && (
+          <Button
+            variant="ghost"
+            size="sm"
+            title="View Live Strangler Telemetry (eBPF & TMM)"
+            onClick={() => onViewTelemetry(op)}
+            className="h-7 w-7 p-0 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+          >
+            <Zap className="h-3.5 w-3.5" />
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="sm"
@@ -1022,6 +1039,9 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
   const [showCompare, setShowCompare] = useState(false);
   const [showPromotionWizard, setShowPromotionWizard] = useState(false);
   const [showAddCluster, setShowAddCluster] = useState(false);
+  const [showEnrollAgent, setShowEnrollAgent] = useState(false);
+  const [telemetryOperator, setTelemetryOperator] =
+    useState<FleetOperatorHealth | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [sortField, setSortField] = useState<SortField>("status");
   const [sortAsc, setSortAsc] = useState(true);
@@ -1077,6 +1097,13 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
       navigate(`/infrastructure?tab=dpus&cluster=${op.cluster_id}`);
     },
     [navigate],
+  );
+
+  const handleViewTelemetry = useCallback(
+    (op: FleetOperatorHealth) => {
+      setTelemetryOperator(op);
+    },
+    [],
   );
 
   const [selectedProvider, setSelectedProvider] = useState<
@@ -1177,6 +1204,7 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
               onViewHealth={handleViewHealth}
               onViewConfig={handleViewConfig}
               onViewDpf={handleViewDpf}
+              onViewTelemetry={handleViewTelemetry}
             />
           ))}
         </div>
@@ -1220,6 +1248,16 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
           {!fleetId && (
             <Button
               variant="default"
+              size="sm"
+              onClick={() => setShowEnrollAgent(true)}
+            >
+              <ShieldCheck className="h-4 w-4 mr-1.5" />
+              Enroll Agent (:17543)
+            </Button>
+          )}
+          {!fleetId && (
+            <Button
+              variant="outline"
               size="sm"
               onClick={() => setShowAddCluster(true)}
             >
@@ -1274,18 +1312,17 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
             <RefreshCw className="h-8 w-8 mx-auto text-primary animate-spin" />
             <div>
               <h3 className="text-sm font-semibold text-foreground">
-                Querying cluster health…
+                Connecting to fleet clusters…
               </h3>
               <p className="text-xs text-muted-foreground mt-1 max-w-prose mx-auto">
-                Connecting to each cluster via kubeconfig, fetching BNK
-                resources, and analyzing health. This may take 10–30 seconds for
-                on-prem or high-latency clusters.
+                Gathering telemetry via outbound push agents on port :17543 or
+                reachable endpoints, fetching BNK resources, and analyzing health.
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-xs text-muted-foreground pt-2">
               {[
-                "TCP connectivity check",
-                "Kubernetes API query",
+                "mTLS :17543 ingest check",
+                "Kubernetes API telemetry",
                 "Health analysis",
               ].map((s) => (
                 <span key={s} className="flex items-center gap-1.5">
@@ -1310,14 +1347,22 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
           description={
             fleetId
               ? "This fleet has no cluster members. Add clusters via the Members tab."
-              : "Add a Kubernetes cluster to see fleet health. Clusters are queried directly via kubeconfig — no operator installation required."
+              : "Connect Kubernetes clusters to your fleet using lightweight outbound push agents on port :17543 with zero inbound firewall rules."
           }
           action={
             !fleetId
               ? {
                   label: "Add your first cluster",
                   onClick: () => setShowAddCluster(true),
-                  icon: <Plus className="h-4 w-4 mr-1.5" />,
+                  icon: <ShieldCheck className="h-4 w-4 mr-1.5" />,
+                }
+              : undefined
+          }
+          secondaryAction={
+            !fleetId
+              ? {
+                  label: "Enroll Agent (:17543)",
+                  onClick: () => setShowEnrollAgent(true),
                 }
               : undefined
           }
@@ -1491,6 +1536,16 @@ function OverviewView({ fleetId }: { fleetId?: number }) {
       <AddClusterFlowDialog
         open={showAddCluster}
         onOpenChange={setShowAddCluster}
+      />
+      <AgentEnrollmentWizard
+        open={showEnrollAgent}
+        onOpenChange={setShowEnrollAgent}
+      />
+      <ClusterTelemetryDialog
+        open={telemetryOperator !== null}
+        onOpenChange={(open) => !open && setTelemetryOperator(null)}
+        clusterId={telemetryOperator?.cluster_id ?? null}
+        clusterName={telemetryOperator?.cluster_name}
       />
     </div>
   );

@@ -33,6 +33,21 @@ vi.mock('../../fleet/AgentEnrollmentWizard', () => ({
     open ? <div data-testid="agent-enrollment-wizard">Agent Enrollment Wizard</div> : null,
 }));
 
+vi.mock('../ClusterTelemetryDialog', () => ({
+  ClusterTelemetryDialog: ({
+    open,
+    clusterName,
+  }: {
+    open: boolean;
+    clusterName?: string;
+  }) =>
+    open ? (
+      <div data-testid="cluster-telemetry-dialog">
+        Cluster Telemetry Dialog for {clusterName}
+      </div>
+    ) : null,
+}));
+
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
@@ -50,6 +65,8 @@ const mockClusters = [
     default_namespace: 'default',
     status: 'active',
     version: '1.28',
+    access_method: 'agent_push',
+    integration_status: 'agent_connected',
     ssh_tunnel_enabled: false,
     detected_platform_profile: 'eks',
     detected_platform_provider: 'aws',
@@ -567,6 +584,55 @@ describe('K8sClusterList', () => {
       await waitFor(() => {
         expect(screen.getByText('Delete Cluster?')).toBeInTheDocument();
         expect(screen.getByText(/remove cluster/i)).toBeInTheDocument();
+      });
+    });
+  });
+
+  // ─── Strangler Telemetry Integration ───────────────────────────────
+
+  describe('Strangler telemetry integration', () => {
+    it('shows Live Strangler Telemetry option in dropdown and opens telemetry dialog', async () => {
+      const user = userEvent.setup();
+      render(<K8sClusterList projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('prod-cluster')).toBeInTheDocument();
+      });
+
+      const dropdownTriggers = screen.getAllByRole('button');
+      for (const btn of dropdownTriggers) {
+        if (btn.querySelector('.lucide-more-vertical')) {
+          await user.click(btn);
+          break;
+        }
+      }
+
+      const telemetryItem = await screen.findByText('Live Strangler Telemetry');
+      expect(telemetryItem).toBeInTheDocument();
+      await user.click(telemetryItem);
+
+      await waitFor(() => {
+        expect(
+          screen.getByText('Cluster Telemetry Dialog for prod-cluster'),
+        ).toBeInTheDocument();
+      });
+    });
+
+    it('opens telemetry dialog when clicking the Push Agent Active badge', async () => {
+      const user = userEvent.setup();
+      render(<K8sClusterList projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Push Agent Active')).toBeInTheDocument();
+      });
+
+      const badgeButton = screen.getByTitle('View live eBPF flows and TMM DPDK metrics');
+      await user.click(badgeButton);
+
+      await waitFor(() => {
+        expect(
+          screen.getByText('Cluster Telemetry Dialog for prod-cluster'),
+        ).toBeInTheDocument();
       });
     });
   });

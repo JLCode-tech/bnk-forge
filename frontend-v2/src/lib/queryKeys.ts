@@ -290,6 +290,14 @@ export const queryKeys = {
         ["k8s", "clusters", clusterId, "dpf", "data"] as const,
       dpfHealth: (clusterId: number) =>
         ["k8s", "clusters", clusterId, "dpf", "health"] as const,
+      telemetrySummary: (clusterId: number | string, hours?: number) =>
+        ["k8s", "clusters", String(clusterId), "telemetry", "summary", hours] as const,
+      telemetryFlows: (clusterId: number | string, params?: { hours?: number; namespace?: string; podName?: string }) =>
+        ["k8s", "clusters", String(clusterId), "telemetry", "flows", params] as const,
+      telemetryTmm: (clusterId: number | string, hours?: number) =>
+        ["k8s", "clusters", String(clusterId), "telemetry", "tmm", hours] as const,
+      telemetryDrift: (clusterId: number | string, hours?: number) =>
+        ["k8s", "clusters", String(clusterId), "telemetry", "drift", hours] as const,
     },
     tunnels: () => ["k8s", "tunnels"] as const,
   },
@@ -408,6 +416,9 @@ export const queryKeys = {
     labelVocabulary: () => ["fleet", "label-vocabulary"] as const,
     configs: () => ["fleet", "configs"] as const,
     config: (id: string | number) => ["fleet", "configs", String(id)] as const,
+    enrollmentTokens: (projectId?: number) =>
+      ["fleet", "enrollment", "tokens", projectId] as const,
+    caBundle: () => ["fleet", "enrollment", "ca"] as const,
   },
 
   // Stacks hierarchy (already partially used via useStacks)

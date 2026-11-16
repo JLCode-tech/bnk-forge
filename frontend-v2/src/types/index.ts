@@ -46,6 +46,7 @@ export * from './alerts';
 export * from './module-sources';
 export * from './blueprint-catalog';
 export * from './fleet';
+export * from './fleetEnrollment';
 export * from './runbooks';
 export * from './licensing';
 export * from './qkview';

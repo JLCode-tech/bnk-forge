@@ -230,6 +230,41 @@ describe("AddClusterFlowDialog", () => {
     });
   });
 
+  it("opens directly to method selection when initialProjectId is provided", async () => {
+    render(
+      <AddClusterFlowDialog
+        open={true}
+        onOpenChange={onOpenChange}
+        initialProjectId={1}
+      />,
+    );
+
+    expect(screen.getByText("Choose Integration Method")).toBeInTheDocument();
+    expect(screen.getByText("Push-Based Edge Agent")).toBeInTheDocument();
+    expect(screen.getByText("Recommended")).toBeInTheDocument();
+    expect(screen.getByText("Direct Kubeconfig (Legacy Pull)")).toBeInTheDocument();
+  });
+
+  it("opens AgentEnrollmentWizard directly from method selection when initialProjectId is provided", async () => {
+    const user = userEvent.setup();
+    render(
+      <AddClusterFlowDialog
+        open={true}
+        onOpenChange={onOpenChange}
+        initialProjectId={2}
+      />,
+    );
+
+    await user.click(screen.getByText(/Push-Based Edge Agent/i));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("agent-enrollment-wizard")).toBeInTheDocument();
+      expect(
+        screen.getByText("AgentEnrollmentWizard for project 2"),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("lists newly created projects even when none is marked as current (all is_active=false)", () => {
     setProjectsMock({
       data: [mockProjects[2]], // is_active: false (newly created / non-current project)

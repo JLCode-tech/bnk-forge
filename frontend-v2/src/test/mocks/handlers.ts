@@ -2099,4 +2099,87 @@ export const handlers = [
   http.post("*/api/bare-metal/release-sources/:id/tags\\:pull", () => {
     return HttpResponse.json({ added: [], skipped: [], failed: [] });
   }),
+
+  // Telemetry Strangler Facade Handlers
+  http.get("*/api/k8s/clusters/:id/telemetry/summary", ({ params }) => {
+    return HttpResponse.json({
+      cluster_id: Number(params.id),
+      cluster_name: "test-cluster",
+      cluster_uuid: "11111111-2222-3333-4444-555555555555",
+      source: "AGENT_PUSH",
+      status: "active",
+      has_active_agent: true,
+      connection_mode: "AGENT_PUSH",
+      flows: {
+        total_flows: 1540,
+        inbound_flows: 900,
+        outbound_flows: 640,
+        total_bytes_sent: 5000000,
+        total_bytes_received: 8000000,
+        avg_handshake_duration_us: 142.5,
+        avg_smoothed_rtt_us: 210.0,
+        total_retransmissions: 2,
+        tmm_bypass_violations: 0,
+      },
+      drift_violations_count: 0,
+    });
+  }),
+
+  http.get("*/api/k8s/clusters/:id/telemetry/flows", ({ params }) => {
+    return HttpResponse.json({
+      cluster_id: Number(params.id),
+      source: "AGENT_PUSH",
+      summary: {
+        total_flows: 1540,
+        inbound_flows: 900,
+        outbound_flows: 640,
+        total_bytes_sent: 5000000,
+        total_bytes_received: 8000000,
+        avg_handshake_duration_us: 142.5,
+        avg_smoothed_rtt_us: 210.0,
+        total_retransmissions: 2,
+        tmm_bypass_violations: 0,
+      },
+      top_talkers: [
+        {
+          pod_name: "payment-service-abc",
+          namespace: "production",
+          flow_count: 500,
+          total_bytes: 4500000,
+          avg_rtt_us: 195.0,
+          violations: 0,
+        },
+      ],
+      recent_flows: [],
+    });
+  }),
+
+  http.get("*/api/k8s/clusters/:id/telemetry/tmm", ({ params }) => {
+    return HttpResponse.json({
+      cluster_id: Number(params.id),
+      source: "AGENT_PUSH",
+      tmm_metrics: {
+        total_packets_in: 9500000,
+        total_packets_out: 8900000,
+        total_bytes_in: 4500000000,
+        total_bytes_out: 4200000000,
+        rx_ring_occupancy_pct: 18.5,
+        tx_ring_occupancy_pct: 12.0,
+        ring_drops: 0,
+        tmm_cpu_utilization_pct: 22.4,
+        tmm_hugepages_allocated_mb: 4096,
+        tmm_hugepages_used_mb: 2048,
+        tmctl_socket_alive: true,
+      },
+    });
+  }),
+
+  http.get("*/api/k8s/clusters/:id/telemetry/drift", ({ params }) => {
+    return HttpResponse.json({
+      cluster_id: Number(params.id),
+      source: "AGENT_PUSH",
+      total_violations: 0,
+      violations: [],
+    });
+  }),
 ];

@@ -52,7 +52,10 @@ import {
   SlidersHorizontal,
   MoreVertical,
   ArrowRightLeft,
+  Activity,
+  Zap,
 } from "lucide-react";
+import { ClusterTelemetryPanel } from "@/components/k8s/ClusterTelemetryPanel";
 import {
   useProjectClusters,
   useClusterNamespaces,
@@ -199,9 +202,11 @@ export default function KubernetesV2() {
     }
     if (
       viewParam &&
-      ["advanced", "migration", "dashboard", "crds"].includes(viewParam)
+      ["advanced", "migration", "dashboard", "crds", "telemetry"].includes(viewParam)
     ) {
-      setViewMode(viewParam as "dashboard" | "advanced" | "crds" | "migration");
+      setViewMode(
+        viewParam as "dashboard" | "advanced" | "crds" | "migration" | "telemetry",
+      );
     }
     const crdParam = searchParams.get("crd");
     if (crdParam) {
@@ -273,19 +278,26 @@ export default function KubernetesV2() {
   // View mode — "dashboard" shows the BNK-deployment-focused scan view as the
   // default landing. "advanced" shows the generic resource browser (sidebar
   // tree + table). "crds" shows the dedicated CRD explorer. "migration" shows the proxy/CIS migration surface.
+  // "telemetry" shows the live eBPF flows, TMM DPDK counters, and architectural drift.
   const [viewMode, setViewMode] = useState<
-    "dashboard" | "advanced" | "crds" | "migration"
+    "dashboard" | "advanced" | "crds" | "migration" | "telemetry"
   >(() => {
     const fromUrl = searchParams.get("view");
     if (
       fromUrl === "advanced" ||
       fromUrl === "migration" ||
       fromUrl === "dashboard" ||
-      fromUrl === "crds"
+      fromUrl === "crds" ||
+      fromUrl === "telemetry"
     )
       return fromUrl;
     const stored = localStorage.getItem(STORAGE_KEYS.K8S_VIEW_MODE);
-    if (stored === "advanced" || stored === "migration" || stored === "crds")
+    if (
+      stored === "advanced" ||
+      stored === "migration" ||
+      stored === "crds" ||
+      stored === "telemetry"
+    )
       return stored;
     return "dashboard";
   });
@@ -902,6 +914,18 @@ export default function KubernetesV2() {
                 {contentCount} {isHelmView ? "releases" : "resources"}
               </span>
             </div>
+            {(selectedClusterData?.access_method === "agent_push" ||
+              selectedClusterData?.integration_status === "agent_connected") && (
+              <button
+                type="button"
+                onClick={() => setViewMode("telemetry")}
+                className="flex items-center gap-1 px-2 py-0.5 rounded text-2xs font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors"
+                title="View live eBPF & TMM telemetry"
+              >
+                <Zap className="h-3 w-3 fill-emerald-500/20" />
+                Push Agent Active
+              </button>
+            )}
           </div>
         )}
 
@@ -997,7 +1021,7 @@ export default function KubernetesV2() {
             active={viewMode}
             onChange={(key) => {
               setViewMode(
-                key as "dashboard" | "advanced" | "crds" | "migration",
+                key as "dashboard" | "advanced" | "crds" | "migration" | "telemetry",
               );
               if (!selectedCluster && visibleClusters.length > 0) {
                 setSelectedCluster(visibleClusters[0].id);
@@ -1009,6 +1033,13 @@ export default function KubernetesV2() {
                 label: "Overview",
                 icon: LayoutDashboard,
                 title: "Cluster overview, readiness & prerequisites",
+              },
+              {
+                key: "telemetry",
+                label: "Live Telemetry",
+                icon: Activity,
+                title:
+                  "Real-time eBPF socket flows, F5 TMM DPDK counters & drift telemetry",
               },
               {
                 key: "advanced",
@@ -1087,6 +1118,17 @@ export default function KubernetesV2() {
                the !selectedCluster branch above renders EmptyState first. */
             <div className="p-6 space-y-6">
               <MigrationPanel clusterId={selectedCluster} />
+            </div>
+          ) : viewMode === "telemetry" ? (
+            /* Strangler Telemetry mode: Real-time eBPF socket flows, F5 TMM DPDK counters & architectural drift */
+            <div className="p-6 space-y-6 overflow-y-auto">
+              <ClusterTelemetryPanel
+                clusterId={selectedCluster}
+                clusterName={
+                  visibleClusters.find((c) => c.id === selectedCluster)?.name
+                }
+                projectId={selectedProject ?? undefined}
+              />
             </div>
           ) : viewMode === "dashboard" || showClusterScan ? (
             /* Dashboard mode: BNK-deployment-focused scan view. Always the

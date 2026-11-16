@@ -7,8 +7,9 @@
 - **Milestone 1**: Alembic Exit & Atlas Declarative Schema (83 tables baseline + Idempotent Seeds)
 - **Milestone 2**: Agent Protocol & Console-Driven Enrollment API (`forge-ingest` Gateway + Backend PKI + UI Wizard)
 - **Milestone 3**: Core Forge Agent MVP (`cmd/forge-agent` + eBPF Socket Filter + TMM Harvester + Disk Spool WAL)
-**Active Work**:
 - **Milestone 4**: Strangler Integration in FastAPI (`ClusterDataProvider` Facade + Agent Heartbeat / State Sync + ClickHouse Telemetry Queries)
+**Active Work**:
+- **Milestone 5**: Celery Retirement & Task Migration (NATS JetStream WorkQueues + Ephemeral K8s Jobs for QKView/aiperf)
 
 ---
 
@@ -73,6 +74,54 @@
     - `cmd/forge-agent/main.go`: CLI entrypoint with flag and environment variable configuration.
     - `cmd/forge-agent/Dockerfile`: Multi-stage static build (`golang:alpine` -> `alpine:3.20`).
     - `deploy/agent/daemonset.yaml`: Production DaemonSet, ClusterRole, and ServiceAccount manifest.
+
+- **Milestone 4 (Completed & Verified)**:
+  - **`ClickHouseClient` (`backend/services/clickhouse_client.py`)**:
+    - High-performance analytical client querying ClickHouse HTTP endpoint (`:8123`).
+    - Methods implemented: `query_flows_summary`, `query_recent_flows`, `query_top_pod_talkers`, `query_tmm_metrics_summary`, `query_drift_violations`.
+    - Hermetic unit testing support with mock HTTP transport and offline fallback resilience.
+  - **`ClusterDataProvider` Facade (`backend/services/cluster_provider.py`)**:
+    - Strangler Fig facade dynamically routing telemetry:
+      - **Push Path (Target PoV)**: ClickHouse HTTP metrics when edge agent is active.
+      - **Fallback Pull Path (Legacy)**: Redis cache and Kubernetes cluster metadata when no agent is active.
+    - Evaluates agent status via heartbeat freshness (`AGENT_HEARTBEAT_THRESHOLD_SECONDS = 45s`), `access_method = "agent_push"`, and `integration_status = "agent_connected"`.
+    - Updates cluster state upon heartbeat receipt (`record_agent_heartbeat`).
+  - **Fleet State Synchronization & Public Heartbeat Endpoint**:
+    - Added `POST /api/fleet/enrollment/agent-heartbeat` and `GET /api/fleet/enrollment/status/{cluster_id}` in `backend/routes/fleet_enrollment.py`.
+    - Exemption added to `AGENT_PUBLIC_ENDPOINTS` in `backend/core/auth_middleware.py` so edge agents can ping without human JWT.
+    - Asynchronous backend heartbeat notification wired into `pkg/ingest/server.go`.
+  - **FastAPI Telemetry Endpoints (`backend/routes/k8s/telemetry.py`)**:
+    - Mounted in `backend/main.py`:
+      - `GET /api/k8s/clusters/{id}/telemetry/summary`
+      - `GET /api/k8s/clusters/{id}/telemetry/flows`
+      - `GET /api/k8s/clusters/{id}/telemetry/tmm`
+      - `GET /api/k8s/clusters/{id}/telemetry/drift`
+  - **Frontend UI Integration & Navigation Wiring (Zero Ghost Components)**:
+    - Implemented full typed client and query keys (`clusterTelemetry.ts`, `clusterTelemetryApi`, `useClusterTelemetry`).
+    - Created `ClusterTelemetryPanel.tsx` & `ClusterTelemetryDialog.tsx` rendering:
+      - KPI summary strip (total flows, RTT/handshake latency, TMM DPDK packets/drops/CPU %, drift count).
+      - Tabbed views for Overview, Pod Flows & Top Talkers, F5 TMM DPDK Microkernel, and Architectural Drift.
+      - Fallback banner with 1-click "Enroll Push Agent" trigger when cluster is in legacy pull mode.
+    - Wired all existing user navigation paths:
+      1. **Project Details -> Clusters Tab (`K8sClusterList.tsx`)**:
+         - Clickable "Push Agent Active" badge directly opens `ClusterTelemetryDialog`.
+         - Kebab action menu: "Live Strangler Telemetry" option opens `ClusterTelemetryDialog`.
+      2. **Cluster Fleet Overview (`Fleet.tsx`)**:
+         - Dedicated Zap/Activity action button in cluster table rows opens `ClusterTelemetryDialog`.
+      3. **Kubernetes Explorer (`KubernetesV2.tsx`)**:
+         - Persistent inner sub-sidebar view mode tab: "Live Telemetry" switches view mode to full-page `ClusterTelemetryPanel`.
+         - Header shortcut: Interactive "Push Agent Active" badge button in `ResourcePageHeader` switches view mode to telemetry.
+    - **Exhaustive Automated Verification**:
+      - `KubernetesV2.test.tsx`: Verified Live Telemetry tab and header badge click actions switch to telemetry view.
+      - `K8sClusterList.test.tsx`: Verified dropdown and interactive badge open telemetry modal.
+      - `Fleet.test.tsx`: Verified row action opens telemetry dialog.
+      - `useClusterTelemetry.test.ts` & `ClusterTelemetryDialog.test.tsx`: 100% test pass.
+      - Full frontend suite: 323/323 test files passed (2,971 tests passed, 0 failures).
+      - Vite production build (`npm run build`): Passed cleanly.
+  - **Test Suite Verification**:
+    - `backend/tests/unit/test_cluster_provider.py`: 13/13 tests passed (100%).
+    - `backend/tests/unit/test_fleet_enrollment.py`: 12/12 tests passed (100%).
+    - Go test suite (`go test ./...`): 100% test pass.
 
 ---
 
@@ -145,26 +194,69 @@ sequenceDiagram
 
 ---
 
-## 5. Immediate Next Steps (Milestone 4: Strangler Integration in FastAPI)
+## 5. Completed Work: Push-Based Fleet Enrollment Unification & Gateway Operationalization
+
+1. **Frontend UI Entry Points Unified**:
+   - `frontend-v2/src/pages/Fleet.tsx`:
+     - Set primary CTA to `Enroll Agent (:17543)` (`variant="default"`).
+     - Rewrote legacy empty state copy claiming direct kubeconfig to: *"Connect Kubernetes clusters to your fleet using lightweight outbound push agents on port :17543 with zero inbound firewall rules."*
+     - Added secondary action button on empty state card for direct push agent enrollment.
+     - Wired `<ClusterTelemetryDialog>` for live telemetry metrics.
+   - `frontend-v2/src/pages/KubernetesV2.tsx`:
+     - Added "Push Agent Active" badge and "Live Telemetry" tab for push-connected clusters.
+   - `frontend-v2/src/components/k8s/K8sClusterList.tsx`:
+     - Promoted "Enroll Agent (:17543)" in table header and empty state cards to primary CTAs (`variant="default"`).
+     - Wired `AddClusterFlowDialog` and `AgentEnrollmentWizard`.
+   - `frontend-v2/src/components/k8s/AddClusterFlowDialog.tsx`:
+     - Step 2 defaults to and highlights "Push-Based Edge Agent (Recommended)".
+   - `frontend-v2/src/components/k8s/ClusterConfigDialog.tsx`:
+     - Shows recommendation banner in create mode pointing to `AgentEnrollmentWizard`.
+   - Verified clean TypeScript compilation (`npx tsc --noEmit`), Vitest suite (68 passed), and Vite production bundle build.
+
+2. **Backend PKI & Ingest Gateway Operationalization**:
+   - `backend/services/pki_service.py`:
+     - Switched to `threading.RLock()` to prevent reentrant deadlocks.
+     - Added `ensure_server_certificate()` creating `server.crt` and `server.key` signed by Root CA with SANs for `localhost`, `127.0.0.1`, `host.docker.internal`, `forge-ingest`, `console`.
+     - Maintains `ca.crt` alias alongside `forge_ca.crt`.
+   - `backend/main.py` & `backend/startup_steps.py`:
+     - Added `init_pki_step` to FastAPI lifespan to guarantee keypair generation on startup into `/app/keys/`.
+   - `pkg/ingest/clickhouse.go` & `cmd/forge-ingest/main.go`:
+     - Added ClickHouse authentication with `X-ClickHouse-User` and `X-ClickHouse-Key` headers.
+     - Fixed ClickHouse TTL expressions to `toDateTime(timestamp) + INTERVAL ...` for `DateTime64` columns.
+   - `pkg/ingest/server.go`:
+     - Added fallback to plain HTTP if certs are missing and `RequireMTLS=false`.
+   - Verified live Ingest Gateway on `:17543`:
+     - `curl -k https://localhost:17543/healthz` -> `{"status":"healthy","service":"forge-ingest"}`
+     - `curl -k https://localhost:17543/metrics` -> `{"errors_count":0,...}`
+     - `curl -k https://localhost:17543/api/fleet/enrollment/ca` -> Returns Root CA certificate.
+     - Minting enrollment token via API returns ready-to-run Helm & kubectl installation commands targeting `https://host.docker.internal:17543`.
+
+3. **MCP Server Integration**:
+   - Added 4 new tools to `mcp-server/src/bnk_forge_mcp/tools/cluster_management.py`:
+     - `mint_fleet_enrollment_token`: Mint 24h JWT token and return Helm/kubectl commands.
+     - `get_fleet_enrollment_status`: Inspect agent push connectivity and last heartbeat.
+     - `list_fleet_enrollment_tokens`: List active tokens with usage statistics.
+     - `revoke_fleet_enrollment_token`: Invalidate an enrollment token.
+   - Updated `tool_catalog.py` and regenerated `mcp_tool_catalog.json` (157 tools total).
+   - Added unit test suite `mcp-server/tests/test_fleet_enrollment_tools.py`.
+
+---
+
+## 6. Immediate Next Steps (Milestone 5: Celery Retirement & Task Migration)
 
 Per [POV_MIGRATION_PLAN.md](file:///Users/j.lucia/Code/github/bnk-forge/docs/architecture/POV_MIGRATION_PLAN.md):
 
-1. **Cluster Data Provider Facade (`backend/services/cluster_provider.py`)**:
-   - Create `ClusterDataProvider` facade to dynamically route telemetry queries:
-     - Check if cluster has an active agent (`connection_mode == "AGENT_PUSH"` or recent heartbeat within threshold).
-     - **Push Path**: Query ClickHouse HTTP analytical endpoint (`:8123`) for pod flows, DPDK metrics, throughput, latency, and drift violations.
-     - **Pull Path (Fallback)**: Query legacy Redis cache / Kubernetes direct engine.
-2. **Agent Heartbeat & Fleet State Synchronization**:
-   - Provide endpoint / handler for Ingest-to-Backend agent state updates (or direct DB update) to keep `kubernetes_clusters.connection_mode = "AGENT_PUSH"`, `status = "READY"`, and `last_heartbeat_at = NOW()`.
-   - Ensure cluster list/detail endpoints reflect the live agent status and connection mode.
-3. **Telemetric API Endpoints in FastAPI**:
-   - Wire `ClusterDataProvider` into cluster telemetry/monitoring routes:
-     - Flow summary / network traffic metrics (`/api/v1/clusters/{id}/telemetry/flows`)
-     - DPDK / TMM performance metrics (`/api/v1/clusters/{id}/telemetry/tmm`)
-     - Architectural drift & bypass alerts (`/api/v1/clusters/{id}/telemetry/drift`)
-4. **Backend Verification & Regression Testing**:
-   - Unit tests for `ClusterDataProvider` (mocking ClickHouse vs legacy fallback).
-   - FastAPI integration tests verifying transparent fallthrough when agent is offline vs active.
-   - Run full backend test suite (`pytest backend/tests/`).
-5. **Frontend Alignment**:
-   - Ensure frontend hooks & views consume the strangler telemetry endpoints without breaking existing UI.
+1. **NATS JetStream WorkQueues (`FORGE_TASKS`)**:
+   - Establish `FORGE_TASKS` stream in NATS JetStream with durable pull consumers.
+   - Author Python/Go task dispatch client replacing Celery `.delay()` calls.
+2. **Task Worker Migration**:
+   - Replace `celery-worker-1` and `celery-worker-2` with lightweight JetStream pull consumers for regular tasks:
+     - Cluster health & connectivity scans.
+     - Configuration reconciliation & drift alerting.
+3. **K8s Job Controller (`backend/services/k8s_job_service.py`)**:
+   - Offload heavy, long-running tasks from Celery to ephemeral Kubernetes Jobs (`batch/v1`):
+     - QKView diagnostic bundle generation.
+     - `aiperf` benchmark workload execution.
+4. **Compose Decommissioning**:
+   - Safely remove `celery-worker-1`, `celery-worker-2`, `celery-beat`, and `redis` from `docker-compose.yml`.
+   - Verify all unit and integration tests remain 100% green without Celery or Redis.

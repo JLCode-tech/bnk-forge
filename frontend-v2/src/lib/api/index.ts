@@ -31,6 +31,8 @@ export { alertsApi } from './alerts';
 export { modulesApi } from './modules';
 export { blueprintCatalogApi } from './blueprint-catalog';
 export { fleetApi } from './fleet';
+export { fleetEnrollmentApi } from './fleetEnrollment';
+export { clusterTelemetryApi } from './clusterTelemetry';
 export { runbooksApi } from './runbooks';
 export { snapshotsApi } from './snapshots';
 export { configPromotionApi } from './config-promotion';
@@ -65,6 +67,8 @@ import { alertsApi } from './alerts';
 import { modulesApi } from './modules';
 import { blueprintCatalogApi } from './blueprint-catalog';
 import { fleetApi } from './fleet';
+import { fleetEnrollmentApi } from './fleetEnrollment';
+import { clusterTelemetryApi } from './clusterTelemetry';
 import { runbooksApi } from './runbooks';
 import { snapshotsApi } from './snapshots';
 import { configPromotionApi } from './config-promotion';
@@ -122,8 +126,10 @@ export const api = {
   // Blueprint Catalog
   ...blueprintCatalogApi,
 
-  // Fleet Dashboard
+  // Fleet Dashboard & Enrollment
   ...fleetApi,
+  ...fleetEnrollmentApi,
+  ...clusterTelemetryApi,
   
   // Runbook Automation
   ...runbooksApi,

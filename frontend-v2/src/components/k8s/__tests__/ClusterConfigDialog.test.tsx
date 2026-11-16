@@ -5,6 +5,11 @@ import { ClusterConfigDialog } from '../ClusterConfigDialog';
 import { http, HttpResponse } from 'msw';
 import { server } from '@/test/mocks/server';
 
+vi.mock('@/components/fleet/AgentEnrollmentWizard', () => ({
+  AgentEnrollmentWizard: ({ open, defaultProjectId }: { open: boolean; defaultProjectId?: number }) =>
+    open ? <div data-testid="agent-enrollment-wizard">AgentEnrollmentWizard for project {defaultProjectId}</div> : null,
+}));
+
 const sshCredentials = [
   {
     id: 10,
@@ -141,5 +146,47 @@ describe('ClusterConfigDialog', () => {
 
     // Should show edit title, not trigger probe
     expect(screen.getByText('Edit Cluster')).toBeInTheDocument();
+  });
+
+  it('renders the push-based fleet agent recommendation banner in create mode', () => {
+    render(<ClusterConfigDialog {...defaultProps} />);
+    expect(
+      screen.getByText('Push-Based Fleet Agent Available (Recommended)'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Enroll Agent \(:17543\)/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('switches to agent enrollment wizard when clicking enroll agent in the banner', async () => {
+    const user = userEvent.setup();
+    render(<ClusterConfigDialog {...defaultProps} />);
+
+    const enrollButton = screen.getByRole('button', {
+      name: /Enroll Agent \(:17543\)/i,
+    });
+    await user.click(enrollButton);
+
+    expect(defaultProps.onOpenChange).toHaveBeenCalledWith(false);
+    expect(screen.getByTestId('agent-enrollment-wizard')).toBeInTheDocument();
+    expect(
+      screen.getByText('AgentEnrollmentWizard for project 1'),
+    ).toBeInTheDocument();
+  });
+
+  it('does not render the push-based agent banner when editing an existing cluster', () => {
+    const cluster = {
+      id: 1,
+      name: 'existing-cluster',
+      project_id: 1,
+      status: 'active' as const,
+      default_namespace: 'default',
+      created_at: '2026-01-01',
+    };
+
+    render(<ClusterConfigDialog {...defaultProps} cluster={cluster} />);
+    expect(
+      screen.queryByText('Push-Based Fleet Agent Available (Recommended)'),
+    ).not.toBeInTheDocument();
   });
 });
