@@ -163,8 +163,8 @@ _install-build:
 _install-start: ensure-artifact-network
 	@mkdir -p secrets certs
 	@echo ""
-	@echo "Starting infrastructure (postgres, redis)..."
-	@$(COMPOSE) up -d postgres redis
+	@echo "Starting infrastructure (postgres, nats)..."
+	@$(COMPOSE) up -d postgres nats
 	@echo "  Waiting for database..."
 	@for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do \
 	  if $(COMPOSE) exec -T postgres pg_isready -U bnkforge > /dev/null 2>&1; then \
@@ -273,12 +273,12 @@ status:
 # Only use `make build-clean` when requirements.txt or tool versions change.
 #
 
-# Build all app images — backend API, workers, beat, frontend
+# Build all app images — backend API, worker, frontend
 # OPT-002: Single docker compose build parallelizes independent stages via BuildKit
 build:
 	@echo ""
 	@echo "=== Building all app images (parallel) ==="
-	BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker compose build backend celery-worker celery-beat frontend forge-agent
+	BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker compose build backend forge-worker frontend forge-agent
 	@echo ""
 	@echo "========================================="
 	@echo "  Build complete (cached)"
@@ -293,7 +293,7 @@ build:
 build-retry:
 	@echo ""
 	@echo "=== Building all app images (parallel, with retry) ==="
-	BUILDX_NO_DEFAULT_ATTESTATIONS=1 ./scripts/retry.sh -- docker compose build backend celery-worker celery-beat frontend forge-agent
+	BUILDX_NO_DEFAULT_ATTESTATIONS=1 ./scripts/retry.sh -- docker compose build backend forge-worker frontend forge-agent
 	@echo ""
 	@echo "========================================="
 	@echo "  Build complete (cached)"
@@ -350,7 +350,7 @@ build-worker:
 	@$(MAKE) fetch-awsbnkctl || echo "  ⚠ Skipping awsbnkctl fetch ($(AWSBNKCTL_REPO) unavailable — install/auth 'gh' to enable the cli-bnkctl engine). Run 'make fetch-awsbnkctl' manually once you have access."
 	@echo ""
 	@echo "=== Building worker (includes CLI tools — slower) ==="
-	BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker compose build celery-worker
+	BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker compose build forge-worker
 	@echo "  ✓ Worker image built"
 
 # Build the built-in benchmark agent image
@@ -458,11 +458,11 @@ endif
 	@echo "  Recommended next step: make mcp-readiness"
 	@echo "========================================="
 
-# Deploy just backend (API + workers + beat) — most common for backend code changes
+# Deploy just backend (API + worker) — most common for backend code changes
 deploy-backend: build-backend build-worker ensure-artifact-network
 	@echo ""
 	@echo "=== Restarting backend containers ==="
-	$(COMPOSE) up -d --force-recreate backend celery-worker celery-worker-2 celery-beat
+	$(COMPOSE) up -d --force-recreate backend forge-worker
 	@echo ""
 	date
 	@echo ""
@@ -1443,7 +1443,7 @@ push-customer-build:
 	echo ""; \
 	echo "========================================="; \
 	echo "  ✅ Pushed to $$REGISTRY"; \
-	echo "    Immutable: $${REGISTRY}/bnk-forge-api:$${FULLTAG}   (+ worker/beat/frontend/proxy/mcp/operator)"; \
+	echo "    Immutable: $${REGISTRY}/bnk-forge-api:$${FULLTAG}   (+ worker/frontend/proxy/mcp/operator)"; \
 	echo "    Rolling:   $${REGISTRY}/bnk-forge-api:customer-build"; \
 	echo "    Platforms: $(CB_PLATFORMS)"; \
 	echo ""; \
@@ -1493,7 +1493,7 @@ docker-verify:
 	@echo "--- Version baked into the image ---"
 	@expected=$$(cat VERSION); \
 	failed=0; \
-	for img in bnk-forge-api bnk-forge-worker bnk-forge-beat; do \
+	for img in bnk-forge-api bnk-forge-worker; do \
 	  actual=$$(docker run --rm --entrypoint "" $$img:latest cat /app/VERSION 2>/dev/null || echo ""); \
 	  if [ "$$actual" = "$$expected" ]; then \
 	    echo "  OK    $$img reports $$actual"; \

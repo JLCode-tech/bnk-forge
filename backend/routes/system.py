@@ -357,6 +357,7 @@ def restart_containers(request: RestartContainersRequest, db: Session = Depends(
 
     valid_services = {
         "backend",
+        "forge-worker",
         "celery-worker",
         "celery-worker-2",
         "celery-beat",
@@ -364,6 +365,8 @@ def restart_containers(request: RestartContainersRequest, db: Session = Depends(
         "postgres",
         "postgres-backup",
         "redis",
+        "nats",
+        "clickhouse",
         "docker-socket-proxy",
         "docker-socket-proxy-infra",
         "proxy",
@@ -378,6 +381,8 @@ def restart_containers(request: RestartContainersRequest, db: Session = Depends(
         "postgres",
         "postgres-backup",
         "redis",
+        "nats",
+        "clickhouse",
         "docker-socket-proxy",
         "docker-socket-proxy-infra",
     }

@@ -88,13 +88,6 @@ services:
     ports:
       - "5432:5432"
 
-  redis:
-    network_mode: !reset null
-    networks:
-      - bnk-local
-    ports:
-      - "6379:6379"
-
   clickhouse:
     network_mode: !reset null
     networks:
@@ -162,34 +155,19 @@ services:
       - ../azrbnkctl/.azrbnkctl:/app/.azrbnkctl:ro
       - ../gkebnkctl/.gkebnkctl:/app/.gkebnkctl:ro
 
-  celery-worker:
-    network_mode: !reset null
-    networks:
-      - bnk-local
-    environment:
-      <<: *local-backend-env
-      # Artifact engine reaches the daemon via the scoped socket proxy (bridge DNS).
-      DOCKER_HOST: tcp://docker-socket-proxy:2375
-
-  celery-worker-2:
+  forge-worker:
     network_mode: !reset null
     networks:
       - bnk-local
     environment:
       <<: *local-backend-env
       DOCKER_HOST: tcp://docker-socket-proxy:2375
+      NATS_URL: nats://nats:4222
 
   docker-socket-proxy:
     network_mode: !reset null
     networks:
       - bnk-local
-
-  celery-beat:
-    network_mode: !reset null
-    networks:
-      - bnk-local
-    environment:
-      <<: *local-backend-env
 
   frontend:
     network_mode: !reset null

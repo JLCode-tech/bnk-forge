@@ -2,9 +2,12 @@
 Redis cache wrapper for query result caching
 Provides simple interface for caching frequently accessed data
 """
+import fnmatch
 import json
 import logging
 import os
+import threading
+import time
 from collections.abc import Callable
 from functools import wraps
 from typing import Any
@@ -18,7 +21,10 @@ DEFAULT_REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
 
 
 class CacheService:
-    """Redis cache wrapper with automatic JSON serialization and lazy reconnection"""
+    """Redis cache wrapper with automatic JSON serialization, lazy reconnection,
+
+    and in-memory TTL dictionary fallback when Redis is absent.
+    """
 
     _RECONNECT_COOLDOWN_SECONDS = 5.0
 
@@ -29,11 +35,11 @@ class CacheService:
         self._pid: int | None = None
         self._last_attempt_ts: float = 0.0
         self._manual_override: bool = False
+        self._memory_cache: dict[str, tuple[float, Any]] = {}
+        self._lock = threading.RLock()
         self._connect()
 
     def _connect(self) -> Any:
-        import time
-
         self._last_attempt_ts = time.monotonic()
         try:
             client = redis.from_url(self._redis_url, decode_responses=True)
@@ -42,7 +48,7 @@ class CacheService:
             self._pid = os.getpid()
             logger.info(f"✅ Redis cache connected: {self._redis_url}")
         except Exception as e:
-            logger.error(f"❌ Redis cache connection failed: {e}")
+            logger.debug(f"Redis cache connection failed: {e}; using in-memory fallback")
             self._redis = None
             self._pid = None
         return self._redis
@@ -55,8 +61,6 @@ class CacheService:
         if self._redis is not None and self._pid is not None and self._pid != current_pid:
             self._redis = None
         if self._redis is None:
-            import time
-
             if (time.monotonic() - self._last_attempt_ts) >= self._RECONNECT_COOLDOWN_SECONDS:
                 self._connect()
         return self._redis
@@ -68,31 +72,39 @@ class CacheService:
         self._manual_override = True
 
     def is_available(self) -> bool:
-        """Return True if the Redis client is connected and available."""
-        return self.redis is not None
+        """Return True if Redis or in-memory cache is operational."""
+        return True
 
     def get(self, key: str) -> Any | None:
         """
         Get value from cache
-        Returns None if key doesn't exist or cache is unavailable
+        Returns None if key doesn't exist or is expired.
         """
         client = self.redis
-        if not client:
-            return None
-
-        try:
-            value = client.get(key)
-            if value is None:
+        if client:
+            try:
+                value = client.get(key)
+                if value is None:
+                    return None
+                return json.loads(value)
+            except redis.ConnectionError as e:
+                logger.debug(f"Cache GET fallback to memory for '{key}': {e}")
+                if not self._manual_override:
+                    self._redis = None
+            except Exception as e:
+                logger.warning(f"Cache GET error for key '{key}': {e}")
                 return None
-            return json.loads(value)
-        except redis.ConnectionError as e:
-            logger.warning(f"Cache GET connection error for key '{key}': {e}")
-            if not self._manual_override:
-                self._redis = None
-            return None
-        except Exception as e:
-            logger.warning(f"Cache GET error for key '{key}': {e}")
-            return None
+
+        # In-memory TTL fallback
+        with self._lock:
+            entry = self._memory_cache.get(key)
+            if entry is None:
+                return None
+            expires_at, val = entry
+            if time.monotonic() > expires_at:
+                self._memory_cache.pop(key, None)
+                return None
+            return val
 
     def set(self, key: str, value: Any, ttl_seconds: int = 300) -> bool:
         """
@@ -100,21 +112,23 @@ class CacheService:
         Returns True if successful, False otherwise
         """
         client = self.redis
-        if not client:
-            return False
+        if client:
+            try:
+                serialized = json.dumps(value, default=str)
+                client.setex(key, ttl_seconds, serialized)
+                return True
+            except redis.ConnectionError as e:
+                logger.debug(f"Cache SET fallback to memory for '{key}': {e}")
+                if not self._manual_override:
+                    self._redis = None
+            except Exception as e:
+                logger.warning(f"Cache SET error for key '{key}': {e}")
+                return False
 
-        try:
-            serialized = json.dumps(value, default=str)
-            client.setex(key, ttl_seconds, serialized)
+        # In-memory TTL fallback
+        with self._lock:
+            self._memory_cache[key] = (time.monotonic() + ttl_seconds, value)
             return True
-        except redis.ConnectionError as e:
-            logger.warning(f"Cache SET connection error for key '{key}': {e}")
-            if not self._manual_override:
-                self._redis = None
-            return False
-        except Exception as e:
-            logger.warning(f"Cache SET error for key '{key}': {e}")
-            return False
 
     def delete(self, key: str) -> bool:
         """
@@ -122,54 +136,51 @@ class CacheService:
         Returns True if successful, False otherwise
         """
         client = self.redis
-        if not client:
-            return False
+        if client:
+            try:
+                client.delete(key)
+                return True
+            except redis.ConnectionError as e:
+                logger.debug(f"Cache DELETE fallback to memory for '{key}': {e}")
+                if not self._manual_override:
+                    self._redis = None
+            except Exception as e:
+                logger.warning(f"Cache DELETE error for key '{key}': {e}")
+                return False
 
-        try:
-            client.delete(key)
-            return True
-        except redis.ConnectionError as e:
-            logger.warning(f"Cache DELETE connection error for key '{key}': {e}")
-            if not self._manual_override:
-                self._redis = None
-            return False
-        except Exception as e:
-            logger.warning(f"Cache DELETE error for key '{key}': {e}")
-            return False
+        with self._lock:
+            return self._memory_cache.pop(key, None) is not None
 
     def delete_pattern(self, pattern: str) -> int:
         """
         Delete all keys matching pattern (e.g., "project:*")
         Returns number of keys deleted
-
-        PERFORMANCE OPTIMIZATION (ADR-019):
-        Uses SCAN instead of KEYS to avoid blocking Redis.
-        KEYS is O(n) and blocks the entire Redis server.
-        SCAN is iterative and non-blocking.
         """
         client = self.redis
-        if not client:
-            return 0
+        if client:
+            try:
+                deleted = 0
+                cursor = 0
+                while True:
+                    cursor, keys = client.scan(cursor, match=pattern, count=100)
+                    if keys:
+                        deleted += client.delete(*keys)
+                    if cursor == 0:
+                        break
+                return deleted
+            except redis.ConnectionError as e:
+                logger.debug(f"Cache DELETE_PATTERN fallback to memory for '{pattern}': {e}")
+                if not self._manual_override:
+                    self._redis = None
+            except Exception as e:
+                logger.warning(f"Cache DELETE_PATTERN error for pattern '{pattern}': {e}")
+                return 0
 
-        try:
-            deleted = 0
-            cursor = 0
-            # Use SCAN to iterate through keys without blocking Redis
-            while True:
-                cursor, keys = client.scan(cursor, match=pattern, count=100)
-                if keys:
-                    deleted += client.delete(*keys)
-                if cursor == 0:
-                    break
-            return deleted
-        except redis.ConnectionError as e:
-            logger.warning(f"Cache DELETE_PATTERN connection error for pattern '{pattern}': {e}")
-            if not self._manual_override:
-                self._redis = None
-            return 0
-        except Exception as e:
-            logger.warning(f"Cache DELETE_PATTERN error for pattern '{pattern}': {e}")
-            return 0
+        with self._lock:
+            matched = [k for k in self._memory_cache if fnmatch.fnmatch(k, pattern)]
+            for k in matched:
+                self._memory_cache.pop(k, None)
+            return len(matched)
 
     def clear_all(self) -> bool:
         """
@@ -177,21 +188,22 @@ class CacheService:
         Returns True if successful, False otherwise
         """
         client = self.redis
-        if not client:
-            return False
+        if client:
+            try:
+                client.flushdb()
+                logger.info("🗑️  Cache cleared")
+                return True
+            except redis.ConnectionError as e:
+                logger.debug(f"Cache CLEAR fallback to memory: {e}")
+                if not self._manual_override:
+                    self._redis = None
+            except Exception as e:
+                logger.error(f"Cache CLEAR error: {e}")
+                return False
 
-        try:
-            client.flushdb()
-            logger.info("🗑️  Cache cleared")
+        with self._lock:
+            self._memory_cache.clear()
             return True
-        except redis.ConnectionError as e:
-            logger.error(f"Cache CLEAR connection error: {e}")
-            if not self._manual_override:
-                self._redis = None
-            return False
-        except Exception as e:
-            logger.error(f"Cache CLEAR error: {e}")
-            return False
 
 
 # Global cache instance

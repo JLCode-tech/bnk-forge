@@ -15,6 +15,7 @@ Redis Keys:
 """
 import json
 import logging
+import threading
 import time
 from datetime import UTC, datetime
 from typing import Any
@@ -34,18 +35,32 @@ KEY_ACTIVE_TASKS = "worker:tasks:"
 
 class WorkerHeartbeat:
     """
-    Manages worker heartbeat tracking via Redis.
+    Manages worker heartbeat tracking via Redis with in-memory fallback.
 
-    Workers call publish_heartbeat() periodically via Celery signals.
-    API calls get_worker_status() to read instantly from Redis.
+    Workers call publish_heartbeat() periodically via Celery/NATS signals.
+    API calls get_worker_status() to read instantly.
 
-    Reuses the shared Redis connection from CacheService.
+    Reuses the shared Redis connection from CacheService or in-memory state.
     """
+
+    def __init__(self) -> None:
+        self._memory_workers: dict[str, dict[str, Any]] = {}
+        self._memory_tasks: dict[str, set[str]] = {}
+        self._lock = threading.RLock()
+        self._redis_override: Any = None
+        self._manual_override: bool = False
 
     @property
     def redis(self) -> Any:
-        """Get Redis client from shared cache instance"""
+        """Get Redis client from shared cache instance or manual override."""
+        if self._manual_override:
+            return self._redis_override
         return cache.redis
+
+    @redis.setter
+    def redis(self, value: Any) -> None:
+        self._redis_override = value
+        self._manual_override = True
 
     def publish_heartbeat(
         self,
@@ -54,183 +69,226 @@ class WorkerHeartbeat:
         stats: dict[str, Any] | None = None
     ) -> bool:
         """
-        Publish worker heartbeat to Redis.
-
-        Called by Celery signals (worker_ready, heartbeat, task events).
+        Publish worker heartbeat to Redis or in-memory fallback.
         """
-        if not self.redis:
-            return False
+        data = {
+            "worker_id": worker_id,
+            "status": status,
+            "last_heartbeat": datetime.now(UTC).isoformat(),
+            "timestamp": str(time.time()),
+        }
+        if stats:
+            data["stats"] = json.dumps(stats)
 
-        try:
-            key = f"{KEY_HEARTBEAT}{worker_id}"
-            data = {
-                "worker_id": worker_id,
-                "status": status,
-                "last_heartbeat": datetime.now(UTC).isoformat(),
-                "timestamp": str(time.time()),
-            }
-            if stats:
-                data["stats"] = json.dumps(stats)
+        if self.redis:
+            try:
+                key = f"{KEY_HEARTBEAT}{worker_id}"
+                self.redis.hset(key, mapping=data)
+                self.redis.expire(key, HEARTBEAT_TTL_SECONDS)
+                logger.debug(f"Heartbeat published: {worker_id} - {status}")
+                return True
+            except Exception as e:
+                logger.debug(f"Redis publish_heartbeat failed for {worker_id}: {e}; using memory")
 
-            # Set with TTL - worker must refresh or be marked as offline
-            self.redis.hset(key, mapping=data)
-            self.redis.expire(key, HEARTBEAT_TTL_SECONDS)
-
-            logger.debug(f"Heartbeat published: {worker_id} - {status}")
-            return True
-        except Exception as e:
-            logger.warning(f"Failed to publish heartbeat for {worker_id}: {e}")
-            return False
+        # In-memory fallback
+        with self._lock:
+            self._memory_workers[worker_id] = data
+        return True
 
     def record_task_start(self, worker_id: str, task_id: str, task_name: str) -> bool:
         """Record that a task has started on a worker (called by task_prerun signal)."""
-        if not self.redis:
-            return False
+        task_data = json.dumps({
+            "task_id": task_id,
+            "task_name": task_name,
+            "started_at": datetime.now(UTC).isoformat()
+        })
 
-        try:
-            key = f"{KEY_ACTIVE_TASKS}{worker_id}"
-            task_data = json.dumps({
-                "task_id": task_id,
-                "task_name": task_name,
-                "started_at": datetime.now(UTC).isoformat()
-            })
-            self.redis.sadd(key, task_data)
+        if self.redis:
+            try:
+                key = f"{KEY_ACTIVE_TASKS}{worker_id}"
+                self.redis.sadd(key, task_data)
+                self.publish_heartbeat(worker_id, status="busy")
+                logger.debug(f"Task started: {task_id} on {worker_id}")
+                return True
+            except Exception as e:
+                logger.debug(f"Redis record_task_start failed: {e}; using memory")
+
+        with self._lock:
+            self._memory_tasks.setdefault(worker_id, set()).add(task_data)
             self.publish_heartbeat(worker_id, status="busy")
-
-            logger.debug(f"Task started: {task_id} on {worker_id}")
-            return True
-        except Exception as e:
-            logger.warning(f"Failed to record task start: {e}")
-            return False
+        return True
 
     def record_task_end(self, worker_id: str, task_id: str) -> bool:
         """Record that a task has completed on a worker (called by task_postrun signal)."""
-        if not self.redis:
-            return False
+        if self.redis:
+            try:
+                key = f"{KEY_ACTIVE_TASKS}{worker_id}"
+                for task_json in self.redis.smembers(key):
+                    try:
+                        if json.loads(task_json).get("task_id") == task_id:
+                            self.redis.srem(key, task_json)
+                            break
+                    except json.JSONDecodeError:
+                        continue
 
-        try:
-            key = f"{KEY_ACTIVE_TASKS}{worker_id}"
+                remaining = self.redis.scard(key)
+                self.publish_heartbeat(worker_id, status="busy" if remaining > 0 else "ready")
+                logger.debug(f"Task ended: {task_id} on {worker_id}, remaining: {remaining}")
+                return True
+            except Exception as e:
+                logger.debug(f"Redis record_task_end failed: {e}; using memory")
 
-            # Find and remove the task entry (scan set for matching task_id)
-            for task_json in self.redis.smembers(key):
+        with self._lock:
+            tasks = self._memory_tasks.get(worker_id, set())
+            for task_json in list(tasks):
                 try:
                     if json.loads(task_json).get("task_id") == task_id:
-                        self.redis.srem(key, task_json)
+                        tasks.remove(task_json)
                         break
                 except json.JSONDecodeError:
                     continue
-
-            # Update status based on remaining tasks
-            remaining = self.redis.scard(key)
+            remaining = len(tasks)
             self.publish_heartbeat(worker_id, status="busy" if remaining > 0 else "ready")
-
-            logger.debug(f"Task ended: {task_id} on {worker_id}, remaining: {remaining}")
-            return True
-        except Exception as e:
-            logger.warning(f"Failed to record task end: {e}")
-            return False
+        return True
 
     def mark_worker_offline(self, worker_id: str) -> bool:
         """Mark a worker as offline (called on worker shutdown)."""
-        if not self.redis:
-            return False
+        if self.redis:
+            try:
+                self.redis.delete(
+                    f"{KEY_HEARTBEAT}{worker_id}",
+                    f"{KEY_ACTIVE_TASKS}{worker_id}"
+                )
+                logger.info(f"Worker marked offline: {worker_id}")
+                return True
+            except Exception as e:
+                logger.debug(f"Redis mark_worker_offline failed: {e}")
 
-        try:
-            self.redis.delete(
-                f"{KEY_HEARTBEAT}{worker_id}",
-                f"{KEY_ACTIVE_TASKS}{worker_id}"
-            )
-            logger.info(f"Worker marked offline: {worker_id}")
-            return True
-        except Exception as e:
-            logger.warning(f"Failed to mark worker offline: {e}")
-            return False
+        with self._lock:
+            self._memory_workers.pop(worker_id, None)
+            self._memory_tasks.pop(worker_id, None)
+        return True
 
     def get_worker_status(self) -> dict[str, Any]:
         """
-        Get status of all workers from Redis.
-
-        This is the fast replacement for celery_app.control.inspect().
-        Returns instantly from Redis instead of broadcasting to workers.
+        Get status of all workers from Redis or in-memory tracking.
         """
-        if not self.redis:
-            return self._empty_status("Redis unavailable")
+        if self.redis:
+            try:
+                workers = []
+                total_active_tasks = 0
 
-        try:
+                cursor = 0
+                while True:
+                    cursor, keys = self.redis.scan(cursor, match=f"{KEY_HEARTBEAT}*", count=100)
+
+                    for key in keys:
+                        worker_data = self.redis.hgetall(key)
+                        if not worker_data:
+                            continue
+
+                        worker_id = worker_data.get("worker_id", key.replace(KEY_HEARTBEAT, ""))
+                        tasks_key = f"{KEY_ACTIVE_TASKS}{worker_id}"
+                        active_tasks = self._get_active_tasks(tasks_key)
+                        total_active_tasks += len(active_tasks)
+
+                        workers.append({
+                            "worker_id": worker_id,
+                            "status": worker_data.get("status", "unknown"),
+                            "last_heartbeat": worker_data.get("last_heartbeat"),
+                            "active_tasks": len(active_tasks),
+                            "tasks": active_tasks,
+                            "stats": self._parse_json(worker_data.get("stats"))
+                        })
+
+                    if cursor == 0:
+                        break
+
+                active_count = len([w for w in workers if w["status"] in ("ready", "busy")])
+
+                return {
+                    "workers": workers,
+                    "total": len(workers),
+                    "active": active_count,
+                    "offline": 0,
+                    "active_tasks": total_active_tasks
+                }
+            except Exception as e:
+                logger.debug(f"Redis get_worker_status failed: {e}; falling back to memory")
+
+        with self._lock:
+            now = time.time()
             workers = []
             total_active_tasks = 0
 
-            # Scan for all heartbeat keys
-            cursor = 0
-            while True:
-                cursor, keys = self.redis.scan(cursor, match=f"{KEY_HEARTBEAT}*", count=100)
+            # Filter stale
+            stale = [
+                wid for wid, data in self._memory_workers.items()
+                if (now - float(data.get("timestamp", 0))) > HEARTBEAT_TTL_SECONDS
+            ]
+            for wid in stale:
+                self._memory_workers.pop(wid, None)
+                self._memory_tasks.pop(wid, None)
 
-                for key in keys:
-                    worker_data = self.redis.hgetall(key)
-                    if not worker_data:
-                        continue
+            for wid, data in self._memory_workers.items():
+                active_tasks = [
+                    self._parse_json(t)
+                    for t in self._memory_tasks.get(wid, set())
+                ]
+                active_tasks = [t for t in active_tasks if t]
+                total_active_tasks += len(active_tasks)
 
-                    worker_id = worker_data.get("worker_id", key.replace(KEY_HEARTBEAT, ""))
-
-                    # Get active tasks for this worker
-                    tasks_key = f"{KEY_ACTIVE_TASKS}{worker_id}"
-                    active_tasks = self._get_active_tasks(tasks_key)
-                    total_active_tasks += len(active_tasks)
-
-                    workers.append({
-                        "worker_id": worker_id,
-                        "status": worker_data.get("status", "unknown"),
-                        "last_heartbeat": worker_data.get("last_heartbeat"),
-                        "active_tasks": len(active_tasks),
-                        "tasks": active_tasks,
-                        "stats": self._parse_json(worker_data.get("stats"))
-                    })
-
-                if cursor == 0:
-                    break
+                workers.append({
+                    "worker_id": wid,
+                    "status": data.get("status", "unknown"),
+                    "last_heartbeat": data.get("last_heartbeat"),
+                    "active_tasks": len(active_tasks),
+                    "tasks": active_tasks,
+                    "stats": self._parse_json(data.get("stats")),
+                })
 
             active_count = len([w for w in workers if w["status"] in ("ready", "busy")])
-
             return {
                 "workers": workers,
                 "total": len(workers),
                 "active": active_count,
-                "offline": 0,  # Workers that miss heartbeat are auto-removed by TTL
-                "active_tasks": total_active_tasks
+                "offline": 0,
+                "active_tasks": total_active_tasks,
             }
-
-        except Exception as e:
-            logger.error(f"Failed to get worker status: {e}")
-            return self._empty_status(str(e))
 
     def get_queue_stats(self) -> dict[str, dict[str, int]]:
         """Get per-queue statistics from active tasks."""
-        default_stats = {"default": {"pending": 0, "active": 0}, "opentofu": {"pending": 0, "active": 0}}
+        if self.redis:
+            try:
+                queue_stats = {"default": {"pending": 0, "active": 0}, "opentofu": {"pending": 0, "active": 0}}
 
-        if not self.redis:
-            return default_stats
+                cursor = 0
+                while True:
+                    cursor, keys = self.redis.scan(cursor, match=f"{KEY_ACTIVE_TASKS}*", count=100)
 
-        try:
+                    for key in keys:
+                        for task in self._get_active_tasks(key):
+                            task_name = task.get("task_name", "")
+                            queue = "opentofu" if "opentofu" in task_name.lower() else "default"
+                            queue_stats[queue]["active"] += 1
+
+                    if cursor == 0:
+                        break
+
+                return queue_stats
+            except Exception as e:
+                logger.debug(f"Redis get_queue_stats failed: {e}; reading from memory")
+
+        with self._lock:
             queue_stats = {"default": {"pending": 0, "active": 0}, "opentofu": {"pending": 0, "active": 0}}
-
-            cursor = 0
-            while True:
-                cursor, keys = self.redis.scan(cursor, match=f"{KEY_ACTIVE_TASKS}*", count=100)
-
-                for key in keys:
-                    for task in self._get_active_tasks(key):
-                        task_name = task.get("task_name", "")
+            for wid, tasks in self._memory_tasks.items():
+                for task_json in tasks:
+                    parsed = self._parse_json(task_json)
+                    if parsed:
+                        task_name = parsed.get("task_name", "")
                         queue = "opentofu" if "opentofu" in task_name.lower() else "default"
                         queue_stats[queue]["active"] += 1
-
-                if cursor == 0:
-                    break
-
             return queue_stats
-
-        except Exception as e:
-            logger.warning(f"Failed to get queue stats: {e}")
-            return default_stats
 
     def _get_active_tasks(self, key: str) -> list:
         """Parse active tasks from Redis set."""

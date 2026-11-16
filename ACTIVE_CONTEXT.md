@@ -8,8 +8,9 @@
 - **Milestone 2**: Agent Protocol & Console-Driven Enrollment API (`forge-ingest` Gateway + Backend PKI + UI Wizard)
 - **Milestone 3**: Core Forge Agent MVP (`cmd/forge-agent` + eBPF Socket Filter + TMM Harvester + Disk Spool WAL)
 - **Milestone 4**: Strangler Integration in FastAPI (`ClusterDataProvider` Facade + Agent Heartbeat / State Sync + ClickHouse Telemetry Queries)
+- **Milestone 5**: Celery Retirement & Task Migration (NATS JetStream WorkQueues + Ephemeral K8s Jobs for QKView/aiperf + Redis Retirement)
 **Active Work**:
-- **Milestone 5**: Celery Retirement & Task Migration (NATS JetStream WorkQueues + Ephemeral K8s Jobs for QKView/aiperf)
+- **Milestone 6**: PoV Packaging, Dual Transport & Air-Gap Licensing
 
 ---
 
@@ -123,6 +124,38 @@
     - `backend/tests/unit/test_fleet_enrollment.py`: 12/12 tests passed (100%).
     - Go test suite (`go test ./...`): 100% test pass.
 
+- **Milestone 5 (Completed & Verified)**:
+  - **Go JetStream WorkQueue Package (`pkg/tasks/`) & Daemon (`cmd/forge-worker/`)**:
+    - `pkg/tasks/workqueue.go`: High-reliability `WorkQueueManager` defining `FORGE_TASKS` stream (`workqueue` retention, `forge.tasks.*` subjects), pull consumer subscription, retry backoff, envelope serialization, and in-memory mock fallback.
+    - `pkg/tasks/handlers.go`: Task registry and execution handlers for `cluster_scan`, `health_monitor`, `reconcile_config`, `drift_check`, and `operator_cleanup`.
+    - `cmd/forge-worker/main.go` & `cmd/forge-worker/Dockerfile`: Production multi-stage Alpine worker container and standalone Go worker daemon.
+    - `pkg/tasks/workqueue_test.go`: 100% pass rate (`TestWorkQueueStreamConfig`, `TestWorkQueuePublishTask`, `TestWorkQueueEnsureStream`, `TestWorkQueueHandlerExecution`, `TestStandardHandlersRegistration`).
+  - **Python NATS Task Service (`backend/services/nats_task_service.py`)**:
+    - `NATSTaskClient`, `NATSTaskResult` (Celery `AsyncResult` drop-in compatibility), and `@nats_task` decorator providing seamless `.delay()` and `.apply_async()` semantics.
+    - `NATSTaskRegistry` with task discovery and signature validation.
+    - `NATSTaskWorker` running async JetStream pull consumers with exponential retry backoff and concurrency control.
+    - `NATSTaskScheduler` executing periodic cron tasks replacing Celery Beat.
+    - Native Python socket/protocol client with in-memory fallback for hermetic unit testing without external dependencies.
+    - `backend/tests/unit/test_nats_task_service.py`: 10/10 tests passed (100%).
+  - **Kubernetes Ephemeral Job Controller (`backend/services/k8s_job_service.py`)**:
+    - `K8sJobService`: Offloads heavy, memory-intensive batch tasks from background worker pools to Ephemeral Kubernetes Jobs (`batch/v1`).
+    - `create_qkview_job(cluster_id, bundle_id, ...)`: Provisions `forge-qkview-*` Job with resource limits (2 CPU, 6Gi RAM), `ttlSecondsAfterFinished: 3600`, DNS-1123 label sanitization, and S3 artifact upload integration.
+    - `create_aiperf_job(benchmark_id, target_url, ...)`: Provisions `forge-aiperf-*` Job with resource limits (4 CPU, 8Gi RAM), automated client flags, and cleanup lifecycle.
+    - Job status, deletion, listing, and in-memory mock execution mode.
+    - `backend/tests/unit/test_k8s_job_service.py`: 13/13 tests passed (100%).
+  - **Redis Retirement & In-Memory Fallbacks**:
+    - `backend/core/cache.py`: Added thread-safe in-memory cache fallback with TTL expiration, `fnmatch` wildcard pattern deletion, and `RLock`.
+    - `backend/core/worker_heartbeat.py`: Added in-memory worker registry with active task tracking, reentrant `threading.RLock()`, and `@redis.setter` override.
+    - `backend/services/system_service.py`: Updated `get_system_health()` and readiness checks to report NATS and worker health gracefully when Redis is absent.
+    - `backend/tests/unit/test_inmemory_cache_heartbeat.py`: 8/8 tests passed (100%).
+  - **Compose & Build Decommissioning**:
+    - `docker-compose.yml` & `docker-compose.local.yml`: Removed `redis` service, `redis_data` volume, `celery-worker-2`, and `celery-beat`. Replaced `celery-worker` with unified `forge-worker` (`python -m services.nats_task_service --worker --scheduler`).
+    - `backend/Dockerfile`: Updated worker and beat stages to run `services.nats_task_service`.
+    - `Makefile`: Replaced all `celery-worker`, `celery-beat`, and `redis` targets with `forge-worker` and `nats`.
+  - **Full Regression Verification**:
+    - Go test suite (`go test -v ./...`): 100% passed across all packages (`pkg/agent`, `pkg/ingest`, `pkg/tasks`, `pkg/protocol`, etc.).
+    - Pytest regression suite: 127/127 passed (0 failures) in 26.32s across unit, contract, component, and integration tests.
+
 ---
 
 ## 2. Infrastructure & Port Configuration
@@ -135,10 +168,10 @@
 | **Frontend UI** | :8080 | HTTP | Direct Vite / Nginx Frontend | **Healthy (200 OK)** |
 | **ClickHouse HTTP** | :8123 | HTTP | Telemetry & analytical storage | **Healthy (Ok.)** |
 | **ClickHouse Native** | :9000 | TCP | High-throughput ingestion | **Healthy** |
-| **NATS JetStream** | :4222 | TCP | Telemetry event broker | **Healthy** |
+| **NATS JetStream** | :4222 | TCP | Telemetry event broker & `FORGE_TASKS` WorkQueue | **Healthy** |
 | **NATS Monitoring** | :8222 | HTTP | NATS healthz endpoint | **Healthy (ok)** |
 | **PostgreSQL 16** | :5432 | TCP | Relational metadata (83 tables, Atlas) | **Healthy** |
-| **Redis 7** | :6379 | TCP | Cache, Celery broker, PubSub | **Healthy** |
+| **Forge Worker** | — | Process/Daemon | NATS JetStream WorkQueue Consumer & Periodic Scheduler | **Operational** |
 
 ---
 
@@ -242,21 +275,18 @@ sequenceDiagram
 
 ---
 
-## 6. Immediate Next Steps (Milestone 5: Celery Retirement & Task Migration)
+## 6. Immediate Next Steps (Milestone 6: PoV Packaging, Dual Transport & Air-Gap Licensing)
 
 Per [POV_MIGRATION_PLAN.md](file:///Users/j.lucia/Code/github/bnk-forge/docs/architecture/POV_MIGRATION_PLAN.md):
 
-1. **NATS JetStream WorkQueues (`FORGE_TASKS`)**:
-   - Establish `FORGE_TASKS` stream in NATS JetStream with durable pull consumers.
-   - Author Python/Go task dispatch client replacing Celery `.delay()` calls.
-2. **Task Worker Migration**:
-   - Replace `celery-worker-1` and `celery-worker-2` with lightweight JetStream pull consumers for regular tasks:
-     - Cluster health & connectivity scans.
-     - Configuration reconciliation & drift alerting.
-3. **K8s Job Controller (`backend/services/k8s_job_service.py`)**:
-   - Offload heavy, long-running tasks from Celery to ephemeral Kubernetes Jobs (`batch/v1`):
-     - QKView diagnostic bundle generation.
-     - `aiperf` benchmark workload execution.
-4. **Compose Decommissioning**:
-   - Safely remove `celery-worker-1`, `celery-worker-2`, `celery-beat`, and `redis` from `docker-compose.yml`.
-   - Verify all unit and integration tests remain 100% green without Celery or Redis.
+1. **NATS Leaf Transport**:
+   - Implement `natsTransport` in `forge-agent` leveraging native NATS JetStream edge-to-core store-and-forward replication as alternative to HTTP/mTLS batch streaming.
+2. **Offline Ed25519 Licensing**:
+   - Embed public Ed25519 key in FastAPI backend and Ingest Gateway.
+   - Implement license verification service checking `forge.lic` offline with 30-day grace period, node/cluster capacity quotas, and clock-drift tolerance.
+3. **Helm Charts**:
+   - Author production charts in `deployments/charts/`:
+     - `forge-agent`: DaemonSet with `coordination.k8s.io` Lease Leader Election.
+     - `forge-console`: Control plane, Ingest Gateway, ClickHouse, Postgres, NATS.
+4. **Air-Gap Bundle (`forgectl`)**:
+   - Author CLI utility/script to export, mirror, and verify offline container images for customer private registries (Harbor, Artifactory).

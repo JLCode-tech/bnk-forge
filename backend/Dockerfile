@@ -341,19 +341,19 @@ RUN mkdir -p /home/bnkforge/.cache/helm /home/bnkforge/.config/helm && \
 # Configure git for bnkforge user — no credential.helper (creds are injected per-operation via GIT_ASKPASS)
 USER bnkforge
 RUN git config --global --add safe.directory '*'
-CMD ["celery", "-A", "celery_app", "worker", "--loglevel=info", "--concurrency=4", "--queues=default,opentofu,orchestrator,cli"]
+CMD ["python", "-m", "services.nats_task_service", "--worker", "--scheduler"]
 
 
 # =============================================================================
-# Target: BEAT — Celery Beat Scheduler (slim, no CLI tools)
+# Target: BEAT — Task Scheduler (slim, no CLI tools)
 # =============================================================================
-# For: celery-beat. Just fires cron tasks into Redis queue, never runs CLI tools.
+# For: task scheduler. Fires cron tasks into NATS JetStream queue.
 # Does NOT need: tofu, helm, kubectl, aws, docker, git
 # Size: ~300-400MB
 #
 FROM app-base AS beat
 USER bnkforge
-CMD ["celery", "-A", "celery_app", "beat", "--loglevel=info"]
+CMD ["python", "-m", "services.nats_task_service", "--scheduler"]
 
 
 # =============================================================================
