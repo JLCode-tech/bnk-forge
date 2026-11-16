@@ -1,0 +1,16 @@
+apiVersion: v2
+name: forge-agent
+description: Production Edge Agent DaemonSet for BNK Forge (eBPF telemetry, TMM harvester, coordination.k8s.io lease election)
+type: application
+version: 1.0.0-pov
+appVersion: 1.0.0-pov
+keywords:
+  - bnk
+  - forge
+  - f5
+  - agent
+  - ebpf
+  - telemetry
+maintainers:
+  - name: BNK Forge Team
+    email: bnk-forge@f5.com

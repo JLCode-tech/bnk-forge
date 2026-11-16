@@ -1,0 +1,17 @@
+1. The BNK Forge Edge Agent DaemonSet has been deployed.
+   Release:   {{ .Release.Name }}
+   Namespace: {{ .Release.Namespace }}
+
+2. Check the status of the DaemonSet pods:
+   kubectl get ds -n {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "forge-agent.name" . }}"
+   kubectl get pods -n {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "forge-agent.name" . }}" -o wide
+
+3. Verify leader lease election:
+   {{- if .Values.leaderElection.enabled }}
+   kubectl get lease -n {{ include "forge-agent.leaseNamespace" . }} {{ .Values.leaderElection.leaseName }} -o yaml
+   {{- else }}
+   Leader election is disabled (all pods run independent standalone loops).
+   {{- end }}
+
+4. Stream live logs from an agent pod:
+   kubectl logs -n {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "forge-agent.name" . }}" -f --tail=100

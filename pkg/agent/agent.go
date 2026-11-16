@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"sync"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/JLCode-tech/bnk-forge/pkg/agent/bootstrap"
 	"github.com/JLCode-tech/bnk-forge/pkg/agent/ebpf"
+	"github.com/JLCode-tech/bnk-forge/pkg/agent/lease"
 	"github.com/JLCode-tech/bnk-forge/pkg/agent/tmm"
 	"github.com/JLCode-tech/bnk-forge/pkg/agent/transport"
 	"github.com/JLCode-tech/bnk-forge/pkg/protocol"
@@ -36,6 +38,12 @@ type Config struct {
 	ProtectedNamespaces       []string
 	ProtectedPorts            []uint16
 	SyntheticEmissionInterval time.Duration
+	TransportMode             transport.DualTransportMode
+	NATSURL                   string
+	NATSDialer                func(network, address string) (net.Conn, error)
+	EnableLeaderElection      bool
+	LeaseName                 string
+	LeaseNamespace            string
 }
 
 // Agent coordinates bootstrap, local eBPF / TMM collectors, and resilient outbound transport.
@@ -46,11 +54,13 @@ type Agent struct {
 	spool     transport.DiskSpool
 	observer  ebpf.Observer
 	harvester tmm.Harvester
+	elector   *lease.Elector
 
 	agentID      string
 	sessionToken string
 	startTime    time.Time
 	batchSeq     uint64
+	isLeader     int32
 
 	mu          sync.Mutex
 	running     bool
@@ -134,6 +144,32 @@ func (a *Agent) Start(ctx context.Context) error {
 		return fmt.Errorf("starting TMM harvester: %w", err)
 	}
 
+	// 5. Initialize optional Lease Elector
+	if a.cfg.EnableLeaderElection {
+		elector, err := lease.NewElector(lease.Config{
+			Enabled:        true,
+			LeaseName:      a.cfg.LeaseName,
+			LeaseNamespace: a.cfg.LeaseNamespace,
+			Identity:       a.cfg.NodeName,
+			RoundTripper:   a.cfg.RoundTripper,
+		})
+		if err != nil {
+			log.Printf("[Forge-Agent] Warning: failed to configure lease elector: %v", err)
+		} else {
+			a.elector = elector
+			go a.elector.Run(ctx, func() {
+				atomic.StoreInt32(&a.isLeader, 1)
+				log.Printf("[Forge-Agent] Node %s is now cluster LEADER", a.cfg.NodeName)
+			}, func() {
+				atomic.StoreInt32(&a.isLeader, 0)
+				log.Printf("[Forge-Agent] Node %s stepped down from cluster LEADER", a.cfg.NodeName)
+			})
+		}
+	} else {
+		// Standalone mode: consider node as leader
+		atomic.StoreInt32(&a.isLeader, 1)
+	}
+
 	// 5. Start Background Loops
 	go a.runAggregationLoop(ctx)
 	go a.runHeartbeatLoop(ctx)
@@ -207,6 +243,9 @@ func (a *Agent) initTransport() error {
 	}
 	a.spool = diskSpool
 
+	var primary transport.Transport
+	var secondary transport.Transport
+
 	httpTr, err := transport.NewHTTPTransport(transport.HTTPTransportConfig{
 		BaseURL:            a.cfg.ConsoleURL,
 		TLSCertData:        a.creds.CertPEM,
@@ -219,8 +258,57 @@ func (a *Agent) initTransport() error {
 	if err != nil {
 		return fmt.Errorf("creating http transport: %w", err)
 	}
+	primary = httpTr
 
-	a.transport = transport.NewSpoolingTransport(httpTr, a.spool)
+	mode := a.cfg.TransportMode
+	if mode == "" {
+		mode = transport.ModeHTTP
+	}
+
+	if a.cfg.NATSURL != "" || mode == transport.ModeNATS || mode == transport.ModeFailover || mode == transport.ModeMirror {
+		natsURL := a.cfg.NATSURL
+		if natsURL == "" {
+			natsURL = "localhost:4222"
+		}
+		natsTr, err := transport.NewNATSTransport(transport.NATSTransportConfig{
+			NATSURL:            natsURL,
+			ClusterID:          a.cfg.ClusterID,
+			NodeName:           a.cfg.NodeName,
+			TLSCertData:        a.creds.CertPEM,
+			TLSKeyData:         a.creds.KeyPEM,
+			CACertData:         a.creds.CAPEM,
+			InsecureSkipVerify: a.cfg.InsecureSkipVerify,
+			Dialer:             a.cfg.NATSDialer,
+			Timeout:            5 * time.Second,
+		})
+		if err != nil {
+			log.Printf("[Forge-Agent] Warning: failed initializing NATS transport: %v", err)
+		} else {
+			secondary = natsTr
+		}
+	}
+
+	var active transport.Transport
+	switch mode {
+	case transport.ModeNATS:
+		if secondary != nil {
+			active = secondary
+		} else {
+			active = primary
+		}
+	case transport.ModeFailover, transport.ModeMirror:
+		active = transport.NewDualTransport(transport.DualTransportConfig{
+			Primary:   primary,
+			Secondary: secondary,
+			Mode:      mode,
+		})
+	case transport.ModeHTTP:
+		fallthrough
+	default:
+		active = primary
+	}
+
+	a.transport = transport.NewSpoolingTransport(active, a.spool)
 	return nil
 }
 
@@ -373,6 +461,11 @@ func (a *Agent) flushCurrentBatch() {
 	if err := a.transport.StreamBatch(ctx, batchToFlush); err != nil {
 		log.Printf("[Forge-Agent] Batch flush error: %v", err)
 	}
+}
+
+// IsLeader returns true if this agent holds the cluster lease leader lock.
+func (a *Agent) IsLeader() bool {
+	return atomic.LoadInt32(&a.isLeader) == 1
 }
 
 // Stop cleanly terminates collectors, flushes remaining batches, and closes transport.

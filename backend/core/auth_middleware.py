@@ -90,6 +90,9 @@ AGENT_PUBLIC_ENDPOINTS: frozenset[tuple[str, str]] = frozenset(
         ("POST", "/api/fleet/enrollment/renew"),
         ("GET", "/api/fleet/enrollment/ca"),
         ("POST", "/api/fleet/enrollment/agent-heartbeat"),
+        ("GET", "/api/v1/license/status"),
+        ("GET", "/api/v1/license/quota"),
+        ("POST", "/api/v1/license/verify"),
     }
 )
 

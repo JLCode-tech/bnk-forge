@@ -9,8 +9,9 @@
 - **Milestone 3**: Core Forge Agent MVP (`cmd/forge-agent` + eBPF Socket Filter + TMM Harvester + Disk Spool WAL)
 - **Milestone 4**: Strangler Integration in FastAPI (`ClusterDataProvider` Facade + Agent Heartbeat / State Sync + ClickHouse Telemetry Queries)
 - **Milestone 5**: Celery Retirement & Task Migration (NATS JetStream WorkQueues + Ephemeral K8s Jobs for QKView/aiperf + Redis Retirement)
+- **Milestone 6**: PoV Packaging, Dual Transport & Air-Gap Licensing (NATS Leaf Node + Ed25519 Licensing + Helm Charts + `forgectl`)
 **Active Work**:
-- **Milestone 6**: PoV Packaging, Dual Transport & Air-Gap Licensing
+- PoV Migration Verification & Readiness for Customer Engagements (Viettel, Yotta, NPCI)
 
 ---
 
@@ -275,18 +276,59 @@ sequenceDiagram
 
 ---
 
-## 6. Immediate Next Steps (Milestone 6: PoV Packaging, Dual Transport & Air-Gap Licensing)
+## 6. Completed Work: Milestone 6 (PoV Packaging, Dual Transport & Air-Gap Licensing)
 
-Per [POV_MIGRATION_PLAN.md](file:///Users/j.lucia/Code/github/bnk-forge/docs/architecture/POV_MIGRATION_PLAN.md):
+1. **NATS Leaf Node Transport & Resilient Dual Transport**:
+   - `pkg/agent/transport/nats_transport.go`:
+     - Built `NATSTransport` implementing full `Transport` contract (`StreamBatch`, `Register`, `SendHeartbeat`, `Ping`, `Close`) over NATS JetStream edge-to-core store-and-forward replication.
+     - Implemented `DualTransport` supporting dynamic modes: `http` (direct HTTPS/mTLS), `nats` (NATS Leaf Node), `failover` (primary HTTPS with automated failover to NATS), and `mirror` (active-active dual stream).
+   - `pkg/agent/agent.go` & `cmd/forge-agent/main.go`:
+     - Wired `--transport` (`FORGE_TRANSPORT`) and `--nats-url` (`NATS_URL`) flags.
+     - Comprehensive unit test suite in `pkg/agent/transport/nats_transport_test.go` (100% pass).
 
-1. **NATS Leaf Transport**:
-   - Implement `natsTransport` in `forge-agent` leveraging native NATS JetStream edge-to-core store-and-forward replication as alternative to HTTP/mTLS batch streaming.
-2. **Offline Ed25519 Licensing**:
-   - Embed public Ed25519 key in FastAPI backend and Ingest Gateway.
-   - Implement license verification service checking `forge.lic` offline with 30-day grace period, node/cluster capacity quotas, and clock-drift tolerance.
-3. **Helm Charts**:
-   - Author production charts in `deployments/charts/`:
-     - `forge-agent`: DaemonSet with `coordination.k8s.io` Lease Leader Election.
-     - `forge-console`: Control plane, Ingest Gateway, ClickHouse, Postgres, NATS.
-4. **Air-Gap Bundle (`forgectl`)**:
-   - Author CLI utility/script to export, mirror, and verify offline container images for customer private registries (Harbor, Artifactory).
+2. **Offline Ed25519 Licensing Engine**:
+   - Cryptographic Keypair: Embedded raw 32-byte Ed25519 public key `0SnG6ca30gpWEIgoiHRkMuYLDaW953FcimK5jdNE9JA=`.
+   - `backend/services/licensing_service.py`:
+     - Deterministic RFC 8785 canonical JSON sorting matching between Python and Go.
+     - 300s clock drift tolerance and 30-day grace period enforcement.
+     - Cluster and node capacity quota validation (`validate_quota`) and feature entitlement checks (`is_feature_enabled`).
+     - Dynamic file loading and caching from `FORGE_LICENSE_PATH` (`/app/keys/forge.lic`).
+   - `backend/routes/platform_license.py`:
+     - Exposed REST endpoints: `GET /api/v1/license/status`, `POST /api/v1/license/verify`, `POST /api/v1/license/install`, `GET /api/v1/license/quota`.
+     - Added public agent bypass routes to `backend/core/auth_middleware.py`.
+   - `pkg/licensing/licensing.go`:
+     - Bit-identical offline Ed25519 verification engine in Go for Ingest Gateway and CLI inspection.
+   - Test suites: `backend/tests/unit/test_licensing_service.py` (12 tests passed) and `pkg/licensing/licensing_test.go` (4 tests passed).
+
+3. **Production Kubernetes Helm Charts (`deployments/charts/`)**:
+   - `deployments/charts/forge-agent`:
+     - DaemonSet with `coordination.k8s.io` Lease Leader Election implemented in `pkg/agent/lease/lease.go`.
+     - Host mounts for `/var/run/tmm`, `/var/lib/forge-agent`, and `/sys/kernel/debug`.
+     - Dedicated ServiceAccount, ClusterRole, and ClusterRoleBinding for edge telemetry scraping.
+     - Fully verified with `helm lint` (0 errors) and `helm template`.
+   - `deployments/charts/forge-console`:
+     - Production control plane deploying `backend`, `frontend`, `ingest` (port 17543), `worker`, and stateful services (`clickhouse`, `nats`, `postgresql`).
+     - Automated secret generation for `forge.lic` license volume mounts and PostgreSQL credentials.
+     - Fully verified with `helm lint` (0 errors) and `helm template`.
+
+4. **Air-Gap Bundle Packaging Utility (`forgectl`)**:
+   - `pkg/forgectl/bundle.go` & `cmd/forgectl/main.go`:
+     - `forgectl images list`: Outputs the Bill of Materials (BOM) of all 8 required container images (`forge-agent`, `forge-ingest`, `forge-backend`, `forge-frontend`, `forge-worker`, `clickhouse`, `nats`, `postgres`).
+     - `forgectl bundle export --output <path.tar.gz> [--include-charts]`: Creates air-gap tarball archive with `manifest.json` containing SHA256 checksums of all bundled assets.
+     - `forgectl bundle verify --bundle <path.tar.gz>`: Validates bundle archive, manifest integrity, and bitwise checksums.
+     - `forgectl bundle mirror --bundle <path.tar.gz> --target-registry <reg> [--dry-run]`: Generates or executes docker pull/tag/push commands into customer private registries (Harbor, Artifactory, Quay).
+     - `forgectl license inspect --license <path/forge.lic>`: Offline CLI license inspector validating cryptographic signatures, capacity quotas, and remaining days.
+   - Built executable wrapper `scripts/forgectl.sh` and compiled binary `bin/forgectl`.
+   - Full test pass in `pkg/forgectl/forgectl_test.go` (5 tests passed).
+
+---
+
+## 7. Migration Verification & Customer Readiness
+
+All 7 milestones (M0 through M6) of the BNK Forge PoV Migration are completed and verified:
+- **Localhost Infrastructure**: Dual compose running ClickHouse, NATS, Postgres, Ingest Gateway, and Backend.
+- **Database & Schemas**: Declarative Atlas schema managing 83 tables with idempotent seeds.
+- **Agent & Wire Protocol**: Go edge agent with eBPF socket tracking, TMM DPDK harvesters, disk spool WAL, lease leader election, and dual transport.
+- **FastAPI Strangler Facade**: Transparent data provider routing queries to ClickHouse or Postgres.
+- **Task Pipeline**: NATS JetStream workqueues and ephemeral K8s jobs replacing legacy Celery/Redis.
+- **PoV Air-Gap & Helm**: Ed25519 offline licensing, production Helm charts, and `forgectl` air-gap bundle packaging.

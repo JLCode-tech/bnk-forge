@@ -1,0 +1,69 @@
+{{- if .Values.nats.enabled -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "forge-console.natsHost" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "forge-console.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nats
+spec:
+  serviceName: {{ include "forge-console.natsHost" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "forge-console.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: nats
+  template:
+    metadata:
+      labels:
+        {{- include "forge-console.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: nats
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: nats
+          image: "{{ .Values.nats.image.repository }}:{{ .Values.nats.image.tag }}"
+          imagePullPolicy: {{ .Values.nats.image.pullPolicy }}
+          args:
+            - "-js"
+            - "-sd"
+            - "/data"
+            - "-m"
+            - "{{ .Values.nats.service.monitorPort }}"
+          ports:
+            - name: client
+              containerPort: {{ .Values.nats.service.clientPort }}
+              protocol: TCP
+            - name: monitor
+              containerPort: {{ .Values.nats.service.monitorPort }}
+              protocol: TCP
+            - name: leaf
+              containerPort: {{ .Values.nats.service.leafPort }}
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.nats.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  {{- if .Values.nats.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if .Values.global.storageClass }}
+        storageClassName: {{ .Values.global.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.nats.persistence.size }}
+  {{- else }}
+      volumes:
+        - name: data
+          emptyDir: {}
+  {{- end }}
+{{- end }}

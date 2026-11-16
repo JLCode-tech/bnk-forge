@@ -1,0 +1,65 @@
+{{- if .Values.backend.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "forge-console.fullname" . }}-backend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "forge-console.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "forge-console.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        {{- include "forge-console.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: backend
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.backend.service.port }}
+              protocol: TCP
+          env:
+            - name: APP_ENV
+              value: {{ .Values.backend.env.APP_ENV | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.backend.env.LOG_LEVEL | quote }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "forge-console.dbSecretName" . }}
+                  key: DATABASE_URL
+            - name: CLICKHOUSE_HOST
+              value: {{ include "forge-console.clickhouseHost" . | quote }}
+            - name: CLICKHOUSE_PORT
+              value: {{ .Values.clickhouse.service.httpPort | quote }}
+            - name: NATS_URL
+              value: {{ printf "nats://%s:%d" (include "forge-console.natsHost" .) (int .Values.nats.service.clientPort) | quote }}
+            - name: FORGE_LICENSE_PATH
+              value: "/app/keys/forge.lic"
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+          volumeMounts:
+            - name: license-volume
+              mountPath: /app/keys
+              readOnly: true
+      volumes:
+        - name: license-volume
+          secret:
+            secretName: {{ include "forge-console.licenseSecretName" . }}
+            items:
+              - key: {{ .Values.license.secretKey }}
+                path: forge.lic
+{{- end }}

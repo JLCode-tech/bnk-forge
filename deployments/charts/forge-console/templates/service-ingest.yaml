@@ -1,0 +1,20 @@
+{{- if .Values.ingest.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "forge-console.fullname" . }}-ingest
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "forge-console.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingest
+spec:
+  type: {{ .Values.ingest.service.type }}
+  ports:
+    - port: {{ .Values.ingest.service.port }}
+      targetPort: ingest
+      protocol: TCP
+      name: ingest
+  selector:
+    {{- include "forge-console.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: ingest
+{{- end }}

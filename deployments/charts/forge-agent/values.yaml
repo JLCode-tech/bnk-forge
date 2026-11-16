@@ -1,0 +1,90 @@
+# Default values for forge-agent.
+# Production Edge Agent DaemonSet for BNK Forge.
+
+image:
+  repository: ghcr.io/jlcode-tech/forge-agent
+  pullPolicy: IfNotPresent
+  tag: "v1.0.0-pov"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+rbac:
+  create: true
+
+enrollment:
+  consoleUrl: "https://console.forge.internal:17543"
+  enrollmentToken: ""
+  clusterName: "pov-cluster"
+  clusterId: ""
+  existingSecret: ""
+  insecureSkipVerify: false
+
+transport:
+  # Mode: http, nats, failover, mirror
+  mode: "http"
+  # NATS Leaf Node URL when transport mode is nats, failover, or mirror
+  natsUrl: "nats://nats.forge-system.svc:4222"
+
+leaderElection:
+  enabled: true
+  leaseName: "forge-agent-leader"
+  leaseNamespace: "" # Defaults to Release Namespace if empty
+  leaseDurationSeconds: 15
+  renewDeadlineSeconds: 10
+
+telemetry:
+  heartbeatInterval: "15s"
+  flushInterval: "1s"
+  batchSize: 500
+  mockMode: false
+
+tmm:
+  enabled: true
+  socketPath: "/var/run/tmm"
+  gatewayIPs: ""
+
+ebpf:
+  enabled: true
+  debugFsPath: "/sys/kernel/debug"
+
+spool:
+  hostPath: "/var/lib/forge-agent"
+  certDir: "/var/lib/forge-agent/certs"
+  spoolDir: "/var/lib/forge-agent/spool"
+
+resources:
+  limits:
+    cpu: 250m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 40Mi
+
+securityContext:
+  privileged: true
+  capabilities:
+    add:
+      - SYS_ADMIN
+      - BPF
+      - NET_ADMIN
+
+hostNetwork: true
+hostPID: true
+dnsPolicy: ClusterFirstWithHostNet
+
+nodeSelector: {}
+
+tolerations:
+  - operator: Exists
+    effect: NoSchedule
+  - operator: Exists
+    effect: NoExecute
+
+affinity: {}

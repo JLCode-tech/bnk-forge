@@ -1,0 +1,24 @@
+{{- if .Values.clickhouse.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "forge-console.clickhouseHost" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "forge-console.labels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.clickhouse.service.httpPort }}
+      targetPort: http
+      protocol: TCP
+      name: http
+    - port: {{ .Values.clickhouse.service.tcpPort }}
+      targetPort: tcp
+      protocol: TCP
+      name: tcp
+  selector:
+    {{- include "forge-console.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse
+{{- end }}

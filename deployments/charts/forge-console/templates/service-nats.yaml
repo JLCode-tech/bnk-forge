@@ -1,0 +1,28 @@
+{{- if .Values.nats.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "forge-console.natsHost" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "forge-console.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nats
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.nats.service.clientPort }}
+      targetPort: client
+      protocol: TCP
+      name: client
+    - port: {{ .Values.nats.service.monitorPort }}
+      targetPort: monitor
+      protocol: TCP
+      name: monitor
+    - port: {{ .Values.nats.service.leafPort }}
+      targetPort: leaf
+      protocol: TCP
+      name: leaf
+  selector:
+    {{- include "forge-console.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: nats
+{{- end }}

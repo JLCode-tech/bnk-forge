@@ -1,0 +1,47 @@
+{{- if .Values.ingest.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "forge-console.fullname" . }}-ingest
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "forge-console.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingest
+spec:
+  replicas: {{ .Values.ingest.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "forge-console.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ingest
+  template:
+    metadata:
+      labels:
+        {{- include "forge-console.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: ingest
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: ingest
+          image: "{{ .Values.ingest.image.repository }}:{{ .Values.ingest.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.ingest.image.pullPolicy }}
+          ports:
+            - name: ingest
+              containerPort: {{ .Values.ingest.service.port }}
+              protocol: TCP
+          env:
+            - name: FORGE_INGEST_ADDR
+              value: {{ printf ":%d" (int .Values.ingest.service.port) | quote }}
+            - name: CLICKHOUSE_URL
+              value: {{ printf "http://%s:%d" (include "forge-console.clickhouseHost" .) (int .Values.clickhouse.service.httpPort) | quote }}
+            - name: NATS_ADDR
+              value: {{ printf "%s:%d" (include "forge-console.natsHost" .) (int .Values.nats.service.clientPort) | quote }}
+            - name: BACKEND_URL
+              value: {{ printf "http://%s-backend:%d" (include "forge-console.fullname" .) (int .Values.backend.service.port) | quote }}
+            - name: REQUIRE_MTLS
+              value: {{ .Values.ingest.requireMTLS | quote }}
+          resources:
+            {{- toYaml .Values.ingest.resources | nindent 12 }}
+{{- end }}

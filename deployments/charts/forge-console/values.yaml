@@ -1,0 +1,182 @@
+# Default values for forge-console.
+# Production Control Plane, Ingest Gateway, and Data Plane Services for BNK Forge.
+
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: ""
+
+license:
+  # Base64 encoded forge.lic content or inline string.
+  licenseData: ""
+  # Existing secret containing forge.lic file key.
+  existingSecret: ""
+  secretKey: "forge.lic"
+
+backend:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ghcr.io/jlcode-tech/forge-backend
+    pullPolicy: IfNotPresent
+    tag: "v1.0.0-pov"
+  service:
+    type: ClusterIP
+    port: 8000
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  env:
+    APP_ENV: "production"
+    LOG_LEVEL: "INFO"
+
+frontend:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ghcr.io/jlcode-tech/forge-frontend
+    pullPolicy: IfNotPresent
+    tag: "v1.0.0-pov"
+  service:
+    type: ClusterIP
+    port: 80
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+ingest:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ghcr.io/jlcode-tech/forge-ingest
+    pullPolicy: IfNotPresent
+    tag: "v1.0.0-pov"
+  service:
+    type: ClusterIP
+    port: 17543
+  requireMTLS: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+
+worker:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ghcr.io/jlcode-tech/forge-worker
+    pullPolicy: IfNotPresent
+    tag: "v1.0.0-pov"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+postgresql:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "16-alpine"
+    pullPolicy: IfNotPresent
+  auth:
+    database: "forge"
+    username: "forge"
+    password: "forge_secret_change_me"
+  service:
+    port: 5432
+  persistence:
+    enabled: true
+    size: 20Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+clickhouse:
+  enabled: true
+  image:
+    repository: clickhouse/clickhouse-server
+    tag: "24.3-alpine"
+    pullPolicy: IfNotPresent
+  service:
+    httpPort: 8123
+    tcpPort: 9000
+  persistence:
+    enabled: true
+    size: 50Gi
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+
+nats:
+  enabled: true
+  image:
+    repository: nats
+    tag: "2.10-alpine"
+    pullPolicy: IfNotPresent
+  jetstream:
+    enabled: true
+  leafNode:
+    enabled: true
+  service:
+    clientPort: 4222
+    monitorPort: 8222
+    leafPort: 7422
+  persistence:
+    enabled: true
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "128m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+  hosts:
+    - host: "forge.example.com"
+      paths:
+        - path: /api/fleet/enrollment
+          pathType: Prefix
+          service: ingest
+          port: 17543
+        - path: /api/v1/telemetry
+          pathType: Prefix
+          service: ingest
+          port: 17543
+        - path: /api
+          pathType: Prefix
+          service: backend
+          port: 8000
+        - path: /
+          pathType: Prefix
+          service: frontend
+          port: 80
+  tls: []

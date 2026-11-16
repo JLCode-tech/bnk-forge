@@ -96,6 +96,7 @@ from routes.notifications import ws_router as notifications_ws_router
 from routes.operator_polling import router as operator_polling_router
 from routes.operator_ws import router as operator_ws_router
 from routes.operators import router as operators_router
+from routes.platform_license import router as platform_license_router
 from routes.project_deployments import router as project_deployments_router
 from routes.project_execution import router as project_execution_router
 from routes.project_modules import router as project_modules_router
@@ -436,6 +437,7 @@ app.include_router(connectivity_router)  # Reachability state + SSE stream + for
 app.include_router(fleet_router)  # Fleet members — D-022 host-inclusive fleet inventory
 app.include_router(fleet_configs_router)  # Fleet deployable configs — reusable configs across fleet clusters
 app.include_router(fleet_enrollment_router)  # Agent Protocol & Console-Driven Enrollment API (Milestone 2)
+app.include_router(platform_license_router)  # Platform Offline Ed25519 Licensing API (Milestone 6)
 
 
 # Health check for quick verification

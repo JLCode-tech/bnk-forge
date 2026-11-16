@@ -1,0 +1,21 @@
+1. The BNK Forge Console Control Plane has been deployed.
+   Release:   {{ .Release.Name }}
+   Namespace: {{ .Release.Namespace }}
+
+2. Check the deployment status:
+   kubectl get pods -n {{ .Release.Namespace }} -l "app.kubernetes.io/instance={{ .Release.Name }}"
+
+3. Access endpoints:
+   {{- if .Values.ingress.enabled }}
+   Frontend Console:    http{{ if .Values.ingress.tls }}s{{ end }}://{{ (index .Values.ingress.hosts 0).host }}
+   Ingest Gateway:      http{{ if .Values.ingress.tls }}s{{ end }}://{{ (index .Values.ingress.hosts 0).host }}/api/fleet/enrollment
+   Backend API:         http{{ if .Values.ingress.tls }}s{{ end }}://{{ (index .Values.ingress.hosts 0).host }}/api/v1/health
+   {{- else }}
+   Port-forward to frontend:
+   kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "forge-console.fullname" . }}-frontend 8080:80
+   Port-forward to ingest gateway:
+   kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "forge-console.fullname" . }}-ingest 17543:17543
+   {{- end }}
+
+4. Verify license status:
+   kubectl exec -n {{ .Release.Namespace }} deploy/{{ include "forge-console.fullname" . }}-backend -- curl -s http://localhost:8000/api/v1/license/status

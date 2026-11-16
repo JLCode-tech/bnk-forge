@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/JLCode-tech/bnk-forge/pkg/agent"
+	"github.com/JLCode-tech/bnk-forge/pkg/agent/transport"
 )
 
 func main() {
@@ -26,7 +27,12 @@ func main() {
 	batchSize := flag.Int("batch-size", 500, "Maximum batch record capacity before flush")
 	mockMode := flag.Bool("mock-mode", getEnv("MOCK_MODE", "false") == "true", "Enable synthetic mock telemetry")
 	insecureSkipVerify := flag.Bool("insecure-skip-verify", getEnv("INSECURE_SKIP_VERIFY", "false") == "true", "Skip TLS CA verification (dev only)")
+	transportMode := flag.String("transport", getEnv("FORGE_TRANSPORT", "http"), "Transport mode: http, nats, failover, mirror")
+	natsURL := flag.String("nats-url", getEnv("NATS_URL", "localhost:4222"), "NATS JetStream Leaf Node URL")
 	tmmGatewayIPs := flag.String("tmm-gateway-ips", getEnv("TMM_GATEWAY_IPS", ""), "Comma-separated BNK TMM Ingress IP addresses")
+	enableLeaderElection := flag.Bool("enable-leader-election", getEnv("ENABLE_LEADER_ELECTION", "false") == "true", "Enable Kubernetes Lease Leader Election")
+	leaseName := flag.String("lease-name", getEnv("LEASE_NAME", "forge-agent-leader"), "Kubernetes Lease resource name")
+	leaseNamespace := flag.String("lease-namespace", getEnv("LEASE_NAMESPACE", "forge-system"), "Kubernetes Lease resource namespace")
 
 	flag.Parse()
 
@@ -55,6 +61,11 @@ func main() {
 		FlushInterval:       *flushInterval,
 		MockMode:            *mockMode,
 		InsecureSkipVerify:  *insecureSkipVerify,
+		TransportMode:       transport.DualTransportMode(*transportMode),
+		NATSURL:             *natsURL,
+		EnableLeaderElection: *enableLeaderElection,
+		LeaseName:           *leaseName,
+		LeaseNamespace:      *leaseNamespace,
 		TmmGatewayIPs:       tmmIPs,
 		ProtectedNamespaces: []string{"default", "ai-inference", "f5-ai-gateway"},
 		ProtectedPorts:      []uint16{8000, 8080, 50051},

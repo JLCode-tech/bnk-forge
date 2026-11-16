@@ -1,0 +1,122 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "forge-agent.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "forge-agent.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "forge-agent.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "forge-agent.selectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "forge-agent.serviceAccountName" . }}
+      hostNetwork: {{ .Values.hostNetwork }}
+      hostPID: {{ .Values.hostPID }}
+      dnsPolicy: {{ .Values.dnsPolicy }}
+      tolerations:
+        {{- toYaml .Values.tolerations | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            - name: CONSOLE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "forge-agent.secretName" . }}
+                  key: console-url
+            - name: ENROLLMENT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "forge-agent.secretName" . }}
+                  key: enrollment-token
+            - name: CLUSTER_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "forge-agent.secretName" . }}
+                  key: cluster-name
+            - name: CLUSTER_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "forge-agent.secretName" . }}
+                  key: cluster-id
+                  optional: true
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: CERT_DIR
+              value: {{ .Values.spool.certDir | quote }}
+            - name: SPOOL_DIR
+              value: {{ .Values.spool.spoolDir | quote }}
+            - name: FORGE_TRANSPORT
+              value: {{ .Values.transport.mode | quote }}
+            - name: NATS_URL
+              value: {{ .Values.transport.natsUrl | quote }}
+            - name: ENABLE_LEADER_ELECTION
+              value: {{ .Values.leaderElection.enabled | quote }}
+            - name: LEASE_NAME
+              value: {{ .Values.leaderElection.leaseName | quote }}
+            - name: LEASE_NAMESPACE
+              value: {{ include "forge-agent.leaseNamespace" . | quote }}
+            - name: INSECURE_SKIP_VERIFY
+              value: {{ .Values.enrollment.insecureSkipVerify | quote }}
+            - name: MOCK_MODE
+              value: {{ .Values.telemetry.mockMode | quote }}
+            - name: TMM_GATEWAY_IPS
+              value: {{ .Values.tmm.gatewayIPs | quote }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            {{- if .Values.tmm.enabled }}
+            - name: tmm-socket
+              mountPath: {{ .Values.tmm.socketPath }}
+              readOnly: true
+            {{- end }}
+            - name: agent-data
+              mountPath: {{ .Values.spool.hostPath }}
+            {{- if .Values.ebpf.enabled }}
+            - name: sys-kernel-debug
+              mountPath: {{ .Values.ebpf.debugFsPath }}
+              readOnly: true
+            {{- end }}
+      volumes:
+        {{- if .Values.tmm.enabled }}
+        - name: tmm-socket
+          hostPath:
+            path: {{ .Values.tmm.socketPath }}
+            type: DirectoryOrCreate
+        {{- end }}
+        - name: agent-data
+          hostPath:
+            path: {{ .Values.spool.hostPath }}
+            type: DirectoryOrCreate
+        {{- if .Values.ebpf.enabled }}
+        - name: sys-kernel-debug
+          hostPath:
+            path: {{ .Values.ebpf.debugFsPath }}
+            type: DirectoryOrCreate
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

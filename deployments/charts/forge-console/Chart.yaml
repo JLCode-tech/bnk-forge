@@ -1,0 +1,18 @@
+apiVersion: v2
+name: forge-console
+description: Production Control Plane, Ingest Gateway, and Data Plane Services for BNK Forge
+type: application
+version: 1.0.0-pov
+appVersion: 1.0.0-pov
+keywords:
+  - bnk
+  - forge
+  - f5
+  - console
+  - control-plane
+  - ingest
+  - nats
+  - clickhouse
+maintainers:
+  - name: BNK Forge Team
+    email: bnk-forge@f5.com
