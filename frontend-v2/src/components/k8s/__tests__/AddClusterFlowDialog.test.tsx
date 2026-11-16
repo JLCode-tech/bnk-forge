@@ -43,6 +43,22 @@ vi.mock("@/components/projects/CreateProjectDialog", () => ({
     ) : null,
 }));
 
+// Mock AgentEnrollmentWizard since it's tested separately
+vi.mock("@/components/fleet/AgentEnrollmentWizard", () => ({
+  AgentEnrollmentWizard: ({
+    open,
+    defaultProjectId,
+  }: {
+    open: boolean;
+    defaultProjectId?: number;
+  }) =>
+    open ? (
+      <div data-testid="agent-enrollment-wizard">
+        AgentEnrollmentWizard for project {defaultProjectId}
+      </div>
+    ) : null,
+}));
+
 const mockProjects = [
   {
     id: 1,
@@ -173,16 +189,43 @@ describe("AddClusterFlowDialog", () => {
     });
   });
 
-  it("opens ClusterConfigDialog when a project is clicked", async () => {
+  it("opens ClusterConfigDialog when a project and Direct Kubeconfig are selected", async () => {
+    const user = userEvent.setup();
+    render(<AddClusterFlowDialog open={true} onOpenChange={onOpenChange} />);
+
+    await user.click(screen.getByText("Production BNK"));
+
+    // Step 2: Method selection
+    await waitFor(() => {
+      expect(screen.getByText(/Direct Kubeconfig/i)).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText(/Direct Kubeconfig/i));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("cluster-config-dialog")).toBeInTheDocument();
+      expect(
+        screen.getByText("ClusterConfigDialog for project 1"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("opens AgentEnrollmentWizard when Push-Based Edge Agent is selected", async () => {
     const user = userEvent.setup();
     render(<AddClusterFlowDialog open={true} onOpenChange={onOpenChange} />);
 
     await user.click(screen.getByText("Production BNK"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("cluster-config-dialog")).toBeInTheDocument();
+      expect(screen.getByText(/Push-Based Edge Agent/i)).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText(/Push-Based Edge Agent/i));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("agent-enrollment-wizard")).toBeInTheDocument();
       expect(
-        screen.getByText("ClusterConfigDialog for project 1"),
+        screen.getByText("AgentEnrollmentWizard for project 1"),
       ).toBeInTheDocument();
     });
   });

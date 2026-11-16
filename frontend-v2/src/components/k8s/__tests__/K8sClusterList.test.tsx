@@ -23,6 +23,16 @@ vi.mock('../ClusterConfigDialog', () => ({
     open ? <div data-testid="cluster-config-dialog">Config Dialog</div> : null,
 }));
 
+vi.mock('../AddClusterFlowDialog', () => ({
+  AddClusterFlowDialog: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="add-cluster-flow-dialog">Add Cluster Flow Dialog</div> : null,
+}));
+
+vi.mock('../../fleet/AgentEnrollmentWizard', () => ({
+  AgentEnrollmentWizard: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="agent-enrollment-wizard">Agent Enrollment Wizard</div> : null,
+}));
+
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
@@ -472,7 +482,7 @@ describe('K8sClusterList', () => {
       });
     });
 
-    it('opens config dialog when "Add Cluster" is clicked', async () => {
+    it('opens add cluster flow dialog when "Add Cluster" is clicked', async () => {
       const user = userEvent.setup();
       render(<K8sClusterList projectId={1} />);
 
@@ -481,7 +491,19 @@ describe('K8sClusterList', () => {
       });
 
       await user.click(screen.getByText('Add Cluster'));
-      expect(screen.getByTestId('cluster-config-dialog')).toBeInTheDocument();
+      expect(screen.getByTestId('add-cluster-flow-dialog')).toBeInTheDocument();
+    });
+
+    it('opens agent enrollment wizard when "Enroll Agent (:17543)" is clicked', async () => {
+      const user = userEvent.setup();
+      render(<K8sClusterList projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Enroll Agent (:17543)')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('Enroll Agent (:17543)'));
+      expect(screen.getByTestId('agent-enrollment-wizard')).toBeInTheDocument();
     });
   });
 

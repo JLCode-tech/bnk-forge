@@ -20,13 +20,14 @@ import {
 import { useCreateCluster, useUpdateCluster } from '@/hooks/useK8s';
 import type { K8sCluster, K8sClusterCreateRequest, K8sClusterUpdateRequest, SSHCredential } from '@/types';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, Upload, FileText, Plus, Server, Search, CheckCircle2 } from 'lucide-react';
+import { Loader2, Upload, FileText, Plus, Server, Search, CheckCircle2, Zap } from 'lucide-react';
 import { SectionCard } from '@/components/ui/section-card';
 import { notify } from '@/lib/notify';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { queryKeys } from '@/lib/queryKeys';
 import { Badge } from '@/components/ui/badge';
+import { AgentEnrollmentWizard } from '@/components/fleet/AgentEnrollmentWizard';
 
 interface PreFilledContext {
   name: string;
@@ -101,6 +102,7 @@ export function ClusterConfigDialog({ open, onOpenChange, projectId, cluster, pr
   const [autoProbed, setAutoProbed] = useState(false);
   // Node IP hint: when set, the tunnel must SSH to this IP (not the project jumphost)
   const [tunnelNodeIpHint, setTunnelNodeIpHint] = useState<string | null>(null);
+  const [showEnrollWizard, setShowEnrollWizard] = useState(false);
 
   // Load cluster data when editing
   useEffect(() => {
@@ -412,19 +414,47 @@ export function ClusterConfigDialog({ open, onOpenChange, projectId, cluster, pr
   const isLoading = createMutation.isPending || updateMutation.isPending;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
-        <form onSubmit={handleSubmit}>
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold">{isEditing ? 'Edit Cluster' : 'Add Kubernetes Cluster'}</DialogTitle>
-            <DialogDescription>
-              {isEditing
-                ? 'Update cluster configuration and credentials'
-                : 'Connect a Kubernetes cluster to this project (EKS, AKS, GKE, on-prem, etc.)'}
-            </DialogDescription>
-          </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
+          <form onSubmit={handleSubmit}>
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold">{isEditing ? 'Edit Cluster' : 'Add Kubernetes Cluster'}</DialogTitle>
+              <DialogDescription>
+                {isEditing
+                  ? 'Update cluster configuration and credentials'
+                  : 'Connect a Kubernetes cluster to this project (EKS, AKS, GKE, on-prem, etc.)'}
+              </DialogDescription>
+            </DialogHeader>
 
           <div className="grid gap-6 py-4">
+            {!isEditing && (
+              <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-primary" />
+                    <span className="font-semibold text-sm">Push-Based Fleet Agent Available (Recommended)</span>
+                    <Badge variant="default" className="text-2xs py-0 px-1.5">v2</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Zero inbound firewall holes. Edge cluster dials out to Forge on port <code className="text-xs font-mono bg-muted px-1 py-0.5 rounded">:17543</code> via mTLS with automated CSR enrollment.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => {
+                    onOpenChange(false);
+                    setShowEnrollWizard(true);
+                  }}
+                >
+                  <Zap className="mr-1.5 h-3.5 w-3.5" />
+                  Enroll Agent (:17543)
+                </Button>
+              </div>
+            )}
+
             <SectionCard title="Cluster Identity" compact>
               <div className="grid gap-4">
             {/* Cluster Name */}
@@ -765,5 +795,12 @@ export function ClusterConfigDialog({ open, onOpenChange, projectId, cluster, pr
         </form>
       </DialogContent>
     </Dialog>
+
+    <AgentEnrollmentWizard
+      open={showEnrollWizard}
+      onOpenChange={setShowEnrollWizard}
+      defaultProjectId={projectId}
+    />
+    </>
   );
 }

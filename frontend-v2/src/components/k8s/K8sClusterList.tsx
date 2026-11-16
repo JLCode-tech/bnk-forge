@@ -42,6 +42,8 @@ import { ClusterConfigDialog } from "./ClusterConfigDialog";
 import { ClusterPrerequisitesDialog } from "./ClusterPrerequisitesDialog";
 import { BnkClusterMemberDialog } from "./BnkClusterMemberDialog";
 import { DetectClustersConfirmDialog } from "./DetectClustersConfirmDialog";
+import { AddClusterFlowDialog } from "./AddClusterFlowDialog";
+import { AgentEnrollmentWizard } from "../fleet/AgentEnrollmentWizard";
 import type { K8sCluster, ClusterConnectivityResult } from "@/types";
 import { api } from "@/lib/api";
 import { notify } from "@/lib/notify";
@@ -68,6 +70,7 @@ import {
   Plug,
   Unplug,
   Network,
+  Zap,
 } from "lucide-react";
 
 interface K8sClusterListProps {
@@ -143,6 +146,8 @@ export function K8sClusterList({
   }, [queryClient]);
 
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
+  const [addClusterFlowOpen, setAddClusterFlowOpen] = useState(false);
+  const [enrollWizardOpen, setEnrollWizardOpen] = useState(false);
   const [selectedCluster, setSelectedCluster] = useState<K8sCluster | null>(
     null,
   );
@@ -165,7 +170,7 @@ export function K8sClusterList({
 
   const handleAddCluster = () => {
     setSelectedCluster(null);
-    setConfigDialogOpen(true);
+    setAddClusterFlowOpen(true);
   };
 
   /** Detect new K8s clusters via SSH — probe and filter out already-registered contexts */
@@ -333,6 +338,10 @@ export function K8sClusterList({
               )}
             </Button>
           )}
+          <Button variant="outline" onClick={() => setEnrollWizardOpen(true)}>
+            <Zap className="mr-2 h-4 w-4 text-primary" />
+            Enroll Agent (:17543)
+          </Button>
           <Button onClick={handleAddCluster}>
             <Plus className="mr-2 h-4 w-4" />
             Add Cluster
@@ -353,7 +362,7 @@ export function K8sClusterList({
                   : "Add a Kubernetes cluster to monitor deployed resources"}
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center justify-center gap-2">
               {projectSshCredentialId && (
                 <Button
                   onClick={handleDetectSSHClusters}
@@ -372,6 +381,10 @@ export function K8sClusterList({
                   )}
                 </Button>
               )}
+              <Button onClick={() => setEnrollWizardOpen(true)}>
+                <Zap className="mr-2 h-4 w-4" />
+                Enroll Edge Agent (:17543)
+              </Button>
               <Button
                 variant={projectSshCredentialId ? "outline" : "default"}
                 onClick={handleAddCluster}
@@ -672,6 +685,20 @@ export function K8sClusterList({
           ))}
         </div>
       )}
+
+      {/* Push-Based Agent Enrollment Wizard */}
+      <AgentEnrollmentWizard
+        open={enrollWizardOpen}
+        onOpenChange={setEnrollWizardOpen}
+        defaultProjectId={projectId}
+      />
+
+      {/* Add Cluster Flow (Push Agent or Direct Kubeconfig) */}
+      <AddClusterFlowDialog
+        open={addClusterFlowOpen}
+        onOpenChange={setAddClusterFlowOpen}
+        initialProjectId={projectId}
+      />
 
       {/* Config Dialog */}
       <ClusterConfigDialog
