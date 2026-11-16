@@ -29,6 +29,16 @@ backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if backend_path not in sys.path:
     sys.path.insert(0, backend_path)
 
+_legacy_dir = os.path.join(backend_path, "alembic", "legacy_v2_archive")
+_versions_dir = os.path.join(backend_path, "alembic", "versions")
+MIGRATIONS_DIR = _legacy_dir if os.path.isdir(_legacy_dir) and any(f.endswith(".py") for f in os.listdir(_legacy_dir)) else _versions_dir
+
+def _migration_file(basename: str) -> str:
+    p1 = os.path.join(_legacy_dir, basename)
+    if os.path.isfile(p1):
+        return p1
+    return os.path.join(_versions_dir, basename)
+
 
 class TestMigrationStructure:
     """Verify migration file structure and integrity."""
@@ -40,14 +50,12 @@ class TestMigrationStructure:
 
     def test_versions_directory_exists(self):
         """Migration versions directory must exist."""
-        versions_dir = os.path.join(backend_path, "alembic", "versions")
-        assert os.path.isdir(versions_dir), "alembic/versions/ not found"
+        assert os.path.isdir(_versions_dir) or os.path.isdir(_legacy_dir), "alembic versions directory not found"
 
     def test_migrations_exist(self):
-        """At least one migration file should exist."""
-        versions_dir = os.path.join(backend_path, "alembic", "versions")
+        """At least one migration file should exist in active or archived directory."""
         migration_files = [
-            f for f in os.listdir(versions_dir)
+            f for f in os.listdir(MIGRATIONS_DIR)
             if f.endswith(".py") and not f.startswith("__")
         ]
         assert len(migration_files) > 0, "No migration files found"
@@ -150,7 +158,7 @@ class TestMigrationExecution:
 
     def test_migration_scripts_are_importable(self):
         """Every migration script should be importable (no syntax errors)."""
-        versions_dir = os.path.join(backend_path, "alembic", "versions")
+        versions_dir = MIGRATIONS_DIR
 
         import importlib.util
 
@@ -364,12 +372,7 @@ class TestMigrationExecution:
         from sqlalchemy import create_engine, inspect
         from sqlalchemy.pool import StaticPool
 
-        migration_path = os.path.join(
-            backend_path,
-            "alembic",
-            "versions",
-            "v2_053_add_discovery_job_and_discovered_node.py",
-        )
+        migration_path = _migration_file("v2_053_add_discovery_job_and_discovered_node.py")
         spec = importlib.util.spec_from_file_location("migration_v2_053", migration_path)
         assert spec is not None and spec.loader is not None
         migration_module = importlib.util.module_from_spec(spec)
@@ -416,9 +419,7 @@ class TestMigrationExecution:
         from sqlalchemy import create_engine, inspect
         from sqlalchemy.pool import StaticPool
 
-        migration_path = os.path.join(
-            backend_path, "alembic", "versions", "v2_135_add_task_archived_column.py"
-        )
+        migration_path = _migration_file("v2_135_add_task_archived_column.py")
         spec = importlib.util.spec_from_file_location("migration_v2_135", migration_path)
         assert spec is not None and spec.loader is not None
         migration_module = importlib.util.module_from_spec(spec)
@@ -456,12 +457,7 @@ class TestMigrationExecution:
         """v2_136 downgrade must fail safely if NULL template_id rows exist."""
         import importlib.util
 
-        migration_path = os.path.join(
-            backend_path,
-            "alembic",
-            "versions",
-            "v2_136_stack_instance_blueprint_release.py",
-        )
+        migration_path = _migration_file("v2_136_stack_instance_blueprint_release.py")
         spec = importlib.util.spec_from_file_location("migration_v2_136", migration_path)
         assert spec is not None and spec.loader is not None
         migration_module = importlib.util.module_from_spec(spec)
@@ -561,7 +557,7 @@ class TestMigrationExecution:
         from sqlalchemy.pool import StaticPool
 
         def _load(basename, modname):
-            path = os.path.join(backend_path, "alembic", "versions", basename)
+            path = _migration_file(basename)
             spec = importlib.util.spec_from_file_location(modname, path)
             assert spec is not None and spec.loader is not None
             mod = importlib.util.module_from_spec(spec)

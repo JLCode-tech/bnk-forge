@@ -91,6 +91,9 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # but NO infrastructure CLI tools. Rebuilds only on code changes (fast).
 #
 FROM base AS app-base
+# Copy Atlas CLI for declarative schema management
+COPY --from=arigaio/atlas:latest /atlas /usr/local/bin/atlas
+
 # Copy pre-built Python packages from dependencies stage
 COPY --from=dependencies /install /usr/local
 
@@ -104,6 +107,8 @@ COPY --from=dependencies /install /usr/local
 COPY VERSION ./VERSION
 COPY backend/alembic.ini ./
 COPY backend/alembic/ ./alembic/
+COPY backend/schema/ ./schema/
+COPY backend/seeds/ ./seeds/
 COPY backend/data/ ./data/
 COPY backend/core/ ./core/
 COPY backend/models/ ./models/

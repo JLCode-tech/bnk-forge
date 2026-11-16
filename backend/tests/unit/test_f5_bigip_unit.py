@@ -1041,11 +1041,19 @@ class TestMigrationImport:
         import importlib.util
         import os
 
-        migration_path = os.path.join(
-            os.path.dirname(__file__),
-            "../../alembic/versions/v2_130_add_f5_bigip_tables.py",
+        p1 = os.path.abspath(
+            os.path.join(
+                os.path.dirname(__file__),
+                "../../alembic/legacy_v2_archive/v2_130_add_f5_bigip_tables.py",
+            )
         )
-        migration_path = os.path.abspath(migration_path)
+        p2 = os.path.abspath(
+            os.path.join(
+                os.path.dirname(__file__),
+                "../../alembic/versions/v2_130_add_f5_bigip_tables.py",
+            )
+        )
+        migration_path = p1 if os.path.exists(p1) else p2
         spec = importlib.util.spec_from_file_location(
             "v2_130_add_f5_bigip_tables", migration_path
         )

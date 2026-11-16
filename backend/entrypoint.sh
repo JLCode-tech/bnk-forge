@@ -76,29 +76,37 @@ fi
 echo ""
 cd /app
 
-# S14-004: Use Python to check DB instead of psql (which isn't installed in the image)
-# Uses DATABASE_URL env var which is always available (not POSTGRES_HOST/USER/etc.)
-if ! python -c "
-from sqlalchemy import create_engine, text
-import os
-engine = create_engine(os.environ['DATABASE_URL'])
-with engine.connect() as conn:
-    result = conn.execute(text('SELECT 1 FROM alembic_version LIMIT 1'))
-    result.fetchone()
-" 2>/dev/null; then
-    echo "Fresh database detected - initializing schema..."
+# Normalize DATABASE_URL for Atlas (Go lib/pq requires sslmode=disable when server has no SSL)
+ATLAS_URL="$DATABASE_URL"
+if [[ "$ATLAS_URL" != *"sslmode="* ]] && [[ "$ATLAS_URL" == *"postgres"* ]]; then
+    if [[ "$ATLAS_URL" == *"?"* ]]; then
+        ATLAS_URL="${ATLAS_URL}&sslmode=disable"
+    else
+        ATLAS_URL="${ATLAS_URL}?sslmode=disable"
+    fi
+fi
+
+if [ -f "/app/schema/schema.hcl" ] && command -v atlas >/dev/null 2>&1; then
+    echo "Applying declarative database schema via Atlas..."
+    atlas schema apply --url "$ATLAS_URL" --to "file:///app/schema/schema.hcl" --auto-approve
+    if [ $? -ne 0 ]; then
+        echo "Atlas schema apply failed"
+        exit 1
+    fi
+else
+    echo "Atlas or schema.hcl not found - falling back to init_db.py..."
     python init_db.py
     if [ $? -ne 0 ]; then
         echo "Database initialization failed"
         exit 1
     fi
-else
-    echo "Existing database detected - running migrations..."
-    alembic upgrade head
-    if [ $? -ne 0 ]; then
-        echo "Migration failed"
-        exit 1
-    fi
+fi
+
+echo "Running idempotent database seeds..."
+python -m seeds.seed_runner
+if [ $? -ne 0 ]; then
+    echo "Database seeding failed"
+    exit 1
 fi
 echo "Database ready"
 

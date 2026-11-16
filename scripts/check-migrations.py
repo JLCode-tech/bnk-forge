@@ -326,9 +326,31 @@ def check_staging_collision(versions_dir: Path, base_ref: str = "origin/staging"
 
 def main() -> int:
     versions_dir = VERSIONS_DIR
+    legacy_dir = Path(__file__).parent.parent / "backend" / "alembic" / "legacy_v2_archive"
+    schema_hcl = Path(__file__).parent.parent / "backend" / "schema" / "schema.hcl"
+
     if not versions_dir.is_dir():
         print(f"ERROR: {versions_dir} not found", file=sys.stderr)
         return 1
+
+    active_migrations = [f for f in versions_dir.iterdir() if f.name.endswith(".py") and not f.name.startswith("__")]
+    if not active_migrations and legacy_dir.is_dir() and schema_hcl.is_file():
+        # Atlas Declarative Schema is active (Milestone 1). Validate archived migrations chain.
+        errors, warnings = check_chain(legacy_dir)
+        if warnings:
+            for w in warnings:
+                print(f"  WARNING: {w}")
+        if errors:
+            print(f"\n{'=' * 60}", file=sys.stderr)
+            print(f"  ARCHIVED MIGRATION CHAIN ERRORS ({len(errors)})", file=sys.stderr)
+            print(f"{'=' * 60}", file=sys.stderr)
+            for e in errors:
+                print(f"  ✗ {e}", file=sys.stderr)
+            print(f"{'=' * 60}\n", file=sys.stderr)
+            return 1
+        count = len([f for f in legacy_dir.iterdir() if f.name.endswith(".py") and not f.name.startswith("__")])
+        print(f"  Atlas Declarative Schema active ({schema_hcl.name}). Archived migration chain OK: {count} migrations ✓")
+        return 0
 
     errors, warnings = check_chain(versions_dir)
     errors += check_staging_collision(versions_dir)
