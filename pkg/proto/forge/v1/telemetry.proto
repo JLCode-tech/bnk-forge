@@ -1,0 +1,157 @@
+syntax = "proto3";
+
+package forge.v1;
+
+option go_package = "github.com/JLCode-tech/bnk-forge/pkg/proto/forge/v1;forgev1";
+
+// FlowDirection describes whether a socket flow was initiated locally or remotely.
+enum FlowDirection {
+  FLOW_DIRECTION_UNSPECIFIED = 0;
+  FLOW_DIRECTION_INBOUND = 1;
+  FLOW_DIRECTION_OUTBOUND = 2;
+}
+
+// CommandType defines downlink control instructions issued from the console to the agent.
+enum CommandType {
+  COMMAND_TYPE_UNSPECIFIED = 0;
+  COMMAND_TYPE_DRIFT_CHECK = 1;
+  COMMAND_TYPE_BENCHMARK = 2;
+  COMMAND_TYPE_CONFIG_RECONCILE = 3;
+  COMMAND_TYPE_FLUSH = 4;
+}
+
+// RegisterStatus is the response code returned upon agent registration.
+enum RegisterStatus {
+  REGISTER_STATUS_UNSPECIFIED = 0;
+  REGISTER_STATUS_OK = 1;
+  REGISTER_STATUS_REJECTED = 2;
+  REGISTER_STATUS_REQUIRE_UPGRADE = 3;
+}
+
+// EBPFSocketFlow captures socket connection lifecycle and performance metrics extracted via eBPF tracepoints.
+message EBPFSocketFlow {
+  int64 timestamp = 1; // Unix timestamp in microseconds
+  string cluster_id = 2;
+  string node_name = 3;
+  uint32 net_ns_id = 4;
+  string pod_name = 5;
+  string namespace = 6;
+  string src_ip = 7;
+  uint32 src_port = 8;
+  string dst_ip = 9;
+  uint32 dst_port = 10;
+  FlowDirection direction = 11;
+  uint32 handshake_duration_us = 12;
+  uint32 total_duration_ms = 13;
+  uint64 bytes_sent = 14;
+  uint64 bytes_received = 15;
+  uint32 retransmissions = 16;
+  uint32 smoothed_rtt_us = 17;
+  bool tmm_bypass_violation = 18;
+}
+
+// TMMDPDKMetric captures hardware and microkernel counters scraped from F5 BNK TMM.
+message TMMDPDKMetric {
+  int64 timestamp = 1; // Unix timestamp in microseconds
+  string cluster_id = 2;
+  string node_name = 3;
+  string tmm_pod = 4;
+  uint32 core_id = 5;
+  string interface = 6;
+  uint64 rx_packets = 7;
+  uint64 rx_bytes = 8;
+  uint64 rx_drops = 9;
+  uint64 tx_packets = 10;
+  uint64 tx_bytes = 11;
+  uint64 tx_drops = 12;
+  float rx_ring_descriptor_occupancy = 13;
+  float tx_ring_descriptor_occupancy = 14;
+  float cpu_utilization_pct = 15;
+  uint64 hugepage_used_bytes = 16;
+}
+
+// AIGatewayEvent captures LLM token metrics and latencies from F5 AI Gateway.
+message AIGatewayEvent {
+  int64 timestamp = 1; // Unix timestamp in milliseconds
+  string cluster_id = 2;
+  string client_id = 3;
+  string model_name = 4;
+  string route_name = 5;
+  uint32 prompt_tokens = 6;
+  uint32 completion_tokens = 7;
+  uint32 time_to_first_token_ms = 8;
+  uint32 total_latency_ms = 9;
+  uint32 status_code = 10;
+  double cost_usd = 11;
+}
+
+// TelemetryBatch is the streaming payload pushed from edge agents to forge-ingest.
+message TelemetryBatch {
+  string batch_id = 1;
+  string cluster_id = 2;
+  string node_name = 3;
+  int64 sent_at = 4;
+  repeated EBPFSocketFlow flows = 5;
+  repeated TMMDPDKMetric metrics = 6;
+  repeated AIGatewayEvent ai_events = 7;
+  map<string, string> metadata = 8;
+}
+
+// ControlCommand is an instruction dispatched from console to the agent.
+message ControlCommand {
+  string command_id = 1;
+  CommandType type = 2;
+  string payload = 3; // JSON-encoded instruction parameters
+  int64 created_at = 4;
+}
+
+// RegisterRequest is presented by an agent to enroll or announce its runtime presence.
+message RegisterRequest {
+  string cluster_id = 1;
+  string cluster_name = 2;
+  string agent_version = 3;
+  string hostname = 4;
+  string node_name = 5;
+  repeated string capabilities = 6;
+  string machine_fingerprint = 7;
+  map<string, string> labels = 8;
+}
+
+// RegisterResponse acknowledges the registration and configures the agent.
+message RegisterResponse {
+  RegisterStatus status = 1;
+  string agent_id = 2;
+  string session_token = 3;
+  int64 server_time = 4;
+  uint32 heartbeat_interval_sec = 5;
+  map<string, string> assigned_config = 6;
+  string message = 7;
+}
+
+// Ping is sent periodically by the agent to prove liveness.
+message Ping {
+  string cluster_id = 1;
+  string agent_id = 2;
+  int64 timestamp = 3;
+  string status = 4;
+  uint64 uptime_seconds = 5;
+}
+
+// Pong is returned by the Ingest Gateway to acknowledge a heartbeat.
+message Pong {
+  int64 server_timestamp = 1;
+  bool ack = 2;
+  uint32 pending_commands_count = 3;
+}
+
+// TelemetryService provides the bi-directional streaming and management RPCs.
+service TelemetryService {
+  // StreamTelemetry establishes an outbound streaming session sending telemetry batches and receiving control commands.
+  rpc StreamTelemetry(stream TelemetryBatch) returns (stream ControlCommand);
+
+  // RegisterAgent performs the initial capability handshake.
+  rpc RegisterAgent(RegisterRequest) returns (RegisterResponse);
+
+  // Heartbeat delivers lightweight health pings.
+  rpc Heartbeat(Ping) returns (Pong);
+}
