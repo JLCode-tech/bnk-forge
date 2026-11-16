@@ -95,6 +95,37 @@ services:
     ports:
       - "6379:6379"
 
+  clickhouse:
+    network_mode: !reset null
+    networks:
+      - bnk-local
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+
+  nats:
+    network_mode: !reset null
+    networks:
+      - bnk-local
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+
+  forge-ingest:
+    network_mode: !reset null
+    networks:
+      - bnk-local
+    ports:
+      - "17543:17543"
+    environment:
+      FORGE_INGEST_ADDR: ":17543"
+      CLICKHOUSE_URL: "http://clickhouse:8123"
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-bnkforge_dev_password}
+      NATS_ADDR: "nats:4222"
+      BACKEND_URL: "http://backend:8000"
+      REQUIRE_MTLS: "false"
+
   backend:
     network_mode: !reset null
     networks:
@@ -125,6 +156,8 @@ services:
       - ./backend/routes:/app/routes:ro
       - ./backend/schemas:/app/schemas:ro
       - ./backend/models:/app/models:ro
+      - ./backend/schema:/app/schema:ro
+      - ./backend/seeds:/app/seeds:ro
       - ../awsbnkctl/.awsbnkctl:/app/.awsbnkctl:ro
       - ../azrbnkctl/.azrbnkctl:/app/.azrbnkctl:ro
       - ../gkebnkctl/.gkebnkctl:/app/.gkebnkctl:ro

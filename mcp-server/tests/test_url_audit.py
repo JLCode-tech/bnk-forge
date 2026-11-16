@@ -65,6 +65,10 @@ EXPECTED_TOOLS: dict[str, tuple[str, str]] = {
     "get_pod_metrics": ("GET", "/api/k8s/clusters/{cluster_id}/top/pods"),
     "restart_pod": ("POST", "/api/k8s/clusters/{cluster_id}/pods/{pod_name}/restart"),
     "scale_deployment": ("POST", "/api/k8s/clusters/{cluster_id}/deployments/{name}/scale"),
+    "mint_fleet_enrollment_token": ("POST", "/api/fleet/enrollment/token"),
+    "get_fleet_enrollment_status": ("GET", "/api/fleet/enrollment/status/{cluster_id}"),
+    "list_fleet_enrollment_tokens": ("GET", "/api/fleet/enrollment/tokens"),
+    "revoke_fleet_enrollment_token": ("DELETE", "/api/fleet/enrollment/tokens/{token_id}"),
     # bnk_operations.py
     "bnk_data": ("GET", "/api/k8s/clusters/{cluster_id}/f5bnk/data"),
     "bnk_gateway_topology": ("GET", "/api/k8s/clusters/{cluster_id}/f5bnk/gateway-topology"),

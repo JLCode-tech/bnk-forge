@@ -278,6 +278,7 @@ def test_governed_auth_expectations_align_with_known_backend_dependencies() -> N
         "k8s/dpf.py": (base / "backend" / "routes" / "k8s" / "dpf.py").read_text(),
         "alert_channels.py": (base / "backend" / "routes" / "alert_channels.py").read_text(),
         "benchmarks.py": (base / "backend" / "routes" / "benchmarks.py").read_text(),
+        "fleet_enrollment.py": (base / "backend" / "routes" / "fleet_enrollment.py").read_text(),
     }
 
     # Bounded subset: explicit tools whose backend auth pattern is easy to verify statically.
@@ -324,6 +325,10 @@ def test_governed_auth_expectations_align_with_known_backend_dependencies() -> N
         "get_pod_metrics": ("k8s/resources.py", "require_viewer"),
         "restart_pod": ("k8s/resources.py", "require_cluster_owner"),
         "scale_deployment": ("k8s/resources.py", "require_cluster_owner"),
+        "mint_fleet_enrollment_token": ("fleet_enrollment.py", "require_operator"),
+        "get_fleet_enrollment_status": ("fleet_enrollment.py", "require_viewer"),
+        "list_fleet_enrollment_tokens": ("fleet_enrollment.py", "require_viewer"),
+        "revoke_fleet_enrollment_token": ("fleet_enrollment.py", "require_operator"),
         "helm_list_repos": ("helm.py", "require_viewer"),
         "helm_add_repo": ("helm.py", "require_operator"),
         "helm_search_charts": ("helm.py", "require_viewer"),

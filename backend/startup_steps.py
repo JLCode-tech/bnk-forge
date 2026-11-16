@@ -745,3 +745,15 @@ def populate_service_registry_step():
     svc_registry = ServiceRegistry.get()
     svc_registry.operator_connections = op_conns
     logger.info("  operator_connections=ready")
+
+
+def init_pki_step():
+    """Ensure internal CA and server certificates exist for edge agent mTLS and gateway."""
+    try:
+        from services.pki_service import ensure_ca_certificate, ensure_server_certificate
+        ensure_ca_certificate()
+        ensure_server_certificate()
+        logger.info("  PKI CA and gateway server certificates ready")
+    except Exception as e:
+        logger.warning(f"  PKI certificate initialization error: {e}")
+

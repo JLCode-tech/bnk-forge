@@ -46,7 +46,12 @@ def register(mcp: FastMCP, client: BNKForgeClient) -> None:
         ssh_credential_id: int = 0,
         ssh_host_override: str = "",
     ) -> str:
-        """Register a Kubernetes cluster under a project.
+        """Register a Kubernetes cluster under a project (legacy fallback path).
+
+        Note: This is the legacy fallback path (direct kubeconfig polling).
+        For new clusters, prefer `mint_fleet_enrollment_token` to enroll via the
+        outbound push-based edge agent on port :17543 (zero inbound firewall holes,
+        automated mTLS + SPIFFE).
 
         Use this when a cluster has been provisioned out-of-band (e.g. by
         `awsbnkctl up` against AWS EKS) and now needs to be attached to a
@@ -831,4 +836,78 @@ def register(mcp: FastMCP, client: BNKForgeClient) -> None:
             cluster_id: Cluster whose tunnel to close.
         """
         result = await client.post(f"/api/k8s/clusters/{cluster_id}/tunnel/close")
+        return json.dumps(result, indent=2)
+
+    # ------------------------------------------------------------------
+    # Fleet Push Enrollment (:17543 mTLS)
+    # ------------------------------------------------------------------
+
+    @mcp.tool()
+    async def mint_fleet_enrollment_token(
+        cluster_name: str,
+        project_id: int | None = None,
+        cluster_id: int | None = None,
+        expires_in_hours: int = 24,
+        max_uses: int = 1,
+        console_url: str = "",
+    ) -> str:
+        """Mint a short-lived fleet enrollment token and generate agent install commands.
+
+        This is the primary / recommended path for onboarding Kubernetes clusters
+        to BNK-Forge via push-based edge agents over port :17543 (mTLS + SPIFFE).
+        Returns the token alongside ready-to-run Helm and kubectl install commands.
+
+        Args:
+            cluster_name: Target cluster display name.
+            project_id: Optional project tenancy scope ID.
+            cluster_id: Optional pre-existing cluster ID.
+            expires_in_hours: Token validity duration in hours (default 24).
+            max_uses: Maximum usage count before token revocation (default 1).
+            console_url: Optional custom console/gateway endpoint override (default reflects host:17543).
+        """
+        body: dict[str, Any] = {
+            "cluster_name": cluster_name,
+            "expires_in_hours": expires_in_hours,
+            "max_uses": max_uses,
+        }
+        if project_id is not None:
+            body["project_id"] = project_id
+        if cluster_id is not None:
+            body["cluster_id"] = cluster_id
+        if console_url:
+            body["console_url"] = console_url
+        result = await client.post("/api/fleet/enrollment/token", json=body)
+        return json.dumps(result, indent=2)
+
+    @mcp.tool()
+    async def get_fleet_enrollment_status(cluster_id: str) -> str:
+        """Inspect current push connectivity status and last heartbeat timestamp for a cluster.
+
+        Args:
+            cluster_id: Cluster ID (integer ID or UUID string).
+        """
+        result = await client.get(f"/api/fleet/enrollment/status/{cluster_id}")
+        return json.dumps(result, indent=2)
+
+    @mcp.tool()
+    async def list_fleet_enrollment_tokens(project_id: int | None = None) -> str:
+        """List active fleet enrollment tokens.
+
+        Args:
+            project_id: Optional project ID to filter tokens by tenancy.
+        """
+        params: dict[str, Any] = {}
+        if project_id is not None:
+            params["project_id"] = project_id
+        result = await client.get("/api/fleet/enrollment/tokens", params=params if params else None)
+        return json.dumps(result, indent=2)
+
+    @mcp.tool()
+    async def revoke_fleet_enrollment_token(token_id: int) -> str:
+        """Revoke an active fleet enrollment token by ID.
+
+        Args:
+            token_id: The enrollment token record ID to revoke.
+        """
+        result = await client.delete(f"/api/fleet/enrollment/tokens/{token_id}")
         return json.dumps(result, indent=2)

@@ -157,6 +157,98 @@ services:
           cpus: '0.1'
           memory: 64M
 
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3-alpine
+    container_name: bnk-forge-clickhouse
+    network_mode: host
+    logging: *default-logging
+    environment:
+      CLICKHOUSE_DB: forge
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-bnkforge_dev_password}
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: bnk-forge-nats
+    network_mode: host
+    logging: *default-logging
+    command: ["-js", "-m", "8222"]
+    volumes:
+      - nats_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8222/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+  forge-ingest:
+    build:
+      context: .
+      dockerfile: cmd/forge-ingest/Dockerfile
+    image: bnk-forge-ingest:latest
+    container_name: bnk-forge-ingest
+    network_mode: host
+    logging: *default-logging
+    environment:
+      FORGE_INGEST_ADDR: ":17543"
+      CLICKHOUSE_URL: "http://127.0.0.1:8123"
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-bnkforge_dev_password}
+      NATS_ADDR: "127.0.0.1:4222"
+      BACKEND_URL: "http://127.0.0.1:8000"
+      TLS_CERT_FILE: /app/keys/server.crt
+      TLS_KEY_FILE: /app/keys/server.key
+      CLIENT_CA_FILE: /app/keys/ca.crt
+      REQUIRE_MTLS: "false"
+    volumes:
+      - bnk-forge-keys:/app/keys:ro
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:17543/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
   backend:
     build:
       context: .
@@ -713,6 +805,10 @@ volumes:
   postgres_backups:
     driver: local
   redis_data:
+    driver: local
+  clickhouse_data:
+    driver: local
+  nats_data:
     driver: local
   bfb_cache:
     driver: local

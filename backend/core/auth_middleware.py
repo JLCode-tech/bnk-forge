@@ -79,15 +79,17 @@ OPERATOR_POLLING_PATTERNS = (
     "/heartbeat",
 )
 
-# Benchmark agent endpoints — governed by BENCHMARK_AGENT_AUTH_REQUIRED (via
-# _require_agent_bearer in routes/benchmarks.py), NOT user JWT.  Mirrors the
-# operator registration-token exemption above.
-# Only the write/ingest paths are exempt; GET/DELETE agent routes keep JWT.
+# Benchmark and Fleet agent endpoints — governed by token/mTLS verification,
+# NOT user JWT. Mirrors the operator registration-token exemption above.
 AGENT_PUBLIC_ENDPOINTS: frozenset[tuple[str, str]] = frozenset(
     {
         ("POST", "/api/benchmarks/agents"),
         ("POST", "/api/benchmarks/results"),
         ("POST", "/api/benchmarks/results/aiperf"),
+        ("POST", "/api/fleet/enrollment/bootstrap"),
+        ("POST", "/api/fleet/enrollment/renew"),
+        ("GET", "/api/fleet/enrollment/ca"),
+        ("POST", "/api/fleet/enrollment/agent-heartbeat"),
     }
 )
 

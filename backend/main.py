@@ -71,6 +71,7 @@ from routes.f5_devices import credentials_router as f5_credentials_router
 from routes.f5_devices import devices_router as f5_devices_router
 from routes.fleet import router as fleet_router
 from routes.fleet_configs import router as fleet_configs_router
+from routes.fleet_enrollment import router as fleet_enrollment_router
 from routes.helm import router as helm_router
 from routes.k8s import (
     clusters_router,
@@ -81,6 +82,7 @@ from routes.k8s import (
     recovery_router,
     resources_router,
     search_router,
+    telemetry_router,
     tmm_debug_router,
     topology_router,
     tunnels_router,
@@ -131,6 +133,7 @@ async def lifespan(app: FastAPI):
         assert_metadata_matches_db_step,
         cleanup_stale_state_step,
         init_database_step,
+        init_pki_step,
         init_ssh_tunnel_manager_step,
         mint_builtin_agent_token_step,
         populate_service_registry_step,
@@ -177,6 +180,7 @@ async def lifespan(app: FastAPI):
         ("cli-bnkctl modules", seed_cli_bnkctl_modules_step),
         ("Stack templates", seed_stack_templates_step),
         ("Auth", seed_auth_step),
+        ("Internal PKI & TLS", init_pki_step),
         ("Built-in agent token", mint_builtin_agent_token_step),
         ("Stale state cleanup", cleanup_stale_state_step),
         ("Scheduler", lambda: start_scheduler_step(scheduler)),
@@ -369,6 +373,7 @@ app.include_router(crds_router)  # CRD discovery — D-018 P1
 app.include_router(topology_router)  # Namespace topology graph — D-018 P4
 app.include_router(resources_router)  # K8s resource CRUD, pod/node ops, metrics
 app.include_router(search_router)  # Global multi-cluster & FQDN search
+app.include_router(telemetry_router)  # Strangler telemetry facade — ClickHouse push vs legacy pull
 app.include_router(f5bnk_router)  # F5 BNK gateways, topology, health
 app.include_router(llm_observability_router)  # AI-gateway observability — Loki request analytics
 app.include_router(dpf_router)  # NVIDIA DPF — DPU devices, clusters, services, health
@@ -430,6 +435,7 @@ app.include_router(benchmarks_router)  # AI Performance Benchmarks — Phase 2 d
 app.include_router(connectivity_router)  # Reachability state + SSE stream + force-probe
 app.include_router(fleet_router)  # Fleet members — D-022 host-inclusive fleet inventory
 app.include_router(fleet_configs_router)  # Fleet deployable configs — reusable configs across fleet clusters
+app.include_router(fleet_enrollment_router)  # Agent Protocol & Console-Driven Enrollment API (Milestone 2)
 
 
 # Health check for quick verification

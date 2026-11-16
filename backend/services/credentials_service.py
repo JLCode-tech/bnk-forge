@@ -332,15 +332,48 @@ def get_cloud_credentials_env(project: Project, db=None, *, strict: bool = False
                     # Profile method
                     elif template.aws_auth_method == "profile" and template.aws_profile:
                         env["AWS_PROFILE"] = template.aws_profile
-                        resolved_profile = _resolve_aws_profile_credentials(
-                            template.aws_profile,
-                            template.region or project.region,
-                            strict=strict,
-                            template_name=template.name,
-                        )
+                        try:
+                            resolved_profile = _resolve_aws_profile_credentials(
+                                template.aws_profile,
+                                template.region or project.region,
+                                strict=strict,
+                                template_name=template.name,
+                            )
+                        except Exception:
+                            if (
+                                template.aws_access_key_id
+                                and template.aws_secret_access_key_encrypted
+                                and (
+                                    not template.aws_credentials_expiry
+                                    or datetime.now(UTC) <= template.aws_credentials_expiry
+                                )
+                            ):
+                                resolved_profile = None
+                            else:
+                                raise
+
                         if resolved_profile:
                             env.update(resolved_profile)
                             if "AWS_SESSION_TOKEN" not in resolved_profile:
+                                env.pop("AWS_SESSION_TOKEN", None)
+                                env.pop("TF_VAR_aws_session_token", None)
+                        elif (
+                            template.aws_access_key_id
+                            and template.aws_secret_access_key_encrypted
+                            and (
+                                not template.aws_credentials_expiry
+                                or datetime.now(UTC) <= template.aws_credentials_expiry
+                            )
+                        ):
+                            env.pop("AWS_PROFILE", None)
+                            env["AWS_ACCESS_KEY_ID"] = template.aws_access_key_id
+                            secret = _decrypt_credential(template.aws_secret_access_key_encrypted, "AWS secret key")
+                            if secret:
+                                env["AWS_SECRET_ACCESS_KEY"] = secret
+                            token = _decrypt_credential(template.aws_session_token_encrypted, "AWS session token")
+                            if token:
+                                env["AWS_SESSION_TOKEN"] = token
+                            else:
                                 env.pop("AWS_SESSION_TOKEN", None)
                                 env.pop("TF_VAR_aws_session_token", None)
 

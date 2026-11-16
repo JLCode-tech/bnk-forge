@@ -1036,6 +1036,8 @@ class CredentialTemplateService:
                 template.aws_secret_access_key_encrypted = encrypt_value(credentials["secret_access_key"])
                 template.aws_session_token_encrypted = encrypt_value(credentials["session_token"])
                 template.aws_credentials_expiry = datetime.fromisoformat(credentials["expiration"])
+                template.aws_sso_enabled = True
+                template.aws_auth_method = "sso"
             except Exception as e:
                 logger.warning(f"SSO token obtained but credential exchange failed: {e}")
 
