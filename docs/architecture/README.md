@@ -13,6 +13,11 @@ This directory contains architecture decisions, technical design docs, and the r
 
 | Document | Description |
 |---|---|
+| [**DEPLOYMENT_MODELS_AND_PREREQUISITES.md**](./DEPLOYMENT_MODELS_AND_PREREQUISITES.md) | *(Current - v1.0.0-pov)* Customer prerequisites, VM/K8s/SaaS console deployment models, and console-driven agent enrollment |
+| [**POV_MIGRATION_PLAN.md**](./POV_MIGRATION_PLAN.md) | *(Current - v1.0.0-pov)* Phased migration plan to move Forge 4.3.3 localhost Docker-Compose to target architecture |
+| [**FORGE_AGENT_ARCHITECTURE.md**](./FORGE_AGENT_ARCHITECTURE.md) | *(Current - v1.0.0-pov)* Edge Go Agent, socket-layer eBPF, TMM DPDK enrichment, and dual transport |
+| [**DATA_PLATFORM.md**](./DATA_PLATFORM.md) | *(Current - v1.0.0-pov)* ClickHouse time-series, NATS JetStream WorkQueues, and K8s Job patterns |
+| [**SCHEMA_MANAGEMENT.md**](./SCHEMA_MANAGEMENT.md) | *(Current - v1.0.0-pov)* Atlas declarative schema runbook and Alembic 163-migration retirement |
 | [**../PRODUCT_VISION.md**](../PRODUCT_VISION.md) | *(Current)* Product direction and strategic priorities |
 | [**../ROADMAP.md**](../ROADMAP.md) | *(Current)* Platform roadmap and milestones |
 | [CUSTOMER_PRODUCT_VISION.md](./CUSTOMER_PRODUCT_VISION.md) | *(Historical)* Original product direction analysis |
