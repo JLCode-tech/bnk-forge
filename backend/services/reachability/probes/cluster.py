@@ -117,6 +117,11 @@ class ClusterProbe(Probe):
 
         host, port = _parse_api_server(cluster.api_server)
         if not host:
+            if cluster.access_method == "agent_push" and cluster.integration_status == "agent_connected":
+                return ProbeResult(
+                    state=ReachabilityState.REACHABLE,
+                    checked_at=datetime.now(UTC),
+                )
             return ProbeResult(
                 state=ReachabilityState.UNKNOWN,
                 checked_at=datetime.now(UTC),

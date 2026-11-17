@@ -419,10 +419,17 @@ class ConnectivityProbeService(BaseService):
         host, port = _parse_api_server(cluster.api_server)
 
         if not host:
-            diag = _build_diagnostic_message(
-                host, port, {"reachable": False}, {"open": False}, {"accessible": False},
-                ssh_tunnel_enabled=cluster.ssh_tunnel_enabled,
-            )
+            if cluster.access_method == "agent_push" and cluster.integration_status == "agent_connected":
+                diag = {
+                    "status": ConnectivityStatus.CONNECTED,
+                    "message": "Connected via push-based edge agent (:17543).",
+                    "suggestion": None,
+                }
+            else:
+                diag = _build_diagnostic_message(
+                    host, port, {"reachable": False}, {"open": False}, {"accessible": False},
+                    ssh_tunnel_enabled=cluster.ssh_tunnel_enabled,
+                )
             return {
                 "cluster_id": cluster.id,
                 "cluster_name": cluster.name,

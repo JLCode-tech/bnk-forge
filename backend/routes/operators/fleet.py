@@ -528,6 +528,16 @@ def _query_cluster_health(
 
     def _do_query(session: Session) -> dict:
         try:
+            if cluster.access_method == "agent_push" and not cluster.kubeconfig_encrypted:
+                if cluster.integration_status == "agent_connected":
+                    return {
+                        **_BNK_NOT_INSTALLED_RESULT,
+                        "status": "healthy",
+                        "effective_connectivity_status": "connected",
+                        "reachable": True,
+                    }
+                return {**_OFFLINE_RESULT}
+
             k8s_service = KubernetesService(session)
             # Quick reachability check via K8s API before expensive BNK fetch
             conn_res = k8s_service.test_connection(cluster.id)
