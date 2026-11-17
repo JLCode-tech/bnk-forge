@@ -258,8 +258,14 @@ export default function AgentFleetPage() {
   ).length;
   const live = llmStats?.available ? llmStats : undefined;
   const empty = statsLoading ? "…" : "—";
-  const successRate = live ? `${(live.success_rate * 100).toFixed(1)}%` : empty;
-  const avgTtft = live ? `${Math.round(live.avg_latency_ms)}ms` : empty;
+  const successRate =
+    live && live.total_requests > 0
+      ? `${(live.success_rate * 100).toFixed(1)}%`
+      : empty;
+  const avgTtft =
+    live && live.total_requests > 0
+      ? `${Math.round(live.avg_latency_ms)}ms`
+      : empty;
 
   const activeTabMeta =
     activeTab === "discovery"

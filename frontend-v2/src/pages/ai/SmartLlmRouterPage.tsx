@@ -387,7 +387,9 @@ export default function SmartLlmRouterPage() {
               <StatTile
                 label="Success Rate"
                 value={
-                  live ? `${(live.success_rate * 100).toFixed(1)}%` : pending
+                  live && live.total_requests > 0
+                    ? `${(live.success_rate * 100).toFixed(1)}%`
+                    : pending
                 }
                 icon={Layers}
                 tone="primary"
@@ -396,7 +398,11 @@ export default function SmartLlmRouterPage() {
               />
               <StatTile
                 label="Average Latency"
-                value={live ? `${Math.round(live.avg_latency_ms)}ms` : pending}
+                value={
+                  live && live.total_requests > 0
+                    ? `${Math.round(live.avg_latency_ms)}ms`
+                    : pending
+                }
                 icon={Activity}
                 tone="success"
                 loading={statsLoading}
@@ -569,7 +575,7 @@ export default function SmartLlmRouterPage() {
                               </TableCell>
                             </TableRow>
                           ) : (
-                            inferencePools.map((pool) => {
+                            inferencePools.map((pool, idx) => {
                               const spec = (pool.spec ?? {}) as Record<
                                 string,
                                 unknown
@@ -596,7 +602,9 @@ export default function SmartLlmRouterPage() {
                               return (
                                 <TableRow
                                   key={
-                                    pool.metadata?.uid ?? pool.metadata?.name
+                                    pool.metadata?.uid ??
+                                    pool.metadata?.name ??
+                                    `pool-${idx}`
                                   }
                                 >
                                   <TableCell className="text-xs font-mono font-medium">
@@ -680,7 +688,7 @@ export default function SmartLlmRouterPage() {
                               </TableCell>
                             </TableRow>
                           ) : (
-                            inferenceModels.map((model) => {
+                            inferenceModels.map((model, idx) => {
                               const spec = (model.spec ?? {}) as Record<
                                 string,
                                 unknown
@@ -735,7 +743,9 @@ export default function SmartLlmRouterPage() {
                               return (
                                 <TableRow
                                   key={
-                                    model.metadata?.uid ?? model.metadata?.name
+                                    model.metadata?.uid ??
+                                    model.metadata?.name ??
+                                    `model-${idx}`
                                   }
                                 >
                                   <TableCell className="text-xs font-mono font-medium">
@@ -835,7 +845,7 @@ export default function SmartLlmRouterPage() {
                               </TableCell>
                             </TableRow>
                           ) : (
-                            eppResources.map((epp) => {
+                            eppResources.map((epp, idx) => {
                               const spec = (epp.spec ?? {}) as Record<
                                 string,
                                 unknown
@@ -847,7 +857,11 @@ export default function SmartLlmRouterPage() {
                                       ?.name as string) ?? "—");
                               return (
                                 <TableRow
-                                  key={epp.metadata?.uid ?? epp.metadata?.name}
+                                  key={
+                                    epp.metadata?.uid ??
+                                    epp.metadata?.name ??
+                                    `epp-${idx}`
+                                  }
                                 >
                                   <TableCell className="text-xs font-mono font-medium">
                                     {epp.metadata?.name}

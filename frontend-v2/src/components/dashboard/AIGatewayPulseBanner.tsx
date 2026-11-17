@@ -34,8 +34,14 @@ export function AIGatewayPulseBanner() {
       ? `${(live.total_tokens / 1_000_000).toFixed(2).replace(/\.?0+$/, "")}M`
       : `${(live.total_tokens / 1000).toFixed(0)}k`
     : empty;
-  const avgLatency = live ? `${Math.round(live.avg_latency_ms)}ms` : empty;
-  const successRate = live ? Math.round(live.success_rate * 100) : null;
+  const avgLatency =
+    live && live.total_requests > 0
+      ? `${Math.round(live.avg_latency_ms)}ms`
+      : empty;
+  const successRate =
+    live && live.total_requests > 0
+      ? Math.round(live.success_rate * 100)
+      : null;
   const modelsCount = live ? live.models : empty;
 
   const benchP50 =

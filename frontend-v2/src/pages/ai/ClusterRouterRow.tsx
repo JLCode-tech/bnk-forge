@@ -19,6 +19,7 @@ export function ClusterRouterRow({
 }) {
   const { data, isLoading } = useLlmStats(cluster.id, { range: "6h" });
   const live = data?.available ? data : undefined;
+  const hasTraffic = Boolean(live && live.total_requests > 0);
   const empty = isLoading ? "…" : "—";
 
   return (
@@ -33,20 +34,28 @@ export function ClusterRouterRow({
         {live ? live.total_requests.toLocaleString() : empty}
       </TableCell>
       <TableCell className="text-xs text-right tabular-nums">
-        {live ? `${(live.success_rate * 100).toFixed(1)}%` : empty}
+        {hasTraffic ? `${(live!.success_rate * 100).toFixed(1)}%` : empty}
       </TableCell>
       <TableCell className="text-xs text-right tabular-nums">
-        {live ? `${Math.round(live.avg_latency_ms)}ms` : empty}
+        {hasTraffic ? `${Math.round(live!.avg_latency_ms)}ms` : empty}
       </TableCell>
       <TableCell>
         {isLoading ? (
           <span className="text-xs text-muted-foreground">Checking…</span>
-        ) : live ? (
+        ) : hasTraffic ? (
           <Badge
             variant="outline"
             className="text-2xs bg-success/10 text-success border-success/30"
           >
             Live
+          </Badge>
+        ) : live ? (
+          <Badge
+            variant="outline"
+            className="text-2xs text-muted-foreground border-border"
+            title="Gateway reachable, 0 requests in the last 6h"
+          >
+            Idle (6h)
           </Badge>
         ) : (
           <Badge

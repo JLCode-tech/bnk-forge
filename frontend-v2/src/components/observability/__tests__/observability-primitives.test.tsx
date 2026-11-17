@@ -24,16 +24,26 @@ describe('formatters', () => {
 });
 
 describe('inferProvider', () => {
-  it('maps model families to providers', () => {
+  it('maps model families and provider identifiers to canonical providers', () => {
     expect(inferProvider('gpt-4o')).toBe('openai');
     expect(inferProvider('o3-mini')).toBe('openai');
     expect(inferProvider('claude-3-5-sonnet')).toBe('anthropic');
     expect(inferProvider('gemini-1.5-pro')).toBe('google');
-    expect(inferProvider('llama-3')).toBe('unknown');
+    expect(inferProvider('llama-3')).toBe('meta');
+    expect(inferProvider('azure-foundry-australiaeast')).toBe('azure');
+    expect(inferProvider('bedrock-ap-southeast-2')).toBe('aws');
+    expect(inferProvider('amazon.titan-text')).toBe('aws');
+    expect(inferProvider('deepseek-r1')).toBe('deepseek');
+    expect(inferProvider('mistral-large')).toBe('mistral');
+    expect(inferProvider('qwen-2.5-72b')).toBe('qwen');
+    expect(inferProvider('unrecognized-random-model')).toBe('unknown');
   });
 
   it('has stable provider + series colors', () => {
     expect(providerColor('openai')).toBe('#10b981');
+    expect(providerColor('azure')).toBe('#0078d4');
+    expect(providerColor('aws')).toBe('#ff9900');
+    expect(providerColor('meta')).toBe('#0668e1');
     expect(providerColor('mystery')).toBe('#a3a3a3');
     expect(seriesColor(0)).toBe(seriesColor(9)); // palette cycles by length
   });

@@ -103,6 +103,7 @@ export interface K8sCluster {
   status: string;
   version?: string;
   project_id: number;
+  node_count?: number | null;
   last_synced_at?: string;
   created_at?: string;
   updated_at?: string;

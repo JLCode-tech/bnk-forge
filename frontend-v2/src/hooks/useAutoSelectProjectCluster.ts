@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 interface AutoSelectOptions {
   projects: { id: number }[] | undefined;
@@ -8,11 +8,15 @@ interface AutoSelectOptions {
   selectedCluster: number | null;
   setSelectedProject: (id: number) => void;
   setSelectedCluster: (id: number) => void;
+  enabled?: boolean;
 }
 
 /**
  * Auto-selects the single project and cluster when exactly one of each exists
- * and nothing is currently selected. Used by KubernetesV2 and F5BNK pages.
+ * and nothing is currently selected on initial load.
+ * Subsequent user selections (e.g. choosing "All Clusters" or "All Projects")
+ * will not be overridden.
+ * Used by KubernetesV2, F5BNK, CNF, and CRExplorer pages.
  */
 export function useAutoSelectProjectCluster({
   projects,
@@ -22,13 +26,31 @@ export function useAutoSelectProjectCluster({
   selectedCluster,
   setSelectedProject,
   setSelectedCluster,
+  enabled = true,
 }: AutoSelectOptions) {
+  const hasInitializedRef = useRef(false);
+
   useEffect(() => {
-    if (!selectedProject && !selectedCluster && projects && projects.length === 1 && allClusters.length === 1) {
+    if (!enabled || hasInitializedRef.current) return;
+    if (!projects || allClusters.length === 0) return;
+
+    hasInitializedRef.current = true;
+
+    if (!selectedProject && !selectedCluster && projects.length === 1 && allClusters.length === 1) {
       setSelectedProject(projects[0].id);
-    }
-    if (selectedProject && !selectedCluster && allClusters.length === 1 && visibleClusters.length === 1) {
+      setSelectedCluster(allClusters[0].id);
+    } else if (selectedProject && !selectedCluster && allClusters.length === 1 && visibleClusters.length === 1) {
       setSelectedCluster(visibleClusters[0].id);
     }
-  }, [projects, allClusters, visibleClusters, selectedProject, selectedCluster, setSelectedProject, setSelectedCluster]);
+  }, [
+    enabled,
+    projects,
+    allClusters,
+    visibleClusters,
+    selectedProject,
+    selectedCluster,
+    setSelectedProject,
+    setSelectedCluster,
+  ]);
 }
+

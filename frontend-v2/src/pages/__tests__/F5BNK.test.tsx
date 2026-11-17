@@ -130,12 +130,14 @@ interface TestCluster {
   ssh_host_override: string | null;
   last_synced_at: string | null;
   created_at: string | null;
+  node_count?: number;
 }
 
 function buildCluster(
   id: number,
   projectId: number,
   name: string,
+  nodeCount?: number,
 ): TestCluster {
   return {
     id,
@@ -159,6 +161,7 @@ function buildCluster(
     ssh_host_override: null,
     last_synced_at: null,
     created_at: null,
+    node_count: nodeCount,
   };
 }
 
@@ -322,5 +325,55 @@ describe("F5BNK", () => {
     });
     expect(window.localStorage.getItem(STORAGE_KEYS.BNK_PROJECT)).toBeFalsy();
     expect(window.localStorage.getItem(STORAGE_KEYS.BNK_CLUSTER)).toBeFalsy();
+  });
+
+  it("respects explicit cluster=all in url even when only one cluster exists", async () => {
+    const singleProject = [{ id: 1, name: "project-one" }];
+    const singleCluster = [buildCluster(101, 1, "cluster-one")];
+    mockF5PageApis({
+      projects: singleProject,
+      allClusters: singleCluster,
+      clustersByProject: { 1: singleCluster },
+    });
+
+    render(<F5BNK />, { initialRoute: "/bnk?cluster=all" });
+
+    await waitFor(() => {
+      expect(screen.getByText("BNK by Cluster")).toBeInTheDocument();
+    });
+    expect(window.localStorage.getItem(STORAGE_KEYS.BNK_CLUSTER)).toBeFalsy();
+  });
+
+  it("renders cluster.node_count as fallback when bnk consumption has no node_count", async () => {
+    const singleProject = [{ id: 1, name: "project-one" }];
+    const clusterWithNodes = buildCluster(101, 1, "cluster-one", 5);
+    mockF5PageApis({
+      projects: singleProject,
+      allClusters: [clusterWithNodes],
+      clustersByProject: { 1: [clusterWithNodes] },
+    });
+    server.use(
+      http.get("*/api/k8s/f5bnk/consumption", () => {
+        return HttpResponse.json({
+          clusters: [
+            {
+              cluster_id: 101,
+              cluster_name: "cluster-one",
+              bnk_installed: true,
+              bnk_version: "2.4.1",
+              control_plane: { count: 1, ready: 1 },
+              data_plane: { count: 2, ready: 2 },
+              node_count: null,
+            },
+          ],
+        });
+      }),
+    );
+
+    render(<F5BNK />, { initialRoute: "/bnk?cluster=all" });
+
+    await waitFor(() => {
+      expect(screen.getByText("5")).toBeInTheDocument();
+    });
   });
 });
