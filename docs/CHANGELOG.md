@@ -4,6 +4,13 @@ All notable changes to BNK-Forge.
 
 ---
 
+## v4.3.4 (2026-11-17) — patch bump
+
+- Merge pull request #11 from JLCode-tech/staging
+- fix(bnk,observability): all-clusters view, node count fallback, and token governance fixes (#10)
+- Merge branch 'main' into staging
+- fix(bnk): correct BNK 2.4.1 version resolution, blueprint catalog metadata, and dependencies (#8)
+
 ## v4.3.3 (2026-11-05) — patch bump
 
 - fix(bnk): correct BNK 2.4.1 version resolution, blueprint catalog metadata, and dependencies (v4.3.3) (#9)
