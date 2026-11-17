@@ -42,6 +42,7 @@ def _pull_pod_batches(api_client: Any, pod_name: str, timeout: float = 5.0) -> l
     resp = api_client.call_api(
         path,
         "GET",
+        auth_settings=["BearerToken"],
         _preload_content=False,
         _request_timeout=timeout,
     )

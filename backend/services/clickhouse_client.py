@@ -5,12 +5,32 @@ Supports custom transport / mock injection for hermetic unit testing.
 """
 
 import logging
+import math
 import os
 from typing import Any
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    if value is None:
+        return default
+    try:
+        f = float(value)
+        return default if math.isnan(f) or math.isinf(f) else f
+    except (TypeError, ValueError):
+        return default
 
 DEFAULT_CLICKHOUSE_URL = os.getenv("CLICKHOUSE_HTTP_URL", "http://localhost:8123")
 DEFAULT_CLICKHOUSE_USER = os.getenv("CLICKHOUSE_USER", "default")
@@ -113,15 +133,15 @@ class ClickHouseClient:
         if data and len(data) > 0:
             row = data[0]
             return {
-                "total_flows": int(row.get("total_flows", 0)),
-                "inbound_flows": int(row.get("inbound_flows", 0)),
-                "outbound_flows": int(row.get("outbound_flows", 0)),
-                "total_bytes_sent": int(row.get("total_bytes_sent", 0)),
-                "total_bytes_received": int(row.get("total_bytes_received", 0)),
-                "avg_handshake_duration_us": float(row.get("avg_handshake_duration_us", 0.0)),
-                "avg_smoothed_rtt_us": float(row.get("avg_smoothed_rtt_us", 0.0)),
-                "total_retransmissions": int(row.get("total_retransmissions", 0)),
-                "tmm_bypass_violations": int(row.get("tmm_bypass_violations", 0)),
+                "total_flows": _safe_int(row.get("total_flows")),
+                "inbound_flows": _safe_int(row.get("inbound_flows")),
+                "outbound_flows": _safe_int(row.get("outbound_flows")),
+                "total_bytes_sent": _safe_int(row.get("total_bytes_sent")),
+                "total_bytes_received": _safe_int(row.get("total_bytes_received")),
+                "avg_handshake_duration_us": _safe_float(row.get("avg_handshake_duration_us")),
+                "avg_smoothed_rtt_us": _safe_float(row.get("avg_smoothed_rtt_us")),
+                "total_retransmissions": _safe_int(row.get("total_retransmissions")),
+                "tmm_bypass_violations": _safe_int(row.get("tmm_bypass_violations")),
             }
         return {
             "total_flows": 0,
@@ -182,21 +202,21 @@ class ClickHouseClient:
         return result.get("data", [])
 
     def query_top_pod_talkers(self, cluster_uuid: str, hours: int = 1, limit: int = 10) -> list[dict[str, Any]]:
-        """Query top pods by aggregate network byte volume."""
+        """Query top pods (or host socket endpoints when pod metadata is absent) by byte volume."""
         clean_uuid = cluster_uuid.replace("'", "")
         sql = f"""
         SELECT
-            namespace,
-            pod_name,
+            if(pod_name != '', namespace, if(node_name != '', concat('node:', node_name), 'cluster')) AS talker_namespace,
+            if(pod_name != '', pod_name, concat(IPv6NumToString(dst_ip), ':', toString(dst_port))) AS talker_pod,
             count() AS flow_count,
-            sum(bytes_sent + bytes_received) AS total_bytes,
-            sum(bytes_sent) AS bytes_sent,
-            sum(bytes_received) AS bytes_received,
+            sum(bytes_sent) AS total_bytes_sent,
+            sum(bytes_received) AS total_bytes_received,
+            sum(bytes_sent) + sum(bytes_received) AS total_bytes,
             countIf(tmm_bypass_violation = 1) AS bypass_violations
         FROM forge.ebpf_socket_flows
         WHERE cluster_id = toUUID('{clean_uuid}')
           AND timestamp >= now() - INTERVAL {int(hours)} HOUR
-        GROUP BY namespace, pod_name
+        GROUP BY talker_namespace, talker_pod
         ORDER BY total_bytes DESC
         LIMIT {int(limit)}
         """
@@ -204,13 +224,13 @@ class ClickHouseClient:
         data = result.get("data", [])
         return [
             {
-                "namespace": r.get("namespace"),
-                "pod_name": r.get("pod_name"),
-                "flow_count": int(r.get("flow_count", 0)),
-                "total_bytes": int(r.get("total_bytes", 0)),
-                "bytes_sent": int(r.get("bytes_sent", 0)),
-                "bytes_received": int(r.get("bytes_received", 0)),
-                "bypass_violations": int(r.get("bypass_violations", 0)),
+                "namespace": r.get("talker_namespace") or r.get("namespace") or "cluster",
+                "pod_name": r.get("talker_pod") or r.get("pod_name") or "unknown",
+                "flow_count": _safe_int(r.get("flow_count")),
+                "total_bytes": _safe_int(r.get("total_bytes")),
+                "bytes_sent": _safe_int(r.get("total_bytes_sent", r.get("bytes_sent"))),
+                "bytes_received": _safe_int(r.get("total_bytes_received", r.get("bytes_received"))),
+                "bypass_violations": _safe_int(r.get("bypass_violations")),
             }
             for r in data
         ]
@@ -220,6 +240,7 @@ class ClickHouseClient:
         clean_uuid = cluster_uuid.replace("'", "")
         sql = f"""
         SELECT
+            count() AS sample_count,
             sum(rx_packets) AS total_rx_packets,
             sum(tx_packets) AS total_tx_packets,
             sum(rx_bytes) AS total_rx_bytes,
@@ -238,19 +259,28 @@ class ClickHouseClient:
         data = result.get("data", [])
         if data and len(data) > 0:
             row = data[0]
+            total_rx = _safe_int(row.get("total_rx_packets"))
+            total_tx = _safe_int(row.get("total_tx_packets"))
+            sample_count = (
+                _safe_int(row.get("sample_count"))
+                if "sample_count" in row
+                else (1 if total_rx > 0 or total_tx > 0 else 0)
+            )
             return {
-                "total_rx_packets": int(row.get("total_rx_packets", 0)),
-                "total_tx_packets": int(row.get("total_tx_packets", 0)),
-                "total_rx_bytes": int(row.get("total_rx_bytes", 0)),
-                "total_tx_bytes": int(row.get("total_tx_bytes", 0)),
-                "total_rx_drops": int(row.get("total_rx_drops", 0)),
-                "total_tx_drops": int(row.get("total_tx_drops", 0)),
-                "avg_rx_ring_occupancy": float(row.get("avg_rx_ring_occupancy", 0.0)),
-                "avg_tx_ring_occupancy": float(row.get("avg_tx_ring_occupancy", 0.0)),
-                "avg_cpu_utilization_pct": float(row.get("avg_cpu_utilization_pct", 0.0)),
-                "max_hugepage_used_bytes": int(row.get("max_hugepage_used_bytes", 0)),
+                "sample_count": sample_count,
+                "total_rx_packets": total_rx,
+                "total_tx_packets": total_tx,
+                "total_rx_bytes": _safe_int(row.get("total_rx_bytes")),
+                "total_tx_bytes": _safe_int(row.get("total_tx_bytes")),
+                "total_rx_drops": _safe_int(row.get("total_rx_drops")),
+                "total_tx_drops": _safe_int(row.get("total_tx_drops")),
+                "avg_rx_ring_occupancy": _safe_float(row.get("avg_rx_ring_occupancy")),
+                "avg_tx_ring_occupancy": _safe_float(row.get("avg_tx_ring_occupancy")),
+                "avg_cpu_utilization_pct": _safe_float(row.get("avg_cpu_utilization_pct")),
+                "max_hugepage_used_bytes": _safe_int(row.get("max_hugepage_used_bytes")),
             }
         return {
+            "sample_count": 0,
             "total_rx_packets": 0,
             "total_tx_packets": 0,
             "total_rx_bytes": 0,

@@ -538,7 +538,7 @@ const ClusterRow = memo(function ClusterRow({
           <Button
             variant="ghost"
             size="sm"
-            title="View Live Strangler Telemetry (eBPF & TMM)"
+            title="View Live Telemetry"
             onClick={() => onViewTelemetry(op)}
             className="h-7 w-7 p-0 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
           >

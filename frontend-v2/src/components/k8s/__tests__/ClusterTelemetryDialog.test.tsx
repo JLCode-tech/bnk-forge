@@ -166,10 +166,92 @@ describe("ClusterTelemetryPanel & Dialog", () => {
     );
 
     expect(screen.getByText("eks-prod-us-east-1 Telemetry")).toBeInTheDocument();
-    expect(screen.getByText("Strangler Push Active (ClickHouse)")).toBeInTheDocument();
+    expect(screen.getByText("Push Active")).toBeInTheDocument();
     expect(screen.getByText("15,400")).toBeInTheDocument();
     expect(screen.getByText("Strict TMM Ingress Compliant")).toBeInTheDocument();
     expect(screen.getByText("payment-api-6789")).toBeInTheDocument();
+  });
+
+  it("hides DPDK ring descriptors and TMM microkernel tab when dpdk_active is false", async () => {
+    vi.spyOn(useClusterTelemetryHooks, "useClusterTelemetrySummary").mockReturnValue({
+      data: {
+        cluster_id: 3,
+        cluster_name: "forge-bp-eks-01",
+        cluster_uuid: "4ead6ba6-e1bd-5301-96fd-801ffef6c890",
+        source: "AGENT_PUSH",
+        transport_label: "Push Active",
+        status: "active",
+        has_active_agent: true,
+        dpdk_active: false,
+        connection_mode: "AGENT_PUSH",
+        flows: {
+          total_flows: 4200,
+          inbound_flows: 2000,
+          outbound_flows: 2200,
+          total_bytes_sent: 1024000,
+          total_bytes_received: 2048000,
+          avg_handshake_duration_us: 320,
+          avg_smoothed_rtt_us: 140,
+          total_retransmissions: 0,
+          tmm_bypass_violations: 0,
+        },
+        top_talkers: [
+          {
+            namespace: "kube-system",
+            pod_name: "coredns-abc",
+            flow_count: 100,
+            total_bytes: 512000,
+            bytes_sent: 256000,
+            bytes_received: 256000,
+            bypass_violations: 0,
+          },
+        ],
+        tmm: null,
+        drift_violations_count: 0,
+        recent_drift_alerts: [],
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+      isRefetching: false,
+    } as any);
+
+    vi.spyOn(useClusterTelemetryHooks, "useClusterPodFlows").mockReturnValue({
+      data: {
+        cluster_id: 3,
+        source: "AGENT_PUSH",
+        summary: {},
+        flows: [],
+        top_talkers: [],
+      },
+      isLoading: false,
+      refetch: vi.fn(),
+    } as any);
+
+    vi.spyOn(useClusterTelemetryHooks, "useClusterTmmMetrics").mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      refetch: vi.fn(),
+    } as any);
+
+    vi.spyOn(useClusterTelemetryHooks, "useClusterDriftViolations").mockReturnValue({
+      data: {
+        cluster_id: 3,
+        source: "AGENT_PUSH",
+        violations: [],
+        count: 0,
+      },
+      isLoading: false,
+      refetch: vi.fn(),
+    } as any);
+
+    render(<ClusterTelemetryPanel clusterId={3} clusterName="forge-bp-eks-01" />);
+
+    expect(screen.getByText("Push Active")).toBeInTheDocument();
+    expect(screen.getByText("No Bypass Violations")).toBeInTheDocument();
+    expect(screen.queryByText("TMM DPDK Packet Flow")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /F5 TMM DPDK Microkernel/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("DPDK Ring Descriptor Occupancy")).not.toBeInTheDocument();
   });
 
   it("renders fallback banner with Enroll Push Agent button when in legacy pull mode", async () => {
@@ -231,7 +313,7 @@ describe("ClusterTelemetryPanel & Dialog", () => {
       <ClusterTelemetryPanel clusterId={2} clusterName="legacy-aks-cluster" />
     );
 
-    expect(screen.getByText("Legacy Pull Mode (Direct Kubeconfig)")).toBeInTheDocument();
+    expect(screen.getByText("Pull Active")).toBeInTheDocument();
     expect(screen.getByText("Push Agent is not active for this cluster")).toBeInTheDocument();
 
     const enrollButtons = screen.getAllByRole("button", { name: /enroll push agent|deploy agent/i });

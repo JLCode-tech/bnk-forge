@@ -127,3 +127,33 @@ func TestDPDKHarvesterUDS(t *testing.T) {
 
 	_ = harvester.Stop()
 }
+
+func TestDPDKHarvesterNoSyntheticWhenNotMock(t *testing.T) {
+	harvester := NewDPDKHarvester(Config{
+		ClusterID:    "non-dpdk-cluster",
+		NodeName:     "worker-01",
+		SocketPath:   "/nonexistent/path/tmctl.sock",
+		PollInterval: 20 * time.Millisecond,
+		MockMode:     false,
+	})
+
+	if harvester.IsAvailable() {
+		t.Fatalf("expected IsAvailable() == false when socket does not exist and MockMode is false")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := harvester.Start(ctx); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+
+	select {
+	case m := <-harvester.Metrics():
+		t.Fatalf("expected no synthetic metrics when MockMode is false and socket is missing, got %+v", m)
+	case <-time.After(100 * time.Millisecond):
+		// Expected: no metrics emitted
+	}
+
+	_ = harvester.Stop()
+}

@@ -96,7 +96,7 @@ def mock_clickhouse_transport():
             }]
             return httpx.Response(200, json={"data": data, "rows": 1})
 
-        elif "GROUP BY namespace, pod_name" in query:
+        elif "GROUP BY talker_namespace, talker_pod" in query or "GROUP BY namespace, pod_name" in query:
             data = [
                 {
                     "namespace": "production",
@@ -345,14 +345,72 @@ class TestClusterDataProviderFacade:
         telemetry = provider.get_cluster_telemetry(cluster.id, hours=1)
 
         assert telemetry["source"] == "AGENT_PUSH"
+        assert telemetry["transport_label"] == "Push Active"
         assert telemetry["status"] == "active"
         assert telemetry["has_active_agent"] is True
+        assert telemetry["dpdk_active"] is True
         assert telemetry["flows"]["total_flows"] == 12450
         assert telemetry["tmm"]["total_rx_packets"] == 1500000
         assert telemetry["drift_violations_count"] == 1
 
-    def test_strangler_telemetry_routing_fallback_pull_path(self, db_session, test_project, mock_clickhouse_transport):
-        """When agent is not connected, get_cluster_telemetry routes to fallback (LEGACY_PULL)."""
+    def test_telemetry_non_dpdk_cluster_hides_tmm_metrics(self, db_session, test_project, mock_clickhouse_transport, monkeypatch):
+        """When cluster has no DPDK/TMM samples, dpdk_active is False and tmm is None."""
+        cluster = KubernetesCluster(
+            name="non-dpdk-eks-cluster",
+            context="ctx-non-dpdk",
+            project_id=test_project.id,
+            access_method="agent_push",
+            integration_status="agent_connected",
+            connectivity_status="connected",
+            last_synced_at=datetime.datetime.now(datetime.UTC),
+            meta_data={"cluster_uuid": "550e8400-e29b-41d4-a716-446655440001"},
+        )
+        db_session.add(cluster)
+        db_session.commit()
+
+        op = ConnectedOperator(
+            operator_id="agent-op-non-dpdk",
+            cluster_name=cluster.name,
+            cluster_id=cluster.id,
+            is_connected=True,
+            last_heartbeat_at=datetime.datetime.now(datetime.UTC),
+            status="active",
+        )
+        db_session.add(op)
+        db_session.commit()
+
+        monkeypatch.setattr(
+            mock_clickhouse_transport,
+            "query_tmm_metrics_summary",
+            lambda uuid, hours=1: {
+                "sample_count": 0,
+                "total_rx_packets": 0,
+                "total_tx_packets": 0,
+                "total_rx_bytes": 0,
+                "total_tx_bytes": 0,
+                "total_rx_drops": 0,
+                "total_tx_drops": 0,
+                "avg_rx_ring_occupancy": 0.0,
+                "avg_tx_ring_occupancy": 0.0,
+                "avg_cpu_utilization_pct": 0.0,
+                "max_hugepage_used_bytes": 0,
+            },
+        )
+
+        provider = ClusterDataProvider(db_session, clickhouse_client=mock_clickhouse_transport)
+        telemetry = provider.get_cluster_telemetry(cluster.id, hours=1)
+
+        assert telemetry["source"] == "AGENT_PUSH"
+        assert telemetry["transport_label"] == "Push Active"
+        assert telemetry["dpdk_active"] is False
+        assert telemetry["tmm"] is None
+
+        tmm_resp = provider.get_tmm_metrics(cluster.id, hours=1)
+        assert tmm_resp["dpdk_active"] is False
+        assert tmm_resp["metrics"] == {}
+
+    def test_strangler_telemetry_routing_fallback_pull_path(self, db_session, test_project, mock_clickhouse_transport, monkeypatch):
+        """When agent is not connected and ClickHouse has no data, get_cluster_telemetry returns empty pull state."""
         cluster = KubernetesCluster(
             name="legacy-pull-cluster",
             context="ctx-legacy",
@@ -364,12 +422,19 @@ class TestClusterDataProviderFacade:
         db_session.add(cluster)
         db_session.commit()
 
+        monkeypatch.setattr(mock_clickhouse_transport, "query_flows_summary", lambda uuid, hours=1: {"total_flows": 0})
+        monkeypatch.setattr(mock_clickhouse_transport, "query_top_pod_talkers", lambda uuid, hours=1, limit=5: [])
+        monkeypatch.setattr(mock_clickhouse_transport, "query_tmm_metrics_summary", lambda uuid, hours=1: {"sample_count": 0, "total_rx_packets": 0, "total_tx_packets": 0})
+        monkeypatch.setattr(mock_clickhouse_transport, "query_drift_violations", lambda uuid, hours=24, limit=10: [])
+
         provider = ClusterDataProvider(db_session, clickhouse_client=mock_clickhouse_transport)
         telemetry = provider.get_cluster_telemetry(cluster.id, hours=1)
 
         assert telemetry["source"] == "LEGACY_PULL"
+        assert telemetry["transport_label"] == "Pull Active"
         assert telemetry["status"] == "reachable"
         assert telemetry["has_active_agent"] is False
+        assert telemetry["dpdk_active"] is False
         assert telemetry["flows"] is None
         assert telemetry["tmm"] is None
         assert telemetry["drift_violations_count"] == 0

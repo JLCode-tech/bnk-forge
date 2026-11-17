@@ -509,7 +509,7 @@ export function K8sClusterList({
                       onClick={() => setTelemetryCluster(cluster)}
                     >
                       <Activity className="mr-2 h-4 w-4 text-emerald-500" />
-                      Live Strangler Telemetry
+                      Live Telemetry
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => handleDeleteClick(cluster)}
@@ -537,7 +537,7 @@ export function K8sClusterList({
                       className="text-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 flex items-center gap-1 font-medium hover:bg-emerald-500/20 cursor-pointer transition-colors"
                     >
                       <Zap className="h-3 w-3 fill-emerald-500/20" />
-                      Push Agent Active
+                      Push Active
                     </Badge>
                   </button>
                 )}

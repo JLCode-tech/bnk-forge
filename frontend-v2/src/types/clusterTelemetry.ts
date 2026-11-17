@@ -28,6 +28,7 @@ export interface PodTalker {
 }
 
 export interface TmmMetricsSummary {
+  sample_count?: number;
   total_rx_packets: number;
   total_tx_packets: number;
   total_rx_bytes: number;
@@ -57,8 +58,11 @@ export interface ClusterTelemetrySummary {
   cluster_name: string;
   cluster_uuid: string;
   source: TelemetrySource;
+  transport_label?: string;
   status: string;
   has_active_agent: boolean;
+  tmm_active?: boolean;
+  dpdk_active?: boolean;
   connection_mode: string;
   last_heartbeat_at?: string | null;
   uptime_seconds?: number;
@@ -101,6 +105,8 @@ export interface ClusterPodFlowsResponse {
 export interface ClusterTmmMetricsResponse {
   cluster_id: number | string;
   source: TelemetrySource;
+  tmm_active?: boolean;
+  dpdk_active?: boolean;
   metrics: TmmMetricsSummary | Record<string, never>;
 }
 

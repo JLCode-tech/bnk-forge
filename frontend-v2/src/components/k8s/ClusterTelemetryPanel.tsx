@@ -80,7 +80,9 @@ export function ClusterTelemetryPanel({
     data: tmmData,
     refetch: refetchTmm,
   } = useClusterTmmMetrics(clusterId, hours, {
-    enabled: activeTab === "tmm" || activeTab === "overview",
+    enabled:
+      summary?.tmm_active !== false &&
+      (activeTab === "tmm" || activeTab === "overview"),
   });
 
   const {
@@ -132,6 +134,21 @@ export function ClusterTelemetryPanel({
   const displayName = clusterName || summary?.cluster_name || `Cluster #${clusterId}`;
   const flows = summary?.flows;
   const tmm = tmmData?.metrics && "total_rx_packets" in tmmData.metrics ? tmmData.metrics : summary?.tmm;
+  const tmmActive =
+    summary?.tmm_active !== undefined
+      ? Boolean(summary.tmm_active)
+      : Boolean(tmm && (tmm.total_rx_packets > 0 || tmm.total_tx_packets > 0));
+  const dpdkActive =
+    summary?.dpdk_active !== undefined
+      ? Boolean(summary.dpdk_active)
+      : Boolean(
+          tmmActive &&
+            tmm &&
+            (tmm.avg_rx_ring_occupancy > 0 || tmm.avg_tx_ring_occupancy > 0 || tmm.max_hugepage_used_bytes > 0)
+        );
+  const effectiveTab = !tmmActive && activeTab === "tmm" ? "overview" : activeTab;
+  const transportLabel =
+    summary?.transport_label || (isPushActive ? "Push Active" : "Pull Active");
   const driftCount = summary?.drift_violations_count ?? 0;
   const violationsList = driftData?.violations ?? summary?.recent_drift_alerts ?? [];
   const topTalkers = flowsData?.top_talkers ?? summary?.top_talkers ?? [];
@@ -152,7 +169,7 @@ export function ClusterTelemetryPanel({
                 className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 flex items-center gap-1 font-medium"
               >
                 <Zap className="h-3 w-3 fill-emerald-500/20" />
-                Strangler Push Active (ClickHouse)
+                {transportLabel}
               </Badge>
             ) : (
               <Badge
@@ -160,7 +177,7 @@ export function ClusterTelemetryPanel({
                 className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 flex items-center gap-1 font-medium"
               >
                 <Radio className="h-3 w-3" />
-                Legacy Pull Mode (Direct Kubeconfig)
+                {transportLabel}
               </Badge>
             )}
             <Badge variant="secondary" className="text-2xs font-mono">
@@ -169,8 +186,10 @@ export function ClusterTelemetryPanel({
           </div>
           <p className="text-xs text-muted-foreground">
             {isPushActive
-              ? "Receiving streaming eBPF network flows, F5 TMM DPDK counters, and real-time architectural drift detection via Push Agent :17543."
-              : "Cluster is operating in legacy pull fallback mode. Real-time high-throughput eBPF and TMM analytical telemetry are inactive."}
+              ? dpdkActive
+                ? "Receiving streaming eBPF network flows, F5 TMM DPDK counters, and real-time architectural drift detection via Push Agent :17543."
+                : "Receiving streaming eBPF network flows and real-time architectural drift detection via Push Agent :17543."
+              : "Cluster is operating in pull mode. Real-time streaming eBPF telemetry is inactive."}
           </p>
         </div>
 
@@ -235,8 +254,8 @@ export function ClusterTelemetryPanel({
                   Push Agent is not active for this cluster
                 </p>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  To view kernel-level socket flows, F5 BIG-IP Next TMM DPDK ring telemetry, and detect Day 2
-                  architectural drift (traffic bypassing BNK ingress), install the Forge Push Agent daemonset.
+                  To view kernel-level socket flows and detect Day 2 architectural drift (and F5 BIG-IP Next TMM DPDK
+                  telemetry when deployed), install the Forge Push Agent daemonset.
                 </p>
               </div>
             </div>
@@ -252,8 +271,8 @@ export function ClusterTelemetryPanel({
         </Card>
       )}
 
-      {/* Top 4 KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* Top KPI Cards */}
+      <div className={`grid grid-cols-1 sm:grid-cols-2 ${tmmActive ? "lg:grid-cols-4" : "lg:grid-cols-3"} gap-3`}>
         {/* KPI 1: eBPF Flow Volume */}
         <Card className="shadow-xs border-border">
           <CardHeader className="pb-1 pt-3 px-4 flex flex-row items-center justify-between space-y-0">
@@ -309,26 +328,28 @@ export function ClusterTelemetryPanel({
           </CardContent>
         </Card>
 
-        {/* KPI 3: F5 TMM DPDK */}
-        <Card className="shadow-xs border-border">
-          <CardHeader className="pb-1 pt-3 px-4 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              TMM DPDK Packet Flow
-            </CardTitle>
-            <Cpu className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent className="px-4 pb-3">
-            <div className="text-2xl font-bold tracking-tight tabular-nums">
-              {tmm && (tmm.total_rx_packets > 0 || tmm.total_tx_packets > 0)
-                ? (tmm.total_rx_packets + tmm.total_tx_packets).toLocaleString()
-                : "—"}
-            </div>
-            <div className="mt-1 flex items-center justify-between text-2xs text-muted-foreground">
-              <span>Drops: {tmm ? (tmm.total_rx_drops + tmm.total_tx_drops).toLocaleString() : "0"}</span>
-              <span>CPU: {tmm ? `${tmm.avg_cpu_utilization_pct}%` : "—"}</span>
-            </div>
-          </CardContent>
-        </Card>
+        {/* KPI 3: F5 TMM (only rendered when TMM is active) */}
+        {tmmActive && (
+          <Card className="shadow-xs border-border">
+            <CardHeader className="pb-1 pt-3 px-4 flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                {dpdkActive ? "TMM DPDK Packet Flow" : "TMM Packet Flow"}
+              </CardTitle>
+              <Cpu className="h-4 w-4 text-primary" />
+            </CardHeader>
+            <CardContent className="px-4 pb-3">
+              <div className="text-2xl font-bold tracking-tight tabular-nums">
+                {tmm && (tmm.total_rx_packets > 0 || tmm.total_tx_packets > 0)
+                  ? (tmm.total_rx_packets + tmm.total_tx_packets).toLocaleString()
+                  : "—"}
+              </div>
+              <div className="mt-1 flex items-center justify-between text-2xs text-muted-foreground">
+                <span>Drops: {tmm ? (tmm.total_rx_drops + tmm.total_tx_drops).toLocaleString() : "0"}</span>
+                <span>CPU: {tmm ? `${tmm.avg_cpu_utilization_pct}%` : "—"}</span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* KPI 4: Architectural Drift Violations */}
         <Card className={`shadow-xs border-border ${driftCount > 0 ? "border-destructive/40 bg-destructive/5" : ""}`}>
@@ -354,7 +375,9 @@ export function ClusterTelemetryPanel({
               {driftCount > 0 ? (
                 <span className="text-destructive font-medium">Bypass traffic detected</span>
               ) : (
-                <span className="text-emerald-600 dark:text-emerald-400">Strict TMM Ingress Compliant</span>
+                <span className="text-emerald-600 dark:text-emerald-400">
+                  {tmmActive ? "Strict TMM Ingress Compliant" : "No Bypass Violations"}
+                </span>
               )}
             </div>
           </CardContent>
@@ -362,7 +385,7 @@ export function ClusterTelemetryPanel({
       </div>
 
       {/* Main Tabbed Detail Section */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+      <Tabs value={effectiveTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="bg-muted/50 p-1">
           <TabsTrigger value="overview" className="gap-1.5 text-xs">
             <Layers className="h-3.5 w-3.5" />
@@ -372,10 +395,12 @@ export function ClusterTelemetryPanel({
             <Network className="h-3.5 w-3.5" />
             Pod Flows & Top Talkers
           </TabsTrigger>
-          <TabsTrigger value="tmm" className="gap-1.5 text-xs">
-            <Cpu className="h-3.5 w-3.5" />
-            F5 TMM DPDK Microkernel
-          </TabsTrigger>
+          {tmmActive && (
+            <TabsTrigger value="tmm" className="gap-1.5 text-xs">
+              <Cpu className="h-3.5 w-3.5" />
+              {dpdkActive ? "F5 TMM DPDK Microkernel" : "F5 TMM Microkernel"}
+            </TabsTrigger>
+          )}
           <TabsTrigger value="drift" className="gap-1.5 text-xs">
             <ShieldAlert className="h-3.5 w-3.5" />
             Architectural Drift
@@ -450,8 +475,9 @@ export function ClusterTelemetryPanel({
                     <CheckCircle2 className="h-8 w-8 text-emerald-500" />
                     <p className="text-sm font-semibold text-foreground">Zero Drift Violations</p>
                     <p className="text-xs text-muted-foreground max-w-sm">
-                      100% of ingress pod traffic is properly traversing the F5 BIG-IP Next TMM data plane. No direct
-                      service bypass detected.
+                      {dpdkActive
+                        ? "100% of ingress pod traffic is properly traversing the F5 BIG-IP Next TMM data plane. No direct service bypass detected."
+                        : "All monitored ingress pod traffic conforms to policy. No direct service bypass detected."}
                     </p>
                   </div>
                 ) : (
@@ -553,69 +579,75 @@ export function ClusterTelemetryPanel({
           </Card>
         </TabsContent>
 
-        {/* Tab 3: F5 TMM DPDK Microkernel */}
-        <TabsContent value="tmm" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card className="border-border">
-              <CardHeader className="py-3 px-4 border-b border-border">
-                <CardTitle className="text-sm font-semibold">DPDK Ring Descriptor Occupancy</CardTitle>
-              </CardHeader>
-              <CardContent className="p-4 space-y-4">
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-xs">
-                    <span className="font-medium text-muted-foreground">RX Ring Occupancy</span>
-                    <span className="font-mono tabular-nums">
-                      {tmm ? `${(tmm.avg_rx_ring_occupancy * 100).toFixed(1)}%` : "0%"}
-                    </span>
-                  </div>
-                  <Progress value={tmm ? tmm.avg_rx_ring_occupancy * 100 : 0} className="h-2" />
-                </div>
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-xs">
-                    <span className="font-medium text-muted-foreground">TX Ring Occupancy</span>
-                    <span className="font-mono tabular-nums">
-                      {tmm ? `${(tmm.avg_tx_ring_occupancy * 100).toFixed(1)}%` : "0%"}
-                    </span>
-                  </div>
-                  <Progress value={tmm ? tmm.avg_tx_ring_occupancy * 100 : 0} className="h-2" />
-                </div>
-                <p className="text-2xs text-muted-foreground pt-1">
-                  High ring descriptor occupancy (&gt;80%) indicates incoming packet bursts or CPU core saturation.
-                </p>
-              </CardContent>
-            </Card>
+        {/* Tab 3: F5 TMM Microkernel */}
+        {tmmActive && (
+          <TabsContent value="tmm" className="space-y-4">
+            <div className={`grid grid-cols-1 ${dpdkActive ? "md:grid-cols-2" : ""} gap-4`}>
+              {dpdkActive && (
+                <Card className="border-border">
+                  <CardHeader className="py-3 px-4 border-b border-border">
+                    <CardTitle className="text-sm font-semibold">DPDK Ring Descriptor Occupancy</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4 space-y-4">
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-xs">
+                        <span className="font-medium text-muted-foreground">RX Ring Occupancy</span>
+                        <span className="font-mono tabular-nums">
+                          {tmm ? `${(tmm.avg_rx_ring_occupancy * 100).toFixed(1)}%` : "0%"}
+                        </span>
+                      </div>
+                      <Progress value={tmm ? tmm.avg_rx_ring_occupancy * 100 : 0} className="h-2" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-xs">
+                        <span className="font-medium text-muted-foreground">TX Ring Occupancy</span>
+                        <span className="font-mono tabular-nums">
+                          {tmm ? `${(tmm.avg_tx_ring_occupancy * 100).toFixed(1)}%` : "0%"}
+                        </span>
+                      </div>
+                      <Progress value={tmm ? tmm.avg_tx_ring_occupancy * 100 : 0} className="h-2" />
+                    </div>
+                    <p className="text-2xs text-muted-foreground pt-1">
+                      High ring descriptor occupancy (&gt;80%) indicates incoming packet bursts or CPU core saturation.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
 
-            <Card className="border-border">
-              <CardHeader className="py-3 px-4 border-b border-border">
-                <CardTitle className="text-sm font-semibold">TMM Microkernel Resources</CardTitle>
-              </CardHeader>
-              <CardContent className="p-4 space-y-3 text-xs">
-                <div className="flex justify-between border-b border-border pb-2">
-                  <span className="text-muted-foreground">TMM CPU Utilization</span>
-                  <span className="font-semibold tabular-nums">{tmm ? `${tmm.avg_cpu_utilization_pct}%` : "—"}</span>
-                </div>
-                <div className="flex justify-between border-b border-border pb-2">
-                  <span className="text-muted-foreground">DPDK Hugepage Memory Used</span>
-                  <span className="font-mono tabular-nums">
-                    {tmm && tmm.max_hugepage_used_bytes ? formatBytes(tmm.max_hugepage_used_bytes) : "—"}
-                  </span>
-                </div>
-                <div className="flex justify-between border-b border-border pb-2">
-                  <span className="text-muted-foreground">Total Packets (RX / TX)</span>
-                  <span className="font-mono tabular-nums">
-                    {tmm ? `${tmm.total_rx_packets.toLocaleString()} / ${tmm.total_tx_packets.toLocaleString()}` : "—"}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Packet Drops (RX / TX)</span>
-                  <span className="font-mono tabular-nums text-amber-500 font-medium">
-                    {tmm ? `${tmm.total_rx_drops.toLocaleString()} / ${tmm.total_tx_drops.toLocaleString()}` : "0 / 0"}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
+              <Card className="border-border">
+                <CardHeader className="py-3 px-4 border-b border-border">
+                  <CardTitle className="text-sm font-semibold">TMM Microkernel Resources</CardTitle>
+                </CardHeader>
+                <CardContent className="p-4 space-y-3 text-xs">
+                  <div className="flex justify-between border-b border-border pb-2">
+                    <span className="text-muted-foreground">TMM CPU Utilization</span>
+                    <span className="font-semibold tabular-nums">{tmm ? `${tmm.avg_cpu_utilization_pct}%` : "—"}</span>
+                  </div>
+                  {dpdkActive && (
+                    <div className="flex justify-between border-b border-border pb-2">
+                      <span className="text-muted-foreground">DPDK Hugepage Memory Used</span>
+                      <span className="font-mono tabular-nums">
+                        {tmm && tmm.max_hugepage_used_bytes ? formatBytes(tmm.max_hugepage_used_bytes) : "—"}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between border-b border-border pb-2">
+                    <span className="text-muted-foreground">Total Packets (RX / TX)</span>
+                    <span className="font-mono tabular-nums">
+                      {tmm ? `${tmm.total_rx_packets.toLocaleString()} / ${tmm.total_tx_packets.toLocaleString()}` : "—"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Packet Drops (RX / TX)</span>
+                    <span className="font-mono tabular-nums text-amber-500 font-medium">
+                      {tmm ? `${tmm.total_rx_drops.toLocaleString()} / ${tmm.total_tx_drops.toLocaleString()}` : "0 / 0"}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+        )}
 
         {/* Tab 4: Architectural Drift Violations */}
         <TabsContent value="drift" className="space-y-4">
@@ -634,8 +666,9 @@ export function ClusterTelemetryPanel({
                   <ShieldCheck className="h-10 w-10 text-emerald-500" />
                   <p className="text-base font-semibold text-foreground">Zero Drift Violations Detected</p>
                   <p className="text-xs text-muted-foreground max-w-md">
-                    All pod ingress traffic conforms to the architectural baseline. No traffic is bypassing the F5
-                    BIG-IP Next TMM high-speed data plane.
+                    {dpdkActive
+                      ? "All pod ingress traffic conforms to the architectural baseline. No traffic is bypassing the F5 BIG-IP Next TMM high-speed data plane."
+                      : "All monitored pod ingress traffic conforms to the architectural baseline. No direct service bypass detected."}
                   </p>
                 </div>
               ) : (

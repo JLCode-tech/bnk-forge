@@ -923,7 +923,7 @@ export default function KubernetesV2() {
                 title="View live eBPF & TMM telemetry"
               >
                 <Zap className="h-3 w-3 fill-emerald-500/20" />
-                Push Agent Active
+                Push Active
               </button>
             )}
           </div>

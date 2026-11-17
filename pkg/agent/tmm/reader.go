@@ -34,17 +34,18 @@ func (h *DPDKHarvester) runLoop(ctx context.Context) {
 }
 
 func (h *DPDKHarvester) poll(ctx context.Context) {
-	// If mock mode is explicitly requested or no socket/dialer provided, use synthetic generator
-	if h.cfg.MockMode || (h.cfg.SocketPath == "" && h.cfg.Dialer == nil) {
+	// Only emit synthetic DPDK metrics when mock mode is explicitly enabled.
+	if h.cfg.MockMode {
 		h.pollSynthetic()
 		return
 	}
 
-	// Read from live UDS socket if available
-	if err := h.pollUDS(ctx); err != nil {
-		// Fallback to synthetic if connection fails (e.g. non-TMM node)
-		h.pollSynthetic()
+	if h.cfg.SocketPath == "" && h.cfg.Dialer == nil {
+		return
 	}
+
+	// Read from live UDS socket if available; skip silently on non-TMM/non-DPDK nodes.
+	_ = h.pollUDS(ctx)
 }
 
 func (h *DPDKHarvester) pollUDS(ctx context.Context) error {

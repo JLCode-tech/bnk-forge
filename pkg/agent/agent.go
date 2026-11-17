@@ -140,13 +140,12 @@ func (a *Agent) Start(ctx context.Context) error {
 		return fmt.Errorf("agent transport initialization failed: %w", err)
 	}
 
-	// 3. Register Agent with Ingest Gateway
+	// 3. Initialize Collectors & Register Agent with Ingest Gateway
+	a.initCollectors()
+
 	if err := a.register(ctx); err != nil {
 		log.Printf("[Forge-Agent] Initial registration warning: %v (continuing)", err)
 	}
-
-	// 4. Initialize Collectors
-	a.initCollectors()
 
 	// Start Observer, Harvester, and AI Gateway Collector
 	if err := a.observer.Start(ctx); err != nil {
@@ -367,12 +366,17 @@ func (a *Agent) initCollectors() {
 }
 
 func (a *Agent) register(ctx context.Context) error {
+	capabilities := []string{"ebpf-socket", "wal-spool"}
+	if a.harvester != nil && a.harvester.IsAvailable() {
+		capabilities = append(capabilities, "tmm-dpdk")
+	}
+
 	req := &protocol.RegisterRequest{
 		ClusterID:    a.cfg.ClusterID,
 		ClusterName:  a.cfg.ClusterName,
 		AgentVersion: "1.0.0-pov",
 		NodeName:     a.cfg.NodeName,
-		Capabilities: []string{"ebpf-socket", "tmm-dpdk", "wal-spool"},
+		Capabilities: capabilities,
 	}
 
 	resp, err := a.transport.Register(ctx, req)

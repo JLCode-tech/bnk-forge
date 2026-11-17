@@ -420,12 +420,12 @@ describe("KubernetesV2", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/Strangler Push Active/i),
+        screen.getByText(/Push Active/i),
       ).toBeInTheDocument();
     });
   });
 
-  it("shows Push Agent Active badge in header and switches to telemetry view when clicked", async () => {
+  it("shows Push Active badge in header and switches to telemetry view when clicked", async () => {
     const singleProject = [{ id: 1, name: "project-one" }];
     const singleCluster = [
       buildCluster(101, 1, "cluster-one", {
@@ -443,15 +443,15 @@ describe("KubernetesV2", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /Push Agent Active/i }),
+        screen.getByRole("button", { name: /Push Active/i }),
       ).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /Push Agent Active/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Push Active/i }));
 
     await waitFor(() => {
       expect(
-        screen.getByText(/Strangler Push Active/i),
+        screen.getByText(/Push Active/i),
       ).toBeInTheDocument();
     });
   });

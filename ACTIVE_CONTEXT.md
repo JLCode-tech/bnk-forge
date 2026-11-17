@@ -5,40 +5,29 @@
 
 ## 0. Current Session Handoff (2026-11-17)
 
-### Completed & Verified in This Session
-1. **Lease Election & Day 2 Drift**:
-   - Fixed Kubernetes `MicroTime` (`2006-01-02T15:04:05.000000Z`) in `pkg/agent/lease/lease.go` (`2/2` tests pass; clean leadership on AKS & EKS).
-   - Fixed `pkg/agent/ebpf/drift.go` to evaluate host-level `/proc/net/tcp` sockets (`Namespace == ""`) against `ProtectedPorts` (`8000, 8080, 50051`). Verified end-to-end on AKS (`10` `tmm_bypass_violation=1` rows in `forge.ebpf_socket_flows` + `GET /api/k8s/clusters/1/telemetry/drift`).
-   - Fixed `pkg/agent/agent.go` to derive `ClusterID` from `creds.SPIFFEID` when cached certs are loaded.
-2. **BNK 2.4.1 Stack 6 (`bnk-demo-apps`)**:
-   - Aligned `app/demo-security` (`SecPolicy`), `app/demo-irules` (`NetPolicy`), and `app/demo-ai-proxy` (`prometheus_endpoint` output) in `bnk-forge-modules` (`release/2.4.1` commit `366727c`).
-   - Fixed `SecPolicy`/`NetPolicy`/`AppPolicy` pluralization in `backend/services/execution/kubernetes_engine.py`.
-   - Verified Stack 6 (`aks-bnk-demo-apps-v6`, `id=6`) on Project 1 / AKS reached **`deployed` (10/10 `applied`)**.
-3. **AI Gateway Telemetry (`forge.ai_gateway_events`)**:
-   - Implemented `pkg/agent/aigw/collector.go` (leader-only `otel.aigw_requests` polling) + `ClusterRole` Secret RBAC (`deployments/charts/forge-agent/templates/clusterrole.yaml`).
-   - Fixed EKS `agentcore-traffic-generator` ClickHouse 403 (`bnk-aigw-virtual-keys` secret in `default` namespace).
-   - Added `query_ai_gateway_stats` / `query_ai_gateway_events` to `backend/services/clickhouse_client.py` and `ClickHouseClient` fallback to `backend/services/llm_observability_service.py` (`GET /api/k8s/llm-observability/stats?range=24h` returns live metrics).
-4. **K8s-API-Proxy Telemetry Pull (No Manual Reverse Tunnels)**:
-   - Added `:17544` (`/api/v1/telemetry/pull`, `/healthz`) pull buffer to `pkg/agent/agent.go` (buffered whenever `StreamBatch` fails or `SpoolLen() > 0`).
-   - Added `backend/tasks/telemetry_pull_task.py` (scheduled every `20s` in `nats_task_service.py` & `celery_app.py`) to drain `forge-system/forge-agent` pods via K8s API pod proxy and forward to `https://forge-ingest:17543/api/v1/telemetry/batch` (`2/2` unit tests pass; verified live `+7,921` rows pulled from AKS).
-   - Removed temporary `deploy/forge-tunnel` and `svc/forge-tunnel` from `forge-system` on both AKS and EKS.
-5. **Health Monitor & Project Credential Validation**:
-   - Removed `localhost:6379` Redis dependency from `backend/tasks/health_monitor_task.py` (`15/15` tests pass).
-   - Updated `backend/services/project_service.py` (`_validate_credential_template`) so missing `credential_template_id` returns `404` instead of `500 IntegrityError`.
+### Completed & Verified in This Session (Fresh Wipe -> 3 Online Clusters)
+1. **Auth & Cloud Credential Templates**:
+   - Cleared `must_change_password` on `admin` (`ForgePoV2026!Admin`).
+   - Created AWS SSO template `id=1` (`AWS SSO (Users-292785712872)`, `region="ap-southeast-2"`, `is_default=true`) — tested `{"success": true, "account_id": "292785712872"}`.
+   - Created Azure SSO template `id=2` (`Azure SSO (Azure Local - ALM2)`, `region="eastus2"`, seeded from `~/.azure/msal_token_cache.json`) — tested `{"success": true, "display_name": "Azure Local - ALM2"}`.
+2. **3 Clusters Onboarded & Online (`/fleet`, `/bnk`, `/api/k8s/clusters/connectivity`, ClickHouse)**:
+   - **Cluster 1 — `aks-poc-dual-interface` (`cluster_id=1`, `project_id=1`, `credential_template_id=null`)**: AKS `v1.34.10` onboarded non-destructively (existing BNK/AI Gateway/AgentFoundry workloads untouched). `forge-agent` (`ttl.sh/forge-agent-pov-v2:4h`) running; `ConnectedOperator id=1` (`mtls_agent`, `is_connected=t`); `2,290,367` ClickHouse rows (`9e5db0e0-e747-5249-8cc6-5b903ac256b5`); `/bnk` `overall="healthy"`. (Note: `project_service.py` disallows binding `azure_auth_method="sso"` templates to projects.)
+   - **Cluster 2 — `bnk-agentcore-demo` (`cluster_id=2`, `project_id=3`, `credential_template_id=1`)**: Provisioned via `/Users/j.lucia/Code/bnkctls/bnkctl` (`examples/agentcore-demo/cluster.yaml`, `3 × m6i.4xlarge`). `forge-agent` running with mTLS certs; `ConnectedOperator id=2` (`mtls_agent`, `is_connected=t`); `392,538` ClickHouse rows (`662438e8-a59c-5c9a-b2aa-03221627790e`); `/bnk` `overall="healthy"`.
+   - **Cluster 3 — `forge-bp-eks-01` (`cluster_id=3`, `project_id=4`, `credential_template_id=1`, `stack_id=2`)**: Provisioned via Blueprint `aws-eks-cluster-create` (release `id=8`, `eks_cluster_version="1.32"`, `tmm_replicas=0`), `stack_id=2` `deployed` (`6/6 applied`). `forge-agent` running with mTLS certs; `ConnectedOperator id=3` (`mtls_agent`, `is_connected=t`); `101,256` ClickHouse rows (`4ead6ba6-e1bd-5301-96fd-801ffef6c890`); `/bnk` `integration="healthy"`, `platform="healthy"` (`overall="unknown"` only due to `tmm_replicas=0`).
+3. **Forge Backend Fixes (`agent/pov-migration`)**:
+   - `backend/schemas/bnk.py:15`: Added `"mtls_agent"` to `OperatorModeV1` (fixed `/bnk` `500` error).
+   - `backend/tasks/telemetry_pull_task.py:42-48`: Added `auth_settings=["BearerToken"]` to `api_client.call_api(...)` for EKS K8s-API-proxy pod telemetry pulls.
+   - `backend/services/operator_registry.py:615`: Updated `is_operator_live_connected` to include `"mtls_agent"` alongside `"polling"` so live `mtls_agent` heartbeats report `operatorConnected=true`.
 
-### Known Open Issues for Next Session (DB / Auth / UI)
-1. **All Projects Unreachable / Inactive in UI (`projects` table)**:
-   - Both projects in Postgres currently have `is_active = false` and `visibility = 'private'`:
-     - `id=1` (`pov-fleet-project`, `user_id=1`, `credential_template_id=NULL`, `is_active=f`)
-     - `id=10` (`awsbnkctl-bnk-agentcore-demo`, `user_id=2`, `credential_template_id=NULL`, `is_active=f`)
-   - Audit why `projects.is_active` became `false` (and why UI cannot access projects) + check `user_id` ownership / RBAC.
-2. **Zero Cloud Credentials Configured in Forge**:
-   - `cloud_credential_templates` table has `0` rows (`GET /api/credential-templates` -> `[]`), and both projects have `credential_template_id = NULL`.
-   - Configure/seed AWS (after refreshing expired local AWS SSO `292785712872_Users`) and Azure Service Principal `CloudCredentialTemplate`s, bind them to the projects, and verify UI Credentials page + EKS/AKS token refresh.
-3. **`pov-fleet-project` (`id=1`) Stack & Module Duplication Cleanup**:
-   - `project_id=1` has **69 `project_modules` across 6 duplicate stacks** (`aks-bnk-demo-apps` `id=1..4` stuck `deploying`, `aks-bnk-demo-apps-v5` `id=5` `failed`, `aks-bnk-demo-apps-v6` `id=6` `deployed` 10/10, plus 9 standalone modules).
-   - Audit & clean up the stale duplicate stacks/modules (keeping `aks-bnk-demo-apps-v6` or cleanly consolidating) and check why stack creation created 6 copies instead of reusing/preventing duplicates.
-4. **Uncommitted Changes**:
+### Known Open Issues / Next Work
+1. **UI `/kubernetes` Telemetry Labels & DPDK Detection**:
+   - Under `https://localhost/kubernetes`, `forge-bp-eks-01` (and the other non-DPDK clusters) currently display **DPDK ring descriptor**, **TMM resources**, and **Strangler Push Active** even when DPDK/TMM is not deployed or active on the cluster.
+   - **Goal**: Audit the `forge-agent` telemetry harvester + backend/frontend `/kubernetes` components so:
+     - The agent/backend accurately detects what is actually deployed (only show DPDK ring descriptors / TMM metrics when DPDK/TMM is actually present on the cluster).
+     - Rename `"Strangler Push Active"` (internal migration term) to clear user-facing labels like `"Push Active"` / `"Pull Active"` per project/cluster.
+2. **Blueprint Gaps on `bnk-forge-aws-eks-cluster` (`release/2.4.1`)**:
+   - Standard `aws-eks-cluster-create` blueprint defaulted to `m5.large` (insufficient CPU for CNE pods, whereas `bnkctl` uses `3 × m6i.4xlarge`) and omitted `gp3` `ebs.csi.aws.com` StorageClass and `NetworkAttachmentDefinition` CRD/NADs (`external-netdevice`, `internal-netdevice`) required by FLO/CNE. Workarounds were applied live to `forge-bp-eks-01`; fix in `bnk-forge-aws-eks-cluster` if needed.
+3. **Uncommitted Changes**:
    - `/Users/j.lucia/Code/github/bnk-forge` has all PoV migration + session fixes uncommitted on `agent/pov-migration`.
 
 ---

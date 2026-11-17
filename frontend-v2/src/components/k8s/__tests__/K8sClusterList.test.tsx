@@ -591,7 +591,7 @@ describe('K8sClusterList', () => {
   // ─── Strangler Telemetry Integration ───────────────────────────────
 
   describe('Strangler telemetry integration', () => {
-    it('shows Live Strangler Telemetry option in dropdown and opens telemetry dialog', async () => {
+    it('shows Live Telemetry option in dropdown and opens telemetry dialog', async () => {
       const user = userEvent.setup();
       render(<K8sClusterList projectId={1} />);
 
@@ -607,7 +607,7 @@ describe('K8sClusterList', () => {
         }
       }
 
-      const telemetryItem = await screen.findByText('Live Strangler Telemetry');
+      const telemetryItem = await screen.findByText('Live Telemetry');
       expect(telemetryItem).toBeInTheDocument();
       await user.click(telemetryItem);
 
@@ -618,12 +618,12 @@ describe('K8sClusterList', () => {
       });
     });
 
-    it('opens telemetry dialog when clicking the Push Agent Active badge', async () => {
+    it('opens telemetry dialog when clicking the Push Active badge', async () => {
       const user = userEvent.setup();
       render(<K8sClusterList projectId={1} />);
 
       await waitFor(() => {
-        expect(screen.getByText('Push Agent Active')).toBeInTheDocument();
+        expect(screen.getByText('Push Active')).toBeInTheDocument();
       });
 
       const badgeButton = screen.getByTitle('View live eBPF flows and TMM DPDK metrics');

@@ -3,6 +3,7 @@ package tmm
 import (
 	"context"
 	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -14,6 +15,7 @@ type Harvester interface {
 	Start(ctx context.Context) error
 	Stop() error
 	Metrics() <-chan protocol.TMMDPDKMetric
+	IsAvailable() bool
 }
 
 // Config configures the TMM DPDK harvester.
@@ -67,6 +69,18 @@ func NewDPDKHarvester(cfg Config) *DPDKHarvester {
 // Metrics returns the receive-only channel of scraped DPDK metrics.
 func (h *DPDKHarvester) Metrics() <-chan protocol.TMMDPDKMetric {
 	return h.metricsChan
+}
+
+// IsAvailable reports whether TMM DPDK telemetry is genuinely available on this node.
+func (h *DPDKHarvester) IsAvailable() bool {
+	if h.cfg.MockMode || h.cfg.Dialer != nil {
+		return true
+	}
+	if h.cfg.SocketPath == "" {
+		return false
+	}
+	_, err := os.Stat(h.cfg.SocketPath)
+	return err == nil
 }
 
 // Start begins periodic polling of TMM.

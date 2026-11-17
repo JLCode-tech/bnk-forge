@@ -612,7 +612,7 @@ def is_operator_live_connected(op: ConnectedOperator, polling_threshold_seconds:
     """
     if operator_connections.is_connected(op.operator_id):
         return True
-    if op.connectivity_mode == "polling" and op.last_heartbeat_at:
+    if op.connectivity_mode in ("polling", "mtls_agent") and op.last_heartbeat_at:
         heartbeat_age = (datetime.now(UTC) - op.last_heartbeat_at).total_seconds()
         return heartbeat_age < polling_threshold_seconds
     return False
