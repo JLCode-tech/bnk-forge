@@ -124,6 +124,7 @@ def aggregate_cluster_consumption(
     dpf = dpf_summary or {"detected": False, "dpu_count": 0}
     nodes = (bnk_data or {}).get("nodes", {}) or {}
     node_capacity = _sum_node_capacity(nodes)
+    effective_node_count = node_count or (len(nodes) if nodes else None)
 
     if not reachable or bnk_data is None:
         return {
@@ -135,7 +136,7 @@ def aggregate_cluster_consumption(
             "bnk_installed": False,
             "bnk_version": None,
             "status": "offline" if not reachable else status,
-            "node_count": node_count,
+            "node_count": effective_node_count,
             "control_plane": _empty_plane(),
             "data_plane": _empty_plane(),
             "total": _empty_plane(),
@@ -179,7 +180,7 @@ def aggregate_cluster_consumption(
         "bnk_installed": bnk_installed,
         "bnk_version": bnk_version,
         "status": status,
-        "node_count": node_count,
+        "node_count": effective_node_count,
         "control_plane": control_plane,
         "data_plane": data_plane,
         "total": total,

@@ -88,7 +88,11 @@ def _make_service(router) -> tuple[LlmObservabilityService, _FakeApiClient]:
 class TestStats:
     def _router(self, sub: str, query: str, params: dict[str, Any]) -> dict[str, Any]:
         if "count by (model)" in query:
-            return _instant(_vector(3))
+            return _instant(
+                _vector(1, {"model": "gpt-4o"}),
+                _vector(1, {"model": "claude-3-5-sonnet"}),
+                _vector(1, {"model": "llama-3"}),
+            )
         if "unwrap latency_ms" in query:
             return _instant(_vector(250.0))
         if "unwrap total_tk" in query:
@@ -490,10 +494,10 @@ class TestMultiClusterObservability:
         models / 50 reqs, so the fleet reports 7 models (3+4), not 4 (max).
         """
 
-        def _router_for(models_count: int, requests: int, tokens: int, cost: float):
+        def _router_for(models_count: int, requests: int, tokens: int, cost: float, prefix: str = "m"):
             def _router(sub, query, params):
                 if "count by (model)" in query:
-                    return _instant(_vector(models_count))
+                    return _instant(*[_vector(1, {"model": f"{prefix}-model-{i}"}) for i in range(models_count)])
                 if "unwrap latency_ms" in query:
                     return _instant(_vector(200.0))
                 if "unwrap total_tk" in query:
@@ -515,8 +519,8 @@ class TestMultiClusterObservability:
         c2.name = "eu-west"
         svc._active_clusters = MagicMock(return_value=[c1, c2])
         svc._k8s.get_cluster = lambda cid: c1 if cid == 1 else c2
-        fake1 = _FakeApiClient(_router_for(3, 100, 5000, 1.0))
-        fake2 = _FakeApiClient(_router_for(4, 50, 2000, 0.5))
+        fake1 = _FakeApiClient(_router_for(3, 100, 5000, 1.0, prefix="c1"))
+        fake2 = _FakeApiClient(_router_for(4, 50, 2000, 0.5, prefix="c2"))
         svc._client = lambda c: fake1 if c.id == 1 else fake2
 
         out = svc.stats(cluster_id=None, range_="1h")
