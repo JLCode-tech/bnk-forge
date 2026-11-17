@@ -75,7 +75,15 @@ class ClusterProbe(Probe):
                     },
                 )
             if self._is_operator_engine(db, cluster):
-                return await self._probe_via_operator(db, cluster)
+                op_result = await self._probe_via_operator(db, cluster)
+                if op_result.state == ReachabilityState.REACHABLE:
+                    return op_result
+                if cluster.api_server or (
+                    cluster.access_method == "agent_push"
+                    and cluster.integration_status == "agent_connected"
+                ):
+                    return await self._probe_direct(cluster)
+                return op_result
             return await self._probe_direct(cluster)
         finally:
             try:
