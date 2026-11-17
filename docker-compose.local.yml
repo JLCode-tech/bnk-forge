@@ -34,9 +34,8 @@
 x-local-backend-env: &local-backend-env
   BNK_FORGE_DEPLOY_MODE: local
   DATABASE_URL: postgresql://bnkforge:${POSTGRES_PASSWORD:-bnkforge_dev_password}@postgres:5432/bnkforge
-  REDIS_URL: redis://:${REDIS_PASSWORD:-bnkforge_redis_dev}@redis:6379/0
-  CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-bnkforge_redis_dev}@redis:6379/0
-  CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-bnkforge_redis_dev}@redis:6379/0
+  NATS_URL: nats://nats:4222
+  NATS_ADDR: nats:4222
   TF_PLUGIN_CACHE_DIR: /app/provider-cache
   # #186: plumb the operator-chosen initial admin password to the backend
   # (config.py has no env_file, so an unpassed var never reaches the container).
@@ -73,6 +72,11 @@ x-local-backend-env: &local-backend-env
   # forwarded when set; set real values in .env for production.
   JWT_SECRET_KEY:
   ENCRYPTION_KEY:
+  FORGE_LICENSE_PATH: ${FORGE_LICENSE_PATH:-/app/keys/forge.lic}
+  CLICKHOUSE_URL: "http://clickhouse:8123"
+  CLICKHOUSE_HTTP_URL: "http://clickhouse:8123"
+  CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+  CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-bnkforge_dev_password}
   ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
 
 # Shared bridge network — all services can resolve each other by service name

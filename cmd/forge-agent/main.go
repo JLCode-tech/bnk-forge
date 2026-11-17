@@ -33,6 +33,9 @@ func main() {
 	enableLeaderElection := flag.Bool("enable-leader-election", getEnv("ENABLE_LEADER_ELECTION", "false") == "true", "Enable Kubernetes Lease Leader Election")
 	leaseName := flag.String("lease-name", getEnv("LEASE_NAME", "forge-agent-leader"), "Kubernetes Lease resource name")
 	leaseNamespace := flag.String("lease-namespace", getEnv("LEASE_NAMESPACE", "forge-system"), "Kubernetes Lease resource namespace")
+	aigwClickHouseURL := flag.String("aigw-clickhouse-url", getEnv("AIGW_CLICKHOUSE_URL", ""), "AI Gateway ClickHouse HTTP URL")
+	aigwClickHouseUser := flag.String("aigw-clickhouse-user", getEnv("AIGW_CLICKHOUSE_USER", "otel"), "AI Gateway ClickHouse username")
+	aigwClickHousePassword := flag.String("aigw-clickhouse-password", getEnv("AIGW_CLICKHOUSE_PASSWORD", ""), "AI Gateway ClickHouse password")
 
 	flag.Parse()
 
@@ -63,10 +66,13 @@ func main() {
 		InsecureSkipVerify:  *insecureSkipVerify,
 		TransportMode:       transport.DualTransportMode(*transportMode),
 		NATSURL:             *natsURL,
-		EnableLeaderElection: *enableLeaderElection,
-		LeaseName:           *leaseName,
-		LeaseNamespace:      *leaseNamespace,
-		TmmGatewayIPs:       tmmIPs,
+		EnableLeaderElection:   *enableLeaderElection,
+		LeaseName:              *leaseName,
+		LeaseNamespace:         *leaseNamespace,
+		AIGWClickHouseURL:      *aigwClickHouseURL,
+		AIGWClickHouseUser:     *aigwClickHouseUser,
+		AIGWClickHousePassword: *aigwClickHousePassword,
+		TmmGatewayIPs:          tmmIPs,
 		ProtectedNamespaces: []string{"default", "ai-inference", "f5-ai-gateway"},
 		ProtectedPorts:      []uint16{8000, 8080, 50051},
 	}

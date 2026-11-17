@@ -71,9 +71,9 @@ class TestFireHealthAlert:
 class TestCheckClusterHealth:
     """tasks.health_monitor_task.check_cluster_health."""
 
-    @patch(f"{_MOD}._get_redis", return_value=None)
+    @patch(f"{_MOD}._get_previous_health", return_value=None)
     @patch(f"{_MOD}.get_db_context")
-    def test_no_clusters_returns_zero(self, mock_db_ctx, mock_redis, db):
+    def test_no_clusters_returns_zero(self, mock_db_ctx, mock_prev_health, db):
         """No active clusters returns checked=0."""
         mock_db_ctx.return_value.__enter__ = MagicMock(return_value=db)
         mock_db_ctx.return_value.__exit__ = MagicMock(return_value=False)
@@ -86,10 +86,10 @@ class TestCheckClusterHealth:
 
     @patch(f"{_MOD}._fire_health_alert")
     @patch(f"{_MOD}._get_cluster_health")
-    @patch(f"{_MOD}._get_redis")
+    @patch(f"{_MOD}._get_previous_health", return_value=None)
     @patch(f"{_MOD}.get_db_context")
     def test_health_check_fires_alert_on_critical(self, mock_db_ctx,
-                                                    mock_redis, mock_health,
+                                                    mock_prev_health, mock_health,
                                                     mock_fire, db):
         """First critical health detection fires an alert."""
         from models import KubernetesCluster, Project
@@ -112,7 +112,6 @@ class TestCheckClusterHealth:
 
         mock_db_ctx.return_value.__enter__ = MagicMock(return_value=db)
         mock_db_ctx.return_value.__exit__ = MagicMock(return_value=False)
-        mock_redis.return_value = None  # No Redis — no previous state
 
         mock_health.return_value = {
             "overall_severity": "unhealthy",

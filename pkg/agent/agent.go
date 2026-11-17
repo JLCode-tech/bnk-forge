@@ -2,15 +2,18 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/JLCode-tech/bnk-forge/pkg/agent/aigw"
 	"github.com/JLCode-tech/bnk-forge/pkg/agent/bootstrap"
 	"github.com/JLCode-tech/bnk-forge/pkg/agent/ebpf"
 	"github.com/JLCode-tech/bnk-forge/pkg/agent/lease"
@@ -44,17 +47,22 @@ type Config struct {
 	EnableLeaderElection      bool
 	LeaseName                 string
 	LeaseNamespace            string
+	AIGWClickHouseURL         string
+	AIGWClickHouseUser        string
+	AIGWClickHousePassword    string
+	PullListenAddr            string
 }
 
 // Agent coordinates bootstrap, local eBPF / TMM collectors, and resilient outbound transport.
 type Agent struct {
-	cfg       Config
-	creds     *bootstrap.BootstrapCredentials
-	transport *transport.SpoolingTransport
-	spool     transport.DiskSpool
-	observer  ebpf.Observer
-	harvester tmm.Harvester
-	elector   *lease.Elector
+	cfg         Config
+	creds       *bootstrap.BootstrapCredentials
+	transport   *transport.SpoolingTransport
+	spool       transport.DiskSpool
+	observer    ebpf.Observer
+	harvester   tmm.Harvester
+	aiCollector *aigw.Collector
+	elector     *lease.Elector
 
 	agentID      string
 	sessionToken string
@@ -69,6 +77,10 @@ type Agent struct {
 	curBatch    *protocol.TelemetryBatch
 	lastFlush   time.Time
 	batchNotify chan struct{}
+
+	pullMu  sync.Mutex
+	pullBuf []*protocol.TelemetryBatch
+	pullSrv *http.Server
 }
 
 // NewAgent constructs a new Forge Agent instance.
@@ -136,12 +148,15 @@ func (a *Agent) Start(ctx context.Context) error {
 	// 4. Initialize Collectors
 	a.initCollectors()
 
-	// Start Observer & Harvester
+	// Start Observer, Harvester, and AI Gateway Collector
 	if err := a.observer.Start(ctx); err != nil {
 		return fmt.Errorf("starting eBPF observer: %w", err)
 	}
 	if err := a.harvester.Start(ctx); err != nil {
 		return fmt.Errorf("starting TMM harvester: %w", err)
+	}
+	if err := a.aiCollector.Start(ctx); err != nil {
+		return fmt.Errorf("starting AI Gateway collector: %w", err)
 	}
 
 	// 5. Initialize optional Lease Elector
@@ -171,6 +186,7 @@ func (a *Agent) Start(ctx context.Context) error {
 	}
 
 	// 5. Start Background Loops
+	a.startPullServer()
 	go a.runAggregationLoop(ctx)
 	go a.runHeartbeatLoop(ctx)
 
@@ -215,6 +231,9 @@ func (a *Agent) initIdentity(ctx context.Context) error {
 	a.creds = creds
 	if a.cfg.ClusterID == "" && creds.ClusterUUID != "" {
 		a.cfg.ClusterID = creds.ClusterUUID
+	}
+	if a.cfg.ClusterID == "" && strings.HasPrefix(creds.SPIFFEID, "spiffe://forge/cluster/") {
+		a.cfg.ClusterID = strings.TrimPrefix(creds.SPIFFEID, "spiffe://forge/cluster/")
 	}
 	return nil
 }
@@ -336,6 +355,15 @@ func (a *Agent) initCollectors() {
 		NodeName:  a.cfg.NodeName,
 		MockMode:  a.cfg.MockMode,
 	})
+
+	a.aiCollector = aigw.NewCollector(aigw.Config{
+		ClusterID:          a.cfg.ClusterID,
+		ClickHouseURL:      a.cfg.AIGWClickHouseURL,
+		ClickHouseUser:     a.cfg.AIGWClickHouseUser,
+		ClickHousePassword: a.cfg.AIGWClickHousePassword,
+		MockMode:           a.cfg.MockMode,
+		IsLeader:           a.IsLeader,
+	})
 }
 
 func (a *Agent) register(ctx context.Context) error {
@@ -415,19 +443,26 @@ func (a *Agent) runAggregationLoop(ctx context.Context) {
 		case flow, ok := <-a.observer.Flows():
 			if ok {
 				a.curBatch.Flows = append(a.curBatch.Flows, flow)
-				if len(a.curBatch.Flows)+len(a.curBatch.Metrics) >= a.cfg.BatchSize {
+				if len(a.curBatch.Flows)+len(a.curBatch.Metrics)+len(a.curBatch.AIEvents) >= a.cfg.BatchSize {
 					a.flushCurrentBatch()
 				}
 			}
 		case metric, ok := <-a.harvester.Metrics():
 			if ok {
 				a.curBatch.Metrics = append(a.curBatch.Metrics, metric)
-				if len(a.curBatch.Flows)+len(a.curBatch.Metrics) >= a.cfg.BatchSize {
+				if len(a.curBatch.Flows)+len(a.curBatch.Metrics)+len(a.curBatch.AIEvents) >= a.cfg.BatchSize {
+					a.flushCurrentBatch()
+				}
+			}
+		case ev, ok := <-a.aiCollector.Events():
+			if ok {
+				a.curBatch.AIEvents = append(a.curBatch.AIEvents, ev)
+				if len(a.curBatch.Flows)+len(a.curBatch.Metrics)+len(a.curBatch.AIEvents) >= a.cfg.BatchSize {
 					a.flushCurrentBatch()
 				}
 			}
 		case <-flushTicker.C:
-			if len(a.curBatch.Flows) > 0 || len(a.curBatch.Metrics) > 0 {
+			if len(a.curBatch.Flows) > 0 || len(a.curBatch.Metrics) > 0 || len(a.curBatch.AIEvents) > 0 {
 				a.flushCurrentBatch()
 			}
 		}
@@ -443,11 +478,12 @@ func (a *Agent) newBatch() *protocol.TelemetryBatch {
 		SentAt:    time.Now().UnixNano(),
 		Flows:     make([]protocol.EBPFSocketFlow, 0, a.cfg.BatchSize),
 		Metrics:   make([]protocol.TMMDPDKMetric, 0, 100),
+		AIEvents:  make([]protocol.AIGatewayEvent, 0, 100),
 	}
 }
 
 func (a *Agent) flushCurrentBatch() {
-	if len(a.curBatch.Flows) == 0 && len(a.curBatch.Metrics) == 0 {
+	if len(a.curBatch.Flows) == 0 && len(a.curBatch.Metrics) == 0 && len(a.curBatch.AIEvents) == 0 {
 		return
 	}
 
@@ -459,8 +495,75 @@ func (a *Agent) flushCurrentBatch() {
 	defer cancel()
 
 	if err := a.transport.StreamBatch(ctx, batchToFlush); err != nil {
-		log.Printf("[Forge-Agent] Batch flush error: %v", err)
+		log.Printf("[Forge-Agent] Batch flush error (buffered for K8s API pull): %v", err)
+		a.enqueuePullBatch(batchToFlush)
+	} else if a.transport.SpoolLen() > 0 {
+		a.enqueuePullBatch(batchToFlush)
 	}
+}
+
+func (a *Agent) enqueuePullBatch(b *protocol.TelemetryBatch) {
+	const maxPullBatches = 20
+	a.pullMu.Lock()
+	defer a.pullMu.Unlock()
+	if len(a.pullBuf) >= maxPullBatches {
+		a.pullBuf = a.pullBuf[1:]
+	}
+	a.pullBuf = append(a.pullBuf, b)
+}
+
+func (a *Agent) drainPullBatches() []*protocol.TelemetryBatch {
+	a.pullMu.Lock()
+	defer a.pullMu.Unlock()
+	if len(a.pullBuf) == 0 {
+		return nil
+	}
+	out := make([]*protocol.TelemetryBatch, len(a.pullBuf))
+	copy(out, a.pullBuf)
+	a.pullBuf = nil
+	return out
+}
+
+func (a *Agent) startPullServer() {
+	addr := a.cfg.PullListenAddr
+	if addr == "-" {
+		return
+	}
+	if addr == "" {
+		addr = ":17544"
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+	mux.HandleFunc("/api/v1/telemetry/pull", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		batches := a.drainPullBatches()
+		if batches == nil {
+			batches = []*protocol.TelemetryBatch{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"cluster_id": a.cfg.ClusterID,
+			"node_name":  a.cfg.NodeName,
+			"batches":    batches,
+		})
+	})
+	a.pullSrv = &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	go func() {
+		log.Printf("[Forge-Agent] K8s-API pull endpoint listening on %s (/api/v1/telemetry/pull)", addr)
+		if err := a.pullSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("[Forge-Agent] Pull server warning (%s): %v", addr, err)
+		}
+	}()
 }
 
 // IsLeader returns true if this agent holds the cluster lease leader lock.
@@ -484,6 +587,14 @@ func (a *Agent) Stop() error {
 
 	_ = a.observer.Stop()
 	_ = a.harvester.Stop()
+	if a.aiCollector != nil {
+		_ = a.aiCollector.Stop()
+	}
+	if a.pullSrv != nil {
+		shutCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		_ = a.pullSrv.Shutdown(shutCtx)
+		cancel()
+	}
 
 	return a.transport.Close()
 }

@@ -11,6 +11,14 @@ import (
 	"time"
 )
 
+func isK8sMicroTime(ts string) bool {
+	if len(ts) != len(k8sMicroTimeFormat) || ts[19] != '.' || ts[26] != 'Z' {
+		return false
+	}
+	_, err := time.Parse(k8sMicroTimeFormat, ts)
+	return err == nil
+}
+
 type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -40,6 +48,10 @@ func TestLeaseElectionMock(t *testing.T) {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
+			if !isK8sMicroTime(*l.Spec.AcquireTime) || !isK8sMicroTime(*l.Spec.RenewTime) {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
 			l.Metadata.ResourceVersion = "1"
 			storedLease = &l
 			w.WriteHeader(http.StatusCreated)
@@ -48,6 +60,10 @@ func TestLeaseElectionMock(t *testing.T) {
 		case http.MethodPut:
 			var l Lease
 			if err := json.NewDecoder(r.Body).Decode(&l); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			if !isK8sMicroTime(*l.Spec.RenewTime) {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}

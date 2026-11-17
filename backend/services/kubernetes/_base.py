@@ -202,13 +202,28 @@ class KubernetesServiceBase:
             azure_info = get_azure_service_principal_info(project, self.db)
 
             if not azure_info:
-                logger.warning(
-                    "No Azure service-principal credentials configured for cluster %s "
-                    "(project '%s'); static token in kubeconfig will be used and "
-                    "may expire",
-                    cluster.name,
-                    project.name if project else "<none>",
+                user_entries = kubeconfig_dict.get("users") or []
+                uses_client_cert = any(
+                    isinstance(u, dict)
+                    and isinstance(u.get("user"), dict)
+                    and u["user"].get("client-certificate-data")
+                    and u["user"].get("client-key-data")
+                    and not u["user"].get("exec")
+                    for u in user_entries
                 )
+                if uses_client_cert:
+                    logger.debug(
+                        "Using client-certificate auth in kubeconfig for Azure cluster %s (non-AAD)",
+                        cluster.name,
+                    )
+                else:
+                    logger.warning(
+                        "No Azure service-principal credentials configured for cluster %s "
+                        "(project '%s'); static token in kubeconfig will be used and "
+                        "may expire",
+                        cluster.name,
+                        project.name if project else "<none>",
+                    )
             else:
                 try:
                     tenant_id, client_id, client_secret = azure_info

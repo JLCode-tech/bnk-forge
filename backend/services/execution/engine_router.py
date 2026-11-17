@@ -717,12 +717,13 @@ def _resolve_active_project_cluster(project, db):
         if not clusters:
             return None
 
-        # Prefer the most recently updated/created cluster record
+        # Prefer clusters with a stored kubeconfig, then the most recently updated/created record
         def _cluster_sort_key(c):
+            has_kc = bool(getattr(c, "kubeconfig_encrypted", None))
             updated = getattr(c, "updated_at", None) or getattr(c, "created_at", None)
             ts = updated.timestamp() if hasattr(updated, "timestamp") else 0.0
             cid = getattr(c, "id", 0) or 0
-            return (ts, cid)
+            return (has_kc, ts, cid)
 
         clusters_sorted = sorted(
             clusters,

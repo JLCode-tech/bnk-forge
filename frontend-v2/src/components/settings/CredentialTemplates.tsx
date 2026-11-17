@@ -1362,7 +1362,8 @@ export default function CredentialTemplates() {
                           <DropdownMenuContent align="end">
                             {(template.provider === "aws" ||
                               template.provider === "ibm" ||
-                              template.provider === "azure") && (
+                              template.provider === "azure" ||
+                              template.provider === "gcp") && (
                               <DropdownMenuItem
                                 onClick={() => testMutation.mutate(template.id)}
                                 disabled={testMutation.isPending}

@@ -214,6 +214,8 @@ func (e *Elector) step(ctx context.Context, onStartedLeading, onStoppedLeading f
 	}
 }
 
+const k8sMicroTimeFormat = "2006-01-02T15:04:05.000000Z"
+
 // TryAcquireOrRenew attempts to acquire or renew the coordination.k8s.io Lease.
 func (e *Elector) TryAcquireOrRenew(ctx context.Context) (bool, error) {
 	if !e.cfg.Enabled {
@@ -221,7 +223,7 @@ func (e *Elector) TryAcquireOrRenew(ctx context.Context) (bool, error) {
 	}
 
 	now := time.Now().UTC()
-	nowRFC := now.Format(time.RFC3339Nano)
+	nowRFC := now.Format(k8sMicroTimeFormat)
 	durSec := int32(e.cfg.LeaseDuration.Seconds())
 
 	existing, err := e.getLease(ctx)

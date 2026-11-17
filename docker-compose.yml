@@ -64,6 +64,7 @@ x-backend-env: &backend-env
   JWT_SECRET_KEY:
   ENCRYPTION_KEY:
   ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
+  FORGE_LICENSE_PATH: ${FORGE_LICENSE_PATH:-/app/keys/forge.lic}
 
 x-worker-volumes: &worker-volumes
   # Module catalog persisted in Docker volume

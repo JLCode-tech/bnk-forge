@@ -41,7 +41,7 @@ celery_app = Celery(
     "bnk_forge",
     broker=CELERY_BROKER_URL,
     backend=CELERY_RESULT_BACKEND,
-    include=["tasks.opentofu_tasks", "tasks.kubernetes_tasks", "tasks.ansible_tasks", "tasks.ssh_tasks", "tasks.tmos_tasks", "tasks.cli_tasks", "tasks.bnk_upgrade_tasks", "tasks.drift_tasks", "tasks.stack_tasks", "tasks.parallel_tasks", "tasks.heartbeat_task", "tasks.health_monitor_task", "tasks.operator_cleanup_task", "tasks.proxy_deploy_tasks", "tasks.proxy_migration_tasks", "tasks.bare_metal_tasks", "tasks.dpu_tasks", "tasks.backend_health_task", "tasks.registry_smoke_test", "tasks.registry_update_poller", "tasks.cluster_scan_task", "tasks.helm_tasks", "tasks.fleet_tasks", "tasks.notification_retention_task", "tasks.benchmark_agent_tasks", "tasks.container_tasks", "tasks.container_reaper"]
+    include=["tasks.opentofu_tasks", "tasks.kubernetes_tasks", "tasks.ansible_tasks", "tasks.ssh_tasks", "tasks.tmos_tasks", "tasks.cli_tasks", "tasks.bnk_upgrade_tasks", "tasks.drift_tasks", "tasks.stack_tasks", "tasks.parallel_tasks", "tasks.heartbeat_task", "tasks.health_monitor_task", "tasks.telemetry_pull_task", "tasks.operator_cleanup_task", "tasks.proxy_deploy_tasks", "tasks.proxy_migration_tasks", "tasks.bare_metal_tasks", "tasks.dpu_tasks", "tasks.backend_health_task", "tasks.registry_smoke_test", "tasks.registry_update_poller", "tasks.cluster_scan_task", "tasks.helm_tasks", "tasks.fleet_tasks", "tasks.notification_retention_task", "tasks.benchmark_agent_tasks", "tasks.container_tasks", "tasks.container_reaper"]
 )
 
 # Celery configuration
@@ -126,6 +126,10 @@ celery_app.conf.update(
         'worker-heartbeat-keepalive': {
             'task': 'tasks.heartbeat_task.worker_heartbeat_keepalive',
             'schedule': 25.0,  # Keep worker heartbeat fresh well within 90s TTL across multi-worker queues
+        },
+        'agent-k8s-pull': {
+            'task': 'tasks.telemetry_pull_task.pull_cluster_agent_telemetry',
+            'schedule': 20.0,
         },
         'health-monitor': {
             'task': 'tasks.health_monitor_task.check_cluster_health',
@@ -272,6 +276,19 @@ def on_task_postrun(sender, task_id, task, args, kwargs, retval, state, **kw):
         heartbeat.record_task_end(worker_id, task_id)
     except Exception as e:
         _celery_logger.error(f"Task postrun heartbeat failed: {e}")
+
+
+if os.getenv("NATS_URL") or not os.getenv("REDIS_URL"):
+    from services.nats_task_service import nats_task as _nats_task
+
+    def _nats_compat_task(*d_args, **d_kwargs):
+        bind = bool(d_kwargs.get("bind", False))
+        name = d_kwargs.get("name")
+        if d_args and callable(d_args[0]) and not d_kwargs:
+            return _nats_task(name=None, bind=False)(d_args[0])
+        return _nats_task(name=name, bind=bind)
+
+    celery_app.task = _nats_compat_task  # type: ignore[method-assign]
 
 
 if __name__ == "__main__":

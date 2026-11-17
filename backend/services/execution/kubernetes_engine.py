@@ -1184,6 +1184,9 @@ KNOWN_PLURALS: dict[str, str] = {
     "BNKGatewayClassConfig": "bnkgatewayclassconfigs",
     "BNKSecPolicy": "bnksecpolicies",
     "BNKNetPolicy": "bnknetpolicies",
+    "SecPolicy": "secpolicies",
+    "NetPolicy": "netpolicies",
+    "AppPolicy": "apppolicies",
     "L4Route": "l4routes",
     "CNEInstance": "cneinstances",
     # F5 SPK
@@ -1215,7 +1218,12 @@ def _get_resource_info(api_version: str, kind: str) -> str:
     Uses the module-level KNOWN_PLURALS dict (validated against real F5 BNK CRDs).
     For unknown types, we lowercase + add 's' as a heuristic.
     """
-    return KNOWN_PLURALS.get(kind, kind.lower() + "s")
+    if kind in KNOWN_PLURALS:
+        return KNOWN_PLURALS[kind]
+    lower = kind.lower()
+    if lower.endswith("y") and not lower.endswith(("ay", "ey", "iy", "oy", "uy")):
+        return lower[:-1] + "ies"
+    return lower + "s"
 
 
 def _suggest_fix(error: Exception) -> str | None:

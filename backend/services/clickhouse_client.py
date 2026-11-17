@@ -308,3 +308,99 @@ class ClickHouseClient:
             }
             for r in data
         ]
+
+    def query_ai_gateway_stats(
+        self,
+        cluster_uuid: str | None = None,
+        hours: int = 24,
+        model: str | None = None,
+        status: str | None = None,
+    ) -> dict[str, Any]:
+        """Aggregate AI Gateway request telemetry from forge.ai_gateway_events."""
+        clauses = [f"timestamp >= now() - INTERVAL {int(hours)} HOUR"]
+        if cluster_uuid:
+            clean_uuid = cluster_uuid.replace("'", "")
+            clauses.append(f"cluster_id = toUUID('{clean_uuid}')")
+        if model:
+            clean_model = model.replace("'", "")
+            clauses.append(f"model_name = '{clean_model}'")
+        if status == "2xx":
+            clauses.append("status_code >= 200 AND status_code < 300")
+        elif status == "4xx":
+            clauses.append("status_code >= 400 AND status_code < 500")
+        elif status == "5xx":
+            clauses.append("status_code >= 500 AND status_code < 600")
+        elif status == "error":
+            clauses.append("(status_code < 200 OR status_code >= 300)")
+
+        where_sql = " AND ".join(clauses)
+        sql = f"""
+        SELECT
+            count() AS total_requests,
+            countIf(status_code >= 200 AND status_code < 300) AS success,
+            avgOrDefault(total_latency_ms) AS avg_latency_ms,
+            sum(prompt_tokens + completion_tokens) AS total_tokens,
+            sum(cost_usd) AS total_cost,
+            uniqExactIf(model_name, model_name != '') AS models,
+            groupUniqArrayIf(model_name, model_name != '') AS model_names
+        FROM forge.ai_gateway_events
+        WHERE {where_sql}
+        """
+        result = self.execute_query(sql)
+        data = result.get("data", [])
+        if data:
+            row = data[0]
+            total = int(row.get("total_requests", 0) or 0)
+            success = int(row.get("success", 0) or 0)
+            raw_models = row.get("model_names") or []
+            model_names = sorted(str(m) for m in raw_models if m)
+            return {
+                "total_requests": total,
+                "success_rate": (success / total) if total else 0.0,
+                "avg_latency_ms": float(row.get("avg_latency_ms", 0.0) or 0.0),
+                "total_tokens": int(row.get("total_tokens", 0) or 0),
+                "total_cost": float(row.get("total_cost", 0.0) or 0.0),
+                "models": int(row.get("models", 0) or len(model_names)),
+                "model_names": model_names,
+            }
+        return {
+            "total_requests": 0,
+            "success_rate": 0.0,
+            "avg_latency_ms": 0.0,
+            "total_tokens": 0,
+            "total_cost": 0.0,
+            "models": 0,
+            "model_names": [],
+        }
+
+    def query_ai_gateway_events(
+        self,
+        cluster_uuid: str | None = None,
+        hours: int = 24,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Query recent AI Gateway events from forge.ai_gateway_events."""
+        clauses = [f"timestamp >= now() - INTERVAL {int(hours)} HOUR"]
+        if cluster_uuid:
+            clean_uuid = cluster_uuid.replace("'", "")
+            clauses.append(f"cluster_id = toUUID('{clean_uuid}')")
+        where_sql = " AND ".join(clauses)
+        sql = f"""
+        SELECT
+            timestamp,
+            cluster_id,
+            client_id,
+            model_name,
+            route_name,
+            prompt_tokens,
+            completion_tokens,
+            time_to_first_token_ms,
+            total_latency_ms,
+            status_code,
+            cost_usd
+        FROM forge.ai_gateway_events
+        WHERE {where_sql}
+        ORDER BY timestamp DESC
+        LIMIT {int(limit)}
+        """
+        return self.execute_query(sql).get("data", [])

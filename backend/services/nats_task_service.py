@@ -121,11 +121,15 @@ class NATSTaskWrapper:
         self.func = func
         self.name = name
         self.bind = bind
+        self.request = type("TaskRequest", (), {"id": f"nats-{uuid.uuid4().hex[:12]}", "hostname": "forge-worker"})()
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         if self.bind:
             return self.func(self, *args, **kwargs)
         return self.func(*args, **kwargs)
+
+    def run(self, *args: Any, **kwargs: Any) -> Any:
+        return self(*args, **kwargs)
 
     def delay(self, *args: Any, **kwargs: Any) -> NATSTaskResult:
         return default_task_client.dispatch(self.name, *args, **kwargs)
@@ -298,10 +302,64 @@ class NATSTaskWorker:
             return self.process_task_payload(task_data)
         return False
 
+    def _run_nats_subscriber(self, stop_event: threading.Event | None = None) -> None:
+        """Subscribe to forge.tasks.* over NATS TCP and process incoming tasks."""
+        host, _, port_s = self.client.nats_addr.partition(":")
+        port = int(port_s) if port_s else 4222
+        while self._running and not (stop_event and stop_event.is_set()):
+            sock: socket.socket | None = None
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(5.0)
+                sock.connect((host, port))
+                sock.sendall(b'CONNECT {"verbose":false,"pedantic":false,"lang":"python","version":"1.0.0"}\r\n')
+                sock.sendall(f"SUB {DEFAULT_SUBJECT_PREFIX}* forge_workers 1\r\n".encode())
+                buf = b""
+                while self._running and not (stop_event and stop_event.is_set()):
+                    try:
+                        chunk = sock.recv(65536)
+                    except TimeoutError:
+                        continue
+                    if not chunk:
+                        break
+                    buf += chunk
+                    while b"\r\n" in buf:
+                        line, rest = buf.split(b"\r\n", 1)
+                        text = line.decode("utf-8", errors="replace").strip()
+                        if text == "PING":
+                            sock.sendall(b"PONG\r\n")
+                            buf = rest
+                        elif text.startswith("MSG "):
+                            parts = text.split()
+                            nbytes = int(parts[-1])
+                            if len(rest) < nbytes + 2:
+                                break
+                            payload = rest[:nbytes]
+                            buf = rest[nbytes + 2 :]
+                            try:
+                                task_data = json.loads(payload.decode("utf-8"))
+                                self.process_task_payload(task_data)
+                            except Exception as exc:
+                                logger.exception("Failed processing NATS MSG payload: %s", exc)
+                        else:
+                            buf = rest
+            except Exception as exc:
+                logger.debug("NATS TCP subscriber (%s) unavailable: %s", self.client.nats_addr, exc)
+                time.sleep(2.0)
+            finally:
+                if sock is not None:
+                    try:
+                        sock.close()
+                    except Exception:
+                        pass
+
     def run_worker(self, stop_event: threading.Event | None = None) -> None:
         """Worker main loop."""
         self._running = True
         logger.info("NATSTaskWorker started, pulling tasks for stream: %s", self.client.stream_name)
+
+        sub_thread = threading.Thread(target=self._run_nats_subscriber, args=(stop_event,), daemon=True)
+        sub_thread.start()
 
         while self._running:
             if stop_event and stop_event.is_set():
@@ -322,6 +380,7 @@ class NATSTaskScheduler:
 
     # Default schedule intervals in seconds matching legacy celery_app.conf.beat_schedule
     DEFAULT_SCHEDULE: list[dict[str, Any]] = [
+        {"name": "agent-k8s-pull", "task": "tasks.telemetry_pull_task.pull_cluster_agent_telemetry", "interval": 20.0},
         {"name": "health-monitor", "task": "tasks.health_monitor_task.check_cluster_health", "interval": 60.0},
         {"name": "operator-cleanup", "task": "tasks.operator_cleanup_task.cleanup_stale_operators_and_commands", "interval": 120.0},
         {"name": "schedule-drift-checks", "task": "tasks.drift_tasks.schedule_drift_checks", "interval": 900.0},
@@ -391,6 +450,13 @@ def register_backend_tasks() -> None:
         pass
 
     try:
+        from tasks.telemetry_pull_task import pull_cluster_agent_telemetry
+        registry.register("tasks.telemetry_pull_task.pull_cluster_agent_telemetry", pull_cluster_agent_telemetry)
+        registry.register("agent_k8s_pull", pull_cluster_agent_telemetry)
+    except ImportError:
+        pass
+
+    try:
         from tasks.drift_tasks import run_drift_check, schedule_drift_checks
         registry.register("tasks.drift_tasks.run_drift_check", run_drift_check)
         registry.register("tasks.drift_tasks.schedule_drift_checks", schedule_drift_checks)
@@ -402,6 +468,19 @@ def register_backend_tasks() -> None:
         registry.register("tasks.operator_cleanup_task.cleanup_stale_operators_and_commands", cleanup_stale_operators_and_commands)
     except ImportError:
         pass
+
+    try:
+        import importlib
+
+        from celery_app import celery_app as _celery_app
+
+        for mod_name in getattr(_celery_app.conf, "include", []) or []:
+            try:
+                importlib.import_module(mod_name)
+            except Exception as exc:
+                logger.debug("Skipping task module %s: %s", mod_name, exc)
+    except Exception as exc:
+        logger.debug("Skipping celery_app include discovery: %s", exc)
 
 
 def main() -> None:
@@ -447,4 +526,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from services.nats_task_service import main as _pkg_main
+
+    _pkg_main()

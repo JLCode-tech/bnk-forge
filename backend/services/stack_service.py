@@ -21,7 +21,7 @@ from typing import Any
 from sqlalchemy import or_
 from sqlalchemy.orm.attributes import flag_modified
 
-from core.errors import BadRequestError, ForbiddenError, NotFoundError
+from core.errors import BadRequestError, ConflictError, ForbiddenError, NotFoundError
 from models import (
     ModuleLibrary,
     ProjectModule,
@@ -779,6 +779,36 @@ class StackService(BaseService):
         )
         if not template:
             raise NotFoundError("stack_template", template_id)
+
+        existing_name = (
+            self.db.query(StackInstance)
+            .filter(
+                StackInstance.project_id == project_id,
+                StackInstance.name == name,
+            )
+            .first()
+        )
+        if existing_name:
+            raise ConflictError(
+                "stack_instance",
+                f"A stack instance named '{name}' already exists in project {project_id}.",
+            )
+
+        active_instance = (
+            self.db.query(StackInstance)
+            .filter(
+                StackInstance.project_id == project_id,
+                StackInstance.template_id == template_id,
+                StackInstance.status.in_([StackInstanceStatus.PENDING, StackInstanceStatus.DEPLOYING]),
+            )
+            .first()
+        )
+        if active_instance:
+            raise ConflictError(
+                "stack_instance",
+                f"Stack template {template_id} already has an active deployment "
+                f"('{active_instance.name}', status='{active_instance.status}') in project {project_id}.",
+            )
 
         stack_instance = StackInstance(
             project_id=project_id,

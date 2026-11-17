@@ -112,9 +112,22 @@ def reset_stale_tasks(
     # Non-destroy modules left in a transient state by a dead worker. Collected
     # the same way, so one module with several stale tasks is reset once.
     deploy_modules_to_reset: dict[int, object] = {}
+    import os
+    from datetime import timedelta
+
+    nats_mode = bool(os.getenv("NATS_URL")) and not live_task_ids
+    stale_cutoff = completed_at - timedelta(minutes=15)
+
     for row in rows:
         if row.celery_task_id and row.celery_task_id in live_task_ids:
             continue
+        if nats_mode:
+            row_ts = row.started_at or row.created_at
+            if row_ts is not None:
+                if row_ts.tzinfo is None:
+                    row_ts = row_ts.replace(tzinfo=UTC)
+                if row_ts > stale_cutoff:
+                    continue
         row.status = TaskStatus.FAILED.value
         row.error = row.error or "Worker no longer alive — reset by stale-execution janitor"
         row.completed_at = completed_at

@@ -508,6 +508,9 @@ class LlmObservabilityService:
                 project_id=project_id,
             )
             if not pairs:
+                ch_fallback = self._stats_forge_clickhouse(None, range_, model, status)
+                if ch_fallback is not None:
+                    return ch_fallback
                 return self._fleet_unavailable(errors)
             valid = [r for _, r in pairs]
             total_requests = sum(v.get("total_requests", 0) for v in valid)
@@ -531,6 +534,10 @@ class LlmObservabilityService:
             else:
                 success_rate = 0.0
                 avg_latency_ms = 0.0
+            if total_requests == 0:
+                ch_fallback = self._stats_forge_clickhouse(None, range_, model, status)
+                if ch_fallback is not None:
+                    return ch_fallback
             return self._ok(
                 total_requests=int(total_requests),
                 success_rate=success_rate,
@@ -542,7 +549,13 @@ class LlmObservabilityService:
                 errors=errors,
             )
 
-        api_client = _api_client if _api_client is not None else self._client(cluster_id)
+        try:
+            api_client = _api_client if _api_client is not None else self._client(cluster_id)
+        except Exception:
+            ch_fallback = self._stats_forge_clickhouse(cluster_id, range_, model, status)
+            if ch_fallback is not None:
+                return ch_fallback
+            raise
         if self._ch_password(cluster_id, api_client):
             ch_res = self._stats_clickhouse(cluster_id, api_client, range_, model, status)
             if ch_res is not None:
@@ -1397,6 +1410,30 @@ class LlmObservabilityService:
             "updated_at": datetime.now(UTC).isoformat(),
             **data,
         }
+
+    def _stats_forge_clickhouse(
+        self,
+        cluster_id: int | None,
+        range_: str,
+        model: str | None,
+        status: str | None,
+    ) -> dict[str, Any] | None:
+        """Fallback to Forge's central ClickHouse (forge.ai_gateway_events) for agent-pushed telemetry."""
+        try:
+            from services.clickhouse_client import ClickHouseClient
+
+            hours = max(1, self._range_s(range_) // 3600)
+            stats = ClickHouseClient().query_ai_gateway_stats(
+                cluster_uuid=None,
+                hours=hours,
+                model=model,
+                status=status,
+            )
+            if stats.get("total_requests", 0) > 0:
+                return self._ok_ch(**stats, errors={})
+        except Exception:
+            logger.debug("Forge ClickHouse AI Gateway fallback failed", exc_info=True)
+        return None
 
     def _stats_clickhouse(
         self,

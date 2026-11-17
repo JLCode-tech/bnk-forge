@@ -70,9 +70,11 @@ func (d *DriftDetector) CheckBypass(flow protocol.EBPFSocketFlow) bool {
 		return false
 	}
 
-	// Check if destination is in a protected namespace or port
+	// Check if destination is in a protected namespace or port.
+	// Note: host-level /proc/net/tcp sockets have an empty Namespace; allow them to be
+	// evaluated by ProtectedPorts so host-network bypasses are still caught.
 	isTargetNamespace := false
-	if len(d.protectedNamespaces) == 0 {
+	if len(d.protectedNamespaces) == 0 || flow.Namespace == "" {
 		isTargetNamespace = true
 	} else if _, ok := d.protectedNamespaces[flow.Namespace]; ok {
 		isTargetNamespace = true

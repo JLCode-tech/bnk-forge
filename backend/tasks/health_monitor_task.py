@@ -6,12 +6,13 @@ Runs every 60 seconds via Celery beat.
 
 Architecture:
   - Fetches health for each cluster with an active project
-  - Compares current health against last known state (stored in Redis)
+  - Compares current health against last known state (in-process TTL cache)
   - If severity changed (e.g., healthy → critical), fires alert via alert_service
-  - Stores current health state in Redis for next comparison
+  - Stores current health state for next comparison
 """
-import json
 import logging
+import threading
+import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -21,21 +22,31 @@ from models.enums import HealthSeverity
 
 logger = logging.getLogger(__name__)
 
-# Redis key prefix for health state caching
-HEALTH_STATE_PREFIX = "health_state:"
+# In-process TTL cache for health state (replaces legacy Redis dependency)
+_HEALTH_STATE_TTL_SECONDS = 3600
+_HEALTH_STATE_CACHE: dict[int, tuple[float, dict[str, Any]]] = {}
+_HEALTH_STATE_LOCK = threading.Lock()
 
 
-def _get_redis():
-    """Get Redis client from celery app."""
-    try:
-        from redis import Redis
+def _get_previous_health(cluster_id: int) -> dict[str, Any] | None:
+    """Return cached health state for cluster_id if within TTL."""
+    now = time.monotonic()
+    with _HEALTH_STATE_LOCK:
+        entry = _HEALTH_STATE_CACHE.get(cluster_id)
+        if not entry:
+            return None
+        expires_at, state = entry
+        if now >= expires_at:
+            _HEALTH_STATE_CACHE.pop(cluster_id, None)
+            return None
+        return state
 
-        from core.config import settings
-        redis_url = getattr(settings, 'REDIS_URL', 'redis://redis:6379/0')
-        return Redis.from_url(redis_url, decode_responses=True)
-    except Exception as e:
-        logger.warning(f"Could not connect to Redis for health state: {e}")
-        return None
+
+def _set_previous_health(cluster_id: int, state: dict[str, Any]) -> None:
+    """Cache current health state for cluster_id with 1-hour TTL."""
+    expires_at = time.monotonic() + _HEALTH_STATE_TTL_SECONDS
+    with _HEALTH_STATE_LOCK:
+        _HEALTH_STATE_CACHE[cluster_id] = (expires_at, state)
 
 
 def _get_cluster_health(cluster_id: int, db) -> dict[str, Any] | None:
@@ -162,8 +173,6 @@ def check_cluster_health():
     Periodic task: check health of all clusters with active projects.
     Fires alerts when health severity changes.
     """
-    redis = _get_redis()
-
     with get_db_context() as db:
         try:
             from sqlalchemy import or_
@@ -194,24 +203,9 @@ def check_cluster_health():
 
                     current_severity = current_health.get("overall_severity", "unknown")
 
-                    # Get previous health from Redis
-                    previous_severity = None
-                    if redis:
-                        cache_key = f"{HEALTH_STATE_PREFIX}{cluster.id}"
-                        previous_state = redis.get(cache_key)
-                        if previous_state:
-                            try:
-                                prev = json.loads(previous_state)
-                                previous_severity = prev.get("overall_severity")
-                            except json.JSONDecodeError:
-                                pass
-
-                        # Store current state
-                        redis.setex(
-                            cache_key,
-                            3600,  # 1 hour TTL
-                            json.dumps(current_health),
-                        )
+                    prev = _get_previous_health(cluster.id)
+                    previous_severity = prev.get("overall_severity") if prev else None
+                    _set_previous_health(cluster.id, current_health)
 
                     # Fire alert if severity changed
                     if previous_severity and current_severity != previous_severity:
