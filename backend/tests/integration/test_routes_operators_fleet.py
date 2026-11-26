@@ -206,6 +206,37 @@ class TestFleetHealth:
         assert result["status"] == "offline"
         assert result["reachable"] is False
 
+    @patch("routes.operators.fleet.as_completed")
+    @patch("routes.operators.fleet._query_cluster_health")
+    def test_fleet_health_does_not_cache_partial_timeout(
+        self,
+        mock_query_health,
+        mock_as_completed,
+        client,
+        viewer_headers,
+        all_test_users,
+        db,
+    ):
+        """Partial-timeout responses must not be cached in Redis or in-process."""
+        from routes.operators import fleet as fleet_mod
+
+        _make_cluster(db, name="slow-cluster")
+        mock_as_completed.side_effect = TimeoutError("timed out")
+        fleet_mod._fleet_health_cache.clear()
+
+        with (
+            patch("core.cache.cache.get", return_value=None),
+            patch("core.cache.cache.set") as mock_cache_set,
+        ):
+            response = client.get("/api/operators/fleet-health", headers=viewer_headers)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["offline"] == 1
+        assert data["operators"][0]["status"] == "offline"
+        mock_cache_set.assert_not_called()
+        assert fleet_mod._fleet_health_cache == {}
+
 
 class TestFleetCompare:
     """POST /api/operators/fleet/compare."""

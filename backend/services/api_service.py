@@ -138,7 +138,7 @@ class ApiService:
 
         settings_by_category: dict[str, list] = {}
         for setting in settings:
-            if setting.category == "deprecated":
+            if setting.category in ("deprecated", "ai_governance"):
                 continue
             if setting.category not in settings_by_category:
                 settings_by_category[setting.category] = []

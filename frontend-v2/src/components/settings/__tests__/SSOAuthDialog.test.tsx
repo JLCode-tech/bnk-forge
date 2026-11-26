@@ -108,4 +108,35 @@ describe('SSOAuthDialog', () => {
     });
     expect(screen.getByText('Cancel')).toBeInTheDocument();
   });
+
+  it('constrains long verification URLs and errors inside the dialog panel', async () => {
+    const longUri =
+      'https://device.sso.ap-southeast-2.amazonaws.com/?user_code=VERY-LONG-DEVICE-CODE-1234567890';
+    server.use(
+      http.post(INITIATE, () =>
+        HttpResponse.json({
+          success: true,
+          message: 'ok',
+          data: {
+            user_code: 'ABCD-1234',
+            verification_uri: longUri,
+            verification_uri_complete: longUri,
+            expires_in: 600,
+            interval: 5,
+            device_code: 'dev-code-xyz',
+          },
+        }),
+      ),
+      http.post('*/api/credential-templates/:id/poll-sso', () => neverSettles()),
+    );
+
+    render(<SSOAuthDialog {...defaultProps} />);
+
+    const urlSpan = await screen.findByText(longUri);
+    expect(urlSpan).toHaveClass('truncate', 'min-w-0');
+    const button = urlSpan.closest('button');
+    expect(button).toHaveClass('min-w-0');
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveClass('max-w-md', 'overflow-hidden');
+  });
 });
