@@ -658,22 +658,24 @@ def get_fleet_health(db: Session = Depends(get_db)):
         if op.cluster_id:
             op_by_cluster[op.cluster_id] = op
 
-    # Query all clusters in parallel (5s per-cluster, 8s overall safety timeout).
+    # Query all clusters in parallel (15s per-cluster, 20s overall safety timeout).
     # Pass db=None so worker threads use their own isolated SessionLocal().
     # Use shutdown(wait=False) so hung worker threads do not block the HTTP response.
     cluster_results: dict[int, dict] = {}
+    had_timeout = False
     executor = ThreadPoolExecutor(max_workers=min(10, len(clusters)))
     try:
         futures = {executor.submit(_query_cluster_health, cluster, None): cluster for cluster in clusters}
         try:
-            for future in as_completed(futures, timeout=8):
+            for future in as_completed(futures, timeout=20):
                 cluster = futures[future]
                 try:
-                    cluster_results[cluster.id] = future.result(timeout=5)
+                    cluster_results[cluster.id] = future.result(timeout=15)
                 except Exception as e:
                     logger.error(f"Unexpected error querying cluster {cluster.name}: {e}")
                     cluster_results[cluster.id] = {**_OFFLINE_RESULT}
         except TimeoutError:
+            had_timeout = True
             # Overall timeout — mark remaining clusters as offline
             for future, cluster in futures.items():
                 if cluster.id not in cluster_results:
@@ -774,7 +776,7 @@ def get_fleet_health(db: Session = Depends(get_db)):
         "operators": operators_out,
         "platform_context": _build_fleet_health_platform_context(clusters),
     }
-    if not cache.set(redis_key, response, _FLEET_HEALTH_REDIS_TTL_SEC):
+    if not had_timeout and not cache.set(redis_key, response, _FLEET_HEALTH_REDIS_TTL_SEC):
         with _fleet_health_lock:
             # Opportunistically trim stale entries so the cache can't grow unbounded
             # if cluster sets churn a lot (each distinct key would accumulate).

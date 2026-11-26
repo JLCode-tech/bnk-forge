@@ -199,10 +199,10 @@ export function SSOAuthDialog({
 
   return (
     <Dialog open={open} onOpenChange={resetAndClose}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
+      <DialogContent className="max-w-md overflow-hidden">
+        <DialogHeader className="min-w-0">
           <DialogTitle>{provider === 'azure' ? 'Azure' : 'AWS'} SSO Authentication</DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="break-words">
             Authenticating template: {templateName}
           </DialogDescription>
         </DialogHeader>
@@ -215,7 +215,7 @@ export function SSOAuthDialog({
         )}
 
         {step === 'waiting' && (
-          <div className="space-y-4">
+          <div className="space-y-4 min-w-0">
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
@@ -223,15 +223,15 @@ export function SSOAuthDialog({
               </AlertDescription>
             </Alert>
 
-            <Card className="p-4 space-y-4">
-              <div>
+            <Card className="p-4 space-y-4 min-w-0 overflow-hidden">
+              <div className="min-w-0">
                 <p className="text-sm font-medium mb-2">Step 1: Open the verification URL</p>
                 <Button
                   onClick={openVerificationUrl}
                   variant="outline"
-                  className="w-full justify-between"
+                  className="w-full justify-between min-w-0"
                 >
-                  <span className="truncate">{verificationUri}</span>
+                  <span className="truncate min-w-0">{verificationUri}</span>
                   <ExternalLink className="h-4 w-4 ml-2 flex-shrink-0" />
                 </Button>
               </div>
@@ -276,10 +276,10 @@ export function SSOAuthDialog({
         )}
 
         {step === 'error' && (
-          <div className="space-y-4">
+          <div className="space-y-4 min-w-0">
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
+              <AlertDescription className="break-words">{error}</AlertDescription>
             </Alert>
 
             <div className="flex justify-end gap-2">

@@ -26,6 +26,7 @@ inside BNK-Forge:
 
 from __future__ import annotations
 
+import json
 import logging
 import secrets
 import time
@@ -35,6 +36,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from core.cache import cache
+from models import ApplicationSetting
 from models.kubernetes import KubernetesCluster
 from schemas.llm_observability import (
     AiGatewayRouteSummary,
@@ -211,12 +213,101 @@ def _build_profile_providers_spec(route: dict[str, Any]) -> list[dict[str, Any]]
 
 
 # ---------------------------------------------------------------------------
-# Multi-cluster state overlay (persists in Redis + in-memory across requests
-# and seeds realistic BNK 2.4.1 reference topology when live CRDs are absent)
+# Multi-cluster state overlay (persists durably in PostgreSQL + Redis cache
+# + in-memory across requests, synced from live CRDs and ClickHouse)
 # ---------------------------------------------------------------------------
 
 _CLUSTER_STATE: dict[int, dict[str, Any]] = {}
 _REDIS_STATE_TTL = 86400
+_DB_STATE_KEY_PREFIX = "aigw.governance.state.v4."
+_DB_STATE_CATEGORY = "ai_governance"
+
+
+def _is_real_db_session(db: Any) -> bool:
+    """Return True only for a genuine SQLAlchemy Session (not test MagicMocks)."""
+    return isinstance(db, Session)
+
+
+def _state_has_data(state: dict[str, Any]) -> bool:
+    """Return True if the cluster governance state contains any discovered or configured entities."""
+    return any(
+        bool(state.get(k))
+        for k in (
+            "tenants",
+            "providers",
+            "models",
+            "routes",
+            "orgs",
+            "teams",
+            "principals",
+            "virtual_keys",
+            "request_audit_logs",
+            "cne_ai_gateway_enabled",
+            "dns_resolver_applied",
+            "numa_spanning_enabled",
+            "egress_route_applied",
+        )
+    )
+
+
+def _load_cluster_state_from_db(db: Session | None, cluster_id: int) -> dict[str, Any] | None:
+    if not _is_real_db_session(db):
+        return None
+    key = f"{_DB_STATE_KEY_PREFIX}{cluster_id}"
+    try:
+        setting = db.query(ApplicationSetting).filter(ApplicationSetting.key == key).first()
+        if setting and isinstance(setting.value, str) and setting.value.strip():
+            parsed = json.loads(setting.value)
+            if isinstance(parsed, dict) and "tenants" in parsed:
+                return parsed
+    except Exception as exc:
+        logger.debug("PostgreSQL read skipped for AI governance state %s: %s", cluster_id, exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    return None
+
+
+def _has_persisted_db_state(db: Session | None, cluster_id: int) -> bool:
+    if not _is_real_db_session(db):
+        return False
+    key = f"{_DB_STATE_KEY_PREFIX}{cluster_id}"
+    try:
+        return db.query(ApplicationSetting.id).filter(ApplicationSetting.key == key).first() is not None
+    except Exception:
+        return False
+
+
+def _save_cluster_state_to_db(db: Session | None, cluster_id: int, state: dict[str, Any]) -> None:
+    if not _is_real_db_session(db):
+        return
+    key = f"{_DB_STATE_KEY_PREFIX}{cluster_id}"
+    try:
+        serialized = json.dumps(state, default=str)
+        setting = db.query(ApplicationSetting).filter(ApplicationSetting.key == key).first()
+        if setting is not None:
+            setting.value = serialized
+            setting.value_type = "json"
+            setting.category = _DB_STATE_CATEGORY
+            setting.updated_at = datetime.now(UTC)
+        else:
+            db.add(
+                ApplicationSetting(
+                    key=key,
+                    value=serialized,
+                    value_type="json",
+                    category=_DB_STATE_CATEGORY,
+                    description=f"Durable AI Gateway & DSSM governance state for cluster {cluster_id}",
+                )
+            )
+        db.commit()
+    except Exception as exc:
+        logger.debug("PostgreSQL write failed for AI governance state %s: %s", cluster_id, exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
 
 
 def _sync_derived_fields(state: dict[str, Any]) -> dict[str, Any]:
@@ -305,20 +396,36 @@ def _sync_derived_fields(state: dict[str, Any]) -> dict[str, Any]:
     return state
 
 
-def _save_cluster_state(cluster_id: int, state: dict[str, Any]) -> None:
+def _save_cluster_state(cluster_id: int, state: dict[str, Any], db: Session | None = None) -> None:
     _sync_derived_fields(state)
     _CLUSTER_STATE[cluster_id] = state
+    _save_cluster_state_to_db(db, cluster_id, state)
     try:
         cache.set(f"aigw:gov:state:v4:{cluster_id}", state, ttl_seconds=_REDIS_STATE_TTL)
     except Exception:
         logger.debug("Redis cache unavailable for AI governance state %s", cluster_id)
 
 
-def _ensure_cluster_seed(cluster_id: int, cluster_name: str) -> dict[str, Any]:
+def _ensure_cluster_seed(
+    cluster_id: int,
+    cluster_name: str,
+    db: Session | None = None,
+    persist_initial: bool = False,
+) -> dict[str, Any]:
     """Return or initialize clean, unseeded BNK 2.4.1 AI Gateway & DSSM Governance state for a cluster."""
+    real_db = _is_real_db_session(db)
+    if real_db:
+        loaded = _load_cluster_state_from_db(db, cluster_id)
+        if loaded is not None:
+            loaded["cluster_name"] = cluster_name
+            _CLUSTER_STATE[cluster_id] = loaded
+            return _sync_derived_fields(loaded)
+
     if cluster_id in _CLUSTER_STATE:
         state = _CLUSTER_STATE[cluster_id]
         state["cluster_name"] = cluster_name
+        if real_db and _state_has_data(state):
+            _save_cluster_state_to_db(db, cluster_id, state)
         return _sync_derived_fields(state)
 
     try:
@@ -326,6 +433,8 @@ def _ensure_cluster_seed(cluster_id: int, cluster_name: str) -> dict[str, Any]:
         if isinstance(cached, dict) and "tenants" in cached:
             cached["cluster_name"] = cluster_name
             _CLUSTER_STATE[cluster_id] = cached
+            if real_db and _state_has_data(cached):
+                _save_cluster_state_to_db(db, cluster_id, cached)
             return _sync_derived_fields(cached)
     except Exception:
         logger.debug("Redis cache read skipped for AI governance state %s", cluster_id)
@@ -353,7 +462,7 @@ def _ensure_cluster_seed(cluster_id: int, cluster_name: str) -> dict[str, Any]:
         "virtual_keys": [],
         "request_audit_logs": [],
     }
-    _save_cluster_state(cluster_id, state)
+    _save_cluster_state(cluster_id, state, db=db if persist_initial else None)
     return state
 
 
@@ -753,8 +862,6 @@ class AiGatewayGovernanceService:
             row = self.db.query(KubernetesCluster).filter(KubernetesCluster.id == cid).first()
             if not row or not isinstance(getattr(row, "id", None), int):
                 return
-            if getattr(row, "connectivity_status", None) == "unreachable":
-                return
         except Exception:
             return
 
@@ -784,8 +891,16 @@ class AiGatewayGovernanceService:
                         "status_message": "Discovered on cluster",
                     }
                 state["tenants"] = list(existing.values())
-        except Exception:
-            pass
+        except Exception as exc:
+            exc_name = type(exc).__name__
+            exc_status = getattr(exc, "status", None)
+            if (
+                exc_name in ("BreakerOpenError", "TimeoutError")
+                or isinstance(exc, (TimeoutError, ConnectionError, OSError))
+                or exc_status in (0, 502, 503, 504)
+            ):
+                logger.debug("Cluster %s unreachable during AI Gateway live sync: %s", cid, exc)
+                return
 
         default_tenant = state["tenants"][0]["name"] if state.get("tenants") else "default"
 
@@ -1186,10 +1301,16 @@ class AiGatewayGovernanceService:
                     vk_name_by_id = {
                         vk["id"]: vk.get("name", vk["id"]) for vk in state.get("virtual_keys", []) if vk.get("id")
                     }
+                    vk_name_by_prin = {
+                        vk["principal_name"]: vk.get("name", "")
+                        for vk in state.get("virtual_keys", [])
+                        if vk.get("principal_name") and vk.get("status") == "active"
+                    }
                     audit_logs: list[dict[str, Any]] = []
                     for r in ch_rows:
                         req_id = str(r.get("request_id") or "")
                         vk_id = str(r.get("vk_id") or "")
+                        prin_id = str(r.get("principal_id") or "")
                         sc = "HIT" if int(r.get("cached_tokens") or 0) > 0 else "MISS"
                         status_code = int(r.get("status_code") or 200)
                         model_name = str(r.get("eff_model") or "").strip()
@@ -1208,9 +1329,9 @@ class AiGatewayGovernanceService:
                                 "route_name": route_name_default,
                                 "org_name": str(r.get("org_id") or ""),
                                 "team_name": str(r.get("team_id") or ""),
-                                "principal_name": str(r.get("principal_id") or ""),
+                                "principal_name": prin_id,
                                 "virtual_key_id": vk_id,
-                                "virtual_key_name": vk_name_by_id.get(vk_id, vk_id),
+                                "virtual_key_name": vk_name_by_id.get(vk_id) or vk_name_by_prin.get(prin_id) or vk_id,
                                 "method": "POST",
                                 "path": "/v1/chat/completions",
                                 "model": model_name,
@@ -1257,6 +1378,7 @@ class AiGatewayGovernanceService:
                     org_spend: dict[str, float] = {}
                     team_spend: dict[str, float] = {}
                     prin_spend: dict[str, float] = {}
+                    prin_last_used: dict[str, str] = {}
                     vk_spend: dict[str, float] = {}
                     vk_last_used: dict[str, str] = {}
                     for sr in spend_rows:
@@ -1272,6 +1394,8 @@ class AiGatewayGovernanceService:
                             team_spend[tid] = round(team_spend.get(tid, 0.0) + sp, 4)
                         if pid:
                             prin_spend[pid] = round(prin_spend.get(pid, 0.0) + sp, 4)
+                            if lu:
+                                prin_last_used[pid] = max(prin_last_used.get(pid, ""), lu)
                         if vid:
                             vk_spend[vid] = round(vk_spend.get(vid, 0.0) + sp, 4)
                             if lu:
@@ -1297,14 +1421,21 @@ class AiGatewayGovernanceService:
                         if val is not None:
                             vk["spend_usd"] = val
                             vk["current_spend_usd"] = val
-                        lu = vk_last_used.get(vk.get("id", "")) or vk_last_used.get(vk.get("name", ""))
+                        lu = (
+                            vk_last_used.get(vk.get("id", ""))
+                            or vk_last_used.get(vk.get("name", ""))
+                            or prin_last_used.get(vk.get("principal_name", ""))
+                        )
                         if lu:
                             vk["last_used_at"] = lu
         except Exception:
             pass
 
         state["_last_live_sync_ts"] = time.time()
-        _save_cluster_state(cid, state)
+        if _state_has_data(state) or _has_persisted_db_state(self.db, cid):
+            _save_cluster_state(cid, state, db=self.db)
+        else:
+            _save_cluster_state(cid, state, db=None)
 
     def _build_readiness_checks(self, state: dict[str, Any]) -> list[AiReadinessCheckItem]:
         cid = state["cluster_id"]
@@ -1480,7 +1611,7 @@ class AiGatewayGovernanceService:
         all_edges: list[dict[str, Any]] = []
 
         for cid, cname in targets:
-            state = _ensure_cluster_seed(cid, cname)
+            state = _ensure_cluster_seed(cid, cname, db=self.db)
             self._sync_live_cluster_resources(cid, cname, state)
             ns_providers = self._filter_by_namespace(state["providers"], namespace)
             ns_models = self._filter_by_namespace(state["models"], namespace)
@@ -1586,7 +1717,7 @@ class AiGatewayGovernanceService:
     def create_tenant(self, req: CreateAiTenantRequest) -> AiGovernanceMutationResponse:
         targets = self._target_clusters(cluster_id=req.cluster_id)
         cid, cname = targets[0]
-        state = _ensure_cluster_seed(cid, cname)
+        state = _ensure_cluster_seed(cid, cname, db=self.db)
 
         manifest = {
             "apiVersion": "inference.k8s.f5.com/v1alpha1",
@@ -1613,7 +1744,7 @@ class AiGatewayGovernanceService:
             "status_message": "AITenant is ready",
         }
         state["tenants"] = [t for t in state["tenants"] if t["name"] != req.name] + [entity]
-        _save_cluster_state(cid, state)
+        _save_cluster_state(cid, state, db=self.db)
         return AiGovernanceMutationResponse(
             message=f"AITenant '{req.name}' applied on cluster {cname}",
             cluster_id=cid,
@@ -1624,7 +1755,7 @@ class AiGatewayGovernanceService:
     def create_provider(self, req: CreateAiProviderRequest) -> AiGovernanceMutationResponse:
         targets = self._target_clusters(cluster_id=req.cluster_id)
         cid, cname = targets[0]
-        state = _ensure_cluster_seed(cid, cname)
+        state = _ensure_cluster_seed(cid, cname, db=self.db)
 
         canonical_type = _canonical_provider_type(req.vendor)
         dialect = req.dialect
@@ -1705,7 +1836,7 @@ class AiGatewayGovernanceService:
             "status_message": "AIProvider & AICredential ready",
         }
         state["providers"] = [p for p in state["providers"] if p["name"] != req.name] + [entity]
-        _save_cluster_state(cid, state)
+        _save_cluster_state(cid, state, db=self.db)
         return AiGovernanceMutationResponse(
             message=f"Secret '{sec_name}', AICredential '{cred_name}', and AIProvider '{req.name}' applied on {cname}",
             cluster_id=cid,
@@ -1716,7 +1847,7 @@ class AiGatewayGovernanceService:
     def create_model(self, req: CreateAiModelRequest) -> AiGovernanceMutationResponse:
         targets = self._target_clusters(cluster_id=req.cluster_id)
         cid, cname = targets[0]
-        state = _ensure_cluster_seed(cid, cname)
+        state = _ensure_cluster_seed(cid, cname, db=self.db)
 
         manifest = {
             "apiVersion": "inference.k8s.f5.com/v1alpha1",
@@ -1754,7 +1885,7 @@ class AiGatewayGovernanceService:
             "status_message": f"AIModel is ready ({len(req.deployments)} deployment(s))",
         }
         state["models"] = [m for m in state["models"] if m["name"] != req.name] + [entity]
-        _save_cluster_state(cid, state)
+        _save_cluster_state(cid, state, db=self.db)
         return AiGovernanceMutationResponse(
             message=f"AIModel '{req.name}' ({req.public_name}) applied on {cname}",
             cluster_id=cid,
@@ -1765,7 +1896,7 @@ class AiGatewayGovernanceService:
     def create_route(self, req: CreateAiGatewayRouteRequest) -> AiGovernanceMutationResponse:
         targets = self._target_clusters(cluster_id=req.cluster_id)
         cid, cname = targets[0]
-        state = _ensure_cluster_seed(cid, cname)
+        state = _ensure_cluster_seed(cid, cname, db=self.db)
 
         # BNK 2.4.1 rule: "The listener chooses the tenant" — two tenants cannot share a listener port on the same Gateway
         for existing in state.get("routes", []):
@@ -1925,7 +2056,7 @@ class AiGatewayGovernanceService:
             manifests_applied.append(vllmsr_manifest)
 
         state["routes"] = [r for r in state["routes"] if r["name"] != req.name] + [entity]
-        _save_cluster_state(cid, state)
+        _save_cluster_state(cid, state, db=self.db)
         return AiGovernanceMutationResponse(
             message=f"Gateway Route & AIGatewayProfile '{req.name}' attached via AppPolicy '{app_pol_name}' on {cname}",
             cluster_id=cid,
@@ -1938,7 +2069,7 @@ class AiGatewayGovernanceService:
     ) -> AiGovernanceMutationResponse:
         targets = self._target_clusters(cluster_id=req.cluster_id)
         cid, cname = targets[0]
-        state = _ensure_cluster_seed(cid, cname)
+        state = _ensure_cluster_seed(cid, cname, db=self.db)
 
         route = next((r for r in state["routes"] if r["name"] == route_name), None)
         if not route:
@@ -2008,7 +2139,7 @@ class AiGatewayGovernanceService:
                         if isinstance(ov, dict) and ov.get("name") in allowed_set
                     ]
 
-        _save_cluster_state(cid, state)
+        _save_cluster_state(cid, state, db=self.db)
         return AiGovernanceMutationResponse(
             action="update_route_policies",
             message=f"Updated traffic policies on AIGatewayProfile '{route_name}' on {cname}",
@@ -2019,7 +2150,7 @@ class AiGatewayGovernanceService:
     def create_org(self, req: CreateGovernanceOrgRequest) -> AiGovernanceMutationResponse:
         targets = self._target_clusters(cluster_id=req.cluster_id)
         cid, cname = targets[0]
-        state = _ensure_cluster_seed(cid, cname)
+        state = _ensure_cluster_seed(cid, cname, db=self.db)
         org_id = f"org-{req.name.lower().replace(' ', '-')}-{cid}"
         entity = {
             "id": org_id,
@@ -2034,7 +2165,7 @@ class AiGatewayGovernanceService:
             "rate_limit_tpm": req.rate_limit_tpm,
         }
         state["orgs"] = [o for o in state["orgs"] if o["id"] != org_id] + [entity]
-        _save_cluster_state(cid, state)
+        _save_cluster_state(cid, state, db=self.db)
         return AiGovernanceMutationResponse(
             message=f"DSSM Governance Organization '{req.name}' configured on {cname}",
             cluster_id=cid,
@@ -2044,7 +2175,7 @@ class AiGatewayGovernanceService:
     def create_team(self, req: CreateGovernanceTeamRequest) -> AiGovernanceMutationResponse:
         targets = self._target_clusters(cluster_id=req.cluster_id)
         cid, cname = targets[0]
-        state = _ensure_cluster_seed(cid, cname)
+        state = _ensure_cluster_seed(cid, cname, db=self.db)
         org = next((o for o in state["orgs"] if o["id"] == req.org_id), None)
         org_name = org["name"] if org else req.org_id
         team_id = f"team-{req.name.lower().replace(' ', '-')}-{cid}"
@@ -2063,7 +2194,7 @@ class AiGatewayGovernanceService:
             "rate_limit_tpm": req.rate_limit_tpm,
         }
         state["teams"] = [t for t in state["teams"] if t["id"] != team_id] + [entity]
-        _save_cluster_state(cid, state)
+        _save_cluster_state(cid, state, db=self.db)
         return AiGovernanceMutationResponse(
             message=f"DSSM Governance Team '{req.name}' configured under '{org_name}' on {cname}",
             cluster_id=cid,
@@ -2073,7 +2204,7 @@ class AiGatewayGovernanceService:
     def create_principal(self, req: CreateGovernancePrincipalRequest) -> AiGovernanceMutationResponse:
         targets = self._target_clusters(cluster_id=req.cluster_id)
         cid, cname = targets[0]
-        state = _ensure_cluster_seed(cid, cname)
+        state = _ensure_cluster_seed(cid, cname, db=self.db)
         team = next((t for t in state["teams"] if t["id"] == req.team_id), None)
         team_name = team["name"] if team else req.team_id
         org_id = team["org_id"] if team else ""
@@ -2096,7 +2227,7 @@ class AiGatewayGovernanceService:
             "rate_limit_tpm": req.rate_limit_tpm,
         }
         state["principals"] = [p for p in state["principals"] if p["id"] != prin_id] + [entity]
-        _save_cluster_state(cid, state)
+        _save_cluster_state(cid, state, db=self.db)
         return AiGovernanceMutationResponse(
             message=f"DSSM Principal '{req.name}' ({req.kind}/{req.role}) configured on {cname}",
             cluster_id=cid,
@@ -2106,7 +2237,7 @@ class AiGatewayGovernanceService:
     def issue_virtual_key(self, req: IssueVirtualKeyRequest) -> AiGovernanceMutationResponse:
         targets = self._target_clusters(cluster_id=req.cluster_id)
         cid, cname = targets[0]
-        state = _ensure_cluster_seed(cid, cname)
+        state = _ensure_cluster_seed(cid, cname, db=self.db)
         prin = next((p for p in state["principals"] if p["id"] == req.principal_id), None)
         prin_name = prin["name"] if prin else req.principal_id
         prin_type = prin.get("kind", "service") if prin else "service"
@@ -2145,7 +2276,7 @@ class AiGatewayGovernanceService:
             "last_used_at": None,
         }
         state["virtual_keys"].insert(0, stored_entity)
-        _save_cluster_state(cid, state)
+        _save_cluster_state(cid, state, db=self.db)
         returned_entity = {**stored_entity, "raw_key": raw_key, "cleartext_key": raw_key}
         return AiGovernanceMutationResponse(
             message=f"Issued DSSM Virtual Key '{req.name}' for principal '{prin_name}' on {cname}",
@@ -2156,7 +2287,7 @@ class AiGatewayGovernanceService:
     def rotate_virtual_key(self, key_id: str, cluster_id: int | None = None) -> AiGovernanceMutationResponse:
         targets = self._target_clusters(cluster_id=cluster_id)
         for cid, cname in targets:
-            state = _ensure_cluster_seed(cid, cname)
+            state = _ensure_cluster_seed(cid, cname, db=self.db)
             for vk in state["virtual_keys"]:
                 if vk["id"] == key_id:
                     token = secrets.token_hex(16)
@@ -2164,7 +2295,7 @@ class AiGatewayGovernanceService:
                     vk["masked_key"] = f"f5vk_{token[:4]}••••••••••••{token[-4:]}"
                     vk["status"] = "active"
                     vk["created_at"] = _now_iso()
-                    _save_cluster_state(cid, state)
+                    _save_cluster_state(cid, state, db=self.db)
                     returned_entity = {**vk, "raw_key": raw_key, "cleartext_key": raw_key}
                     return AiGovernanceMutationResponse(
                         action="rotate_virtual_key",
@@ -2178,11 +2309,11 @@ class AiGatewayGovernanceService:
     def revoke_virtual_key(self, key_id: str, cluster_id: int | None = None) -> AiGovernanceMutationResponse:
         targets = self._target_clusters(cluster_id=cluster_id)
         for cid, cname in targets:
-            state = _ensure_cluster_seed(cid, cname)
+            state = _ensure_cluster_seed(cid, cname, db=self.db)
             for vk in state["virtual_keys"]:
                 if vk["id"] == key_id:
                     vk["status"] = "revoked"
-                    _save_cluster_state(cid, state)
+                    _save_cluster_state(cid, state, db=self.db)
                     return AiGovernanceMutationResponse(
                         message=f"Revoked Virtual Key '{vk['name']}' on {cname}",
                         cluster_id=cid,
@@ -2197,7 +2328,7 @@ class AiGatewayGovernanceService:
     def remediate(self, req: RemediateAiGatewayRequest) -> AiGovernanceMutationResponse:
         targets = self._target_clusters(cluster_id=req.cluster_id)
         cid, cname = targets[0]
-        state = _ensure_cluster_seed(cid, cname)
+        state = _ensure_cluster_seed(cid, cname, db=self.db)
 
         if req.action == "restart_controller":
             for r in state["routes"]:
@@ -2205,7 +2336,7 @@ class AiGatewayGovernanceService:
                 r["stuck_profile_bug"] = False
                 r["status_message"] = "Profile programmed on Gateway after controller rollout restart"
             state["stuck_profile_remediated"] = True
-            _save_cluster_state(cid, state)
+            _save_cluster_state(cid, state, db=self.db)
             return AiGovernanceMutationResponse(
                 action=req.action,
                 message=f"Executed rollout restart of deploy/f5-cne-controller in {req.namespace} on {cname}; AIGatewayProfile Programmed=True",
@@ -2236,7 +2367,7 @@ class AiGatewayGovernanceService:
                     },
                 },
             }
-            _save_cluster_state(cid, state)
+            _save_cluster_state(cid, state, db=self.db)
             return AiGovernanceMutationResponse(
                 action=req.action,
                 message=f"Deployed F5BigDnsCache 'aigw-dns-resolver' (cacheType: net-resolver) in {req.namespace} on {cname}",
@@ -2246,7 +2377,7 @@ class AiGatewayGovernanceService:
             )
         if req.action == "enable_numa_spanning":
             state["numa_spanning_enabled"] = True
-            _save_cluster_state(cid, state)
+            _save_cluster_state(cid, state, db=self.db)
             return AiGovernanceMutationResponse(
                 action=req.action,
                 message=f"Patched CNEInstance TMM_ENFORCE_SINGLE_NUMA_NODE=false in {req.namespace} on {cname}",
@@ -2279,7 +2410,7 @@ class AiGatewayGovernanceService:
                     }
                 },
             }
-            _save_cluster_state(cid, state)
+            _save_cluster_state(cid, state, db=self.db)
             return AiGovernanceMutationResponse(
                 action=req.action,
                 message=f"Applied F5SPKStaticRoute 'llm-egress-route' (0.0.0.0/0) and F5BigNetPolicy 'llm-egress-snat' in {req.namespace} on {cname}",
@@ -2297,7 +2428,7 @@ class AiGatewayGovernanceService:
         """Simulate & validate live inference traffic through BNK 2.4.1 AI Gateway (Step 8: Test and Monitor)."""
         targets = self._target_clusters(cluster_id=req.cluster_id)
         cid, cname = targets[0]
-        state = _ensure_cluster_seed(cid, cname)
+        state = _ensure_cluster_seed(cid, cname, db=self.db)
 
         routes = state.get("routes", [])
         route = next((r for r in routes if r["name"] == req.route_name), routes[0] if routes else None)
@@ -2549,7 +2680,7 @@ class AiGatewayGovernanceService:
             "error_reason": None,
         }
         state.setdefault("request_audit_logs", []).insert(0, audit_dict)
-        _save_cluster_state(cid, state)
+        _save_cluster_state(cid, state, db=self.db)
 
         return GatewayInferenceTestResponse(
             status_code=200,

@@ -116,4 +116,113 @@ describe("Dashboard", () => {
       expect(screen.getByText("Fleet Dashboard")).toBeInTheDocument();
     });
   });
+
+  it("hides offline operator warning when connectivity probe reports reachable", async () => {
+    server.use(
+      http.get("*/api/operators/fleet-health", () =>
+        HttpResponse.json({
+          total_clusters: 1,
+          healthy: 0,
+          warning: 0,
+          critical: 0,
+          offline: 1,
+          unknown: 0,
+          operators: [
+            {
+              operator_id: 1,
+              operator_uuid: "cluster-1",
+              cluster_id: 1,
+              cluster_name: "bnk-agentcore-demo",
+              status: "offline",
+              last_seen: "2026-11-19T00:00:00Z",
+              bnk_version: null,
+              route_count: 0,
+              tmm_count: 0,
+              gateway_count: 0,
+              uptime: "--",
+              health_summary: { healthy: 0, warning: 0, critical: 0 },
+              kubernetes_version: "1.30.0",
+              node_count: 3,
+              operator_version: null,
+              connectivity_mode: "kubeconfig",
+            },
+          ],
+        }),
+      ),
+      http.get("*/api/connectivity/state", () =>
+        HttpResponse.json({
+          states: [
+            {
+              target_type: "cluster",
+              target_id: 1,
+              state: "reachable",
+              reason: null,
+              last_checked_at: "2026-11-19T00:00:00Z",
+              last_reachable_at: "2026-11-19T00:00:00Z",
+            },
+          ],
+        }),
+      ),
+    );
+
+    render(<Dashboard />);
+    await waitFor(() => {
+      expect(screen.getByText("Multi-Cloud Estate")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Operator offline/i)).not.toBeInTheDocument();
+  });
+
+  it("shows offline operator warning when connectivity probe is unreachable", async () => {
+    server.use(
+      http.get("*/api/operators/fleet-health", () =>
+        HttpResponse.json({
+          total_clusters: 1,
+          healthy: 0,
+          warning: 0,
+          critical: 0,
+          offline: 1,
+          unknown: 0,
+          operators: [
+            {
+              operator_id: 1,
+              operator_uuid: "cluster-1",
+              cluster_id: 1,
+              cluster_name: "bnk-agentcore-demo",
+              status: "offline",
+              last_seen: "2026-11-19T00:00:00Z",
+              bnk_version: null,
+              route_count: 0,
+              tmm_count: 0,
+              gateway_count: 0,
+              uptime: "--",
+              health_summary: { healthy: 0, warning: 0, critical: 0 },
+              kubernetes_version: "1.30.0",
+              node_count: 3,
+              operator_version: null,
+              connectivity_mode: "kubeconfig",
+            },
+          ],
+        }),
+      ),
+      http.get("*/api/connectivity/state", () =>
+        HttpResponse.json({
+          states: [
+            {
+              target_type: "cluster",
+              target_id: 1,
+              state: "unreachable",
+              reason: "timeout",
+              last_checked_at: "2026-11-19T00:00:00Z",
+              last_reachable_at: null,
+            },
+          ],
+        }),
+      ),
+    );
+
+    render(<Dashboard />);
+    await waitFor(() => {
+      expect(screen.getByText(/Operator offline/i)).toBeInTheDocument();
+    });
+  });
 });
