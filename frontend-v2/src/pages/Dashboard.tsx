@@ -154,8 +154,13 @@ export default function Dashboard() {
   }, [fleetOperators]);
 
   const offlineOperators = useMemo(() => {
-    return fleetOperators.filter((op) => op.status === "offline");
-  }, [fleetOperators]);
+    return fleetOperators.filter((op) => {
+      if (op.status !== "offline") return false;
+      const conn =
+        connectivityStates[reachabilityKey("cluster", op.cluster_id)];
+      return conn?.state !== "reachable";
+    });
+  }, [fleetOperators, connectivityStates]);
 
   const activeOps = useMemo(() => {
     return (

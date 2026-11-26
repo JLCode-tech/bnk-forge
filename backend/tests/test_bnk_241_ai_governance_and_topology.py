@@ -969,3 +969,88 @@ def test_bnk_241_manual_full_feature_alignment():
     assert cleared.entity["providers"] == []
     assert cleared.entity["provider_credentials"] == {}
     assert cleared.entity["provider_overrides"] == []
+
+
+def test_ai_gateway_governance_durable_postgres_persistence(monkeypatch):
+    """Verify DSSM Orgs, Teams, Principals, and Virtual Keys persist durably in PostgreSQL
+    and survive process restart + Redis cache loss without leaking into /api/settings."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from core.cache import cache
+    from models import ApplicationSetting, KubernetesCluster
+    from services.ai_gateway_governance_service import _CLUSTER_STATE, _DB_STATE_KEY_PREFIX
+    from services.api_service import ApiService
+
+    engine = create_engine("sqlite:///:memory:")
+    ApplicationSetting.__table__.create(engine)
+    KubernetesCluster.__table__.create(engine)
+    SessionLocal = sessionmaker(bind=engine)
+
+    db = SessionLocal()
+    try:
+        svc = AiGatewayGovernanceService(db=db)
+        svc.create_tenant(CreateAiTenantRequest(cluster_id=5, name="default-tenant", display_name="Default Tenant"))
+        org_res = svc.create_org(
+            CreateGovernanceOrgRequest(
+                cluster_id=5,
+                tenant="default-tenant",
+                name="sovereign-wealth-apac",
+                monthly_budget_usd=5000.0,
+            )
+        )
+        team_res = svc.create_team(
+            CreateGovernanceTeamRequest(
+                cluster_id=5,
+                tenant="default-tenant",
+                name="quant-trading-desk",
+                org_id=org_res.entity["id"],
+            )
+        )
+        prin_res = svc.create_principal(
+            CreateGovernancePrincipalRequest(
+                cluster_id=5,
+                tenant="default-tenant",
+                name="fx-arbitrage-agent",
+                kind="agent",
+                team_id=team_res.entity["id"],
+            )
+        )
+        vk_res = svc.issue_virtual_key(
+            IssueVirtualKeyRequest(
+                cluster_id=5,
+                tenant="default-tenant",
+                name="fx-arbitrage-prod-vk",
+                principal_id=prin_res.entity["id"],
+                allowed_models=["claude-sonnet-4-5"],
+            )
+        )
+        assert vk_res.entity["raw_key"].startswith("f5vk_")
+
+        # Confirm committed in ApplicationSetting
+        row = db.query(ApplicationSetting).filter(ApplicationSetting.key == f"{_DB_STATE_KEY_PREFIX}5").first()
+        assert row is not None
+        assert row.category == "ai_governance"
+        assert row.value_type == "json"
+    finally:
+        db.close()
+
+    # Simulate backend container restart + Redis offline
+    _CLUSTER_STATE.clear()
+    monkeypatch.setattr(cache, "get", lambda _k: None)
+
+    new_db = SessionLocal()
+    try:
+        restored = AiGatewayGovernanceService(db=new_db).overview(cluster_id=5)
+        assert [o.name for o in restored.orgs] == ["sovereign-wealth-apac"]
+        assert [t.name for t in restored.teams] == ["quant-trading-desk"]
+        assert [p.name for p in restored.principals] == ["fx-arbitrage-agent"]
+        assert len(restored.virtual_keys) == 1
+        assert restored.virtual_keys[0].name == "fx-arbitrage-prod-vk"
+        assert restored.virtual_keys[0].masked_key.startswith("f5vk_")
+
+        # Confirm internal ai_governance state is hidden from user-facing GET /api/settings
+        settings_payload = ApiService(new_db).get_settings()["settings"]
+        assert "ai_governance" not in settings_payload
+    finally:
+        new_db.close()
