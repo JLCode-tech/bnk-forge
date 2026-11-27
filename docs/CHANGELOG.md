@@ -4,6 +4,12 @@ All notable changes to BNK-Forge.
 
 ---
 
+## v4.3.5 (2026-11-27) — patch bump
+
+- Merge pull request #13 from JLCode-tech/staging
+- Merge pull request #12 from JLCode-tech/fix/governance-persistence-fleet-ui
+- fix(governance,fleet,ui): persist AI Gateway governance state in PostgreSQL and harden fleet/SSO UI
+
 ## v4.3.4 (2026-11-17) — patch bump
 
 - Merge pull request #11 from JLCode-tech/staging
