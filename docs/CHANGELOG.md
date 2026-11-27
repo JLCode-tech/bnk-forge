@@ -4,6 +4,12 @@ All notable changes to BNK-Forge.
 
 ---
 
+## v4.3.6 (2026-11-27) — patch bump
+
+- Merge pull request #15 from JLCode-tech/staging
+- Merge pull request #14 from JLCode-tech/fix/pin-kombu-5.4.2
+- fix(deps): pin kombu==5.4.2 for celery 5.4.0 and redis 5.2.1 compatibility
+
 ## v4.3.5 (2026-11-27) — patch bump
 
 - Merge pull request #13 from JLCode-tech/staging
