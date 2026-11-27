@@ -30,6 +30,7 @@ pyasn1==0.6.5
 
 # Task queue
 celery==5.4.0
+kombu==5.4.2
 redis==5.2.1
 
 # Scheduling
